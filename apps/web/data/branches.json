@@ -1,0 +1,41 @@
+[
+  {
+    "id": "1",
+    "name": "Spiritual Homeopathy - Kukatpally Branch",
+    "phone": "+91 90301 76176",
+    "address": "Plot 102, Metro Pillar A784, KPHB Main Road, Hyderabad - 500072",
+    "city": "Hyderabad",
+    "timings": "9:00 AM - 8:30 PM",
+    "photoUrl": "https://images.unsplash.com/photo-1586773860418-d37222d8fce3?w=500&q=80",
+    "photoName": "kukatpally_exterior.jpg",
+    "doctorsCount": 4,
+    "isActive": true,
+    "createdAt": "2026-11-04T10:00:00.000Z"
+  },
+  {
+    "id": "2",
+    "name": "Spiritual Homeopathy - Banjara Hills Branch",
+    "phone": "+91 81252 60176",
+    "address": "Road No. 12, Near MLA Colony, Banjara Hills, Hyderabad - 500034",
+    "city": "Hyderabad",
+    "timings": "9:30 AM - 8:00 PM",
+    "photoUrl": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=500&q=80",
+    "photoName": "banjara_clinic_front.jpg",
+    "doctorsCount": 3,
+    "isActive": true,
+    "createdAt": "2026-11-04T10:30:00.000Z"
+  },
+  {
+    "id": "3",
+    "name": "Spiritual Homeopathy - Dilsukhnagar Branch",
+    "phone": "+91 98480 12345",
+    "address": "Opp. Konark Theatre, Main Road, Dilsukhnagar, Hyderabad - 500060",
+    "city": "Hyderabad",
+    "timings": "10:00 AM - 7:30 PM",
+    "photoUrl": "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=500&q=80",
+    "photoName": "dilsukhnagar_opd.jpg",
+    "doctorsCount": 2,
+    "isActive": true,
+    "createdAt": "2026-11-04T11:00:00.000Z"
+  }
+]

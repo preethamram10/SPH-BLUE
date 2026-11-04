@@ -1,0 +1,19 @@
+{
+  "name": "spiritualhomeo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:staff": "npm run start --workspace=apps/staff",
+    "db:generate": "npm run db:generate --workspace=@spiritualhomeo/database",
+    "db:push": "npm run db:push --workspace=@spiritualhomeo/database",
+    "db:studio": "npm run db:studio --workspace=@spiritualhomeo/database",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  }
+}
+

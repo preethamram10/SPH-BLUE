@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DOCTOR
+  RECEPTION
+  TELECALLER
+  HR
+  PATIENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  WAITING
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  INTERESTED
+  CONVERTED
+  LOST
+}
+
+model User {
+  id            String          @id @default(uuid())
+  email         String?         @unique
+  phone         String          @unique
+  name          String
+  passwordHash  String
+  role          Role
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Role Profiles
+  doctorProfile DoctorProfile?
+  staffProfile  StaffProfile?
+  patientProfile PatientProfile?
+
+  // Relations
+  createdLeads  Lead[]          @relation("LeadCreator")
+  assignedLeads Lead[]          @relation("LeadAssignee")
+  callLogs      CallLog[]
+  attendances   Attendance[]
+}
+
+model DoctorProfile {
+  id              String         @id @default(uuid())
+  userId          String         @unique
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization  String         @default("Homeopathy")
+  qualification   String?
+  experienceYears Int            @default(0)
+  consultationFee Float          @default(0.0)
+  appointments    Appointment[]
+  consultations   Consultation[]
+}
+
+model StaffProfile {
+  id          String       @id @default(uuid())
+  userId      String       @unique
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId  String       @unique
+  department  String
+  designation String
+  joiningDate DateTime     @default(now())
+}
+
+model PatientProfile {
+  id            String         @id @default(uuid())
+  userId        String?        @unique
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  mrn           String         @unique // Medical Record Number
+  name          String
+  phone         String
+  email         String?
+  age           Int?
+  gender        Gender?
+  bloodGroup    String?
+  address       String?
+  appointments  Appointment[]
+  consultations Consultation[]
+  invoices      Invoice[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Appointment {
+  id          String            @id @default(uuid())
+  patientId   String
+  patient     PatientProfile    @relation(fields: [patientId], references: [id])
+  doctorId    String
+  doctor      DoctorProfile     @relation(fields: [doctorId], references: [id])
+  tokenNumber Int?
+  dateTime    DateTime
+  status      AppointmentStatus @default(SCHEDULED)
+  reason      String?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  consultation Consultation?
+  invoice      Invoice?
+}
+
+model Consultation {
+  id            String         @id @default(uuid())
+  appointmentId String?        @unique
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  patientId     String
+  patient       PatientProfile @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        DoctorProfile  @relation(fields: [doctorId], references: [id])
+  symptoms      String
+  diagnosis     String?
+  prescription  String
+  advice        String?
+  followUpDate  DateTime?
+  createdAt     DateTime       @default(now())
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  name         String
+  phone        String
+  source       String     @default("Website")
+  status       LeadStatus @default(NEW)
+  notes        String?
+  createdById  String?
+  createdBy    User?      @relation("LeadCreator", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  callLogs     CallLog[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model CallLog {
+  id        String   @id @default(uuid())
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  callerId  String
+  caller    User     @relation(fields: [callerId], references: [id])
+  duration  Int      @default(0) // seconds
+  outcome   String
+  notes     String?
+  calledAt  DateTime @default(now())
+}
+
+model Attendance {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime  @default(now())
+  checkIn   DateTime  @default(now())
+  checkOut  DateTime?
+  status    String    @default("PRESENT")
+}
+
+model Invoice {
+  id            String         @id @default(uuid())
+  invoiceNumber String         @unique
+  patientId     String
+  patient       PatientProfile @relation(fields: [patientId], references: [id])
+  appointmentId String?        @unique
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  amount        Float
+  status        String         @default("PAID")
+  paymentMethod String         @default("CASH")
+  createdAt     DateTime       @default(now())
+}
+
+model Branch {
+  id           String    @id @default(uuid())
+  name         String
+  phone        String
+  address      String
+  city         String    @default("Hyderabad")
+  timings      String    @default("9:00 AM - 8:30 PM")
+  photoUrl     String?
+  photoName    String?
+  doctorsCount Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
