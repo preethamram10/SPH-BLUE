@@ -1028,6 +1028,11 @@ export interface AppointmentRecord {
   status: "SCHEDULED" | "WAITING" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   notes?: string;
   createdAt: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedRole?: "RECEPTION" | "ADMIN";
+  deletedReason?: string;
 }
 
 function getPatientsCachePath(): string {
@@ -1441,8 +1446,11 @@ function getAppointmentsStore(): AppointmentRecord[] {
 }
 
 export const appointmentService = {
-  async getAppointments(branch?: string, date?: string, doctorId?: string): Promise<AppointmentRecord[]> {
+  async getAppointments(branch?: string, date?: string, doctorId?: string, includeDeleted = false): Promise<AppointmentRecord[]> {
     let list = getAppointmentsStore();
+    if (!includeDeleted) {
+      list = list.filter((a) => !a.isDeleted);
+    }
     if (branch) {
       const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
       list = list.filter((a) => {
@@ -1496,8 +1504,172 @@ export const appointmentService = {
     const appointments = await this.getAppointments(branch, date, doctorId);
     const cleanSlot = timeSlot.trim().toUpperCase();
     return appointments.filter(
-      (a) => a.timeSlot.trim().toUpperCase() === cleanSlot && a.status !== "CANCELLED"
+      (a) => a.timeSlot.trim().toUpperCase() === cleanSlot && a.status !== "CANCELLED" && !a.isDeleted
     ).length;
+  },
+
+  /**
+   * Soft-deletes an appointment with 24h (Reception) / 48h (Admin) retention window.
+   */
+  async deleteAppointment(
+    id: string,
+    deletedBy = "Reception",
+    role: "RECEPTION" | "ADMIN" = "RECEPTION",
+    reason = "Cancelled by user"
+  ): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const idx = store.findIndex((a) => a.id === id || a.token === id);
+    if (idx === -1) return null;
+
+    store[idx].isDeleted = true;
+    store[idx].deletedAt = new Date().toISOString();
+    store[idx].deletedBy = deletedBy;
+    store[idx].deletedRole = role;
+    store[idx].deletedReason = reason;
+    store[idx].status = "CANCELLED";
+
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return store[idx];
+  },
+
+  /**
+   * Restores a deleted appointment back to active status.
+   */
+  async restoreAppointment(id: string): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const idx = store.findIndex((a) => a.id === id || a.token === id);
+    if (idx === -1) return null;
+
+    store[idx].isDeleted = false;
+    store[idx].deletedAt = undefined;
+    store[idx].deletedBy = undefined;
+    store[idx].deletedRole = undefined;
+    store[idx].deletedReason = undefined;
+    store[idx].status = "SCHEDULED";
+
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return store[idx];
+  },
+
+  /**
+   * Permanently deletes an appointment record.
+   */
+  async permanentlyDeleteAppointment(id: string): Promise<boolean> {
+    let store = getAppointmentsStore();
+    const initLen = store.length;
+    store = store.filter((a) => a.id !== id && a.token !== id);
+    if (store.length !== initLen) {
+      global.__sphAppointmentsStore = store;
+      saveAppointmentsToDisk(store);
+      return true;
+    }
+    return false;
+  },
+
+  /**
+   * Retrieves deleted appointments based on role visibility:
+   * - RECEPTION: only appointments deleted within the last 24 HOURS
+   * - ADMIN: appointments deleted within the last 48 HOURS
+   * Auto-purges records older than 48 hours.
+   */
+  async getDeletedAppointments(
+    role: "RECEPTION" | "ADMIN" = "RECEPTION",
+    branch?: string
+  ): Promise<Array<AppointmentRecord & { hoursRemaining: number }>> {
+    let store = getAppointmentsStore();
+    const now = Date.now();
+    const maxHours = role === "ADMIN" ? 48 : 24;
+    const maxMs = maxHours * 60 * 60 * 1000;
+
+    // Purge records older than 48 hours completely
+    const purge48Ms = 48 * 60 * 60 * 1000;
+    const activeStore = store.filter((a) => {
+      if (!a.isDeleted || !a.deletedAt) return true;
+      const elapsed = now - new Date(a.deletedAt).getTime();
+      return elapsed <= purge48Ms;
+    });
+    if (activeStore.length !== store.length) {
+      global.__sphAppointmentsStore = activeStore;
+      saveAppointmentsToDisk(activeStore);
+      store = activeStore;
+    }
+
+    let deleted = store.filter((a) => {
+      if (!a.isDeleted || !a.deletedAt) return false;
+      const elapsed = now - new Date(a.deletedAt).getTime();
+      return elapsed <= maxMs;
+    });
+
+    if (branch && branch !== "All Branches" && branch !== "All") {
+      const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
+      deleted = deleted.filter((a) => {
+        const ab = a.branch.toLowerCase().replace(/branch/gi, "").trim();
+        return ab === cleanB || cleanB.includes(ab) || ab.includes(cleanB);
+      });
+    }
+
+    return deleted.map((a) => {
+      const elapsed = now - new Date(a.deletedAt!).getTime();
+      const remainingMs = Math.max(0, maxMs - elapsed);
+      const hoursRemaining = Math.max(0, Math.ceil(remainingMs / (60 * 60 * 1000)));
+      return {
+        ...a,
+        hoursRemaining,
+      };
+    });
+  },
+
+  /**
+   * Calculates monthly branch-wise deleted appointments count.
+   * Resets automatically at the start of every calendar month.
+   */
+  async getMonthlyDeletedAppointmentsCount(): Promise<{
+    monthName: string;
+    total: number;
+    branchWise: Record<string, number>;
+  }> {
+    const store = getAppointmentsStore();
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+
+    const allBranches = await branchService.getAllBranches();
+    const branchWise: Record<string, number> = {};
+    allBranches.forEach((b) => {
+      branchWise[b.name] = 0;
+    });
+
+    let total = 0;
+
+    store.forEach((a) => {
+      if (!a.deletedAt) return;
+      const dt = new Date(a.deletedAt);
+      if (dt.getFullYear() === curYear && dt.getMonth() === curMonth) {
+        total++;
+        const rawBranch = (a.branch || "").trim();
+        const matched = allBranches.find(
+          (b) =>
+            b.name.toLowerCase() === rawBranch.toLowerCase() ||
+            rawBranch.toLowerCase().includes(b.name.toLowerCase()) ||
+            b.name.toLowerCase().includes(rawBranch.toLowerCase())
+        );
+        const branchKey = matched ? matched.name : (rawBranch || "Other");
+        branchWise[branchKey] = (branchWise[branchKey] || 0) + 1;
+      }
+    });
+
+    return {
+      monthName: `${monthNames[curMonth]} ${curYear}`,
+      total,
+      branchWise,
+    };
   },
 };
 

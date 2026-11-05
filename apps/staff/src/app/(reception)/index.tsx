@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,16 @@ import {
   Animated,
   Dimensions,
   TouchableWithoutFeedback,
+  Modal,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken, getActiveBranch, removeActiveBranch } from "../../services/auth";
+import { API_BASE_URL } from "../../config/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -41,28 +46,237 @@ export default function ReceptionDashboard() {
   const router = useRouter();
   const [activeBranch, setActiveBranch] = useState<any>(null);
 
-  // Active Filter state
+  // Date Helpers (DD-MM-YYYY)
+  const getTodayStr = () => {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, "0");
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const y = now.getFullYear();
+    return `${d}-${m}-${y}`;
+  };
+
+  const getTomorrowStr = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const d = String(tomorrow.getDate()).padStart(2, "0");
+    const m = String(tomorrow.getMonth() + 1).padStart(2, "0");
+    const y = tomorrow.getFullYear();
+    return `${d}-${m}-${y}`;
+  };
+
+  const todayStr = useMemo(() => getTodayStr(), []);
+  const tomorrowStr = useMemo(() => getTomorrowStr(), []);
+
+  // Selected Date Filter for Appointments (Default: Today)
+  const [selectedDate, setSelectedDate] = useState(() => getTodayStr());
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+
+  // Active Status Filter
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COMPLETED">("ALL");
 
-  // Current formatted date
-  const [formattedDate, setFormattedDate] = useState("05-11-2026");
+  // Calendar Modal State for picking any future or past date
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+
+  // 24-Hour Deleted Appointments State (Reception Window)
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+  const [deletedAppointments, setDeletedAppointments] = useState<any[]>([]);
+  const [isLoadingDeleted, setIsLoadingDeleted] = useState(false);
 
   // Side Drawer Animation State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Fetch live appointments for the active branch and selected date
+  const fetchAppointments = async (branch: string, dt: string) => {
+    setIsLoadingAppointments(true);
+    try {
+      const cleanBranch = (branch || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
+      const res = await fetch(`${API_BASE_URL}/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.appointments)) {
+        setAppointments(data.appointments);
+      } else {
+        setAppointments([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard appointments:", err);
+      setAppointments([]);
+    } finally {
+      setIsLoadingAppointments(false);
+    }
+  };
+
+  // Initial branch load and fetch
   useEffect(() => {
     getActiveBranch().then((b) => {
-      if (b) setActiveBranch(b);
+      if (b) {
+        setActiveBranch(b);
+        fetchAppointments(b.name, selectedDate);
+      } else {
+        fetchAppointments("KPHB", selectedDate);
+      }
     });
+  }, [selectedDate]);
 
-    const now = new Date();
-    const d = String(now.getDate()).padStart(2, "0");
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const y = now.getFullYear();
-    setFormattedDate(`${d}-${m}-${y}`);
-  }, []);
+  // Real-time synchronization interval (every 10 seconds)
+  useEffect(() => {
+    let isMounted = true;
+    const interval = setInterval(() => {
+      if (isMounted) {
+        const bName = activeBranch?.name || "KPHB";
+        fetchAppointments(bName, selectedDate);
+      }
+    }, 10000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeBranch, selectedDate]);
+
+  const fetchDeletedAppointments = async () => {
+    setIsLoadingDeleted(true);
+    try {
+      const cleanBranch = (activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
+      const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments?branch=${encodeURIComponent(cleanBranch)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.appointments)) {
+        setDeletedAppointments(data.appointments);
+      } else {
+        setDeletedAppointments([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deleted appointments:", err);
+      setDeletedAppointments([]);
+    } finally {
+      setIsLoadingDeleted(false);
+    }
+  };
+
+  const handleOpenRestoreModal = () => {
+    setIsRestoreModalOpen(true);
+    fetchDeletedAppointments();
+  };
+
+  const handleRestoreAppointment = async (id: string, token: string, patientName: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESTORE", id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert("Restored", `Appointment ${token} for ${patientName} has been restored!`);
+        fetchDeletedAppointments();
+        const bName = activeBranch?.name || "KPHB";
+        fetchAppointments(bName, selectedDate);
+      } else {
+        Alert.alert("Error", data.error || "Failed to restore appointment.");
+      }
+    } catch {
+      Alert.alert("Error", "Network error. Please try again.");
+    }
+  };
+
+  const handleDeleteAppointment = (id: string, token: string, patientName: string) => {
+    Alert.alert(
+      "Cancel Appointment",
+      `Cancel appointment ${token} for ${patientName}? You can restore it from the 'Restore (24h)' button within 24 hours.`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel Appointment",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "DELETE",
+                  id,
+                  deletedBy: "Reception",
+                  reason: "Cancelled by reception",
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                Alert.alert("Appointment Cancelled", `Appointment ${token} moved to 24h trash.`);
+                const bName = activeBranch?.name || "KPHB";
+                fetchAppointments(bName, selectedDate);
+              } else {
+                Alert.alert("Error", data.error || "Failed to delete appointment.");
+              }
+            } catch {
+              Alert.alert("Error", "Network error. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRestoreRefresh = () => {
+    handleOpenRestoreModal();
+  };
+
+  // Status Counts
+  const totalCount = appointments.length;
+  const waitingCount = useMemo(
+    () => appointments.filter((a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING").length,
+    [appointments]
+  );
+  const activeCount = useMemo(
+    () => appointments.filter((a) => a.status === "IN_CONSULTATION").length,
+    [appointments]
+  );
+  const completedCount = useMemo(
+    () => appointments.filter((a) => a.status === "COMPLETED").length,
+    [appointments]
+  );
+
+  // Filtered Appointments List
+  const filteredAppointments = useMemo(() => {
+    if (activeFilter === "ALL") return appointments;
+    if (activeFilter === "UPCOMING") {
+      return appointments.filter(
+        (a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING"
+      );
+    }
+    if (activeFilter === "ACTIVE") {
+      return appointments.filter((a) => a.status === "IN_CONSULTATION");
+    }
+    if (activeFilter === "COMPLETED") {
+      return appointments.filter((a) => a.status === "COMPLETED");
+    }
+    return appointments;
+  }, [appointments, activeFilter]);
+
+  // Calendar Helpers
+  const daysInMonth = useMemo(() => {
+    return new Date(calYear, calMonth + 1, 0).getDate();
+  }, [calYear, calMonth]);
+
+  const firstDayOffset = useMemo(() => {
+    return new Date(calYear, calMonth, 1).getDay();
+  }, [calYear, calMonth]);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  const handleSelectCalDate = (dayNum: number) => {
+    const d = String(dayNum).padStart(2, "0");
+    const m = String(calMonth + 1).padStart(2, "0");
+    setSelectedDate(`${d}-${m}-${calYear}`);
+    setCalendarModalOpen(false);
+  };
 
   const openDrawer = () => {
     setIsDrawerOpen(true);
@@ -215,6 +429,17 @@ export default function ReceptionDashboard() {
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoadingAppointments}
+            onRefresh={() => {
+              const bName = activeBranch?.name || "KPHB";
+              fetchAppointments(bName, selectedDate);
+            }}
+            colors={[COLORS.themeBlue]}
+            tintColor={COLORS.themeBlue}
+          />
+        }
       >
         {/* 2. BRANCH TARGET CARD */}
         <View style={styles.targetCard}>
@@ -273,33 +498,33 @@ export default function ReceptionDashboard() {
               </View>
             </View>
 
-            {/* Today Dropdown */}
-            <TouchableOpacity style={styles.todayDropdown} activeOpacity={0.8}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.themeBlue} />
-              <Text style={styles.todayDropdownText}>Today</Text>
-              <Ionicons name="chevron-down" size={13} color={COLORS.textDark} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Ionicons name="calendar-outline" size={13} color={COLORS.themeBlue} />
+              <Text style={{ fontSize: 11.5, fontWeight: "700", color: COLORS.themeBlue }}>
+                {selectedDate}
+              </Text>
+            </View>
           </View>
 
           {/* Top 4 Stats Cards */}
           <View style={styles.overviewGrid}>
             <View style={styles.overviewStatCard}>
-              <Text style={styles.statBigBlue}>0</Text>
+              <Text style={styles.statBigBlue}>{totalCount}</Text>
               <Text style={styles.statCardSubtitle}>Total Bookings</Text>
             </View>
 
             <View style={styles.overviewStatCard}>
-              <Text style={styles.statBigBlue}>0</Text>
+              <Text style={styles.statBigBlue}>{waitingCount}</Text>
               <Text style={styles.statCardSubtitle}>Waiting</Text>
             </View>
 
             <View style={styles.overviewStatCard}>
-              <Text style={styles.statBigOrange}>0</Text>
+              <Text style={styles.statBigOrange}>{activeCount}</Text>
               <Text style={styles.statCardSubtitle}>Active Consult</Text>
             </View>
 
             <View style={styles.overviewStatCard}>
-              <Text style={styles.statBigGreen}>0</Text>
+              <Text style={styles.statBigGreen}>{completedCount}</Text>
               <Text style={styles.statCardSubtitle}>Completed</Text>
             </View>
           </View>
@@ -343,7 +568,7 @@ export default function ReceptionDashboard() {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterPillText, activeFilter === "ALL" && styles.filterPillTextActive]}>
-              All (0)
+              All ({totalCount})
             </Text>
           </TouchableOpacity>
 
@@ -353,7 +578,7 @@ export default function ReceptionDashboard() {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterPillText, activeFilter === "UPCOMING" && styles.filterPillTextActive]}>
-              Upcoming (0)
+              Upcoming ({waitingCount})
             </Text>
           </TouchableOpacity>
 
@@ -363,7 +588,7 @@ export default function ReceptionDashboard() {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterPillText, activeFilter === "ACTIVE" && styles.filterPillTextActive]}>
-              Active (0)
+              Active ({activeCount})
             </Text>
           </TouchableOpacity>
 
@@ -373,7 +598,7 @@ export default function ReceptionDashboard() {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterPillText, activeFilter === "COMPLETED" && styles.filterPillTextActive]}>
-              Completed (0)
+              Completed ({completedCount})
             </Text>
           </TouchableOpacity>
         </View>
@@ -384,35 +609,187 @@ export default function ReceptionDashboard() {
             <View style={styles.upcomingTitleBadgeRow}>
               <Text style={styles.upcomingTitle}>Upcoming Appointments</Text>
               <View style={styles.upcomingCountBadge}>
-                <Text style={styles.upcomingCountText}>0</Text>
+                <Text style={styles.upcomingCountText}>{filteredAppointments.length}</Text>
               </View>
             </View>
 
-            <TouchableOpacity style={styles.restoreBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.restoreBtn} onPress={handleRestoreRefresh} activeOpacity={0.8}>
               <Ionicons name="refresh-outline" size={13} color={COLORS.themeBlue} />
               <Text style={styles.restoreBtnText}>Restore (24h)</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Empty Waiting Appointments Card */}
-          <View style={styles.emptyAppointmentsCard}>
-            <View style={styles.calendarIconBox}>
-              <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
+          {/* DATE FILTER BELOW RESTORE OPTION */}
+          <View style={styles.dateFilterContainer}>
+            <View style={styles.datePillsRow}>
+              <TouchableOpacity
+                style={[styles.datePill, selectedDate === todayStr && styles.datePillActive]}
+                onPress={() => setSelectedDate(todayStr)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.datePillText, selectedDate === todayStr && styles.datePillTextActive]}>
+                  Today
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.datePill, selectedDate === tomorrowStr && styles.datePillActive]}
+                onPress={() => setSelectedDate(tomorrowStr)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.datePillText, selectedDate === tomorrowStr && styles.datePillTextActive]}>
+                  Tomorrow
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.datePillCalendar,
+                  selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillActive,
+                ]}
+                onPress={() => {
+                  setCalYear(new Date().getFullYear());
+                  setCalMonth(new Date().getMonth());
+                  setCalendarModalOpen(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.themeBlue}
+                />
+                <Text
+                  style={[
+                    styles.datePillText,
+                    selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillTextActive,
+                  ]}
+                >
+                  {selectedDate}
+                </Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={12}
+                  color={selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.textMuted}
+                />
+              </TouchableOpacity>
             </View>
-
-            <Text style={styles.emptyCardMessage}>
-              No upcoming waiting appointments for {formattedDate}.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.bookAppointmentBtn}
-              onPress={() => router.push("/(reception)/appointments" as any)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-              <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
-            </TouchableOpacity>
           </View>
+
+          {/* Appointments List / Empty State */}
+          {isLoadingAppointments ? (
+            <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
+              <ActivityIndicator size="small" color={COLORS.themeBlue} />
+              <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Loading appointments for {selectedDate}...</Text>
+            </View>
+          ) : filteredAppointments.length === 0 ? (
+            <View style={styles.emptyAppointmentsCard}>
+              <View style={styles.calendarIconBox}>
+                <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
+              </View>
+
+              <Text style={styles.emptyCardMessage}>
+                No upcoming appointments for {selectedDate}.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.bookAppointmentBtn}
+                onPress={() => router.push("/(reception)/appointments" as any)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
+                <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {filteredAppointments.map((appt) => {
+                const status = (appt.status || "WAITING").toUpperCase();
+                const isWaiting = status === "WAITING" || status === "SCHEDULED";
+                const isActive = status === "IN_CONSULTATION";
+                const isCompleted = status === "COMPLETED";
+
+                return (
+                  <View key={appt.id || appt.token} style={styles.appointmentCard}>
+                    {/* Header: Token & Reg ID left, Status Badge & Cancel Action right */}
+                    <View style={styles.apptCardHeader}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                        <View style={styles.apptTokenBadge}>
+                          <Text style={styles.apptTokenText}>{appt.token || "#A"}</Text>
+                        </View>
+                        <Text style={styles.apptRegIdText}>{appt.registrationId}</Text>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isWaiting && { backgroundColor: "#fef3c7" },
+                            isActive && { backgroundColor: "#e0f2fe" },
+                            isCompleted && { backgroundColor: "#dcfce7" },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              isWaiting && { color: "#b45309" },
+                              isActive && { color: "#0284c7" },
+                              isCompleted && { color: "#15803d" },
+                            ]}
+                          >
+                            {status.replace("_", " ")}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                          style={{ padding: 4 }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash-outline" size={15} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Patient Name & Phone / Diseases */}
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <Text style={styles.apptMetaText}>📞 {appt.phone || appt.phoneNumber}</Text>
+                        {appt.diseases ? (
+                          <Text style={[styles.apptMetaText, { color: "#64748b", flex: 1 }]} numberOfLines={1}>
+                            • {appt.diseases}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    {/* Footer: Doctor, Time Slot, Mode */}
+                    <View style={styles.apptFooterRow}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
+                        <Ionicons name="medkit-outline" size={13} color="#0284c7" />
+                        <Text style={styles.apptDoctorText} numberOfLines={1}>
+                          {appt.doctorName}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="time-outline" size={13} color="#64748b" />
+                          <Text style={styles.apptTimeText}>{appt.timeSlot || appt.selectedTimeSlot}</Text>
+                        </View>
+
+                        <View style={styles.apptModeBadge}>
+                          <Text style={styles.apptModeText}>{appt.consultationMode || "In-Clinic"}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* 5b. DOCTOR NO-SHOW QUICK ACCESS CARD */}
@@ -587,6 +964,298 @@ export default function ReceptionDashboard() {
           </Animated.View>
         </View>
       )}
+      {/* CALENDAR DATE PICKER MODAL */}
+      <Modal visible={calendarModalOpen} transparent animationType="fade">
+        <TouchableWithoutFeedback onPress={() => setCalendarModalOpen(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContainer}>
+                {/* Month / Year Header */}
+                <View style={styles.calNavHeader}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (calMonth === 0) {
+                        setCalMonth(11);
+                        setCalYear(calYear - 1);
+                      } else {
+                        setCalMonth(calMonth - 1);
+                      }
+                    }}
+                    style={{ padding: 6 }}
+                  >
+                    <Ionicons name="chevron-back" size={20} color="#0f172a" />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 15, fontWeight: "800", color: "#0f172a" }}>
+                    {monthNames[calMonth]} {calYear}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (calMonth === 11) {
+                        setCalMonth(0);
+                        setCalYear(calYear + 1);
+                      } else {
+                        setCalMonth(calMonth + 1);
+                      }
+                    }}
+                    style={{ padding: 6 }}
+                  >
+                    <Ionicons name="chevron-forward" size={20} color="#0f172a" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Weekdays */}
+                <View style={styles.calWeekdaysRow}>
+                  {["S", "M", "T", "W", "T", "F", "S"].map((w, idx) => (
+                    <Text key={idx} style={styles.calWeekdayText}>{w}</Text>
+                  ))}
+                </View>
+
+                {/* Days Grid */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                  {Array.from({ length: firstDayOffset }).map((_, i) => (
+                    <View key={`empty-${i}`} style={{ width: "14.28%", height: 38 }} />
+                  ))}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const dayNum = i + 1;
+                    const dateStr = `${String(dayNum).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
+                    const isSelected = selectedDate === dateStr;
+                    return (
+                      <TouchableOpacity
+                        key={dayNum}
+                        onPress={() => handleSelectCalDate(dayNum)}
+                        style={{
+                          width: "14.28%",
+                          height: 38,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: isSelected ? "#0284c7" : "transparent",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSelected ? "800" : "600",
+                              color: isSelected ? "#ffffff" : "#0f172a",
+                            }}
+                          >
+                            {dayNum}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Close Button */}
+                <TouchableOpacity
+                  onPress={() => setCalendarModalOpen(false)}
+                  style={{
+                    marginTop: 14,
+                    paddingVertical: 10,
+                    backgroundColor: "#f1f5f9",
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569" }}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* 24-HOUR RESTORE DELETED APPOINTMENTS MODAL */}
+      <Modal visible={isRestoreModalOpen} transparent animationType="slide">
+        <TouchableWithoutFeedback onPress={() => setIsRestoreModalOpen(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  styles.modalContainer,
+                  { maxHeight: Dimensions.get("window").height * 0.78, width: "92%" },
+                ]}
+              >
+                {/* Header */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#f1f5f9",
+                    paddingBottom: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        backgroundColor: "#f0f9ff",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons name="reload" size={16} color={COLORS.themeBlue} />
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>
+                        Restore Appointments (24h)
+                      </Text>
+                      <Text style={{ fontSize: 10.5, color: "#64748b" }}>
+                        Cancelled bookings restorable for 24 hours
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setIsRestoreModalOpen(false)}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons name="close" size={20} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Content */}
+                {isLoadingDeleted ? (
+                  <View style={{ padding: 32, alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator size="small" color={COLORS.themeBlue} />
+                    <Text style={{ fontSize: 12, color: "#64748b" }}>Loading deleted appointments...</Text>
+                  </View>
+                ) : deletedAppointments.length === 0 ? (
+                  <View style={{ padding: 32, alignItems: "center", gap: 8 }}>
+                    <Ionicons name="trash-outline" size={32} color="#cbd5e1" />
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569" }}>
+                      No deleted appointments
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
+                      No bookings have been deleted in the past 24 hours for {activeBranch?.name || "this branch"}.
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                    <View style={{ gap: 8 }}>
+                      {deletedAppointments.map((item) => (
+                        <View
+                          key={item.id}
+                          style={{
+                            padding: 10,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: "#e2e8f0",
+                            backgroundColor: "#ffffff",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <View
+                                style={{
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  backgroundColor: "#f0f9ff",
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: "#bae6fd",
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 10.5,
+                                    fontWeight: "800",
+                                    color: COLORS.themeBlue,
+                                  }}
+                                >
+                                  {item.token}
+                                </Text>
+                              </View>
+                              <Text
+                                style={{ fontSize: 12.5, fontWeight: "800", color: "#0f172a" }}
+                                numberOfLines={1}
+                              >
+                                {item.patientName}
+                              </Text>
+                            </View>
+
+                            <Text style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>
+                              👨‍⚕️ {item.doctorName} • {item.appointmentDate} @ {item.timeSlot}
+                            </Text>
+
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 4,
+                                marginTop: 3,
+                              }}
+                            >
+                              <Ionicons name="time-outline" size={11} color="#d97706" />
+                              <Text style={{ fontSize: 10, fontWeight: "700", color: "#d97706" }}>
+                                {item.hoursRemaining}h left to restore
+                              </Text>
+                            </View>
+                          </View>
+
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleRestoreAppointment(item.id, item.token, item.patientName)
+                            }
+                            style={{
+                              backgroundColor: "#16a34a",
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons name="reload" size={11} color="#ffffff" />
+                            <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>
+                              Restore
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </ScrollView>
+                )}
+
+                {/* Footer */}
+                <TouchableOpacity
+                  onPress={() => setIsRestoreModalOpen(false)}
+                  style={{
+                    marginTop: 12,
+                    paddingVertical: 10,
+                    backgroundColor: "#f1f5f9",
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ fontSize: 12.5, fontWeight: "700", color: "#475569" }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1295,5 +1964,169 @@ const styles = StyleSheet.create({
     color: COLORS.errorRed,
     fontSize: 14,
     fontWeight: "800",
+  },
+
+  // Date Filter below Restore (24h)
+  dateFilterContainer: {
+    marginBottom: 14,
+  },
+  datePillsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  datePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  datePillCalendar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  datePillActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  datePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  datePillTextActive: {
+    color: "#ffffff",
+  },
+
+  // Appointment Cards
+  appointmentCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    marginBottom: 10,
+  },
+  apptCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 8,
+  },
+  apptTokenBadge: {
+    backgroundColor: "#e0f2fe",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  apptTokenText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
+  apptRegIdText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  apptPatientName: {
+    fontSize: 14.5,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  apptMetaText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+  apptFooterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#f8fafc",
+  },
+  apptDoctorText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0284c7",
+  },
+  apptTimeText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  apptModeBadge: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  apptModeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#475569",
+  },
+
+  // Calendar Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 16,
+    width: "100%",
+    maxWidth: 340,
+  },
+  calNavHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  calWeekdaysRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 8,
+  },
+  calWeekdayText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
   },
 });

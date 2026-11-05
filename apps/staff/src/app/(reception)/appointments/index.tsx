@@ -484,8 +484,8 @@ export default function ReceptionBookAppointmentScreen() {
           typeof tSessionIdx === "number"
             ? tSessionIdx === sIdx
             : effectiveRanges.length === 1
-            ? true
-            : Math.abs(parseTimeToMinutes(tTime) - startMin) < Math.abs(parseTimeToMinutes(tTime) - (startMin + 360));
+              ? true
+              : Math.abs(parseTimeToMinutes(tTime) - startMin) < Math.abs(parseTimeToMinutes(tTime) - (startMin + 360));
 
         if (isForThisSession && !sessionSlots.some((s) => s.time === tTime)) {
           const curMin = parseTimeToMinutes(tTime);
@@ -931,7 +931,7 @@ export default function ReceptionBookAppointmentScreen() {
               setBookedAppointments(d.appointments);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       } else {
         Alert.alert("Error", data.error || "Failed to book appointment.");
       }
@@ -1491,8 +1491,8 @@ export default function ReceptionBookAppointmentScreen() {
                   {availableOnlyDoctors.length === 0
                     ? `No doctors scheduled at ${currentBranchName} on ${getDayOfWeekAbbr(appointmentDate)} (${appointmentDate}).`
                     : !selectedDoctor
-                    ? "Please select a doctor from the Consulting Doctor dropdown above to view slots."
-                    : `No consultation slots configured for ${selectedDoctor.name} on this day in Doctor Timings.`}
+                      ? "Please select a doctor from the Consulting Doctor dropdown above to view slots."
+                      : `No consultation slots configured for ${selectedDoctor.name} on this day in Doctor Timings.`}
                 </Text>
               </View>
             ) : (
