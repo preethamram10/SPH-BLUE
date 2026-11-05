@@ -241,6 +241,8 @@ export default function StaffManagementPage() {
       return;
     }
 
+    const isHeadDoctor = categoryToSave === "DOCTOR" && doctorCategory === "HEAD";
+
     const payload = {
       id: editingEmployee ? editingEmployee.id : undefined,
       name: formName.trim(),
@@ -249,15 +251,15 @@ export default function StaffManagementPage() {
       email: formEmail.trim() || `${formName.toLowerCase().replace(/\s+/g, "")}@sph.com`,
       password: formPassword.trim() || "email123",
       phone: formPhone.trim().startsWith("+91") ? formPhone.trim() : `+91 ${formPhone.trim()}`,
-      branchName: formBranch.trim() || "KPHB",
-      salary: parseInt(formSalary, 10) || 20000,
-      shiftType,
-      shiftHours: formattedShiftHours,
-      dailyHours: calculatedDailyHours,
-      shift1Start: shiftType === "MULTI_STRICT" ? `${s1LoginH}:${s1LoginM} ${s1LoginAmPm}` : `${loginHour}:${loginMin} ${loginAmPm}`,
-      shift1End: shiftType === "MULTI_STRICT" ? `${s1LogoutH}:${s1LogoutM} ${s1LogoutAmPm}` : `${logoutHour}:${logoutMin} ${logoutAmPm}`,
-      shift2Start: shiftType === "MULTI_STRICT" ? `${s2LoginH}:${s2LoginM} ${s2LoginAmPm}` : undefined,
-      shift2End: shiftType === "MULTI_STRICT" ? `${s2LogoutH}:${s2LogoutM} ${s2LogoutAmPm}` : undefined,
+      branchName: categoryToSave === "DOCTOR" ? "" : (formBranch?.trim() || "KPHB"),
+      salary: isHeadDoctor ? 0 : (parseInt(formSalary, 10) || 0),
+      shiftType: isHeadDoctor ? "SINGLE_STRICT" : shiftType,
+      shiftHours: isHeadDoctor ? "-" : formattedShiftHours,
+      dailyHours: isHeadDoctor ? "-" : calculatedDailyHours,
+      shift1Start: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LoginH}:${s1LoginM} ${s1LoginAmPm}` : `${loginHour}:${loginMin} ${loginAmPm}`),
+      shift1End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LogoutH}:${s1LogoutM} ${s1LogoutAmPm}` : `${logoutHour}:${logoutMin} ${logoutAmPm}`),
+      shift2Start: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LoginH}:${s2LoginM} ${s2LoginAmPm}` : undefined),
+      shift2End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LogoutH}:${s2LogoutM} ${s2LogoutAmPm}` : undefined),
     };
 
     try {
@@ -413,12 +415,27 @@ export default function StaffManagementPage() {
                   ) : (
                     filteredEmployees.map((emp) => {
                       const isMulti = emp.shiftType === "MULTI_STRICT" || emp.shiftHours?.includes("|");
+                      const isHeadDoc = emp.category === "DOCTOR" && emp.doctorCategory === "HEAD";
+                      const isDoctor = emp.category === "DOCTOR";
 
                       return (
                         <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
                           {/* 1. STAFF NAME + EMAIL + PASSWORD */}
                           <td className="px-6 py-4">
-                            <div className="font-bold text-slate-900 text-sm">{emp.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-sm">{emp.name}</span>
+                              {isDoctor && (
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    isHeadDoc
+                                      ? "bg-purple-50 text-purple-700 border border-purple-200"
+                                      : "bg-blue-50 text-blue-700 border border-blue-200"
+                                  }`}
+                                >
+                                  {isHeadDoc ? "Head Doctor" : "Employee Doctor"}
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-[#0284c7] mt-0.5">
                               <span className="text-rose-400">✉️</span>
                               <span className="font-medium">{emp.email}</span>
@@ -439,16 +456,22 @@ export default function StaffManagementPage() {
 
                           {/* 3. ASSIGNED BRANCH */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-[#0284c7] font-bold text-xs">
-                              {emp.branchName}
-                            </span>
+                            {isHeadDoc || (isDoctor && (!emp.branchName || emp.branchName === "KPHB" || emp.branchName === "-" || emp.branchName === "All Branches")) ? (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            ) : (
+                              <span className="text-[#0284c7] font-bold text-xs">
+                                {emp.branchName}
+                              </span>
+                            )}
                           </td>
 
                           {/* 4. SHIFT HOURS (Single or Multi Strict) */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {!isMulti ? (
+                            {isHeadDoc ? (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            ) : !isMulti ? (
                               <span className="font-medium text-slate-700 text-xs">
-                                {emp.shiftHours}
+                                {emp.shiftHours && emp.shiftHours !== "-" ? emp.shiftHours : "-"}
                               </span>
                             ) : (
                               <div className="space-y-1">
@@ -478,16 +501,24 @@ export default function StaffManagementPage() {
 
                           {/* 5. DAILY HOURS */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-emerald-600 font-bold text-xs">
-                              {emp.dailyHours}
-                            </span>
+                            {isHeadDoc ? (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            ) : (
+                              <span className="text-emerald-600 font-bold text-xs">
+                                {emp.dailyHours && emp.dailyHours !== "-" ? emp.dailyHours : "-"}
+                              </span>
+                            )}
                           </td>
 
                           {/* 6. MONTHLY SALARY */}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="font-extrabold text-slate-900 text-xs">
-                              ₹{emp.salary ? emp.salary.toLocaleString("en-IN") : "0"}
-                            </span>
+                            {isHeadDoc || !emp.salary ? (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            ) : (
+                              <span className="font-extrabold text-slate-900 text-xs">
+                                ₹{emp.salary.toLocaleString("en-IN")}
+                              </span>
+                            )}
                           </td>
 
                           {/* 7. ACTIONS (Edit & Delete Buttons) */}
@@ -1045,33 +1076,6 @@ export default function StaffManagementPage() {
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                   />
                 </div>
-              </div>
-
-              {/* Assign to Branch */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Assign to Branch *
-                </label>
-                <select
-                  value={formBranch}
-                  onChange={(e) => setFormBranch(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
-                >
-                  {branches.length === 0 ? (
-                    <>
-                      <option value="KPHB">KPHB</option>
-                      <option value="Nallagandla">Nallagandla</option>
-                      <option value="Chandanagar">Chandanagar</option>
-                      <option value="Dilshuknagar">Dilshuknagar</option>
-                    </>
-                  ) : (
-                    branches.map((b) => (
-                      <option key={b.id} value={cleanBranch(b.name)}>
-                        {cleanBranch(b.name)}
-                      </option>
-                    ))
-                  )}
-                </select>
               </div>
 
               {/* Salary & Work Schedule (Only for Employee Doctor as requested) */}

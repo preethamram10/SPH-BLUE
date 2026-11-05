@@ -70,6 +70,8 @@ export default function WebLoginPage() {
         if (data.branch) {
           localStorage.setItem("branch_id", data.branch.id);
           localStorage.setItem("branch_name", data.branch.name);
+          localStorage.setItem("user_branch", data.branch.name);
+          localStorage.setItem("user_assigned_branch", data.branch.name);
           localStorage.setItem("branch_phone", data.branch.phone);
         }
       }

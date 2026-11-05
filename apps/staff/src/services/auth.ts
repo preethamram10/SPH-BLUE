@@ -3,16 +3,28 @@ import { API_BASE_URL } from "../config/api";
 
 const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
+const ASSIGNED_BRANCH_KEY = "spiritualhomeo_user_assigned_branch";
 
 /**
  * Save active clinic branch details (for branch-specific reception sessions)
  */
 export async function saveActiveBranch(branch: any): Promise<void> {
   await SecureStore.setItemAsync(ACTIVE_BRANCH_KEY, JSON.stringify(branch));
+  await SecureStore.setItemAsync(ASSIGNED_BRANCH_KEY, JSON.stringify(branch));
 }
 
 export async function getActiveBranch(): Promise<any | null> {
   const raw = await SecureStore.getItemAsync(ACTIVE_BRANCH_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function getAssignedBranch(): Promise<any | null> {
+  const raw = await SecureStore.getItemAsync(ASSIGNED_BRANCH_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw);

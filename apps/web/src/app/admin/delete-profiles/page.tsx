@@ -1,184 +1,379 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 import {
   Trash2,
   Search,
   AlertTriangle,
   Phone,
-  User,
-  Building2,
-  Calendar,
+  RotateCcw,
   CheckCircle2,
+  Clock,
+  Filter,
+  ArrowUpDown,
+  Building2,
   ShieldAlert,
+  XCircle,
 } from "lucide-react";
 
+interface DeletedProfile {
+  id: string;
+  regId: string;
+  name: string;
+  phone: string;
+  branch: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedReason?: string;
+  retentionUntil?: string;
+  daysRemaining: number;
+}
+
+const BRANCHES = [
+  "All Branches",
+  "KPHB Branch",
+  "Chandanagar Branch",
+  "Dilshuknagar Branch",
+  "Nallagandla Branch",
+];
+
 export default function DeleteProfilesPage() {
-  const [phoneQuery, setPhoneQuery] = useState("");
-  const [searchDone, setSearchDone] = useState(false);
-  const [foundProfile, setFoundProfile] = useState<any>(null);
-  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
+  const [profiles, setProfiles] = useState<DeletedProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setDeleteSuccess(null);
-    if (!phoneQuery.trim()) return;
+  const fetchDeletedProfiles = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const branchParam = selectedBranch === "All Branches" ? "" : selectedBranch;
+      const res = await fetch(
+        `/api/admin/deleted-profiles?branch=${encodeURIComponent(branchParam)}&search=${encodeURIComponent(searchQuery)}&sortBy=${sortBy}`
+      );
+      const data = await res.json();
+      if (data.success && Array.isArray(data.profiles)) {
+        setProfiles(data.profiles);
+      } else {
+        setProfiles([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deleted profiles:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedBranch, searchQuery, sortBy]);
 
-    setSearchDone(true);
-    // Demonstration profile match
-    if (phoneQuery.includes("9848") || phoneQuery.includes("9700") || phoneQuery.length >= 8) {
-      setFoundProfile({
-        name: "K. Ramesh Kumar",
-        phone: "+91 " + phoneQuery.replace(/\D/g, ""),
-        registeredBranch: "KPHB Branch",
-        registrationDate: "14 Feb 2024",
-        totalVisits: 6,
-        lastConsultation: "Dr. Prashanth k vaidya (22 Oct 2026)",
-        role: "Patient Record",
+  useEffect(() => {
+    fetchDeletedProfiles();
+  }, [fetchDeletedProfiles]);
+
+  const handleRestore = async (regId: string, name: string) => {
+    if (!confirm(`Are you sure you want to restore profile "${name}" (${regId}) back to active status?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/deleted-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESTORE", regId }),
       });
-    } else {
-      setFoundProfile(null);
+      const data = await res.json();
+      if (data.success) {
+        setFeedback({ type: "success", message: `Profile "${name}" (${regId}) successfully restored!` });
+        fetchDeletedProfiles();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Failed to restore profile." });
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Network error. Please try again." });
     }
   };
 
-  const handleDelete = () => {
-    if (!foundProfile) return;
+  const handlePermanentDelete = async (regId: string, name: string) => {
     if (
-      confirm(
-        `DANGER: Are you sure you want to permanently delete profile for ${foundProfile.name} (${foundProfile.phone})? This will archive all associated clinical records.`
+      !confirm(
+        `DANGER: Permanently delete profile "${name}" (${regId})? This cannot be undone. Its ID sequence will remain reserved and will NEVER be reassigned.`
       )
     ) {
-      setDeleteSuccess(`Profile for ${foundProfile.name} (${foundProfile.phone}) successfully deleted from clinic database.`);
-      setFoundProfile(null);
-      setPhoneQuery("");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/deleted-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "PERMANENT_DELETE", regId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedback({ type: "success", message: `Profile "${name}" (${regId}) permanently purged.` });
+        fetchDeletedProfiles();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Failed to purge profile." });
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Network error. Please try again." });
     }
   };
+
+  const expiringSoonCount = profiles.filter((p) => p.daysRemaining <= 7).length;
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
       <AdminSidebar currentPath="/admin/delete-profiles" />
 
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-7 py-4 shadow-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-              <Trash2 className="w-4 h-4" />
+        {/* HEADER */}
+        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-8 py-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shadow-xs">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-base font-extrabold text-slate-900">Deleted Profiles Archive</h1>
+                <p className="text-[11.5px] text-slate-500">
+                  Review, restore, or audit soft-deleted patient profiles within the 30-day retention window
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-extrabold text-slate-900">Delete Profiles (Phone Search)</h1>
-              <p className="text-[11.5px] text-slate-500 mt-0.5">
-                Audit and remove duplicate, test, or requested deletion patient accounts by mobile number
-              </p>
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                {profiles.length} In Trash
+              </span>
+              {expiringSoonCount > 0 && (
+                <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200">
+                  {expiringSoonCount} Expiring Soon
+                </span>
+              )}
             </div>
           </div>
         </header>
 
-        <div className="p-7 max-w-3xl space-y-6">
-          {/* Warning banner */}
-          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-900">
-              <p className="font-bold">Administrative Guardrail</p>
-              <p className="mt-0.5 text-amber-800">
-                Deleting a profile will permanently purge patient contact cards, follow-up queues, and appointment entries. Please verify the mobile number carefully before proceeding.
+        <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
+          {/* FEEDBACK BANNER */}
+          {feedback && (
+            <div
+              className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between transition-all ${
+                feedback.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-rose-50 border-rose-200 text-rose-800"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {feedback.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{feedback.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="text-xs underline hover:opacity-75 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* GUARDRAIL NOTICE */}
+          <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/60 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-[#0284c7] shrink-0 mt-0.5" />
+            <div className="text-xs text-sky-950 leading-relaxed">
+              <p className="font-bold">30-Day Auto-Purge &amp; Sequence Protection Guardrail</p>
+              <p className="text-sky-800 mt-0.5">
+                Profiles deleted from reception remain recoverable here for <strong>30 days</strong>. After 30 days, expired records are automatically purged permanently. 
+                Even after deletion or permanent purge, <strong>the Patient Registration ID is never reused or reassigned</strong> to any other patient.
               </p>
             </div>
           </div>
 
-          {/* Search Box */}
-          <form onSubmit={handleSearch} className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
-            <h3 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-              Search Profile By Phone Number
-            </h3>
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          {/* CONTROLS: BRANCH FILTER, SEARCH, SORT */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-4">
+            {/* Branch Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mr-1">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <span>Branch:</span>
+              </div>
+              {BRANCHES.map((b) => {
+                const isSelected = selectedBranch === b;
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setSelectedBranch(b)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-[#0284c7] text-white shadow-sm"
+                        : "bg-slate-100 hover:bg-slate-200/80 text-slate-600 border border-slate-200/70"
+                    }`}
+                  >
+                    {b}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search and Sort row */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="relative flex-1 min-w-[240px] max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Enter 10-digit mobile number (e.g. 9848012345)"
-                  value={phoneQuery}
-                  onChange={(e) => setPhoneQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50/50 focus:outline-none focus:border-[#0284c7] focus:bg-white"
+                  placeholder="Search by patient name, phone, or ID (e.g. SPH-KPB-0001)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:outline-none focus:border-[#0284c7] focus:bg-white"
                 />
               </div>
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-              >
-                Search Account
-              </button>
-            </div>
-          </form>
 
-          {/* Success Banner */}
-          {deleteSuccess && (
-            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{deleteSuccess}</span>
-            </div>
-          )}
-
-          {/* Search Results */}
-          {searchDone && !foundProfile && !deleteSuccess && (
-            <div className="bg-white rounded-2xl border border-slate-200/90 p-8 text-center text-xs text-slate-400">
-              No active patient or staff profile found for &quot;{phoneQuery}&quot;.
-            </div>
-          )}
-
-          {foundProfile && (
-            <div className="bg-white rounded-2xl border border-rose-200 p-6 shadow-xs space-y-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] font-extrabold uppercase bg-rose-50 text-rose-600 px-2 py-0.5 rounded border border-rose-200">
-                    Profile Found
-                  </span>
-                  <h3 className="text-base font-extrabold text-slate-900 mt-2">{foundProfile.name}</h3>
-                  <p className="text-xs text-slate-500 font-semibold">{foundProfile.phone}</p>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Sort:</span>
                 </div>
-                <div className="text-right text-xs">
-                  <span className="text-slate-400">Branch: </span>
-                  <span className="font-bold text-slate-800">{foundProfile.registeredBranch}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <div>
-                  <span className="text-slate-400">Registered On: </span>
-                  <span className="font-bold text-slate-800">{foundProfile.registrationDate}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Total Visits: </span>
-                  <span className="font-bold text-slate-800">{foundProfile.totalVisits}</span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-slate-400">Last Doctor: </span>
-                  <span className="font-bold text-slate-800">{foundProfile.lastConsultation}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setFoundProfile(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "newest" | "oldest")}
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-[#0284c7]"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Profile Permanently</span>
-                </button>
+                  <option value="newest">Newest Deleted First</option>
+                  <option value="oldest">Oldest Deleted First</option>
+                </select>
               </div>
             </div>
-          )}
+          </div>
+
+          {/* TABLE OF DELETED PROFILES */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            {isLoading ? (
+              <div className="p-12 text-center text-xs text-slate-400 font-medium">
+                Loading deleted profiles archive...
+              </div>
+            ) : profiles.length === 0 ? (
+              <div className="p-14 text-center space-y-2">
+                <Trash2 className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-sm font-bold text-slate-700">No deleted profiles found</p>
+                <p className="text-xs text-slate-400">
+                  {searchQuery || selectedBranch !== "All Branches"
+                    ? "Try adjusting your branch filter or search query."
+                    : "Trash folder is empty. All active patients are currently intact."}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
+                      <th className="py-3 px-4">Patient Profile</th>
+                      <th className="py-3 px-4">Phone Number</th>
+                      <th className="py-3 px-4">Branch</th>
+                      <th className="py-3 px-4">Deleted At</th>
+                      <th className="py-3 px-4">30-Day Retention</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {profiles.map((p) => {
+                      const deletedDate = p.deletedAt
+                        ? new Date(p.deletedAt).toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Recently";
+
+                      const isUrgent = p.daysRemaining <= 5;
+
+                      return (
+                        <tr key={p.regId} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="font-extrabold text-slate-900 text-sm">{p.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono text-[11px] font-bold text-[#0284c7] bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">
+                                {p.regId}
+                              </span>
+                              {p.deletedReason && (
+                                <span className="text-[10px] text-slate-400 italic">
+                                  ({p.deletedReason})
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 font-bold text-slate-700">
+                            <div className="flex items-center gap-1.5">
+                              <Phone className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{p.phone}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200">
+                              {p.branch}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-slate-500 font-medium">
+                            <div>{deletedDate}</div>
+                            <div className="text-[10px] text-slate-400">By: {p.deletedBy || "Reception"}</div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <div
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border ${
+                                isUrgent
+                                  ? "bg-rose-50 border-rose-200 text-rose-700"
+                                  : "bg-amber-50 border-amber-200 text-amber-800"
+                              }`}
+                            >
+                              <Clock className="w-3 h-3 shrink-0" />
+                              <span>{p.daysRemaining} days left</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleRestore(p.regId, p.name)}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Restore</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handlePermanentDelete(p.regId, p.name)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                                title="Permanently delete from database"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Purge</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>
   );
 }
-

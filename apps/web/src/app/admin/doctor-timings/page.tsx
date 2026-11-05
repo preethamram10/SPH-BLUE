@@ -509,7 +509,7 @@ export default function DoctorTimingsPage() {
     const doc = availableDoctors.find((d) => d.id === selectedDocForNewProfile);
     if (!doc) return;
 
-    const defaultBranch = doc.branchName ? cleanBranch(doc.branchName) : branchesList[0] || "KPHB Branch";
+    const defaultBranch = branchesList[0] || "KPHB Branch";
 
     const newProfile: DoctorScheduleRecord = {
       id: doc.id,
@@ -1517,7 +1517,7 @@ export default function DoctorTimingsPage() {
               >
                 {availableDoctors.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name} ({d.branchName || "KPHB Branch"})
+                    {d.name}
                   </option>
                 ))}
               </select>

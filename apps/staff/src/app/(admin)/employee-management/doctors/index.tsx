@@ -252,15 +252,6 @@ export default function AdminDoctorsManagementScreen() {
                 </View>
               </View>
 
-              <Text style={styles.label}>Assigned Branch</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="KPHB Branch"
-                placeholderTextColor={COLORS.textLight}
-                value={branch}
-                onChangeText={setBranch}
-              />
-
               <Text style={styles.label}>Specialization</Text>
               <TextInput
                 style={styles.input}

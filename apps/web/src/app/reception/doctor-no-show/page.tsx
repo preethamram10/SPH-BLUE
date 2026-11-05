@@ -64,6 +64,15 @@ export default function DoctorNoShowPage() {
   const [endTime, setEndTime] = useState("01:00 PM");
   const [reason, setReason] = useState("");
 
+  const formatDateDDMMYYYY = (dStr: string) => {
+    if (!dStr) return "";
+    const parts = dStr.trim().split("-");
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return dStr;
+  };
+
   const loadData = async (activeBranch: string) => {
     try {
       setLoading(true);
@@ -344,8 +353,8 @@ export default function DoctorNoShowPage() {
                           <Calendar className="w-3.5 h-3.5 text-slate-400" />
                           <span>
                             {item.startDate === item.endDate || !item.endDate
-                              ? item.startDate
-                              : `${item.startDate} to ${item.endDate}`}
+                              ? formatDateDDMMYYYY(item.startDate)
+                              : `${formatDateDDMMYYYY(item.startDate)} to ${formatDateDDMMYYYY(item.endDate)}`}
                           </span>
                         </div>
                       </td>
