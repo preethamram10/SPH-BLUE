@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,12 +13,14 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Linking,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { removeAuthToken, getActiveBranch, removeActiveBranch } from "../../services/auth";
+import { removeAuthToken, getActiveBranch, removeActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
+import { useNetwork } from "../../context/NetworkContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -44,6 +46,7 @@ const COLORS = {
 
 export default function ReceptionDashboard() {
   const router = useRouter();
+  const { isOnline, checkConnection } = useNetwork();
   const [activeBranch, setActiveBranch] = useState<any>(null);
 
   // Date Helpers (DD-MM-YYYY)
@@ -71,6 +74,7 @@ export default function ReceptionDashboard() {
   const [selectedDate, setSelectedDate] = useState(() => getTodayStr());
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   // Active Status Filter
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COMPLETED">("ALL");
@@ -85,28 +89,76 @@ export default function ReceptionDashboard() {
   const [deletedAppointments, setDeletedAppointments] = useState<any[]>([]);
   const [isLoadingDeleted, setIsLoadingDeleted] = useState(false);
 
+  // Reschedule Modal State (Mobile)
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [rescheduleTargetAppt, setRescheduleTargetAppt] = useState<any>(null);
+  const [rescheduleDate, setRescheduleDate] = useState(() => getTodayStr());
+  const [rescheduleSlot, setRescheduleSlot] = useState("10:00 AM");
+  const [isRescheduling, setIsRescheduling] = useState(false);
+
+  const openRescheduleModal = (appt: any) => {
+    setRescheduleTargetAppt(appt);
+    setRescheduleDate(appt.appointmentDate || selectedDate);
+    setRescheduleSlot(appt.timeSlot || appt.selectedTimeSlot || "10:00 AM");
+    setRescheduleModalOpen(true);
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!rescheduleTargetAppt) return;
+    setIsRescheduling(true);
+    try {
+      const data = await apiFetch("/reception/appointments", {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "RESCHEDULE",
+          id: rescheduleTargetAppt.id,
+          appointmentDate: rescheduleDate,
+          timeSlot: rescheduleSlot,
+        }),
+      });
+      if (data.success) {
+        Alert.alert(
+          "Rescheduled",
+          `Appointment for ${rescheduleTargetAppt.patientName} moved to ${rescheduleDate} (${rescheduleSlot})!`
+        );
+        setRescheduleModalOpen(false);
+        const bName = activeBranch?.name || "KPHB";
+        fetchAppointments(bName, selectedDate);
+      } else {
+        Alert.alert("Error", data.error || "Failed to reschedule appointment.");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to communicate with server.");
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
+
   // Side Drawer Animation State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Fetch live appointments for the active branch and selected date
-  const fetchAppointments = async (branch: string, dt: string) => {
-    setIsLoadingAppointments(true);
+  const fetchAppointments = async (branch: string, dt: string, isSilent: boolean = false) => {
+    if (!isSilent) {
+      setIsLoadingAppointments(true);
+    }
     try {
       const cleanBranch = (branch || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
-      const res = await fetch(`${API_BASE_URL}/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
-      const data = await res.json();
+      const data = await apiFetch(`/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
-      } else {
+      } else if (!isSilent) {
         setAppointments([]);
       }
     } catch (err) {
       console.error("Failed to fetch dashboard appointments:", err);
-      setAppointments([]);
+      if (!isSilent) setAppointments([]);
     } finally {
-      setIsLoadingAppointments(false);
+      if (!isSilent) {
+        setIsLoadingAppointments(false);
+      }
     }
   };
 
@@ -115,20 +167,20 @@ export default function ReceptionDashboard() {
     getActiveBranch().then((b) => {
       if (b) {
         setActiveBranch(b);
-        fetchAppointments(b.name, selectedDate);
+        fetchAppointments(b.name, selectedDate, appointments.length > 0);
       } else {
-        fetchAppointments("KPHB", selectedDate);
+        fetchAppointments("KPHB", selectedDate, appointments.length > 0);
       }
     });
   }, [selectedDate]);
 
-  // Real-time synchronization interval (every 10 seconds)
+  // Real-time synchronization interval (every 10 seconds silently in the background)
   useEffect(() => {
     let isMounted = true;
     const interval = setInterval(() => {
       if (isMounted) {
         const bName = activeBranch?.name || "KPHB";
-        fetchAppointments(bName, selectedDate);
+        fetchAppointments(bName, selectedDate, true); // SILENT: updates in-place without triggering loading spinner
       }
     }, 10000);
 
@@ -138,12 +190,163 @@ export default function ReceptionDashboard() {
     };
   }, [activeBranch, selectedDate]);
 
+  // When screen comes into focus (e.g. after booking an appointment), immediately reload appointments silently
+  useFocusEffect(
+    useCallback(() => {
+      const bName = activeBranch?.name || "KPHB";
+      fetchAppointments(bName, selectedDate, true);
+    }, [activeBranch, selectedDate])
+  );
+
+  // Phone Call Action Handler
+  const handleCallPatient = (phone: string | undefined) => {
+    if (!phone) {
+      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
+      return;
+    }
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    if (!clean) {
+      Alert.alert("Invalid Phone Number", "Cannot dial this phone number.");
+      return;
+    }
+    Linking.openURL(`tel:${clean}`).catch((err) => {
+      Alert.alert("Call Error", "Could not open phone dialer: " + err.message);
+    });
+  };
+
+  // WhatsApp Action Handler
+  const handleWhatsAppPatient = (
+    phone: string | undefined,
+    patientName: string,
+    doctorName?: string,
+    timeSlot?: string
+  ) => {
+    if (!phone) {
+      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
+      return;
+    }
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    if (!clean) {
+      Alert.alert("Invalid Phone Number", "Cannot send WhatsApp to this phone number.");
+      return;
+    }
+    const msg = `Hello ${patientName || "Patient"}, your appointment with ${doctorName || "Doctor"} is confirmed at Spiritual Homeopathy (${timeSlot || "today"}). Please reach 10 minutes prior.`;
+    const waUrl = `whatsapp://send?phone=91${clean}&text=${encodeURIComponent(msg)}`;
+    const webUrl = `https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`;
+
+    Linking.canOpenURL(waUrl)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(waUrl);
+        } else {
+          return Linking.openURL(webUrl);
+        }
+      })
+      .catch(() => {
+        Linking.openURL(webUrl).catch((err) => {
+          Alert.alert("WhatsApp Error", "Could not open WhatsApp: " + err.message);
+        });
+      });
+  };
+
+  // Extract Patient Initials for Avatar (e.g. Harshini -> HA, N Lakshmi -> NL)
+  const getPatientInitials = (name: string) => {
+    if (!name) return "PT";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+  };
+
+  // Reorder queue: Move appointment UP
+  const handleMoveUp = async (index: number) => {
+    if (index <= 0) return;
+    const currentList = [...filteredAppointments];
+    const temp = currentList[index];
+    currentList[index] = currentList[index - 1];
+    currentList[index - 1] = temp;
+
+    // Optimistic local update
+    setAppointments(currentList);
+
+    // Persist to server
+    try {
+      const orderedIds = currentList.map((a) => a.id);
+      await apiFetch("/reception/appointments", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "REORDER", orderedIds }),
+      });
+    } catch (err) {
+      console.error("Failed to persist queue reorder:", err);
+    }
+  };
+
+  // Reorder queue: Move appointment DOWN
+  const handleMoveDown = async (index: number) => {
+    if (index >= filteredAppointments.length - 1) return;
+    const currentList = [...filteredAppointments];
+    const temp = currentList[index];
+    currentList[index] = currentList[index + 1];
+    currentList[index + 1] = temp;
+
+    // Optimistic local update
+    setAppointments(currentList);
+
+    // Persist to server
+    try {
+      const orderedIds = currentList.map((a) => a.id);
+      await apiFetch("/reception/appointments", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "REORDER", orderedIds }),
+      });
+    } catch (err) {
+      console.error("Failed to persist queue reorder:", err);
+    }
+  };
+
+  // Start / Complete Consultation status toggle
+  const handleStartConsultation = async (appt: any) => {
+    const isCurrentlyActive = (appt.status || "").toUpperCase() === "IN_CONSULTATION";
+    const nextStatus = isCurrentlyActive ? "COMPLETED" : "IN_CONSULTATION";
+    const actionText = isCurrentlyActive ? "Complete consultation" : "Start consultation";
+
+    Alert.alert(
+      `${actionText}?`,
+      `Change status for ${appt.patientName} to ${nextStatus.replace("_", " ")}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          onPress: async () => {
+            try {
+              // Optimistic update
+              setAppointments((prev) =>
+                prev.map((a) => (a.id === appt.id ? { ...a, status: nextStatus } : a))
+              );
+
+              await apiFetch("/reception/appointments", {
+                method: "PATCH",
+                body: JSON.stringify({
+                  action: "UPDATE_STATUS",
+                  id: appt.id,
+                  status: nextStatus,
+                }),
+              });
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to update consultation status.");
+              const bName = activeBranch?.name || "KPHB";
+              fetchAppointments(bName, selectedDate);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const fetchDeletedAppointments = async () => {
     setIsLoadingDeleted(true);
     try {
       const cleanBranch = (activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
-      const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments?branch=${encodeURIComponent(cleanBranch)}`);
-      const data = await res.json();
+      const data = await apiFetch(`/reception/deleted-appointments?branch=${encodeURIComponent(cleanBranch)}`);
       if (data.success && Array.isArray(data.appointments)) {
         setDeletedAppointments(data.appointments);
       } else {
@@ -164,12 +367,10 @@ export default function ReceptionDashboard() {
 
   const handleRestoreAppointment = async (id: string, token: string, patientName: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments`, {
+      const data = await apiFetch("/reception/deleted-appointments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "RESTORE", id }),
       });
-      const data = await res.json();
       if (data.success) {
         Alert.alert("Restored", `Appointment ${token} for ${patientName} has been restored!`);
         fetchDeletedAppointments();
@@ -178,8 +379,8 @@ export default function ReceptionDashboard() {
       } else {
         Alert.alert("Error", data.error || "Failed to restore appointment.");
       }
-    } catch {
-      Alert.alert("Error", "Network error. Please try again.");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to restore appointment.");
     }
   };
 
@@ -194,9 +395,8 @@ export default function ReceptionDashboard() {
           style: "destructive",
           onPress: async () => {
             try {
-              const res = await fetch(`${API_BASE_URL}/reception/deleted-appointments`, {
+              const data = await apiFetch("/reception/deleted-appointments", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   action: "DELETE",
                   id,
@@ -204,7 +404,6 @@ export default function ReceptionDashboard() {
                   reason: "Cancelled by reception",
                 }),
               });
-              const data = await res.json();
               if (data.success) {
                 Alert.alert("Appointment Cancelled", `Appointment ${token} moved to 24h trash.`);
                 const bName = activeBranch?.name || "KPHB";
@@ -212,8 +411,8 @@ export default function ReceptionDashboard() {
               } else {
                 Alert.alert("Error", data.error || "Failed to delete appointment.");
               }
-            } catch {
-              Alert.alert("Error", "Network error. Please try again.");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete appointment.");
             }
           },
         },
@@ -318,8 +517,7 @@ export default function ReceptionDashboard() {
 
   const handleLogout = async () => {
     closeDrawer();
-    await removeAuthToken();
-    await removeActiveBranch();
+    await clearAllAuthData();
     router.replace("/(auth)/login");
   };
 
@@ -431,10 +629,12 @@ export default function ReceptionDashboard() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isLoadingAppointments}
-            onRefresh={() => {
+            refreshing={isPullRefreshing}
+            onRefresh={async () => {
+              setIsPullRefreshing(true);
               const bName = activeBranch?.name || "KPHB";
-              fetchAppointments(bName, selectedDate);
+              await fetchAppointments(bName, selectedDate, true);
+              setIsPullRefreshing(false);
             }}
             colors={[COLORS.themeBlue]}
             tintColor={COLORS.themeBlue}
@@ -492,10 +692,21 @@ export default function ReceptionDashboard() {
           <View style={styles.sectionHeaderRow}>
             <View style={styles.overviewTitleRow}>
               <Text style={styles.sectionMainTitle}>Overview</Text>
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </View>
+              {isOnline ? (
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>LIVE</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => checkConnection()}
+                  style={[styles.livePill, { backgroundColor: "#ffe4e6", borderColor: "#fecdd3" }]}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.liveDot, { backgroundColor: "#e11d48" }]} />
+                  <Text style={[styles.liveText, { color: "#e11d48" }]}>OFFLINE</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -677,112 +888,208 @@ export default function ReceptionDashboard() {
           </View>
 
           {/* Appointments List / Empty State */}
-          {isLoadingAppointments ? (
+          {isLoadingAppointments && appointments.length === 0 ? (
             <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
               <ActivityIndicator size="small" color={COLORS.themeBlue} />
               <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Loading appointments for {selectedDate}...</Text>
             </View>
           ) : filteredAppointments.length === 0 ? (
-            <View style={styles.emptyAppointmentsCard}>
-              <View style={styles.calendarIconBox}>
-                <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
+            !isOnline ? (
+              <View style={[styles.emptyAppointmentsCard, { borderColor: "#fecdd3", backgroundColor: "#fff1f2" }]}>
+                <View style={[styles.calendarIconBox, { backgroundColor: "#ffe4e6" }]}>
+                  <Ionicons name="cloud-offline-outline" size={32} color="#e11d48" />
+                </View>
+
+                <Text style={[styles.emptyCardMessage, { color: "#9f1239", fontWeight: "800" }]}>
+                  No Internet Connection
+                </Text>
+
+                <Text style={{ fontSize: 11.5, color: "#be123c", textAlign: "center", paddingHorizontal: 12 }}>
+                  You are currently offline. Switching between Wi-Fi and Mobile Data will automatically reconnect.
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.bookAppointmentBtn, { backgroundColor: "#e11d48", marginTop: 6 }]}
+                  onPress={() => checkConnection()}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="reload" size={18} color={COLORS.white} />
+                  <Text style={styles.bookAppointmentBtnText}>Retry Connection</Text>
+                </TouchableOpacity>
               </View>
+            ) : (
+              <View style={styles.emptyAppointmentsCard}>
+                <View style={styles.calendarIconBox}>
+                  <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
+                </View>
 
-              <Text style={styles.emptyCardMessage}>
-                No upcoming appointments for {selectedDate}.
-              </Text>
+                <Text style={styles.emptyCardMessage}>
+                  No upcoming appointments for {selectedDate}.
+                </Text>
 
-              <TouchableOpacity
-                style={styles.bookAppointmentBtn}
-                onPress={() => router.push("/(reception)/appointments" as any)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-                <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={styles.bookAppointmentBtn}
+                  onPress={() => router.push("/(reception)/appointments" as any)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
+                  <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
+                </TouchableOpacity>
+              </View>
+            )
           ) : (
-            <View style={{ gap: 10 }}>
-              {filteredAppointments.map((appt) => {
+            <View style={{ gap: 12 }}>
+              {filteredAppointments.map((appt, index) => {
                 const status = (appt.status || "WAITING").toUpperCase();
-                const isWaiting = status === "WAITING" || status === "SCHEDULED";
                 const isActive = status === "IN_CONSULTATION";
                 const isCompleted = status === "COMPLETED";
 
+                const phoneNum = appt.phoneNumber || appt.phone || "";
+                const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
+                const displayPhone = cleanPhone || "No Mobile";
+                const initials = getPatientInitials(appt.patientName);
+                const isFirst = index === 0;
+                const isLast = index === filteredAppointments.length - 1;
+                const isRevisit = !!appt.isReback;
+
                 return (
-                  <View key={appt.id || appt.token} style={styles.appointmentCard}>
-                    {/* Header: Token & Reg ID left, Status Badge & Cancel Action right */}
-                    <View style={styles.apptCardHeader}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-                        <View style={styles.apptTokenBadge}>
-                          <Text style={styles.apptTokenText}>{appt.token || "#A"}</Text>
-                        </View>
-                        <Text style={styles.apptRegIdText}>{appt.registrationId}</Text>
+                  <View key={appt.id || appt.token || `appt-${index}`} style={styles.appointmentCard}>
+                    {/* Top Row: Queue #, Patient Details (Name, ID, Revisit, Mobile), and START CONSULTATION button */}
+                    <View style={styles.cardTopRow}>
+                      {/* Queue Number Badge (Starts from 1) */}
+                      <View style={styles.queueBox}>
+                        <Text style={styles.queueBoxLabel}>Q</Text>
+                        <Text style={styles.queueBoxNum}>{index + 1}</Text>
                       </View>
 
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            isWaiting && { backgroundColor: "#fef3c7" },
-                            isActive && { backgroundColor: "#e0f2fe" },
-                            isCompleted && { backgroundColor: "#dcfce7" },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusBadgeText,
-                              isWaiting && { color: "#b45309" },
-                              isActive && { color: "#0284c7" },
-                              isCompleted && { color: "#15803d" },
-                            ]}
-                          >
-                            {status.replace("_", " ")}
-                          </Text>
+                      {/* Name & ID & Revisit Badge + Phone */}
+                      <View style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                          <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                          {/* Patient ID Pill */}
+                          <View style={styles.patientIdBadge}>
+                            <Text style={styles.patientIdBadgeText}>
+                              {appt.registrationId || appt.patientId || "ID: N/A"}
+                            </Text>
+                          </View>
+                          {isRevisit && (
+                            <View style={styles.revisitBadge}>
+                              <Ionicons name="refresh" size={9} color="#d97706" />
+                              <Text style={styles.revisitBadgeText}>REVISIT</Text>
+                            </View>
+                          )}
                         </View>
-
-                        <TouchableOpacity
-                          onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                          style={{ padding: 4 }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="trash-outline" size={15} color="#ef4444" />
-                        </TouchableOpacity>
+                        <Text style={styles.apptPhoneText}>{displayPhone}</Text>
                       </View>
+
+                      {/* START CONSULTATION Button */}
+                      <TouchableOpacity
+                        style={[
+                          styles.startConsultBtn,
+                          isActive && { backgroundColor: "#16a34a" },
+                          isCompleted && { backgroundColor: "#64748b" },
+                        ]}
+                        onPress={() => handleStartConsultation(appt)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.startConsultBtnText}>
+                          {isActive ? "IN CONSULTATION" : isCompleted ? "COMPLETED" : "START CONSULTATION"}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
 
-                    {/* Patient Name & Phone / Diseases */}
-                    <View style={{ marginTop: 8 }}>
-                      <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
-                        <Text style={styles.apptMetaText}>📞 {appt.phone || appt.phoneNumber}</Text>
-                        {appt.diseases ? (
-                          <Text style={[styles.apptMetaText, { color: "#64748b", flex: 1 }]} numberOfLines={1}>
-                            • {appt.diseases}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    {/* Footer: Doctor, Time Slot, Mode */}
-                    <View style={styles.apptFooterRow}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
-                        <Ionicons name="medkit-outline" size={13} color="#0284c7" />
-                        <Text style={styles.apptDoctorText} numberOfLines={1}>
-                          {appt.doctorName}
+                    {/* Middle Row: Doctor (Stethoscope) • Time (Clock) • Branch (Pin) */}
+                    <View style={styles.cardInfoRow}>
+                      <View style={styles.infoItem}>
+                        <Ionicons name="fitness-outline" size={13} color="#64748b" />
+                        <Text style={styles.infoItemText} numberOfLines={1}>
+                          {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
                         </Text>
                       </View>
 
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Ionicons name="time-outline" size={13} color="#64748b" />
-                          <Text style={styles.apptTimeText}>{appt.timeSlot || appt.selectedTimeSlot}</Text>
-                        </View>
+                      <View style={styles.infoItem}>
+                        <Ionicons name="time-outline" size={13} color="#64748b" />
+                        <Text style={styles.infoItemText}>
+                          {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
+                        </Text>
+                      </View>
 
-                        <View style={styles.apptModeBadge}>
-                          <Text style={styles.apptModeText}>{appt.consultationMode || "In-Clinic"}</Text>
-                        </View>
+                      <View style={styles.infoItem}>
+                        <Ionicons name="location-outline" size={13} color="#64748b" />
+                        <Text style={styles.infoItemText} numberOfLines={1}>
+                          {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Bottom Action Row: [ ↑ ] [ ↓ ]  [ 📞 ]  [ 💬 ]  [ 📅 ]  [ 🗑️ ] */}
+                    <View style={styles.cardActionRow}>
+                      <View style={styles.arrowButtonGroup}>
+                        {/* Up Arrow (Move up in queue) */}
+                        <TouchableOpacity
+                          style={[styles.arrowButton, isFirst && styles.arrowButtonDisabled]}
+                          onPress={() => handleMoveUp(index)}
+                          disabled={isFirst}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="arrow-up" size={14} color={isFirst ? "#93c5fd" : "#ffffff"} />
+                        </TouchableOpacity>
+
+                        {/* Down Arrow (Move down in queue) */}
+                        <TouchableOpacity
+                          style={[styles.arrowButton, isLast && styles.arrowButtonDisabled]}
+                          onPress={() => handleMoveDown(index)}
+                          disabled={isLast}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="arrow-down" size={14} color={isLast ? "#93c5fd" : "#ffffff"} />
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Right Action Icons: Call, WhatsApp, Calendar, Delete */}
+                      <View style={styles.iconActionsGroup}>
+                        {/* Call Icon Button */}
+                        <TouchableOpacity
+                          style={styles.outlineIconBtn}
+                          onPress={() => handleCallPatient(cleanPhone)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="call-outline" size={14.5} color="#0284c7" />
+                        </TouchableOpacity>
+
+                        {/* WhatsApp Icon Button */}
+                        <TouchableOpacity
+                          style={styles.outlineIconBtn}
+                          onPress={() =>
+                            handleWhatsAppPatient(
+                              cleanPhone,
+                              appt.patientName,
+                              appt.doctorName,
+                              appt.timeSlot || appt.selectedTimeSlot
+                            )
+                          }
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                        </TouchableOpacity>
+
+                        {/* Calendar / Reschedule Icon Button */}
+                        <TouchableOpacity
+                          style={styles.outlineIconBtn}
+                          onPress={() => openRescheduleModal(appt)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
+                        </TouchableOpacity>
+
+                        {/* Delete / Trash Icon Button */}
+                        <TouchableOpacity
+                          style={styles.outlineIconBtn}
+                          onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </View>
@@ -964,6 +1271,110 @@ export default function ReceptionDashboard() {
           </Animated.View>
         </View>
       )}
+      {/* RESCHEDULE APPOINTMENT MODAL (MOBILE) */}
+      <Modal visible={rescheduleModalOpen} transparent animationType="fade">
+        <TouchableWithoutFeedback onPress={() => setRescheduleModalOpen(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.modalContainer, { maxWidth: 360, padding: 18 }]}>
+                {/* Header */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f1f5f9", paddingBottom: 10, marginBottom: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#f0f9ff", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="calendar" size={18} color="#0284c7" />
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>Reschedule</Text>
+                      <Text style={{ fontSize: 10.5, color: "#64748b" }}>
+                        {rescheduleTargetAppt?.patientName} • {rescheduleTargetAppt?.registrationId}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={() => setRescheduleModalOpen(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "#f1f5f9", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="close" size={16} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Date Selection */}
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
+                  Select New Date (Currently: {rescheduleDate})
+                </Text>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 14 }}>
+                  <TouchableOpacity
+                    style={[styles.datePill, rescheduleDate === todayStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
+                    onPress={() => setRescheduleDate(todayStr)}
+                  >
+                    <Text style={[styles.datePillText, rescheduleDate === todayStr && styles.datePillTextActive, { fontSize: 11 }]}>
+                      Today
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.datePill, rescheduleDate === tomorrowStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
+                    onPress={() => setRescheduleDate(tomorrowStr)}
+                  >
+                    <Text style={[styles.datePillText, rescheduleDate === tomorrowStr && styles.datePillTextActive, { fontSize: 11 }]}>
+                      Tomorrow
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Time Slot Picker */}
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
+                  Select Time Slot
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {[
+                      "10:00 AM", "10:15 AM", "10:30 AM", "10:45 AM",
+                      "11:00 AM", "11:15 AM", "11:30 AM", "11:45 AM",
+                      "12:00 PM", "12:15 PM", "12:30 PM", "12:45 PM",
+                      "05:00 PM", "05:15 PM", "05:30 PM", "05:45 PM",
+                      "06:00 PM", "06:15 PM", "06:30 PM", "06:45 PM",
+                      "07:00 PM", "07:15 PM", "07:30 PM",
+                    ].map((slot) => {
+                      const isSel = rescheduleSlot === slot;
+                      return (
+                        <TouchableOpacity
+                          key={slot}
+                          onPress={() => setRescheduleSlot(slot)}
+                          style={[
+                            { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc" },
+                            isSel && { backgroundColor: "#0284c7", borderColor: "#0284c7" },
+                          ]}
+                        >
+                          <Text style={[{ fontSize: 11, fontWeight: "700", color: "#334155" }, isSel && { color: "#ffffff" }]}>
+                            {slot}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                {/* Actions */}
+                <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
+                  <TouchableOpacity
+                    onPress={() => setRescheduleModalOpen(false)}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: "#f1f5f9" }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#64748b" }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={isRescheduling}
+                    onPress={handleConfirmReschedule}
+                    style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: "#0284c7" }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: "#ffffff" }}>
+                      {isRescheduling ? "Saving..." : "Confirm"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* CALENDAR DATE PICKER MODAL */}
       <Modal visible={calendarModalOpen} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setCalendarModalOpen(false)}>
@@ -2007,95 +2418,159 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
-  // Appointment Cards
+  // Appointment Cards Matching UI/UX Reference Design (Compact, Sleek Height & Reduced Text)
   appointmentCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 14,
+    padding: 11,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#e8edf2",
     shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1.5 },
     shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowRadius: 5,
     elevation: 2,
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  apptCardHeader: {
+  cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-    paddingBottom: 8,
   },
-  apptTokenBadge: {
+  queueBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     backgroundColor: "#e0f2fe",
     borderWidth: 1,
     borderColor: "#bae6fd",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  apptTokenText: {
-    fontSize: 11,
+  queueBoxLabel: {
+    fontSize: 7.5,
+    fontWeight: "900",
+    color: "#0369a1",
+    lineHeight: 8,
+  },
+  queueBoxNum: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0284c7",
+    lineHeight: 15,
+  },
+  patientIdBadge: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  patientIdBadgeText: {
+    fontSize: 8.5,
     fontWeight: "800",
     color: "#0284c7",
-  },
-  apptRegIdText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    textTransform: "uppercase",
+    letterSpacing: 0.2,
   },
   apptPatientName: {
-    fontSize: 14.5,
+    fontSize: 13.5,
     fontWeight: "800",
     color: "#0f172a",
   },
-  apptMetaText: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "500",
+  revisitBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2.5,
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
   },
-  apptFooterRow: {
+  revisitBadgeText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#d97706",
+    letterSpacing: 0.3,
+  },
+  apptPhoneText: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: "#64748b",
+    marginTop: 1,
+  },
+  startConsultBtn: {
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 10,
+    paddingVertical: 5.5,
+    borderRadius: 7,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  startConsultBtnText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#ffffff",
+    letterSpacing: 0.2,
+  },
+  cardInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 10,
-    paddingTop: 8,
+    marginTop: 8,
+    paddingTop: 7,
     borderTopWidth: 1,
-    borderTopColor: "#f8fafc",
+    borderTopColor: "#f1f5f9",
   },
-  apptDoctorText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0284c7",
+  infoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
   },
-  apptTimeText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: "#334155",
-  },
-  apptModeBadge: {
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  apptModeText: {
-    fontSize: 10,
-    fontWeight: "700",
+  infoItemText: {
+    fontSize: 11,
+    fontWeight: "500",
     color: "#475569",
+  },
+  cardActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  arrowButtonGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  arrowButton: {
+    width: 32,
+    height: 27,
+    borderRadius: 7,
+    backgroundColor: "#0284c7",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  arrowButtonDisabled: {
+    backgroundColor: "#dbeafe",
+  },
+  iconActionsGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  outlineIconBtn: {
+    width: 29,
+    height: 29,
+    borderRadius: 14.5,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   // Calendar Modal

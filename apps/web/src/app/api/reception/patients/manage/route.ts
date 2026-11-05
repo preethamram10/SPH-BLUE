@@ -6,14 +6,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, regId, newName, targetRegId, sourceRegId, reason, deletedBy } = body;
 
+    const sanitize = (val?: string) =>
+      typeof val === "string" ? val.replace(/<[^>]*>?/gm, "").trim() : "";
+
     if (action === "UPDATE_NAME") {
-      if (!regId || !newName) {
+      const cleanName = sanitize(newName);
+      if (!regId || !cleanName) {
         return NextResponse.json(
           { success: false, error: "regId and newName are required" },
           { status: 400 }
         );
       }
-      const updated = await patientService.updatePatientName(regId, newName);
+      const updated = await patientService.updatePatientName(regId.trim(), cleanName);
       if (!updated) {
         return NextResponse.json({ success: false, error: "Patient profile not found" }, { status: 404 });
       }

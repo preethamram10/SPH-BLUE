@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2 } from "lucide-react";
 
-type TabType = "doctor_reception" | "admin_hr" | "telecaller";
+type TabType = "doctor" | "reception" | "admin_hr" | "telecaller";
 
 export default function WebLoginPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("doctor_reception");
+  const [activeTab, setActiveTab] = useState<TabType>("doctor");
   const [step, setStep] = useState<"INPUT" | "OTP">("INPUT");
 
   // Form states
@@ -18,6 +18,23 @@ export default function WebLoginPage() {
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [validatedData, setValidatedData] = useState<any>(null);
+
+  // Check persistent session: if already logged in, redirect directly to role dashboard
+  useEffect(() => {
+    try {
+      const role = localStorage.getItem("user_role")?.toUpperCase();
+      if (role === "RECEPTION") {
+        window.location.href = "/reception/dashboard";
+      } else if (role === "ADMIN") {
+        window.location.href = "/admin/dashboard";
+      } else if (role === "DOCTOR") {
+        window.location.href = "/doctor/dashboard";
+      } else if (role === "TELECALLER") {
+        window.location.href = "/telecaller/dashboard";
+      }
+    } catch {}
+  }, []);
 
   // OTP Countdown timer
   useEffect(() => {
@@ -35,6 +52,7 @@ export default function WebLoginPage() {
     setStep("INPUT");
     setOtp("");
     setErrorMessage("");
+    setValidatedData(null);
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -49,31 +67,37 @@ export default function WebLoginPage() {
     setLoading(true);
 
     try {
-      // For Reception login, verify that this phone is an authorized branch number
-      if (activeTab === "doctor_reception") {
-        const res = await fetch("/api/auth/validate-phone", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: cleanNumber, role: "RECEPTION" }),
-        });
+      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+      const res = await fetch("/api/auth/validate-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanNumber, role: roleToSend }),
+      });
 
-        const data = await res.json();
-        if (!res.ok || !data.authorized) {
-          setErrorMessage(
-            data.error ||
-              "Not Authorized: This phone number is not registered with any clinic branch. Only registered branch contact numbers can login as Reception."
-          );
-          setLoading(false);
-          return;
-        }
+      const data = await res.json();
+      if (!res.ok || !data.authorized) {
+        setErrorMessage(
+          data.error ||
+            "Not Authorized: Please check your mobile number or contact clinic admin."
+        );
+        setLoading(false);
+        return;
+      }
 
-        if (data.branch) {
-          localStorage.setItem("branch_id", data.branch.id);
-          localStorage.setItem("branch_name", data.branch.name);
-          localStorage.setItem("user_branch", data.branch.name);
-          localStorage.setItem("user_assigned_branch", data.branch.name);
-          localStorage.setItem("branch_phone", data.branch.phone);
-        }
+      setValidatedData(data);
+
+      if (data.branch) {
+        localStorage.setItem("branch_id", data.branch.id);
+        localStorage.setItem("branch_name", data.branch.name);
+        localStorage.setItem("user_branch", data.branch.name);
+        localStorage.setItem("user_assigned_branch", data.branch.name);
+        localStorage.setItem("branch_phone", data.branch.phone);
+      }
+
+      if (data.doctor) {
+        localStorage.setItem("doctor_id", data.doctor.id);
+        localStorage.setItem("doctor_name", data.doctor.name);
+        localStorage.setItem("branch_name", data.doctor.branch || "KPHB Branch");
       }
 
       setStep("OTP");
@@ -96,7 +120,13 @@ export default function WebLoginPage() {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      if (activeTab === "doctor_reception") {
+      if (activeTab === "doctor" || validatedData?.role === "DOCTOR") {
+        localStorage.setItem("user_role", "DOCTOR");
+        if (validatedData?.doctor?.name) {
+          localStorage.setItem("doctor_name", validatedData.doctor.name);
+        }
+        window.location.href = "/doctor/dashboard";
+      } else if (activeTab === "reception" || validatedData?.role === "RECEPTION") {
         localStorage.setItem("user_role", "RECEPTION");
         window.location.href = "/reception/dashboard";
       } else if (activeTab === "telecaller") {
@@ -156,41 +186,52 @@ export default function WebLoginPage() {
             Doctor, Staff, HR, Reception, Admin &amp; Telecaller Portal
           </p>
         </div>
-        {/* Segmented 3 Tabs (Doctor / Reception, Admin / HR, Telecaller) */}
+        {/* Segmented 4 Tabs (Doctor, Reception, Admin / HR, Telecaller) */}
         <div className="bg-[#f1f5f9] p-1 rounded-xl flex items-center justify-between gap-1 mt-6">
-          {/* Tab 1: Doctor / Reception */}
+          {/* Tab 1: Doctor */}
           <button
             type="button"
-            onClick={() => handleTabChange("doctor_reception")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === "doctor_reception"
+            onClick={() => handleTabChange("doctor")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === "doctor"
                 ? "bg-white text-[#268ec8] shadow-sm"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Phone className="w-3.5 h-3.5 shrink-0" />
-            <span className="leading-tight text-center">
-              Doctor /<br />Reception
-            </span>
+            <Stethoscope className="w-3.5 h-3.5 shrink-0" />
+            <span>Doctor</span>
           </button>
-          {/* Tab 2: Admin / HR */}
+          {/* Tab 2: Reception */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("reception")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === "reception"
+                ? "bg-white text-[#268ec8] shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Reception</span>
+          </button>
+          {/* Tab 3: Admin / HR */}
           <button
             type="button"
             onClick={() => handleTabChange("admin_hr")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeTab === "admin_hr"
                 ? "bg-white text-[#268ec8] shadow-sm"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
             <Mail className="w-3.5 h-3.5 shrink-0" />
-            <span>Admin / HR</span>
+            <span>Admin/HR</span>
           </button>
-          {/* Tab 3: Telecaller */}
+          {/* Tab 4: Telecaller */}
           <button
             type="button"
             onClick={() => handleTabChange("telecaller")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeTab === "telecaller"
                 ? "bg-white text-[#268ec8] shadow-sm"
                 : "text-slate-500 hover:text-slate-800"
@@ -272,9 +313,11 @@ export default function WebLoginPage() {
           /* Step 1: Mobile Number Input */
           <form onSubmit={handleSendOtp} className="mt-5">
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              {activeTab === "doctor_reception"
-                ? "Mobile Number (Doctor & Reception)"
-                : "Mobile Number (Telecaller)"}
+              {activeTab === "doctor"
+                ? "Doctor Registered Mobile Number"
+                : activeTab === "reception"
+                ? "Branch Reception Contact Number"
+                : "Telecaller Mobile Number"}
             </label>
 
             <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-3 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
@@ -283,7 +326,13 @@ export default function WebLoginPage() {
                 type="tel"
                 value={mobileNumber}
                 onChange={(e) => setMobileNumber(e.target.value)}
-                placeholder="e.g. 8125260176 or 9030176176"
+                placeholder={
+                  activeTab === "doctor"
+                    ? "e.g. 8125260176 (Dr. Prashanth)"
+                    : activeTab === "reception"
+                    ? "e.g. 9030176176 (KPHB Branch)"
+                    : "Enter telecaller mobile"
+                }
                 className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 placeholder:text-xs outline-none"
                 maxLength={10}
                 required

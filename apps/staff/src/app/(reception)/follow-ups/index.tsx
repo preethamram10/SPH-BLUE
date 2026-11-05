@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   Linking,
+  BackHandler,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -89,6 +90,23 @@ export default function ReceptionFollowUpsScreen() {
     Linking.openURL(`tel:${phone}`);
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(reception)" as any);
+    }
+  };
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, [router]);
+
   const filtered = followUps.filter(
     (f) =>
       f.patientName.toLowerCase().includes(search.toLowerCase()) ||
@@ -101,7 +119,7 @@ export default function ReceptionFollowUpsScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="arrow-back" size={22} color={COLORS.blue} />

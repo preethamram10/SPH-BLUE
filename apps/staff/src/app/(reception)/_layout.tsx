@@ -21,6 +21,7 @@ export default function ReceptionLayout() {
       <Stack.Screen name="walk-in-registration/index" />
       <Stack.Screen name="billing-invoices/index" />
       <Stack.Screen name="doctors-list/index" />
+      <Stack.Screen name="patient-file/index" />
     </Stack>
   );
 }

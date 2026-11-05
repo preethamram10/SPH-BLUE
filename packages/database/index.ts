@@ -892,13 +892,27 @@ function loadNoShowsFromDisk(): DoctorNoShowRecord[] {
   return [];
 }
 
-function saveNoShowsToDisk(data: DoctorNoShowRecord[]): void {
+function safeAtomicWrite(filePath: string, data: any): void {
   try {
-    const file = getNoShowsCachePath();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tempFile = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), "utf-8");
+    fs.renameSync(tempFile, filePath);
   } catch (err) {
-    console.warn("Failed to write doctor no-shows cache:", err);
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (fallbackErr) {
+      console.warn("Failed to write cache safely:", fallbackErr);
+    }
   }
+}
+
+function saveNoShowsToDisk(data: DoctorNoShowRecord[]): void {
+  const file = getNoShowsCachePath();
+  safeAtomicWrite(file, data);
 }
 
 function getDoctorNoShowsStore(): DoctorNoShowRecord[] {
@@ -1071,12 +1085,8 @@ function loadPatientsFromDisk(): PatientRecord[] {
 }
 
 function savePatientsToDisk(data: PatientRecord[]): void {
-  try {
-    const file = getPatientsCachePath();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.warn("Failed to save patients cache:", err);
-  }
+  const file = getPatientsCachePath();
+  safeAtomicWrite(file, data);
 }
 
 function getPatientsStore(): PatientRecord[] {
@@ -1430,12 +1440,8 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
 }
 
 function saveAppointmentsToDisk(data: AppointmentRecord[]): void {
-  try {
-    const file = getAppointmentsCachePath();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.warn("Failed to save appointments cache:", err);
-  }
+  const file = getAppointmentsCachePath();
+  safeAtomicWrite(file, data);
 }
 
 function getAppointmentsStore(): AppointmentRecord[] {
@@ -1463,7 +1469,12 @@ export const appointmentService = {
       list = list.filter((a) => normalizeDateStr(a.appointmentDate) === normQuery);
     }
     if (doctorId) {
-      list = list.filter((a) => a.doctorId === doctorId);
+      const cleanDoc = doctorId.toLowerCase().trim();
+      list = list.filter((a) => {
+        const dId = (a.doctorId || "").toLowerCase().trim();
+        const dName = (a.doctorName || "").toLowerCase().trim();
+        return dId === cleanDoc || dName.includes(cleanDoc) || cleanDoc.includes(dName);
+      });
     }
     return list;
   },
@@ -1474,15 +1485,60 @@ export const appointmentService = {
     status?: AppointmentRecord["status"];
     createdAt?: string;
   }): Promise<AppointmentRecord> {
+    // Sanitization: Strip dangerous script/HTML tags and trim whitespace
+    const sanitize = (val?: string) =>
+      typeof val === "string" ? val.replace(/<[^>]*>?/gm, "").trim() : "";
+
+    const cleanPatientName = sanitize(data.patientName);
+    const cleanPhone = (data.phone || "").replace(/\D/g, "");
+    const cleanRegId = sanitize(data.registrationId);
+    const cleanTimeSlot = sanitize(data.timeSlot);
+    const cleanDate = sanitize(data.appointmentDate);
+    const cleanDoctorId = sanitize(data.doctorId);
+    const cleanBranch = sanitize(data.branch);
+
+    if (!cleanPatientName) {
+      throw new Error("Patient name is required.");
+    }
+    if (cleanPhone.length < 10) {
+      throw new Error("Invalid phone number: must be at least 10 digits.");
+    }
+    if (!cleanTimeSlot || !cleanDate) {
+      throw new Error("Appointment date and time slot are required.");
+    }
+
+    // Anti-overbooking guardrail: Check capacity before creating appointment
+    const currentBookedCount = await this.getSlotBookedCount(
+      cleanBranch,
+      cleanDate,
+      cleanDoctorId,
+      cleanTimeSlot
+    );
+    if (currentBookedCount >= 3) {
+      throw new Error(
+        `Slot "${cleanTimeSlot}" is already fully booked (${currentBookedCount}/3 capacity). Please choose another time slot.`
+      );
+    }
+
     const store = getAppointmentsStore();
     const tokenNum = Math.floor(10 + Math.random() * 90);
     const newRecord: AppointmentRecord = {
+      ...data,
       id: data.id || `apt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       token: data.token || `SPH-${tokenNum}`,
       status: data.status || "WAITING",
       createdAt: data.createdAt || new Date().toISOString(),
-      ...data,
+      patientName: cleanPatientName,
+      phone: cleanPhone,
+      registrationId: cleanRegId,
+      timeSlot: cleanTimeSlot,
+      appointmentDate: cleanDate,
+      doctorId: cleanDoctorId,
+      branch: cleanBranch,
+      diseases: sanitize(data.diseases),
+      notes: sanitize(data.notes),
     };
+
     store.unshift(newRecord);
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
@@ -1551,6 +1607,50 @@ export const appointmentService = {
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
     return store[idx];
+  },
+
+  /**
+   * Updates an appointment's status (e.g. IN_CONSULTATION, COMPLETED).
+   */
+  async updateAppointmentStatus(id: string, status: AppointmentRecord["status"]): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+    appt.status = status;
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
+  },
+
+  /**
+   * Reorders appointments to match the specified order of IDs.
+   */
+  async reorderAppointments(orderedIds: string[]): Promise<boolean> {
+    const store = getAppointmentsStore();
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) return false;
+    const idIndexMap = new Map(orderedIds.map((id, index) => [id, index]));
+    store.sort((a, b) => {
+      const idxA = idIndexMap.has(a.id) ? idIndexMap.get(a.id)! : 999999;
+      const idxB = idIndexMap.has(b.id) ? idIndexMap.get(b.id)! : 999999;
+      return idxA - idxB;
+    });
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return true;
+  },
+
+  /**
+   * Reschedules an appointment to a new date and time slot.
+   */
+  async rescheduleAppointment(id: string, newDate: string, newTimeSlot: string): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+    appt.appointmentDate = newDate;
+    appt.timeSlot = newTimeSlot;
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
   },
 
   /**

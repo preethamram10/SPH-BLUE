@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { getAuthToken } from "../services/auth";
+import { getAuthToken, getUserRole, clearAllAuthData } from "../services/auth";
 import { API_BASE_URL } from "../config/api";
 
 export default function RootIndex() {
@@ -17,38 +17,74 @@ export default function RootIndex() {
           return;
         }
 
-        // Verify token with backend
-        const res = await fetch(`${API_BASE_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // 1. Check offline-first persistent role stored on device
+        const savedRole = await getUserRole();
+        let targetRoute = "";
 
-        if (!res.ok) {
-          router.replace("/(auth)/login");
+        const routeForRole = (r?: string | null) => {
+          switch ((r || "").toUpperCase()) {
+            case "RECEPTION":
+              return "/(reception)";
+            case "DOCTOR":
+              return "/(doctor)";
+            case "TELECALLER":
+              return "/(telecaller)";
+            case "HR":
+              return "/(hr)";
+            case "ADMIN":
+              return "/(admin)";
+            default:
+              return "";
+          }
+        };
+
+        if (savedRole) {
+          targetRoute = routeForRole(savedRole);
+        } else {
+          // Infer from token string if savedRole wasn't written yet
+          const lower = token.toLowerCase();
+          if (lower.includes("reception")) targetRoute = "/(reception)";
+          else if (lower.includes("admin")) targetRoute = "/(admin)";
+          else if (lower.includes("telecaller")) targetRoute = "/(telecaller)";
+          else if (lower.includes("hr")) targetRoute = "/(hr)";
+          else if (lower.includes("staff") || lower.includes("doctor")) targetRoute = "/(doctor)";
+        }
+
+        // 2. If we have a target route from persistent session, navigate immediately
+        if (targetRoute) {
+          router.replace(targetRoute as any);
           return;
         }
 
-        const data = await res.json();
-        const role = data.user?.role?.toUpperCase();
+        // 3. Fallback: Query backend session endpoint with short timeout
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 4000);
 
-        switch (role) {
-          case "DOCTOR":
-            router.replace("/(doctor)");
-            break;
-          case "RECEPTION":
-            router.replace("/(reception)");
-            break;
-          case "TELECALLER":
-            router.replace("/(telecaller)");
-            break;
-          case "HR":
-            router.replace("/(hr)");
-            break;
-          case "ADMIN":
-            router.replace("/(admin)");
-            break;
-          default:
-            router.replace("/(auth)/login");
+        try {
+          const res = await fetch(`${API_BASE_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: ctrl.signal,
+          });
+          clearTimeout(timeout);
+
+          if (res.ok) {
+            const data = await res.json();
+            const verifiedRole = data.user?.role?.toUpperCase();
+            const verifiedRoute = routeForRole(verifiedRole);
+            if (verifiedRoute) {
+              router.replace(verifiedRoute as any);
+              return;
+            }
+          }
+        } catch {
+          // Network failed or timed out — if token exists, fallback to reception rather than logging out
+          router.replace("/(reception)" as any);
+          return;
         }
+
+        // Only redirect to login if token is explicitly invalid
+        await clearAllAuthData();
+        router.replace("/(auth)/login");
       } catch (err) {
         router.replace("/(auth)/login");
       } finally {

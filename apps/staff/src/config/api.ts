@@ -7,6 +7,8 @@
  * You can also override this by creating apps/staff/.env with:
  * EXPO_PUBLIC_API_URL=http://<YOUR_IP>:3000/api
  */
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.127:3000/api";
+const configuredUrl =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.5:3000/api";
+
+export const API_BASE_URL = configuredUrl.replace(/\/+$/, "");
 

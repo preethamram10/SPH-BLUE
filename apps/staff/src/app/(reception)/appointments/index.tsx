@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  BackHandler,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -977,6 +978,23 @@ export default function ReceptionBookAppointmentScreen() {
     router.push(route as any);
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(reception)" as any);
+    }
+  };
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, [router]);
+
   const handleLogout = async () => {
     closeDrawer();
     await removeAuthToken();
@@ -1003,13 +1021,7 @@ export default function ReceptionBookAppointmentScreen() {
         <View style={styles.topHeader}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <TouchableOpacity
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  router.replace("/(reception)" as any);
-                }
-              }}
+              onPress={handleBack}
               style={styles.backButton}
               activeOpacity={0.7}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1027,7 +1039,7 @@ export default function ReceptionBookAppointmentScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* CARD 1: PATIENT DETAILS */}
-          <View style={[styles.card, { zIndex: (isModeOpen || isSourceOpen) ? 90 : 1 }]}>
+          <View style={[styles.card, { zIndex: isModeOpen ? 90 : 1 }]}>
             {/* CARD 1 HEADER ROW (TITLE ON LEFT, CLEAR ON COMPLETE RIGHT) */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1224,7 +1236,7 @@ export default function ReceptionBookAppointmentScreen() {
               </View>
 
               {/* PATIENT SOURCE */}
-              <View style={{ flex: 1, position: "relative", zIndex: isSourceOpen ? 60 : 5 }}>
+              <View style={{ flex: 1, position: "relative" }}>
                 <Text style={styles.label} numberOfLines={1}>Patient Source *</Text>
                 <TouchableOpacity
                   style={[
@@ -1232,7 +1244,7 @@ export default function ReceptionBookAppointmentScreen() {
                     isSourceOpen && styles.dropdownTriggerActive,
                   ]}
                   onPress={() => {
-                    setIsSourceOpen(!isSourceOpen);
+                    setIsSourceOpen(true);
                     setIsBranchOpen(false);
                     setIsModeOpen(false);
                     setIsDoctorOpen(false);
@@ -1249,49 +1261,8 @@ export default function ReceptionBookAppointmentScreen() {
                   >
                     {marketingSource || "Select source"}
                   </Text>
-                  <Feather name={isSourceOpen ? "chevron-up" : "chevron-down"} size={16} color="#94a3b8" />
+                  <Feather name="chevron-down" size={16} color="#94a3b8" />
                 </TouchableOpacity>
-
-                {/* INLINE DROPDOWN BELOW FIELD */}
-                {isSourceOpen && (
-                  <View style={styles.inlineDropdownMenu}>
-                    <ScrollView
-                      style={{ maxHeight: 175 }}
-                      nestedScrollEnabled={true}
-                      showsVerticalScrollIndicator={true}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {MARKETING_SOURCES.map((source) => {
-                        const selected = marketingSource === source;
-                        return (
-                          <TouchableOpacity
-                            key={source}
-                            style={[styles.inlineDropdownItem, selected && styles.inlineDropdownItemSelected]}
-                            onPress={() => {
-                              setMarketingSource(source);
-                              setIsSourceOpen(false);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.inlineDropdownText,
-                                selected && { color: "#0284c7", fontWeight: "800" },
-                                { flex: 1 },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {source}
-                            </Text>
-                            <View style={[styles.radioCircle, selected && styles.radioCircleActive]}>
-                              {selected && <View style={styles.radioDot} />}
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                )}
               </View>
             </View>
           </View>
@@ -1710,6 +1681,119 @@ export default function ReceptionBookAppointmentScreen() {
           </TouchableOpacity>
         </ScrollView>
 
+        {/* PATIENT SOURCE SELECTION MODAL WITH PERSISTENT SCROLLBAR */}
+        <Modal
+          visible={isSourceOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsSourceOpen(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsSourceOpen(false)}
+          >
+            <View
+              style={[
+                styles.modalContainer,
+                { width: "90%", maxWidth: 380, maxHeight: "80%", padding: 18 },
+              ]}
+              onStartShouldSetResponder={() => true}
+            >
+              {/* Header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#f1f5f9",
+                  paddingBottom: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      backgroundColor: "#f0f9ff",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="megaphone-outline" size={18} color="#0284c7" />
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 14.5, fontWeight: "800", color: "#0f172a" }}>
+                      Patient Source
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#64748b" }}>
+                      Select acquisition channel ({MARKETING_SOURCES.length} options)
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setIsSourceOpen(false)}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    backgroundColor: "#f1f5f9",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="close" size={18} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Scrollable List with Native Persistent Scrollbar */}
+              <ScrollView
+                style={{ maxHeight: 280 }}
+                showsVerticalScrollIndicator={true}
+                persistentScrollbar={true}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingVertical: 4, paddingRight: 4 }}
+              >
+                {MARKETING_SOURCES.map((source) => {
+                  const selected = marketingSource === source;
+                  return (
+                    <TouchableOpacity
+                      key={source}
+                      style={[
+                        styles.inlineDropdownItem,
+                        { paddingVertical: 12, paddingHorizontal: 12, marginVertical: 2 },
+                        selected && styles.inlineDropdownItemSelected,
+                      ]}
+                      onPress={() => {
+                        setMarketingSource(source);
+                        setIsSourceOpen(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.inlineDropdownText,
+                          { fontSize: 13.5 },
+                          selected && { color: "#0284c7", fontWeight: "800" },
+                        ]}
+                      >
+                        {source}
+                      </Text>
+                      <View style={[styles.radioCircle, selected && styles.radioCircleActive]}>
+                        {selected && <View style={styles.radioDot} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
         {/* CALENDAR DATE PICKER MODAL */}
         <Modal
           visible={calendarModalOpen}
@@ -1815,10 +1899,10 @@ export default function ReceptionBookAppointmentScreen() {
               {bookedDetails && (
                 <View style={styles.tokenCard}>
                   <View style={styles.tokenBadge}>
-                    <Text style={styles.tokenText}>{bookedDetails.token}</Text>
+                    <Text style={styles.tokenText}>{bookedDetails.regId}</Text>
                   </View>
                   <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7", marginTop: 6 }}>
-                    Reg ID: {bookedDetails.regId}
+                    Patient ID
                   </Text>
                   <View style={{ width: "100%", height: 1, backgroundColor: "#e2e8f0", marginVertical: 10 }} />
                   <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
@@ -1835,9 +1919,21 @@ export default function ReceptionBookAppointmentScreen() {
 
               <TouchableOpacity
                 style={styles.doneBtn}
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  router.replace("/(reception)" as any);
+                }}
+              >
+                <Text style={styles.doneBtnText}>View in Upcoming Appointments</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ marginTop: 10, paddingVertical: 6, alignItems: "center" }}
                 onPress={() => setShowSuccessModal(false)}
               >
-                <Text style={styles.doneBtnText}>Done</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#64748b" }}>
+                  + Book Another Appointment
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2203,7 +2299,7 @@ export default function ReceptionBookAppointmentScreen() {
         <View style={styles.bottomTabBar}>
           <TouchableOpacity
             style={styles.tabItem}
-            onPress={() => router.push("/(reception)" as any)}
+            onPress={handleBack}
             activeOpacity={0.8}
           >
             <Ionicons name="grid-outline" size={22} color="#64748b" />

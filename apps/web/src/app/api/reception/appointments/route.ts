@@ -69,8 +69,40 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, appointment: saved });
   } catch (error: any) {
+    const isConflict = error.message?.includes("already fully booked");
+    const isValidation = error.message?.includes("required") || error.message?.includes("Invalid phone");
+    const status = isConflict ? 409 : isValidation ? 400 : 500;
     return NextResponse.json(
       { success: false, error: error.message || "Failed to create appointment" },
+      { status }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { action, id, status, orderedIds, appointmentDate, timeSlot } = body;
+
+    if (action === "REORDER" && Array.isArray(orderedIds)) {
+      await appointmentService.reorderAppointments(orderedIds);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "UPDATE_STATUS" && id && status) {
+      const updated = await appointmentService.updateAppointmentStatus(id, status);
+      return NextResponse.json({ success: !!updated, appointment: updated });
+    }
+
+    if (action === "RESCHEDULE" && id && appointmentDate && timeSlot) {
+      const updated = await appointmentService.rescheduleAppointment(id, appointmentDate, timeSlot);
+      return NextResponse.json({ success: !!updated, appointment: updated });
+    }
+
+    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update appointments" },
       { status: 500 }
     );
   }

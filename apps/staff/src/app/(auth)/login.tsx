@@ -15,10 +15,10 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { saveAuthToken, saveActiveBranch } from "../../services/auth";
+import { saveAuthToken, saveActiveBranch, saveUserRole, getAuthToken, getUserRole } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 
-type TabType = "doctor_reception" | "staff" | "admin_hr" | "telecaller";
+type TabType = "doctor" | "reception" | "admin_hr" | "telecaller";
 
 const COLORS = {
   blue: "#268ec8",
@@ -39,7 +39,7 @@ export default function StaffLoginScreen() {
   const insets = useSafeAreaInsets();
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<TabType>("doctor_reception");
+  const [activeTab, setActiveTab] = useState<TabType>("doctor");
 
   // Form Fields
   const [mobileNumber, setMobileNumber] = useState("");
@@ -52,6 +52,36 @@ export default function StaffLoginScreen() {
   const [otp, setOtp] = useState("");
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
+
+  // Check persistent session on mount: if already logged in, redirect directly to dashboard
+  useEffect(() => {
+    async function checkExistingSession() {
+      try {
+        const token = await getAuthToken();
+        const role = await getUserRole();
+        if (token && role) {
+          switch (role.toUpperCase()) {
+            case "RECEPTION":
+              router.replace("/(reception)" as any);
+              break;
+            case "DOCTOR":
+              router.replace("/(doctor)" as any);
+              break;
+            case "TELECALLER":
+              router.replace("/(telecaller)" as any);
+              break;
+            case "ADMIN":
+              router.replace("/(admin)" as any);
+              break;
+            case "HR":
+              router.replace("/(hr)" as any);
+              break;
+          }
+        }
+      } catch {}
+    }
+    checkExistingSession();
+  }, []);
 
   // Countdown timer for OTP
   useEffect(() => {
@@ -78,36 +108,33 @@ export default function StaffLoginScreen() {
     setLoading(true);
 
     try {
-      // For Reception login, verify that this phone is an authorized branch number
-      if (activeTab === "doctor_reception") {
-        const res = await fetch(`${API_BASE_URL}/auth/validate-phone`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: cleanNumber, role: "RECEPTION" }),
-        });
+      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+      const res = await fetch(`${API_BASE_URL}/auth/validate-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanNumber, role: roleToSend }),
+      });
 
-        const data = await res.json();
-        if (!res.ok || !data.authorized) {
-          Alert.alert(
-            "Not Authorized",
-            data.error ||
-              "This phone number is not registered with any clinic branch. Only registered branch contact numbers can login as Reception."
-          );
-          return;
-        }
-
-        if (data.branch) {
-          await saveActiveBranch(data.branch);
-        }
+      const data = await res.json();
+      if (!res.ok || !data.authorized) {
+        Alert.alert(
+          "Not Authorized",
+          data.error ||
+            "Please check your mobile number or contact clinic admin."
+        );
+        return;
       }
 
+      if (data.branch) {
+        await saveActiveBranch(data.branch);
+      }
       setStep("OTP");
       setTimer(30);
       setOtp("1234");
     } catch (err: any) {
       Alert.alert(
         "Connection Notice",
-        "Unable to reach server to verify branch phone. Ensure your device is on Wi-Fi."
+        "Unable to reach server to verify phone. Ensure your device is on Wi-Fi."
       );
     } finally {
       setLoading(false);
@@ -125,13 +152,17 @@ export default function StaffLoginScreen() {
     try {
       await saveAuthToken(`token_${activeTab}_${mobileNumber}`);
 
-      if (activeTab === "doctor_reception") {
+      if (activeTab === "doctor") {
+        await saveUserRole("DOCTOR");
+        router.replace("/(doctor)" as any);
+      } else if (activeTab === "reception") {
+        await saveUserRole("RECEPTION");
         router.replace("/(reception)" as any);
       } else if (activeTab === "telecaller") {
+        await saveUserRole("TELECALLER");
         router.replace("/(telecaller)" as any);
-      } else if (activeTab === "staff") {
-        router.replace("/(doctor)" as any);
       } else {
+        await saveUserRole("ADMIN");
         router.replace("/(admin)" as any);
       }
     } finally {
@@ -154,6 +185,7 @@ export default function StaffLoginScreen() {
       // 1. Admin Login
       if (cleanUser === "admin" && cleanPass === "admin@123") {
         await saveAuthToken("admin_session_token");
+        await saveUserRole("ADMIN");
         router.replace("/(admin)" as any);
         return;
       }
@@ -161,6 +193,7 @@ export default function StaffLoginScreen() {
       // 2. HR Login
       if (cleanUser === "hr" && cleanPass === "hr@123") {
         await saveAuthToken("hr_session_token");
+        await saveUserRole("HR");
         router.replace("/(hr)" as any);
         return;
       }
@@ -217,59 +250,57 @@ export default function StaffLoginScreen() {
         <View style={styles.card}>
           {/* Segmented 4 Tabs */}
           <View style={styles.tabBar}>
-            {/* Tab 1: Doctor / Reception */}
+            {/* Tab 1: Doctor */}
             <TouchableOpacity
               style={[
                 styles.tabItem,
-                activeTab === "doctor_reception" && styles.tabItemActive,
+                activeTab === "doctor" && styles.tabItemActive,
               ]}
-              onPress={() => handleTabChange("doctor_reception")}
+              onPress={() => handleTabChange("doctor")}
               activeOpacity={0.8}
             >
               <Ionicons
-                name="call-outline"
+                name="medkit-outline"
                 size={14}
                 color={
-                  activeTab === "doctor_reception"
-                    ? COLORS.blue
-                    : COLORS.textMuted
+                  activeTab === "doctor" ? COLORS.blue : COLORS.textMuted
                 }
                 style={styles.tabIcon}
               />
               <Text
                 style={[
                   styles.tabText,
-                  activeTab === "doctor_reception" && styles.tabTextActive,
+                  activeTab === "doctor" && styles.tabTextActive,
                 ]}
-                numberOfLines={2}
+                numberOfLines={1}
               >
-                {"Doctor /\nReception"}
+                Doctor
               </Text>
             </TouchableOpacity>
 
-            {/* Tab 2: Staff Login */}
+            {/* Tab 2: Reception */}
             <TouchableOpacity
               style={[
                 styles.tabItem,
-                activeTab === "staff" && styles.tabItemActive,
+                activeTab === "reception" && styles.tabItemActive,
               ]}
-              onPress={() => handleTabChange("staff")}
+              onPress={() => handleTabChange("reception")}
               activeOpacity={0.8}
             >
               <Ionicons
-                name="person-outline"
+                name="business-outline"
                 size={14}
-                color={activeTab === "staff" ? COLORS.blue : COLORS.textMuted}
+                color={activeTab === "reception" ? COLORS.blue : COLORS.textMuted}
                 style={styles.tabIcon}
               />
               <Text
                 style={[
                   styles.tabText,
-                  activeTab === "staff" && styles.tabTextActive,
+                  activeTab === "reception" && styles.tabTextActive,
                 ]}
-                numberOfLines={2}
+                numberOfLines={1}
               >
-                Staff Login
+                Reception
               </Text>
             </TouchableOpacity>
 
@@ -295,9 +326,9 @@ export default function StaffLoginScreen() {
                   styles.tabText,
                   activeTab === "admin_hr" && styles.tabTextActive,
                 ]}
-                numberOfLines={2}
+                numberOfLines={1}
               >
-                Admin / HR
+                Admin/HR
               </Text>
             </TouchableOpacity>
 
@@ -323,7 +354,7 @@ export default function StaffLoginScreen() {
                   styles.tabText,
                   activeTab === "telecaller" && styles.tabTextActive,
                 ]}
-                numberOfLines={2}
+                numberOfLines={1}
               >
                 Telecaller
               </Text>
@@ -332,9 +363,8 @@ export default function StaffLoginScreen() {
 
           {/* Dynamic Tab Heading */}
           <Text style={styles.formHeading}>
-            {activeTab === "doctor_reception" &&
-              "Doctor & Branch Receptionist Login"}
-            {activeTab === "staff" && "Clinical Staff Sign In"}
+            {activeTab === "doctor" && "Doctor Clinical Sign In"}
+            {activeTab === "reception" && "Branch Receptionist Login"}
             {activeTab === "admin_hr" && "Admin & HR Management Sign In"}
             {activeTab === "telecaller" && "Telecaller & Calling Desk Login"}
           </Text>
@@ -413,7 +443,13 @@ export default function StaffLoginScreen() {
                 />
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Mobile Number (e.g. 8125260176, 903017617...)"
+                  placeholder={
+                    activeTab === "doctor"
+                      ? "Doctor Mobile (e.g. 8125260176)"
+                      : activeTab === "reception"
+                      ? "Reception Phone (e.g. 9030176176)"
+                      : "Telecaller Mobile Number"
+                  }
                   placeholderTextColor={COLORS.textLight}
                   value={mobileNumber}
                   onChangeText={setMobileNumber}

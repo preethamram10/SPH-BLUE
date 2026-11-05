@@ -4,6 +4,40 @@ import { API_BASE_URL } from "../config/api";
 const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
 const ASSIGNED_BRANCH_KEY = "spiritualhomeo_user_assigned_branch";
+const USER_ROLE_KEY = "spiritualhomeo_user_role";
+
+/**
+ * Persist user role across app reloads and restarts
+ */
+export async function saveUserRole(role: string): Promise<void> {
+  await SecureStore.setItemAsync(USER_ROLE_KEY, role.toUpperCase());
+}
+
+export async function getUserRole(): Promise<string | null> {
+  return await SecureStore.getItemAsync(USER_ROLE_KEY);
+}
+
+export async function removeUserRole(): Promise<void> {
+  await SecureStore.deleteItemAsync(USER_ROLE_KEY);
+}
+
+/**
+ * Wipe all authentication & session data on explicit user logout
+ */
+export async function clearAllAuthData(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {}
+  try {
+    await SecureStore.deleteItemAsync(USER_ROLE_KEY);
+  } catch {}
+  try {
+    await SecureStore.deleteItemAsync(ACTIVE_BRANCH_KEY);
+  } catch {}
+  try {
+    await SecureStore.deleteItemAsync(ASSIGNED_BRANCH_KEY);
+  } catch {}
+}
 
 /**
  * Save active clinic branch details (for branch-specific reception sessions)
@@ -79,17 +113,31 @@ export async function apiFetch<T = any>(
     ? endpoint
     : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  // 15-second timeout safeguard for network resilience on mobile
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  const data = await response.json();
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+    clearTimeout(timeoutId);
 
-  if (!response.ok) {
-    throw new Error(data.error || data.message || `Request failed with status ${response.status}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || `Request failed with status ${response.status}`);
+    }
+
+    return data;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") {
+      throw new Error("Network request timed out. Please check clinic connection and try again.");
+    }
+    throw err;
   }
-
-  return data;
 }
 
