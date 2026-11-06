@@ -15,7 +15,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { apiFetch, getActiveBranch } from "../../services/auth";
+import { apiFetch, getActiveBranch, getActiveDoctor } from "../../services/auth";
 import { DoctorDrawerSidebar } from "../../components/doctor/DoctorDrawerSidebar";
 import { DoctorHeader } from "../../components/doctor/DoctorHeader";
 import { DoctorBottomNav } from "../../components/doctor/DoctorBottomNav";
@@ -70,6 +70,11 @@ export default function DoctorDashboard() {
     getActiveBranch().then((b) => {
       if (b?.name) setBranchName(b.name);
     });
+
+    getActiveDoctor().then((d) => {
+      if (d?.name) setDoctorName(d.name);
+      if (d?.branch) setBranchName(d.branch);
+    });
   }, []);
 
   const fetchDoctorAppointments = async (dt: string, isSilent = false) => {
@@ -112,48 +117,35 @@ export default function DoctorDashboard() {
     }, [doctorName, branchName, selectedDate])
   );
 
+  const openPatientFile = (appt: any) => {
+    router.push({
+      pathname: "/(doctor)/patient-file",
+      params: {
+        id: appt.id,
+        name: appt.name || appt.patientName,
+        phone: appt.phone || appt.phoneNumber,
+        registrationId: appt.registrationId || appt.patientId || "SPH-GEN",
+        branch: branchName,
+      },
+    } as any);
+  };
+
   const handleStatusClick = async (appt: any) => {
     const status = (appt.status || "WAITING").toUpperCase();
     if (status === "WAITING" || status === "SCHEDULED") {
       try {
-        const data = await apiFetch<any>("/doctor/appointments", {
+        await apiFetch<any>("/doctor/appointments", {
           method: "PATCH",
           body: JSON.stringify({ id: appt.id, action: "START_CONSULTATION" }),
         });
-        if (data.success) {
-          Alert.alert("Consultation Started", `${appt.name || appt.patientName} has been called into Cabin.`);
-          fetchDoctorAppointments(selectedDate, true);
-        } else {
-          Alert.alert("Error", data.error || "Failed to start consultation.");
-        }
+        fetchDoctorAppointments(selectedDate, true);
+        openPatientFile(appt);
       } catch (err: any) {
-        Alert.alert("Error", err.message || "Failed to update.");
+        console.error("Status update error:", err);
+        openPatientFile(appt);
       }
     } else if (status === "IN_CONSULTATION") {
-      Alert.alert(
-        "Complete Consultation",
-        `Mark consultation as COMPLETED for ${appt.name || appt.patientName}?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Complete Case",
-            onPress: async () => {
-              try {
-                const data = await apiFetch<any>("/doctor/appointments", {
-                  method: "PATCH",
-                  body: JSON.stringify({ id: appt.id, action: "COMPLETE_CONSULTATION" }),
-                });
-                if (data.success) {
-                  Alert.alert("Success", "Consultation marked as Completed!");
-                  fetchDoctorAppointments(selectedDate, true);
-                }
-              } catch (err: any) {
-                Alert.alert("Error", err.message || "Failed to complete.");
-              }
-            },
-          },
-        ]
-      );
+      openPatientFile(appt);
     }
   };
 

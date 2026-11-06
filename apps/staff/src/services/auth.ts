@@ -4,6 +4,7 @@ import { API_BASE_URL } from "../config/api";
 const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
 const ASSIGNED_BRANCH_KEY = "spiritualhomeo_user_assigned_branch";
+const ACTIVE_DOCTOR_KEY = "spiritualhomeo_active_doctor";
 const USER_ROLE_KEY = "spiritualhomeo_user_role";
 
 /**
@@ -37,6 +38,30 @@ export async function clearAllAuthData(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(ASSIGNED_BRANCH_KEY);
   } catch {}
+  try {
+    await SecureStore.deleteItemAsync(ACTIVE_DOCTOR_KEY);
+  } catch {}
+}
+
+/**
+ * Save active doctor details (for doctor sessions)
+ */
+export async function saveActiveDoctor(doctor: any): Promise<void> {
+  await SecureStore.setItemAsync(ACTIVE_DOCTOR_KEY, JSON.stringify(doctor));
+}
+
+export async function getActiveDoctor(): Promise<any | null> {
+  const raw = await SecureStore.getItemAsync(ACTIVE_DOCTOR_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function removeActiveDoctor(): Promise<void> {
+  await SecureStore.deleteItemAsync(ACTIVE_DOCTOR_KEY);
 }
 
 /**

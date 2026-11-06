@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
 import {
@@ -128,9 +127,13 @@ export default function DoctorPatientListPage() {
                           {p.lastSlot && <span className="text-[10px] text-slate-400 block">@ {p.lastSlot}</span>}
                         </td>
                         <td className="py-2 px-3 text-center">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-100">
-                            {p.totalVisits} {p.totalVisits === 1 ? "Visit" : "Visits"}
-                          </span>
+                          {p.totalVisits > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-100">
+                              {p.totalVisits} {p.totalVisits === 1 ? "Visit" : "Visits"}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">-</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-right">
                           <button

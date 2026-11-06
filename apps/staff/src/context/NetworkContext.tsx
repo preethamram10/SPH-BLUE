@@ -102,8 +102,9 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkConnection]);
 
-  // Periodic heartbeat probe every 6 seconds to detect sudden disconnects
+  // Periodic heartbeat probe every 60 seconds (or 15s if disconnected)
   useEffect(() => {
+    const probeInterval = isOnline ? 60000 : 15000;
     const timer = setInterval(() => {
       probeNetwork().then((online) => {
         if (online !== isOnlineRef.current) {
@@ -115,10 +116,10 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
           setIsOnline(online);
         }
       });
-    }, 6000);
+    }, probeInterval);
 
     return () => clearInterval(timer);
-  }, [probeNetwork]);
+  }, [probeNetwork, isOnline]);
 
   // Animate banner when offline or reconnected
   useEffect(() => {

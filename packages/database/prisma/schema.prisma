@@ -1,12 +1,10 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 enum Role {
   ADMIN
   DOCTOR
@@ -15,13 +13,11 @@ enum Role {
   HR
   PATIENT
 }
-
 enum Gender {
   MALE
   FEMALE
   OTHER
 }
-
 enum AppointmentStatus {
   SCHEDULED
   WAITING
@@ -102,7 +98,6 @@ model PatientProfile {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
-
 model Appointment {
   id          String            @id @default(uuid())
   patientId   String
@@ -202,4 +197,3 @@ model Branch {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
-

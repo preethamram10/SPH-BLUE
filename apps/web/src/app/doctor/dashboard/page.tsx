@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
 import {
   Users,
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   Search,
   RotateCcw,
+  FileText,
 } from "lucide-react";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -24,6 +26,7 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
 );
 
 export default function DoctorDashboardPage() {
+  const router = useRouter();
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
   const [branchName, setBranchName] = useState("KPHB Branch");
   const [selectedDate, setSelectedDate] = useState("");
@@ -81,8 +84,15 @@ export default function DoctorDashboardPage() {
     return () => clearInterval(interval);
   }, [doctorName, branchName, selectedDate]);
 
+  // Patient File Navigation
+  const openPatientFile = (appt: any) => {
+    router.push(
+      `/doctor/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || appt.name)}&phone=${appt.phone || appt.phoneNumber}&registrationId=${appt.registrationId || "SPH-GEN"}&branch=${encodeURIComponent(branchName)}`
+    );
+  };
+
   // Consultation Actions
-  const handleUpdateStatus = async (id: string, action: "START_CONSULTATION" | "COMPLETE_CONSULTATION") => {
+  const handleUpdateStatus = async (id: string, action: "START_CONSULTATION" | "COMPLETE_CONSULTATION", appt?: any) => {
     try {
       const res = await fetch("/api/doctor/appointments", {
         method: "PATCH",
@@ -91,11 +101,10 @@ export default function DoctorDashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setFeedback({
-          type: "success",
-          message: action === "START_CONSULTATION" ? "Consultation started! Patient in cabin." : "Consultation marked as Completed!",
-        });
         fetchDoctorAppointments(selectedDate, true);
+        if (action === "START_CONSULTATION" && appt) {
+          openPatientFile(appt);
+        }
       } else {
         setFeedback({ type: "error", message: data.error || "Failed to update status." });
       }
@@ -363,7 +372,7 @@ export default function DoctorDashboardPage() {
                               {isWaiting && (
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateStatus(appt.id, "START_CONSULTATION")}
+                                  onClick={() => handleUpdateStatus(appt.id, "START_CONSULTATION", appt)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs cursor-pointer transition-all"
                                 >
                                   <Play className="w-3 h-3 fill-current" />
@@ -374,11 +383,11 @@ export default function DoctorDashboardPage() {
                               {isActive && (
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateStatus(appt.id, "COMPLETE_CONSULTATION")}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs cursor-pointer transition-all"
+                                  onClick={() => openPatientFile(appt)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs cursor-pointer transition-all"
                                 >
-                                  <Check className="w-3 h-3 stroke-[3]" />
-                                  <span>Complete</span>
+                                  <FileText className="w-3 h-3" />
+                                  <span>Patient File</span>
                                 </button>
                               )}
 

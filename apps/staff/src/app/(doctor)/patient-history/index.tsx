@@ -1,15 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React from "react";
+import { PatientHistoryView } from "../../../components/patient-history/PatientHistoryView";
+import { DoctorBottomNav } from "../../../components/doctor/DoctorBottomNav";
 
-export default function Screen() {
+export default function DoctorPatientHistoryScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>patient-history</Text>
-    </View>
+    <PatientHistoryView
+      role="DOCTOR"
+      bottomNav={<DoctorBottomNav activeTab="patient-list" />}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' },
-  title: { fontSize: 18, fontWeight: '700', color: '#268ec8' },
-});

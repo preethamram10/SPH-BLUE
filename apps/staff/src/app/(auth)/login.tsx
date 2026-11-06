@@ -15,7 +15,7 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { saveAuthToken, saveActiveBranch, saveUserRole, getAuthToken, getUserRole } from "../../services/auth";
+import { saveAuthToken, saveActiveBranch, saveActiveDoctor, saveUserRole, getAuthToken, getUserRole } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 
 type TabType = "doctor" | "reception" | "admin_hr" | "telecaller";
@@ -52,6 +52,7 @@ export default function StaffLoginScreen() {
   const [otp, setOtp] = useState("");
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
+  const [validatedData, setValidatedData] = useState<any>(null);
 
   // Check persistent session on mount: if already logged in, redirect directly to dashboard
   useEffect(() => {
@@ -125,8 +126,13 @@ export default function StaffLoginScreen() {
         return;
       }
 
+      setValidatedData(data);
+
       if (data.branch) {
         await saveActiveBranch(data.branch);
+      }
+      if (data.doctor) {
+        await saveActiveDoctor(data.doctor);
       }
       setStep("OTP");
       setTimer(30);
@@ -145,6 +151,12 @@ export default function StaffLoginScreen() {
   const handleVerifyOtp = async () => {
     if (!otp || otp.trim().length < 4) {
       Alert.alert("Missing OTP", "Please enter the verification code.");
+      return;
+    }
+
+    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+    if (validatedData?.role && validatedData.role !== expectedRole) {
+      Alert.alert("Role Mismatch", `You are not authorized to log in as ${expectedRole}.`);
       return;
     }
 
@@ -212,6 +224,7 @@ export default function StaffLoginScreen() {
     setActiveTab(tab);
     setStep("INPUT");
     setOtp("");
+    setValidatedData(null);
   };
 
   return (

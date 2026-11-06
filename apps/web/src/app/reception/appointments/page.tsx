@@ -81,17 +81,7 @@ const CONSULTATION_MODES = [
   { id: "Online", label: "Online" },
 ];
 export default function ReceptionAppointmentsPage() {
-  const [branchName, setBranchName] = useState(() => {
-    if (typeof window !== "undefined") {
-      return (
-        localStorage.getItem("user_assigned_branch") ||
-        localStorage.getItem("user_branch") ||
-        localStorage.getItem("branch_name") ||
-        ""
-      );
-    }
-    return "";
-  });
+  const [branchName, setBranchName] = useState("");
   const [branchesList, setBranchesList] = useState<string[]>([]);
   const [userRole, setUserRole] = useState("RECEPTION");
   const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
@@ -112,13 +102,7 @@ export default function ReceptionAppointmentsPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   // Appointment Details
-  const [appointmentDate, setAppointmentDate] = useState(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    return `${d}-${m}-${y}`;
-  });
+  const [appointmentDate, setAppointmentDate] = useState("");
   const [availableDoctors, setAvailableDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorOption | null>(null);
   const [selectedSlot, setSelectedSlot] = useState("");
@@ -137,8 +121,8 @@ export default function ReceptionAppointmentsPage() {
   // Interactive Web Calendar State
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const calendarModalRef = useRef<HTMLDivElement>(null);
-  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
-  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(0);
+  const [calYear, setCalYear] = useState(2026);
 
   // Profiles Modal States (Check Profiles, 10-Digit Auto-Popup, Edit, Merge, Delete)
   const [isProfilesModalOpen, setIsProfilesModalOpen] = useState(false);
@@ -284,6 +268,15 @@ export default function ReceptionAppointmentsPage() {
 
   // Initialize receptionist's own branch & available branches
   useEffect(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    const initialDate = `${d}-${m}-${y}`;
+    setAppointmentDate(initialDate);
+    setCalMonth(now.getMonth());
+    setCalYear(now.getFullYear());
+
     const role = typeof window !== "undefined" ? localStorage.getItem("user_role") || "RECEPTION" : "RECEPTION";
     setUserRole(role);
 
@@ -1299,7 +1292,7 @@ export default function ReceptionAppointmentsPage() {
                   </label>
                   <div className="w-full px-3.5 py-2.5 bg-slate-100/80 border border-slate-200 rounded-xl text-sm font-extrabold text-slate-900 flex items-center gap-2 select-none shadow-sm">
                     <Building2 className="w-4 h-4 text-[#0284c7] shrink-0" />
-                    <span className="truncate">{branchName || "Clinic Branch"}</span>
+                    <span className="truncate" suppressHydrationWarning>{branchName || "Clinic Branch"}</span>
                   </div>
                 </div>
 

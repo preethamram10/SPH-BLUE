@@ -8,86 +8,108 @@ import {
   TextInput,
   Linking,
   BackHandler,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getActiveBranch } from "../../../services/auth";
+import { apiFetch, getActiveBranch } from "../../../services/auth";
+import { ReceptionBottomNav } from "../../../components/reception/ReceptionBottomNav";
 
-const COLORS = {
-  blue: "#268ec8",
-  green: "#a8ce3a",
-  white: "#ffffff",
-  textDark: "#1e293b",
-  textMuted: "#64748b",
-  border: "#e2e8f0",
-  bg: "#f8fafc",
-  cardBg: "#ffffff",
-};
-
-interface FollowUp {
+interface FollowUpItem {
   id: string;
+  appointmentId: string;
   patientName: string;
   mrn: string;
   phone: string;
   doctorName: string;
+  branch: string;
   condition: string;
   dueDate: string;
-  status: "DUE_TODAY" | "OVERDUE" | "CALLED";
+  followUpInterval: string;
+  consultationFee: number;
+  prescriptionImages?: string[];
+  status: "DUE_TODAY" | "OVERDUE" | "UPCOMING" | "CALLED";
 }
 
 export default function ReceptionFollowUpsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeBranch, setActiveBranch] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
 
+  // Date Filter State
+  const todayStr = (() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+  })();
+
+  const [selectedDate, setSelectedDate] = useState<string>("ALL");
+
+  // Generate Quick Date Options (ALL, Today, Next 5 Days)
+  const quickDates = React.useMemo(() => {
+    const dates: Array<{ label: string; date: string }> = [
+      { label: "All", date: "ALL" },
+      { label: "Today", date: todayStr },
+    ];
+
+    const now = new Date();
+    for (let i = 1; i <= 6; i++) {
+      const nextD = new Date(now.getTime() + i * 86400000);
+      const ds = `${String(nextD.getDate()).padStart(2, "0")}-${String(nextD.getMonth() + 1).padStart(2, "0")}-${nextD.getFullYear()}`;
+      const dayName = nextD.toLocaleDateString("en-US", { weekday: "short" });
+      dates.push({ label: `${dayName} (${nextD.getDate()})`, date: ds });
+    }
+    return dates;
+  }, [todayStr]);
+
+  // Load Branch Info
   useEffect(() => {
     getActiveBranch().then((b) => {
       if (b) setActiveBranch(b);
     });
   }, []);
 
-  const [followUps, setFollowUps] = useState<FollowUp[]>([
-    {
-      id: "1",
-      patientName: "Kavitha Reddy",
-      mrn: "SPH-2026-0612",
-      phone: "+91 98490 11223",
-      doctorName: "Dr. Ramesh Gupta",
-      condition: "Chronic Migraine & Sleep Pattern",
-      dueDate: "Today",
-      status: "DUE_TODAY",
-    },
-    {
-      id: "2",
-      patientName: "Rajesh Kumar",
-      mrn: "SPH-2026-0731",
-      phone: "+91 90001 44556",
-      doctorName: "Dr. Sneha Reddy",
-      condition: "Allergic Rhinitis Follow-up",
-      dueDate: "Today",
-      status: "DUE_TODAY",
-    },
-    {
-      id: "3",
-      patientName: "Sunitha Rao",
-      mrn: "SPH-2026-0520",
-      phone: "+91 81211 77889",
-      doctorName: "Dr. Ramesh Gupta",
-      condition: "Thyroid & Weight Management",
-      dueDate: "Yesterday",
-      status: "OVERDUE",
-    },
-  ]);
-
-  const handleMarkCalled = (id: string) => {
-    setFollowUps((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, status: "CALLED" } : f))
-    );
+  // Fetch Follow-ups from Backend
+  const loadFollowUps = async () => {
+    setIsLoading(true);
+    try {
+      const url =
+        selectedDate && selectedDate !== "ALL"
+          ? `/reception/follow-ups?date=${encodeURIComponent(selectedDate)}`
+          : `/reception/follow-ups`;
+      const res = await apiFetch<any>(url);
+      if (res.success && Array.isArray(res.followUps)) {
+        setFollowUps(res.followUps);
+      } else {
+        // Fallback default sample if database empty
+        setFollowUps([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch follow-ups:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  useEffect(() => {
+    loadFollowUps();
+  }, [selectedDate]);
+
   const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
+    if (!phone) return;
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    Linking.openURL(`tel:${clean}`);
+  };
+
+  const handleWhatsApp = (phone: string, patientName: string, doctorName: string, dueDate: string) => {
+    if (!phone) return;
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    const text = encodeURIComponent(
+      `Hello ${patientName},\nThis is Spiritual Homeopathy Clinic. Your follow-up consultation with ${doctorName} is scheduled on ${dueDate}.\nPlease let us know if you would like to confirm your appointment.`
+    );
+    Linking.openURL(`whatsapp://send?phone=+91${clean}&text=${text}`);
   };
 
   const handleBack = () => {
@@ -107,114 +129,212 @@ export default function ReceptionFollowUpsScreen() {
     return () => sub.remove();
   }, [router]);
 
-  const filtered = followUps.filter(
-    (f) =>
-      f.patientName.toLowerCase().includes(search.toLowerCase()) ||
-      f.mrn.toLowerCase().includes(search.toLowerCase()) ||
+  const filtered = followUps.filter((f) => {
+    const q = search.toLowerCase();
+    return (
+      f.patientName.toLowerCase().includes(q) ||
+      f.mrn.toLowerCase().includes(q) ||
       f.phone.includes(search)
-  );
+    );
+  });
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      {/* 1. Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color={COLORS.blue} />
+        <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color="#0f172a" />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Follow-ups</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {activeBranch?.name ? `${activeBranch.name} • Review Schedule` : "Patient Review Schedule"}
+        <View style={{ flex: 1, marginLeft: 8 }}>
+          <Text style={styles.headerTitle}>Patient Follow-ups</Text>
+          <Text style={styles.headerSub}>
+            {(activeBranch?.name || "KPHB Branch").replace(/Spiritual Homeopathy/gi, "").trim()} • Med Req
           </Text>
         </View>
+        <TouchableOpacity style={styles.refreshBtn} onPress={loadFollowUps} activeOpacity={0.7}>
+          <Ionicons name="refresh" size={17} color="#0284c7" />
+        </TouchableOpacity>
       </View>
 
+      {/* 2. Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+        <Ionicons name="search-outline" size={17} color="#94a3b8" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search patient, MRN or condition..."
-          placeholderTextColor={COLORS.textMuted}
+          placeholder="Search by patient name, phone, or Reg ID..."
+          placeholderTextColor="#94a3b8"
           value={search}
           onChangeText={setSearch}
         />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Ionicons name="close-circle" size={17} color="#94a3b8" />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {filtered.map((item) => (
-          <View key={item.id} style={styles.card}>
-            <View style={styles.cardTop}>
-              <View>
-                <Text style={styles.patientName}>{item.patientName}</Text>
-                <Text style={styles.mrnText}>{item.mrn}</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  item.status === "CALLED"
-                    ? styles.statusCalled
-                    : item.status === "OVERDUE"
-                    ? styles.statusOverdue
-                    : styles.statusDue,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusText,
-                    item.status === "CALLED"
-                      ? styles.statusTextCalled
-                      : item.status === "OVERDUE"
-                      ? styles.statusTextOverdue
-                      : styles.statusTextDue,
-                  ]}
-                >
-                  {item.status === "CALLED"
-                    ? "CALLED"
-                    : item.status === "OVERDUE"
-                    ? "OVERDUE"
-                    : "DUE TODAY"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.infoBox}>
-              <Text style={styles.conditionText}>📌 {item.condition}</Text>
-              <Text style={styles.doctorText}>👨‍⚕️ {item.doctorName}</Text>
-            </View>
-
-            <View style={styles.cardFooter}>
+      {/* 3. Horizontal Date Selector Bar */}
+      <View style={styles.dateSelectorContainer}>
+        <View style={styles.dateSelectorHeader}>
+          <Text style={styles.dateSelectorTitle}>Filter by Scheduled Date:</Text>
+          {selectedDate !== "ALL" && (
+            <Text style={styles.activeDateBadgeText}>Selected: {selectedDate}</Text>
+          )}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateChipsRow}>
+          {quickDates.map((item) => {
+            const isSelected = selectedDate === item.date;
+            return (
               <TouchableOpacity
-                style={styles.callButton}
-                onPress={() => handleCall(item.phone)}
-                activeOpacity={0.8}
+                key={item.date}
+                style={[styles.dateChip, isSelected && styles.dateChipActive]}
+                onPress={() => setSelectedDate(item.date)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="call" size={14} color={COLORS.blue} />
-                <Text style={styles.callButtonText}>Call {item.phone}</Text>
+                <Text style={[styles.dateChipText, isSelected && styles.dateChipTextActive]}>
+                  {item.label}
+                </Text>
               </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-              {item.status !== "CALLED" ? (
-                <TouchableOpacity
-                  style={styles.markButton}
-                  onPress={() => handleMarkCalled(item.id)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="checkmark-circle" size={14} color={COLORS.white} />
-                  <Text style={styles.markButtonText}>Mark Called</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.doneTag}>
-                  <Ionicons name="checkmark-done" size={16} color={COLORS.green} />
-                  <Text style={styles.doneTagText}>Confirmed</Text>
-                </View>
-              )}
-            </View>
+      {/* 4. Follow-up List */}
+      <ScrollView style={styles.listContainer} contentContainerStyle={styles.listContent}>
+        {isLoading ? (
+          <View style={styles.emptyStateContainer}>
+            <ActivityIndicator size="large" color="#0284c7" />
+            <Text style={styles.emptySubText}>Loading scheduled follow-ups...</Text>
           </View>
-        ))}
+        ) : filtered.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="calendar-outline" size={44} color="#cbd5e1" />
+            <Text style={styles.emptyTitleText}>No Follow-ups Found</Text>
+            <Text style={styles.emptySubText}>
+              {selectedDate === "ALL"
+                ? "No patients are currently scheduled for follow-up."
+                : `No patients scheduled for follow-up on ${selectedDate}.`}
+            </Text>
+            {selectedDate !== "ALL" && (
+              <TouchableOpacity
+                style={styles.showAllBtn}
+                onPress={() => setSelectedDate("ALL")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.showAllBtnText}>Show All Follow-ups</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {filtered.map((item, index) => {
+              const cleanPhone = item.phone.replace(/\D/g, "").slice(-10);
+              const isToday = item.dueDate === todayStr;
+
+              return (
+                <View key={item.id || index} style={styles.followUpCard}>
+                  {/* Top Row: Name, MRN, Due Date Pill */}
+                  <View style={styles.cardHeaderRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.patientName}>{item.patientName}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                        <View style={styles.mrnBadge}>
+                          <Text style={styles.mrnBadgeText}>{item.mrn}</Text>
+                        </View>
+                        <Text style={styles.phoneText}>{cleanPhone || "No Mobile"}</Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.statusBadge, isToday ? styles.statusToday : styles.statusUpcoming]}>
+                      <Ionicons
+                        name={isToday ? "time" : "calendar-outline"}
+                        size={11}
+                        color={isToday ? "#b45309" : "#0369a1"}
+                      />
+                      <Text style={[styles.statusText, isToday ? styles.statusTextToday : styles.statusTextUpcoming]}>
+                        {isToday ? "Due Today" : item.dueDate}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Middle Row: Doctor & Interval Chip */}
+                  <View style={styles.cardInfoRow}>
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Doctor</Text>
+                      <Text style={styles.infoValue} numberOfLines={1}>
+                        {item.doctorName.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName}`}
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Interval</Text>
+                      <View style={styles.intervalChipSmall}>
+                        <Text style={styles.intervalChipSmallText}>{item.followUpInterval}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Branch</Text>
+                      <Text style={styles.infoValue} numberOfLines={1}>
+                        {item.branch}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Actions Row: Call, WhatsApp, Open Patient File */}
+                  <View style={styles.cardActionsRow}>
+                    <TouchableOpacity
+                      style={styles.patientFileLinkBtn}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(reception)/patient-file" as any,
+                          params: {
+                            id: item.appointmentId || item.id,
+                            name: item.patientName,
+                            phone: item.phone,
+                            registrationId: item.mrn,
+                            branch: item.branch,
+                          },
+                        })
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="document-text-outline" size={13} color="#0284c7" />
+                      <Text style={styles.patientFileLinkText}>Patient File</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.contactActionsRow}>
+                      <TouchableOpacity
+                        style={styles.callIconBtn}
+                        onPress={() => handleCall(item.phone)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="call" size={14} color="#ffffff" />
+                        <Text style={styles.callBtnText}>Call</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.whatsAppIconBtn}
+                        onPress={() =>
+                          handleWhatsApp(item.phone, item.patientName, item.doctorName, item.dueDate)
+                        }
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
+                        <Text style={styles.whatsAppBtnText}>WhatsApp</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
+
+      {/* 5. Fixed Bottom Navigation Bar */}
+      <ReceptionBottomNav activeTab="med-req" />
     </SafeAreaView>
   );
 }
@@ -222,177 +342,305 @@ export default function ReceptionFollowUpsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#ffffff",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    borderBottomColor: "#f1f5f9",
+    backgroundColor: "#ffffff",
   },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#f0f6fc",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  headerTitleContainer: {
-    flex: 1,
+  backBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#f8fafc",
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "800",
-    color: COLORS.textDark,
+    color: "#0f172a",
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginTop: 1,
+  headerSub: {
+    fontSize: 11,
+    color: "#64748b",
+  },
+  refreshBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    height: 42,
-  },
-  searchIcon: {
-    marginRight: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
-    fontSize: 13,
-    color: COLORS.textDark,
+    fontSize: 12.5,
+    color: "#0f172a",
+    padding: 0,
   },
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
+  dateSelectorContainer: {
+    marginTop: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
-  content: {
-    padding: 16,
-    paddingBottom: 30,
-  },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 12,
-    elevation: 1,
-  },
-  cardTop: {
+  dateSelectorHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    marginBottom: 6,
+  },
+  dateSelectorTitle: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  activeDateBadgeText: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
+  dateChipsRow: {
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  dateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  dateChipActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  dateChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  dateChipTextActive: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  listContainer: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+  listContent: {
+    padding: 10,
+    paddingBottom: 30,
+  },
+  emptyStateContainer: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitleText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#334155",
+    marginTop: 10,
+  },
+  emptySubText: {
+    fontSize: 11.5,
+    color: "#94a3b8",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  showAllBtn: {
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  showAllBtnText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#0284c7",
+  },
+  followUpCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    width: "100%",
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 10,
+    justifyContent: "space-between",
   },
   patientName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
-    color: COLORS.textDark,
+    color: "#0f172a",
   },
-  mrnText: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    color: COLORS.textMuted,
-    marginTop: 2,
+  mrnBadge: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  mrnBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
+  phoneText: {
+    fontSize: 11,
+    color: "#64748b",
   },
   statusBadge: {
-    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 8,
+    borderRadius: 6,
   },
-  statusDue: {
+  statusToday: {
     backgroundColor: "#fef3c7",
+    borderWidth: 1,
+    borderColor: "#fde68a",
   },
-  statusOverdue: {
-    backgroundColor: "#ffe4e6",
-  },
-  statusCalled: {
-    backgroundColor: "#dcfce7",
+  statusUpcoming: {
+    backgroundColor: "#e0f2fe",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
   },
   statusText: {
     fontSize: 10,
     fontWeight: "800",
   },
-  statusTextDue: {
+  statusTextToday: {
     color: "#b45309",
   },
-  statusTextOverdue: {
-    color: "#e11d48",
+  statusTextUpcoming: {
+    color: "#0369a1",
   },
-  statusTextCalled: {
-    color: "#15803d",
-  },
-  infoBox: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
-  },
-  conditionText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: COLORS.textDark,
-    marginBottom: 4,
-  },
-  doctorText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  cardFooter: {
+  cardInfoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  infoCol: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 9.5,
+    color: "#94a3b8",
+    fontWeight: "600",
+  },
+  infoValue: {
+    fontSize: 11,
+    color: "#334155",
+    fontWeight: "700",
+    marginTop: 1,
+  },
+  intervalChipSmall: {
+    backgroundColor: "#dbeafe",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    marginTop: 1,
+  },
+  intervalChipSmallText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#1d4ed8",
+  },
+  cardActionsRow: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingTop: 10,
+    justifyContent: "space-between",
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#f1f5f9",
   },
-  callButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  callButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.blue,
-  },
-  markButton: {
+  patientFileLinkBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: COLORS.green,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    backgroundColor: "#f0f9ff",
   },
-  markButtonText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: "800",
+  patientFileLinkText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0284c7",
   },
-  doneTag: {
+  contactActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  callIconBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
   },
-  doneTagText: {
-    fontSize: 12,
+  callBtnText: {
+    fontSize: 11,
     fontWeight: "700",
-    color: COLORS.green,
+    color: "#ffffff",
+  },
+  whatsAppIconBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#16a34a",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  whatsAppBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
   },
 });
-

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 import {
   FileCheck2,
@@ -12,62 +12,72 @@ import {
   Building2,
   Calendar,
   AlertCircle,
+  RefreshCw,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function FeeRequestsPage() {
-  const [activeTab, setActiveTab] = useState("Pending");
+  const [activeTab, setActiveTab] = useState<"Pending" | "Approved" | "Declined" | "All">("Pending");
+  const [liveDiscounts, setLiveDiscounts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const [requests, setRequests] = useState([
-    {
-      id: "FR-801",
-      patientName: "G. Venkateswarlu",
-      phone: "+91 9849112233",
-      branch: "KPHB Branch",
-      originalFee: "₹850",
-      requestedFee: "₹500",
-      discount: "₹350 (41% Off)",
-      reason: "BPL card holder, long term chronic arthritis case",
-      requestedBy: "Anil Kumar (Reception)",
-      status: "Pending",
-      time: "Today, 10:15 AM",
-    },
-    {
-      id: "FR-802",
-      patientName: "M. Lakshmi",
-      phone: "+91 9701445566",
-      branch: "Chandanagar Branch",
-      originalFee: "₹1,200",
-      requestedFee: "₹800",
-      discount: "₹400 (33% Off)",
-      reason: "Doctor recommended concession for pediatric follow-up",
-      requestedBy: "Ashwini Begari (Reception)",
-      status: "Pending",
-      time: "Today, 11:30 AM",
-    },
-    {
-      id: "FR-803",
-      patientName: "S. Naveen",
-      phone: "+91 9988112233",
-      branch: "Nallagandla Branch",
-      originalFee: "₹15,000",
-      requestedFee: "₹12,000",
-      discount: "₹3,000 (20% Off)",
-      reason: "Annual chronic care package upfront payment discount",
-      requestedBy: "Vaishnavi Peri (Staff)",
-      status: "Approved",
-      time: "Yesterday, 04:00 PM",
-    },
-  ]);
-
-  const handleAction = (id: string, newStatus: "Approved" | "Declined") => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
-    );
+  // Fetch pending live discount requests
+  const fetchDiscounts = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/admin/discounts");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.discounts)) {
+        setLiveDiscounts(data.discounts);
+      }
+    } catch (err) {
+      console.error("Failed to load live discounts:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const filtered = requests.filter((r) =>
-    activeTab === "All" ? true : r.status === activeTab
-  );
+  useEffect(() => {
+    fetchDiscounts();
+  }, []);
+
+  const handleAction = async (apptId: string, action: "ACCEPT" | "REJECT", discountAmt: number) => {
+    setProcessingId(apptId);
+    try {
+      const res = await fetch("/api/admin/discounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: apptId,
+          action,
+          approvedAmount: action === "ACCEPT" ? discountAmt : 0,
+          notes: action === "ACCEPT" ? "Approved by Admin" : "Declined by Admin",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Discount request ${action === "ACCEPT" ? "APPROVED" : "REJECTED"} successfully!`);
+        fetchDiscounts();
+      } else {
+        alert(data.error || "Failed to update discount request.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Network error.");
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const filtered = liveDiscounts.filter((d) => {
+    const status = d.discountStatus || "PENDING";
+    if (activeTab === "All") return true;
+    if (activeTab === "Pending") return status === "PENDING";
+    if (activeTab === "Approved") return status === "APPROVED";
+    if (activeTab === "Declined") return status === "REJECTED";
+    return true;
+  });
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
@@ -81,27 +91,41 @@ export default function FeeRequestsPage() {
                 <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
                   <FileCheck2 className="w-4 h-4" />
                 </div>
-                <h1 className="text-base font-extrabold text-slate-900">Fee Concession &amp; Discount Requests</h1>
+                <h1 className="text-base font-extrabold text-slate-900">
+                  Medical Discount &amp; Fee Concession Requests
+                </h1>
               </div>
               <p className="text-[11.5px] text-slate-500 mt-0.5">
-                Review and approve special price exemptions submitted by receptionists
+                Review and approve discount requests submitted by Reception across all clinic branches
               </p>
             </div>
 
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-              {["Pending", "Approved", "Declined", "All"].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === tab
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-500 hover:text-slate-800"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={fetchDiscounts}
+                disabled={isLoading}
+                className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors shadow-2xs"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+              </button>
+
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                {(["Pending", "Approved", "Declined", "All"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === tab
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </header>
@@ -113,76 +137,96 @@ export default function FeeRequestsPage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/70 text-[10.5px] font-extrabold text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">Patient &amp; Phone</th>
-                    <th className="py-3 px-4">Branch &amp; Staff</th>
-                    <th className="py-3 px-4">Fee Structure</th>
-                    <th className="py-3 px-4">Reason / Notes</th>
+                    <th className="py-3 px-4">Branch &amp; Doctor</th>
+                    <th className="py-3 px-4">Target Total &amp; Discount</th>
+                    <th className="py-3 px-4">Reason / Reception Notes</th>
                     <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Admin Action</th>
+                    <th className="py-3 px-4 text-right">Admin / HR Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {filtered.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-12 text-center text-slate-400 text-xs">
-                        No fee concession requests found under &quot;{activeTab}&quot;.
+                        {isLoading ? "Loading requests..." : `No medical discount requests found under "${activeTab}".`}
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <p className="font-bold text-slate-900">{r.patientName}</p>
-                          <p className="text-[11px] text-slate-400">{r.phone}</p>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <p className="font-bold text-slate-800">{r.branch}</p>
-                          <p className="text-[11px] text-slate-500">{r.requestedBy}</p>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2">
-                            <span className="line-through text-slate-400 text-[11px]">{r.originalFee}</span>
-                            <span className="font-extrabold text-emerald-600 text-sm">{r.requestedFee}</span>
-                          </div>
-                          <span className="text-[10px] font-bold text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded">
-                            {r.discount}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-600 max-w-xs">{r.reason}</td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${
-                              r.status === "Approved"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : r.status === "Declined"
-                                ? "bg-rose-50 text-rose-700 border-rose-200"
-                                : "bg-amber-50 text-amber-700 border-amber-200"
-                            }`}
-                          >
-                            {r.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          {r.status === "Pending" ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleAction(r.id, "Approved")}
-                                className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors"
-                              >
-                                Approve
-                              </button>
-                              <button
-                                onClick={() => handleAction(r.id, "Declined")}
-                                className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold hover:bg-rose-100 transition-colors"
-                              >
-                                Decline
-                              </button>
+                    filtered.map((d) => {
+                      const status = d.discountStatus || "PENDING";
+                      const discountAmt = d.discountRequested || 0;
+                      const targetAmt = d.consultationFee || 0;
+                      const netAmt = Math.max(0, targetAmt - discountAmt);
+
+                      return (
+                        <tr key={d.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <p className="font-bold text-slate-900">{d.patientName || "N/A"}</p>
+                            <p className="text-[11px] text-slate-400">{d.phone || d.phoneNumber || "No Phone"}</p>
+                            <span className="inline-block mt-0.5 text-[9.5px] font-mono px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">
+                              {d.registrationId || "ID: N/A"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <p className="font-bold text-slate-800">{d.branch || "All Branches"}</p>
+                            <p className="text-[11px] text-slate-500">Dr. {d.doctorName || "Doctor"}</p>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="line-through text-slate-400 text-[11px]">₹{targetAmt}</span>
+                              <span className="font-extrabold text-emerald-600 text-sm">₹{netAmt}</span>
                             </div>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 italic">Resolved</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                              Discount: ₹{discountAmt}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 max-w-xs">
+                            <p className="text-xs">{d.discountNotes || "No notes provided by reception."}</p>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${
+                                status === "APPROVED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : status === "REJECTED"
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}
+                            >
+                              {status === "APPROVED"
+                                ? "Approved ✓"
+                                : status === "REJECTED"
+                                ? "Declined ✕"
+                                : "Pending Approval"}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {status === "PENDING" ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={processingId === d.id}
+                                  onClick={() => handleAction(d.id, "ACCEPT", discountAmt)}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                >
+                                  {processingId === d.id ? "..." : "Accept"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={processingId === d.id}
+                                  onClick={() => handleAction(d.id, "REJECT", 0)}
+                                  className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                  {processingId === d.id ? "..." : "Reject"}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-semibold italic">Resolved</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -193,4 +237,3 @@ export default function FeeRequestsPage() {
     </div>
   );
 }
-

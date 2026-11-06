@@ -1,207 +1,95 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ReceptionSidebar from "@/components/reception/ReceptionSidebar";
-import {
-  Sparkles,
-  CheckCircle2,
-  Clock,
-  User,
-  ShieldCheck,
-  AlertTriangle,
-  RotateCcw,
-} from "lucide-react";
-
-interface CleaningTask {
-  id: string;
-  category: "Morning Routine" | "OPD & Rooms" | "Sanitization & Hygiene" | "Evening Closing";
-  title: string;
-  description: string;
-  isDone: boolean;
-  doneAt?: string;
-}
+import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
+import { Sparkles, Calendar, Clock, CheckCircle2, AlertTriangle, Building2 } from "lucide-react";
+import { getTodayDDMMYYYY } from "@/utils/cleaningDate";
 
 export default function ReceptionBranchCleaningPage() {
-  const [branchName, setBranchName] = useState("Spiritual Homeopathy Clinic");
+  const [branchName, setBranchName] = useState("Kphb");
+  const [loading, setLoading] = useState(true);
+  const [activeTask, setActiveTask] = useState<any>(null);
 
-  React.useEffect(() => {
-    const saved = localStorage.getItem("branch_name");
+  useEffect(() => {
+    const saved = localStorage.getItem("branch_name") || localStorage.getItem("user_branch");
     if (saved) setBranchName(saved);
   }, []);
-  const [tasks, setTasks] = useState<CleaningTask[]>([
-    {
-      id: "1",
-      category: "Morning Routine",
-      title: "Clinic Floor Mopping & Sanitization",
-      description: "Mopped with hospital-grade disinfectant solution before OPD opening",
-      isDone: true,
-      doneAt: "08:45 AM",
-    },
-    {
-      id: "2",
-      category: "Morning Routine",
-      title: "Reception Front Desk & Terminal Disinfection",
-      description: "Counter tops, keyboard, mouse & payment POS sanitized",
-      isDone: true,
-      doneAt: "08:50 AM",
-    },
-    {
-      id: "3",
-      category: "OPD & Rooms",
-      title: "Doctor Consultation Rooms 1 & 2 Prepared",
-      description: "Stethoscope, examination bed fresh sheet & doctor prescription pads ready",
-      isDone: true,
-      doneAt: "09:00 AM",
-    },
-    {
-      id: "4",
-      category: "Sanitization & Hygiene",
-      title: "Drinking Water Dispenser & Cups Refilled",
-      description: "Mineral water jar checked, disposable paper cups restocked",
-      isDone: true,
-      doneAt: "09:05 AM",
-    },
-    {
-      id: "5",
-      category: "Sanitization & Hygiene",
-      title: "Restrooms Cleaned, Handwash & Towels Restocked",
-      description: "Restroom tiles disinfected, liquid soap refill and air freshener verified",
-      isDone: false,
-    },
-    {
-      id: "6",
-      category: "Sanitization & Hygiene",
-      title: "Patient Waiting Room Chairs Sanitized",
-      description: "Wiped down all 16 waiting lobby chairs with alcohol wipes",
-      isDone: false,
-    },
-    {
-      id: "7",
-      category: "Evening Closing",
-      title: "Medical Waste Disposal & Trash Clearance",
-      description: "Clinical waste securely bagged and disposed per protocol",
-      isDone: false,
-    },
-    {
-      id: "8",
-      category: "Evening Closing",
-      title: "All Lights, AC & Consultation Rooms Power Off",
-      description: "Main clinic electrical switches verified before lockup",
-      isDone: false,
-    },
-  ]);
 
-  const toggleTask = (id: string) => {
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              isDone: !t.isDone,
-              doneAt: !t.isDone ? now : undefined,
-            }
-          : t
-      )
-    );
+  const checkTask = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/cleaning/lockout?branchName=${encodeURIComponent(branchName)}`);
+      const data = await res.json();
+      if (data.success && data.task) {
+        setActiveTask(data.task);
+      } else {
+        setActiveTask(null);
+      }
+    } catch (err) {
+      console.error("Failed to check cleaning audit:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const completedCount = tasks.filter((t) => t.isDone).length;
-  const progressPercent = Math.round((completedCount / tasks.length) * 100);
+  useEffect(() => {
+    if (branchName) checkTask();
+  }, [branchName]);
 
   return (
-    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden">
+    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
       <ReceptionSidebar activePage="branch-cleaning" />
 
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
-          <div className="flex items-center justify-between">
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
+        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-4 shadow-xs flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
+              <Sparkles className="w-4 h-4" />
+            </div>
             <div>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#268ec8]" />
-                <h2 className="text-xl font-bold text-slate-900">Branch Cleaning &amp; Hygiene</h2>
-                <span className="bg-[#a8ce3a]/20 text-[#268ec8] font-bold text-xs px-2.5 py-0.5 rounded-full border border-[#a8ce3a]/40">
-                  {progressPercent}% Completed
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {branchName} • Daily clinic housekeeping protocol, OPD sanitation &amp; inspection checklist
+              <h1 className="text-base font-extrabold text-slate-900">
+                Daily Branch Cleaning &amp; Hygiene Audit
+              </h1>
+              <p className="text-[11.5px] text-slate-500">
+                Upload photos for each allocated area and send for Admin / HR verification
               </p>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-semibold">
-                {completedCount} of {tasks.length} Tasks Done
-              </span>
-            </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-700">
+            <Building2 className="w-3.5 h-3.5 text-blue-600" />
+            <span>{branchName}</span>
           </div>
         </header>
 
-        <main className="flex-1 px-6 py-6 max-w-5xl w-full mx-auto space-y-6">
-          {/* Progress Bar Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Today&apos;s Hygiene Score
-              </span>
-              <span className="text-sm font-extrabold text-[#268ec8]">{progressPercent}%</span>
+        <div className="p-6">
+          {loading ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 font-bold">
+              Loading cleaning audit...
             </div>
-            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-[#268ec8] to-[#a8ce3a] h-full transition-all duration-500 rounded-full"
-                style={{ width: `${progressPercent}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Checklist Items */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                onClick={() => toggleTask(task.id)}
-                className={`p-4 flex items-start gap-3.5 cursor-pointer hover:bg-slate-50/80 transition-colors ${
-                  task.isDone ? "bg-emerald-50/20" : ""
-                }`}
-              >
-                <button
-                  type="button"
-                  className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border transition-all ${
-                    task.isDone
-                      ? "bg-[#a8ce3a] border-[#a8ce3a] text-white shadow-xs"
-                      : "border-slate-300 bg-white hover:border-[#268ec8]"
-                  }`}
-                >
-                  {task.isDone && <CheckCircle2 className="w-4 h-4" />}
-                </button>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span
-                      className={`text-xs font-bold ${
-                        task.isDone ? "line-through text-slate-400" : "text-slate-900"
-                      }`}
-                    >
-                      {task.title}
-                    </span>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                      {task.category}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500">{task.description}</p>
-                </div>
-
-                {task.doneAt && (
-                  <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md whitespace-nowrap">
-                    Done at {task.doneAt}
-                  </span>
-                )}
+          ) : activeTask ? (
+            <ReceptionCleaningLockoutView
+              initialTask={activeTask}
+              branchName={branchName}
+              onUnlocked={() => checkTask()}
+              isFullLockoutScreen={false}
+            />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-12 text-center max-w-xl mx-auto space-y-4 shadow-xs">
+              <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-8 h-8" />
               </div>
-            ))}
-          </div>
-        </main>
-      </div>
+              <h3 className="text-base font-extrabold text-slate-900">
+                No Mandatory Cleaning Audit Pending
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                There is currently no pending or rejected cleaning task assigned for <strong>{branchName}</strong> on today&apos;s date ({getTodayDDMMYYYY()}). When Admin or HR assigns a cleaning audit, the required inspection areas will appear here for photo upload.
+              </p>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
-

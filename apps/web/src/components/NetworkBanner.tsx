@@ -9,6 +9,7 @@ export default function NetworkBanner() {
   const [isChecking, setIsChecking] = useState(false);
 
   const checkConnectivity = async () => {
+    if (typeof document !== "undefined" && document.hidden) return;
     setIsChecking(true);
     try {
       const res = await fetch(`/api/health?_t=${Date.now()}`, {
@@ -44,17 +45,26 @@ export default function NetworkBanner() {
       setIsOnline(false);
     };
 
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        checkConnectivity();
+      }
+    };
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Periodic heartbeat every 8 seconds
+    // Periodic heartbeat every 60 seconds (or 15s if currently offline)
+    const intervalTime = isOnline ? 60000 : 15000;
     const interval = setInterval(() => {
       checkConnectivity();
-    }, 8000);
+    }, intervalTime);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(interval);
     };
   }, [isOnline]);

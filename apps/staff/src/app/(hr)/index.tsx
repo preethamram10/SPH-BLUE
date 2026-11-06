@@ -44,6 +44,13 @@ export default function HRDashboard() {
           <Text style={styles.menuTitle}>👥 Staff Directory</Text>
           <Text style={styles.menuDesc}>Employee profiles, contact details & shifts</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push("/(hr)/branch-cleaning" as any)}
+        >
+          <Text style={styles.menuTitle}>✨ Branch Cleaning &amp; Hygiene Audits</Text>
+          <Text style={styles.menuDesc}>Schedule cleaning dates, review photos &amp; verify</Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>

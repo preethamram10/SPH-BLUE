@@ -19,12 +19,16 @@ declare global {
   var __sphAppointmentsStore: any[] | undefined;
   // eslint-disable-next-line no-var
   var __sphRegistrationSequencesStore: Record<string, number> | undefined;
+  // eslint-disable-next-line no-var
+  var __sphBranchTargetsStore: any[] | undefined;
+  // eslint-disable-next-line no-var
+  var __sphCleaningTasksStore: any[] | undefined;
 }
 
 export const prisma =
   global.prisma ||
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: process.env.PRISMA_LOG === "true" ? ["query", "error", "warn"] : [],
   });
 
 if (process.env.NODE_ENV !== "production") {
@@ -292,7 +296,7 @@ export const branchService = {
 export interface EmployeeRecord {
   id: string;
   name: string;
-  category: "STAFF" | "DOCTOR" | "HR";
+  category: "STAFF" | "DOCTOR" | "HR" | "RECEPTION" | "TELECALLER" | "ADMIN" | string;
   doctorCategory?: "HEAD" | "EMPLOYEE";
   email: string;
   password?: string;
@@ -1039,7 +1043,7 @@ export interface AppointmentRecord {
   timeSlot: string;
   branch: string;
   isReback: boolean;
-  status: "SCHEDULED" | "WAITING" | "IN_CONSULTATION" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+  status: "SCHEDULED" | "WAITING" | "IN_CONSULTATION" | "COLLECT_FEE" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   notes?: string;
   createdAt: string;
   isDeleted?: boolean;
@@ -1047,6 +1051,31 @@ export interface AppointmentRecord {
   deletedBy?: string;
   deletedRole?: "RECEPTION" | "ADMIN";
   deletedReason?: string;
+  // Patient File & Clinical Consultation fields
+  diagnosisNotes?: string;
+  prescriptionImages?: string[];
+  followUpInterval?: string;
+  followUpDate?: string;
+  consultationFee?: number;
+  dietPlan?: string;
+  isSentToReception?: boolean;
+  isFeeCollected?: boolean;
+  medicineFee?: number;
+  dietPlanFee?: number;
+  totalAmountDue?: number;
+  paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP";
+  medicinesList?: Array<{
+    name: string;
+    type: string;
+    timing: string;
+    amount: number;
+  }>;
+  medicineDuration?: string;
+  discountRequested?: number;
+  discountApproved?: number;
+  discountNotes?: string;
+  discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  paidAt?: string;
 }
 
 function getPatientsCachePath(): string {
@@ -1610,6 +1639,15 @@ export const appointmentService = {
   },
 
   /**
+   * Retrieves a single appointment by id or token.
+   */
+  async getAppointmentById(id: string): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    return appt || null;
+  },
+
+  /**
    * Updates an appointment's status (e.g. IN_CONSULTATION, COMPLETED).
    */
   async updateAppointmentStatus(id: string, status: AppointmentRecord["status"]): Promise<AppointmentRecord | null> {
@@ -1617,6 +1655,144 @@ export const appointmentService = {
     const appt = store.find((a) => a.id === id || a.token === id);
     if (!appt) return null;
     appt.status = status;
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
+  },
+
+  /**
+   * Records payment details, fees, itemized medicines, and marks appointment COMPLETED.
+   */
+  async recordAppointmentPayment(
+    id: string,
+    data: {
+      consultationFee?: number;
+      medicineFee?: number;
+      dietPlanFee?: number;
+      totalAmountDue?: number;
+      paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP";
+      medicinesList?: Array<{
+        name: string;
+        type: string;
+        timing: string;
+        amount: number;
+      }>;
+      medicineDuration?: string;
+      discountRequested?: number;
+      discountApproved?: number;
+      discountNotes?: string;
+      discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+    }
+  ): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+
+    if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
+    if (data.medicineFee !== undefined) appt.medicineFee = data.medicineFee;
+    if (data.dietPlanFee !== undefined) appt.dietPlanFee = data.dietPlanFee;
+    if (data.totalAmountDue !== undefined) appt.totalAmountDue = data.totalAmountDue;
+    if (data.paymentMethod !== undefined) appt.paymentMethod = data.paymentMethod;
+    if (data.medicinesList !== undefined) appt.medicinesList = data.medicinesList;
+    if (data.medicineDuration !== undefined) appt.medicineDuration = data.medicineDuration;
+    if (data.discountRequested !== undefined) appt.discountRequested = data.discountRequested;
+    if (data.discountApproved !== undefined) appt.discountApproved = data.discountApproved;
+    if (data.discountNotes !== undefined) appt.discountNotes = data.discountNotes;
+    if (data.discountStatus !== undefined) appt.discountStatus = data.discountStatus;
+
+    appt.status = "COMPLETED";
+    appt.isFeeCollected = true;
+    appt.paidAt = new Date().toISOString();
+
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
+  },
+
+  /**
+   * Requests a medicine discount for HR/Admin approval.
+   */
+  async requestMedicineDiscount(
+    id: string,
+    data: { discountAmount: number; notes: string }
+  ): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+
+    appt.discountRequested = data.discountAmount;
+    appt.discountNotes = data.notes;
+    appt.discountStatus = "PENDING";
+
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
+  },
+
+  /**
+   * HR or Admin responds (ACCEPT or REJECT) to a pending medicine discount request.
+   */
+  async respondMedicineDiscount(
+    id: string,
+    data: { action: "ACCEPT" | "REJECT"; approvedAmount?: number; notes?: string }
+  ): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+
+    if (data.action === "ACCEPT") {
+      appt.discountStatus = "APPROVED";
+      appt.discountApproved = data.approvedAmount !== undefined ? data.approvedAmount : (appt.discountRequested || 0);
+    } else {
+      appt.discountStatus = "REJECTED";
+      appt.discountApproved = 0;
+    }
+    if (data.notes) {
+      appt.discountNotes = `${appt.discountNotes || ""} | HR/Admin Note: ${data.notes}`.trim();
+    }
+
+    global.__sphAppointmentsStore = store;
+    saveAppointmentsToDisk(store);
+    return appt;
+  },
+
+  /**
+   * Returns all pending discount requests for HR / Admin.
+   */
+  async getPendingDiscounts(): Promise<AppointmentRecord[]> {
+    const store = getAppointmentsStore();
+    return store.filter((a) => a.discountStatus === "PENDING" && !a.isDeleted);
+  },
+
+  /**
+   * Updates clinical patient file details and hands off to reception.
+   */
+  async updatePatientFile(
+    id: string,
+    data: {
+      diagnosisNotes?: string;
+      prescriptionImages?: string[];
+      followUpInterval?: string;
+      followUpDate?: string;
+      consultationFee?: number;
+      dietPlan?: string;
+      isSentToReception?: boolean;
+      status?: AppointmentRecord["status"];
+    }
+  ): Promise<AppointmentRecord | null> {
+    const store = getAppointmentsStore();
+    const appt = store.find((a) => a.id === id || a.token === id);
+    if (!appt) return null;
+
+    if (data.diagnosisNotes !== undefined) appt.diagnosisNotes = data.diagnosisNotes;
+    if (data.prescriptionImages !== undefined) appt.prescriptionImages = data.prescriptionImages;
+    if (data.followUpInterval !== undefined) appt.followUpInterval = data.followUpInterval;
+    if (data.followUpDate !== undefined) appt.followUpDate = data.followUpDate;
+    if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
+    if (data.dietPlan !== undefined) appt.dietPlan = data.dietPlan;
+    if (data.isSentToReception !== undefined) appt.isSentToReception = data.isSentToReception;
+    if (data.status !== undefined) appt.status = data.status;
+
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
     return appt;
@@ -2070,6 +2246,762 @@ export const registrationSequenceService = {
     saveRegistrationSequencesToDisk(store);
   },
 };
+
+// ============================================================================
+// 10. BRANCH TARGET MANAGEMENT SERVICE
+// ============================================================================
+
+export interface BranchTargetRecord {
+  id: string;
+  branch: string;
+  monthYear: string; // format "YYYY-MM" e.g. "2026-11"
+  targetAmount: number;
+  setByRole: "ADMIN" | "HR";
+  setByName?: string;
+  setAt: string;
+  updatedAt: string;
+  hrLocked?: boolean;
+}
+
+function getBranchTargetsCachePath(): string {
+  const rootCache = path.join(process.cwd(), "..", "..", ".cache");
+  if (!fs.existsSync(rootCache)) {
+    fs.mkdirSync(rootCache, { recursive: true });
+  }
+  return path.join(rootCache, "branch_targets_store.json");
+}
+
+function loadBranchTargetsFromDisk(): BranchTargetRecord[] {
+  try {
+    const file = getBranchTargetsCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to load branch targets from cache:", err);
+  }
+  return [];
+}
+
+function saveBranchTargetsToDisk(data: BranchTargetRecord[]): void {
+  const file = getBranchTargetsCachePath();
+  safeAtomicWrite(file, data);
+}
+
+function getBranchTargetsStore(): BranchTargetRecord[] {
+  if (!global.__sphBranchTargetsStore) {
+    global.__sphBranchTargetsStore = loadBranchTargetsFromDisk();
+  }
+  return global.__sphBranchTargetsStore;
+}
+
+function getMonthWindowInfo() {
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth();
+  const currentMonthKey = `${curYear}-${String(curMonth + 1).padStart(2, "0")}`;
+
+  const nextDate = new Date(curYear, curMonth + 1, 1);
+  const nextMonthKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
+
+  const daysInCurrentMonth = new Date(curYear, curMonth + 1, 0).getDate();
+  const currentDay = now.getDate();
+  // Enabled during the last 3 days of the current month (e.g., days 28-30 in a 30-day month)
+  const isNextMonthWindowOpen = currentDay >= daysInCurrentMonth - 2;
+  const daysUntilNextMonthWindow = Math.max(0, daysInCurrentMonth - 2 - currentDay);
+
+  return {
+    currentMonthKey,
+    nextMonthKey,
+    daysInCurrentMonth,
+    currentDay,
+    isNextMonthWindowOpen,
+    daysUntilNextMonthWindow,
+  };
+}
+
+export const branchTargetService = {
+  getMonthWindowInfo,
+
+  async canSetTarget(
+    monthYear: string,
+    role: "ADMIN" | "HR",
+    branch: string
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const info = getMonthWindowInfo();
+    const cleanBranch = normalizeBranchName(branch);
+    const store = getBranchTargetsStore();
+    const existing = store.find(
+      (t) => normalizeBranchName(t.branch) === cleanBranch && t.monthYear === monthYear
+    );
+
+    // 1. Next Month Check: Must be within 3 days before month end
+    if (monthYear === info.nextMonthKey) {
+      if (!info.isNextMonthWindowOpen) {
+        return {
+          allowed: false,
+          reason: `Next month (${monthYear}) target can only be set during the last 3 days of the current month (in ${info.daysUntilNextMonthWindow} day(s)).`,
+        };
+      }
+    }
+
+    // 2. Future Month (beyond next month) is not allowed yet
+    if (monthYear > info.nextMonthKey) {
+      return {
+        allowed: false,
+        reason: "Targets cannot be set more than one month in advance.",
+      };
+    }
+
+    // 3. HR Specific Rule: HR can set only ONCE per month
+    if (role === "HR") {
+      if (existing?.hrLocked) {
+        return {
+          allowed: false,
+          reason: "HR can only set the target once per month for this branch. Only Admin can update it now.",
+        };
+      }
+      // HR cannot edit past months
+      if (monthYear < info.currentMonthKey) {
+        return {
+          allowed: false,
+          reason: "HR cannot edit targets for past months. Only Admin can modify past targets.",
+        };
+      }
+    }
+
+    // 4. Admin can set or change targets at any time
+    return { allowed: true };
+  },
+
+  async setBranchTarget(data: {
+    branch: string;
+    monthYear: string;
+    targetAmount: number;
+    role: "ADMIN" | "HR";
+    userName?: string;
+  }): Promise<{ success: boolean; target?: BranchTargetRecord; error?: string }> {
+    const { branch, monthYear, targetAmount, role, userName } = data;
+
+    const check = await this.canSetTarget(monthYear, role, branch);
+    if (!check.allowed) {
+      return { success: false, error: check.reason };
+    }
+
+    if (typeof targetAmount !== "number" || targetAmount < 0) {
+      return { success: false, error: "Please enter a valid target amount (₹)." };
+    }
+
+    const store = getBranchTargetsStore();
+    const cleanBranch = normalizeBranchName(branch);
+    const existingIdx = store.findIndex(
+      (t) => normalizeBranchName(t.branch) === cleanBranch && t.monthYear === monthYear
+    );
+
+    const nowIso = new Date().toISOString();
+
+    if (existingIdx >= 0) {
+      const existing = store[existingIdx];
+      existing.targetAmount = targetAmount;
+      existing.updatedAt = nowIso;
+      existing.setByRole = role;
+      if (userName) existing.setByName = userName;
+      if (role === "HR") existing.hrLocked = true;
+      global.__sphBranchTargetsStore = store;
+      saveBranchTargetsToDisk(store);
+      return { success: true, target: existing };
+    } else {
+      const newRecord: BranchTargetRecord = {
+        id: `TGT-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        branch: branch.trim(),
+        monthYear,
+        targetAmount,
+        setByRole: role,
+        setByName: userName || (role === "ADMIN" ? "Admin" : "HR"),
+        setAt: nowIso,
+        updatedAt: nowIso,
+        hrLocked: role === "HR",
+      };
+      store.push(newRecord);
+      global.__sphBranchTargetsStore = store;
+      saveBranchTargetsToDisk(store);
+      return { success: true, target: newRecord };
+    }
+  },
+
+  async getBranchTargets(monthYear?: string, userRole: "ADMIN" | "HR" = "ADMIN") {
+    const info = getMonthWindowInfo();
+    const activeMonth = monthYear || info.currentMonthKey;
+
+    const allBranches = await branchService.getAllBranches();
+    const targetsStore = getBranchTargetsStore();
+    const appointments = getAppointmentsStore();
+
+    // Map targets with live revenue calculated per branch
+    const branchResults = allBranches.map((b) => {
+      const cleanBranch = normalizeBranchName(b.name);
+
+      // 1. Target configured for this month
+      const targetRecord = targetsStore.find(
+        (t) => normalizeBranchName(t.branch) === cleanBranch && t.monthYear === activeMonth
+      );
+      const targetGoal = targetRecord ? targetRecord.targetAmount : 0;
+
+      // 2. Real-time live revenue reached: calculate sum of all completed appointments for THIS branch in THIS month
+      const branchAppts = appointments.filter((a) => {
+        if (a.isDeleted) return false;
+        // Check branch match
+        const apptBranch = normalizeBranchName(a.branch);
+        if (apptBranch !== cleanBranch) return false;
+
+        // Check completion status or paid payment
+        const isPaidOrCompleted =
+          a.status === "COMPLETED" ||
+          Boolean(a.paidAt) ||
+          Boolean(a.paymentMethod);
+        if (!isPaidOrCompleted) return false;
+
+        // Check if appointment falls in the specified monthYear
+        if (a.paidAt && typeof a.paidAt === "string" && a.paidAt.startsWith(activeMonth)) {
+          return true;
+        }
+        if (a.appointmentDate && typeof a.appointmentDate === "string") {
+          const parts = a.appointmentDate.split("-");
+          if (parts.length === 3) {
+            let yyyy = parts[2];
+            let mm = parts[1];
+            if (parts[0].length === 4) {
+              yyyy = parts[0];
+              mm = parts[1];
+            }
+            if (`${yyyy}-${mm.padStart(2, "0")}` === activeMonth) {
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+
+      const targetReached = branchAppts.reduce((sum, a) => {
+        const fee =
+          typeof a.totalAmountDue === "number" && a.totalAmountDue > 0
+            ? a.totalAmountDue
+            : (a.consultationFee || 0) + (a.medicineFee || 0) + (a.dietPlanFee || 0);
+        return sum + fee;
+      }, 0);
+
+      const percentage = targetGoal > 0 ? Math.round((targetReached / targetGoal) * 1000) / 10 : 0;
+      const remaining = Math.max(0, targetGoal - targetReached);
+
+      let status = "Not Set";
+      if (targetGoal > 0) {
+        if (targetReached >= targetGoal) status = "Achieved";
+        else if (percentage >= 75) status = "On Track";
+        else if (percentage >= 40) status = "In Progress";
+        else status = "Needs Attention";
+      }
+
+      // Permissions check
+      const canEdit =
+        userRole === "ADMIN" ||
+        (userRole === "HR" && !targetRecord?.hrLocked && activeMonth >= info.currentMonthKey);
+
+      return {
+        id: targetRecord?.id || `draft-${b.id}`,
+        branch: b.name,
+        branchId: b.id,
+        monthYear: activeMonth,
+        targetGoal,
+        targetReached,
+        percentage,
+        remaining,
+        status,
+        completedAppointmentsCount: branchAppts.length,
+        setByRole: targetRecord?.setByRole || null,
+        setByName: targetRecord?.setByName || null,
+        hrLocked: Boolean(targetRecord?.hrLocked),
+        canEdit,
+      };
+    });
+
+    const totalGoal = branchResults.reduce((sum, b) => sum + b.targetGoal, 0);
+    const totalReached = branchResults.reduce((sum, b) => sum + b.targetReached, 0);
+    const overallPercentage = totalGoal > 0 ? Math.round((totalReached / totalGoal) * 1000) / 10 : 0;
+
+    return {
+      monthYear: activeMonth,
+      isCurrentMonth: activeMonth === info.currentMonthKey,
+      isNextMonth: activeMonth === info.nextMonthKey,
+      isNextMonthWindowOpen: info.isNextMonthWindowOpen,
+      daysUntilNextMonthWindow: info.daysUntilNextMonthWindow,
+      totalGoal,
+      totalReached,
+      overallPercentage,
+      branches: branchResults,
+    };
+  },
+
+  getHistoricalMonthsList(monthsBack = 12) {
+    const info = getMonthWindowInfo();
+    const now = new Date();
+    const months = [];
+
+    // Next Month
+    const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextKey = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
+    const nextLabel = nextDate.toLocaleString("default", { month: "short", year: "numeric" });
+    months.push({
+      key: nextKey,
+      label: `Next Month (${nextLabel})`,
+      isNextMonth: true,
+      windowOpen: info.isNextMonthWindowOpen,
+    });
+
+    // Current Month
+    const curLabel = now.toLocaleString("default", { month: "short", year: "numeric" });
+    months.push({
+      key: info.currentMonthKey,
+      label: `This Month (${curLabel})`,
+      isCurrentMonth: true,
+    });
+
+    // Past Months
+    for (let i = 1; i <= monthsBack; i++) {
+      const pastDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const pastKey = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, "0")}`;
+      const pastLabel = pastDate.toLocaleString("default", { month: "short", year: "numeric" });
+      const labelPrefix = i === 1 ? "Last Month" : i === 2 ? "Month Before Last" : pastLabel;
+      months.push({
+        key: pastKey,
+        label: `${labelPrefix} (${pastLabel})`,
+        isPastMonth: true,
+      });
+    }
+
+    return months;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Branch Cleaning & Sanitation Audit System (DD-MM-YYYY)
+// ---------------------------------------------------------------------------
+
+export type CleaningStatus = "PENDING_UPLOAD" | "UNDER_REVIEW" | "APPROVED" | "REJECTED";
+export type CleaningFieldStatus = "PENDING" | "UPLOADED" | "APPROVED" | "REJECTED";
+
+export interface CleaningPhotoRecord {
+  id: string;
+  url: string;
+  key: string;
+  uploadedAt: string;
+}
+
+export interface CleaningFieldRecord {
+  id: string;
+  name: string;
+  photos: CleaningPhotoRecord[];
+  status: CleaningFieldStatus;
+  rejectReason?: string;
+}
+
+export interface CleaningHistoryLogRecord {
+  action: string;
+  performedBy: string;
+  performedRole: string;
+  timestamp: string;
+  remarks?: string;
+}
+
+export interface CleaningTaskRecord {
+  id: string;
+  branchId: string;
+  branchName: string;
+  assignedDate: string; // Strictly DD-MM-YYYY
+  status: CleaningStatus;
+  assignedBy: string;
+  assignedRole: "ADMIN" | "HR";
+  assignedAt: string;
+  fields: CleaningFieldRecord[];
+  reviewedBy?: string;
+  reviewedRole?: string;
+  reviewedAt?: string;
+  reviewRemarks?: string;
+  historyLogs: CleaningHistoryLogRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Returns today's date formatted strictly as DD-MM-YYYY
+ */
+export function getTodayDDMMYYYY(): string {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, "0");
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const y = now.getFullYear();
+  return `${d}-${m}-${y}`;
+}
+
+/**
+ * Normalizes any date string (ISO, YYYY-MM-DD, etc.) into DD-MM-YYYY
+ */
+export function toDDMMYYYY(input?: string): string {
+  if (!input) return getTodayDDMMYYYY();
+  const trimmed = input.trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, m, d] = trimmed.split("-");
+    return `${d}-${m}-${y}`;
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, "0");
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const y = parsed.getFullYear();
+    return `${d}-${m}-${y}`;
+  }
+  return trimmed;
+}
+
+/**
+ * Converts DD-MM-YYYY to YYYY-MM-DD for native HTML <input type="date">
+ */
+export function toYYYYMMDD(ddmmyyyy?: string): string {
+  if (!ddmmyyyy) return "";
+  const trimmed = ddmmyyyy.trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+    const [d, m, y] = trimmed.split("-");
+    return `${y}-${m}-${d}`;
+  }
+  return trimmed;
+}
+
+function getCleaningCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "cleaning_tasks_store.json"))) {
+    return path.join(webCache, "cleaning_tasks_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "cleaning_tasks_store.json"))) {
+    return path.join(rootCache, "cleaning_tasks_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "cleaning_tasks_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".cleaning_tasks_store.json");
+    }
+  }
+  return path.join(rootCache, "cleaning_tasks_store.json");
+}
+
+function loadCleaningTasksFromDisk(): CleaningTaskRecord[] {
+  try {
+    const file = getCleaningCachePath();
+    if (fs.existsSync(file)) {
+      const content = fs.readFileSync(file, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to read cleaning tasks cache:", err);
+  }
+  return [];
+}
+
+function saveCleaningTasksToDisk(data: CleaningTaskRecord[]): void {
+  try {
+    const file = getCleaningCachePath();
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Failed to write cleaning tasks cache:", err);
+  }
+}
+
+function getCleaningTasksStore(): CleaningTaskRecord[] {
+  if (!global.__sphCleaningTasksStore) {
+    global.__sphCleaningTasksStore = loadCleaningTasksFromDisk();
+  }
+  return global.__sphCleaningTasksStore;
+}
+
+export const cleaningTaskService = {
+  async getAllTasks(filter?: {
+    branchName?: string;
+    date?: string;
+    status?: string;
+  }): Promise<CleaningTaskRecord[]> {
+    let tasks = getCleaningTasksStore();
+
+    if (filter?.branchName && filter.branchName !== "ALL") {
+      const cleanFilter = filter.branchName.toLowerCase().replace(/branch/gi, "").trim();
+      tasks = tasks.filter((t) =>
+        t.branchName.toLowerCase().replace(/branch/gi, "").trim().includes(cleanFilter)
+      );
+    }
+
+    if (filter?.date && filter.date !== "ALL") {
+      const targetDate = toDDMMYYYY(filter.date);
+      tasks = tasks.filter((t) => t.assignedDate === targetDate);
+    }
+
+    if (filter?.status && filter.status !== "ALL") {
+      tasks = tasks.filter((t) => t.status === filter.status);
+    }
+
+    return tasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  async getTaskById(id: string): Promise<CleaningTaskRecord | null> {
+    const tasks = getCleaningTasksStore();
+    return tasks.find((t) => t.id === id) || null;
+  },
+
+  async createTask(input: {
+    branchId?: string;
+    branchName: string;
+    assignedDate: string; // DD-MM-YYYY
+    assignedBy: string;
+    assignedRole?: "ADMIN" | "HR";
+    fieldNames: string[];
+  }): Promise<CleaningTaskRecord> {
+    const tasks = getCleaningTasksStore();
+    const dateFormatted = toDDMMYYYY(input.assignedDate);
+
+    // Build fields array
+    const fields: CleaningFieldRecord[] = input.fieldNames.map((name, index) => ({
+      id: `fld-${Date.now()}-${index}`,
+      name: name.trim(),
+      photos: [],
+      status: "PENDING",
+    }));
+
+    const newTask: CleaningTaskRecord = {
+      id: `ct-${Date.now()}`,
+      branchId: input.branchId || `b-${Date.now()}`,
+      branchName: input.branchName.trim(),
+      assignedDate: dateFormatted,
+      status: "PENDING_UPLOAD",
+      assignedBy: input.assignedBy || "Admin / HR",
+      assignedRole: input.assignedRole || "ADMIN",
+      assignedAt: new Date().toISOString(),
+      fields,
+      historyLogs: [
+        {
+          action: "TASK_CREATED",
+          performedBy: input.assignedBy || "Admin / HR",
+          performedRole: input.assignedRole || "ADMIN",
+          timestamp: new Date().toISOString(),
+          remarks: `Assigned cleaning inspection for ${dateFormatted} with ${fields.length} areas.`,
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    tasks.unshift(newTask);
+    global.__sphCleaningTasksStore = tasks;
+    saveCleaningTasksToDisk(tasks);
+    return newTask;
+  },
+
+  async updateTask(
+    id: string,
+    updates: Partial<CleaningTaskRecord>
+  ): Promise<CleaningTaskRecord | null> {
+    const tasks = getCleaningTasksStore();
+    const idx = tasks.findIndex((t) => t.id === id);
+    if (idx === -1) return null;
+
+    const existing = tasks[idx];
+    const updated: CleaningTaskRecord = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    tasks[idx] = updated;
+    global.__sphCleaningTasksStore = tasks;
+    saveCleaningTasksToDisk(tasks);
+    return updated;
+  },
+
+  async submitPhotosForVerification(
+    taskId: string,
+    fieldsData: { fieldId: string; photos: CleaningPhotoRecord[] }[],
+    submittedBy: string
+  ): Promise<CleaningTaskRecord | null> {
+    const tasks = getCleaningTasksStore();
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1) return null;
+
+    const task = tasks[idx];
+
+    // Update each field's photos
+    const updatedFields = task.fields.map((field) => {
+      const match = fieldsData.find((f) => f.fieldId === field.id);
+      if (match) {
+        return {
+          ...field,
+          photos: match.photos,
+          status: match.photos.length > 0 ? ("UPLOADED" as const) : field.status,
+          rejectReason: undefined,
+        };
+      }
+      return field;
+    });
+
+    task.fields = updatedFields;
+    task.status = "UNDER_REVIEW";
+    task.updatedAt = new Date().toISOString();
+    task.historyLogs.push({
+      action: "SUBMITTED_FOR_VERIFICATION",
+      performedBy: submittedBy || "Branch Reception",
+      performedRole: "RECEPTION",
+      timestamp: new Date().toISOString(),
+      remarks: "All inspection photos uploaded and submitted for review.",
+    });
+
+    tasks[idx] = task;
+    global.__sphCleaningTasksStore = tasks;
+    saveCleaningTasksToDisk(tasks);
+    return task;
+  },
+
+  async reviewTask(
+    taskId: string,
+    review: {
+      action: "APPROVE" | "REJECT";
+      reviewedBy: string;
+      reviewedRole: "ADMIN" | "HR";
+      remarks?: string;
+      rejectedFieldIds?: string[];
+      fieldRemarks?: Record<string, string>;
+    }
+  ): Promise<CleaningTaskRecord | null> {
+    const tasks = getCleaningTasksStore();
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx === -1) return null;
+
+    const task = tasks[idx];
+
+    if (review.action === "APPROVE") {
+      task.status = "APPROVED";
+      task.reviewedBy = review.reviewedBy;
+      task.reviewedRole = review.reviewedRole;
+      task.reviewedAt = new Date().toISOString();
+      task.reviewRemarks = review.remarks || "All cleaning photos verified and approved.";
+      task.fields = task.fields.map((f) => ({
+        ...f,
+        status: "APPROVED" as const,
+        rejectReason: undefined,
+      }));
+      task.historyLogs.push({
+        action: "TASK_APPROVED",
+        performedBy: review.reviewedBy,
+        performedRole: review.reviewedRole,
+        timestamp: new Date().toISOString(),
+        remarks: review.remarks || "Approved all inspection areas. Reception unlocked.",
+      });
+    } else {
+      task.status = "REJECTED";
+      task.reviewedBy = review.reviewedBy;
+      task.reviewedRole = review.reviewedRole;
+      task.reviewedAt = new Date().toISOString();
+      task.reviewRemarks = review.remarks || "Some or all photos were rejected.";
+
+      const rejSet = new Set(review.rejectedFieldIds || []);
+      const rejectAll = !review.rejectedFieldIds || review.rejectedFieldIds.length === 0;
+
+      task.fields = task.fields.map((f) => {
+        if (rejectAll || rejSet.has(f.id)) {
+          const reason = review.fieldRemarks?.[f.id] || review.remarks || "Requires cleaning re-inspection.";
+          return {
+            ...f,
+            status: "REJECTED" as const,
+            rejectReason: reason,
+          };
+        }
+        return f;
+      });
+
+      task.historyLogs.push({
+        action: "TASK_REJECTED",
+        performedBy: review.reviewedBy,
+        performedRole: review.reviewedRole,
+        timestamp: new Date().toISOString(),
+        remarks: review.remarks || `Rejected areas: ${review.rejectedFieldIds?.join(", ") || "All"}. Re-upload required.`,
+      });
+    }
+
+    task.updatedAt = new Date().toISOString();
+    tasks[idx] = task;
+    global.__sphCleaningTasksStore = tasks;
+    saveCleaningTasksToDisk(tasks);
+    return task;
+  },
+
+  async checkLockout(
+    branchName: string,
+    targetDateStr?: string
+  ): Promise<{
+    lockout: boolean;
+    task: CleaningTaskRecord | null;
+    message?: string;
+  }> {
+    if (!branchName) return { lockout: false, task: null };
+
+    const dateStr = targetDateStr ? toDDMMYYYY(targetDateStr) : getTodayDDMMYYYY();
+    const cleanBranch = branchName.toLowerCase().replace(/branch/gi, "").trim();
+
+    const tasks = getCleaningTasksStore();
+    const matchingTask = tasks.find(
+      (t) =>
+        t.branchName.toLowerCase().replace(/branch/gi, "").trim().includes(cleanBranch) &&
+        t.assignedDate === dateStr
+    );
+
+    if (!matchingTask) {
+      return { lockout: false, task: null };
+    }
+
+    // If already approved, lockout is lifted!
+    if (matchingTask.status === "APPROVED") {
+      return { lockout: false, task: matchingTask, message: "Cleaning verified and approved." };
+    }
+
+    // If PENDING_UPLOAD, UNDER_REVIEW, or REJECTED, Reception is locked!
+    let msg = "Cleaning audit is mandatory today. Please upload photos for all inspection areas.";
+    if (matchingTask.status === "UNDER_REVIEW") {
+      msg = "Cleaning photos submitted for verification. Waiting for Admin / HR approval.";
+    } else if (matchingTask.status === "REJECTED") {
+      msg = "Cleaning photos were rejected. Please check feedback and re-upload.";
+    }
+
+    return {
+      lockout: true,
+      task: matchingTask,
+      message: msg,
+    };
+  },
+
+  async deleteTask(id: string): Promise<boolean> {
+    const tasks = getCleaningTasksStore();
+    const filtered = tasks.filter((t) => t.id !== id);
+    if (filtered.length === tasks.length) return false;
+    global.__sphCleaningTasksStore = filtered;
+    saveCleaningTasksToDisk(filtered);
+    return true;
+  },
+};
+
+
 
 
 

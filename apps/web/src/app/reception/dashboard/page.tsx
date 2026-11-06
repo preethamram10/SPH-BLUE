@@ -26,8 +26,14 @@ import {
   ArrowUp,
   ArrowDown,
   CalendarRange,
+  FileText,
+  Play,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { AppointmentPaymentWebModal } from "@/components/payment/AppointmentPaymentWebModal";
+import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -91,12 +97,70 @@ export default function ReceptionDashboardPage() {
   const [isLoadingDeleted, setIsLoadingDeleted] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Appointment Payment Modal State (Orange COLLECT FEE)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
+
+  // Branch Target & Monthly Revenue State
+  const [branchTarget, setBranchTarget] = useState<{
+    targetGoal: number;
+    targetReached: number;
+    percentage: number;
+    remaining: number;
+    status: string;
+  } | null>(null);
+
   // Reschedule Modal State
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
   const [rescheduleAppt, setRescheduleAppt] = useState<any>(null);
   const [newRescheduleDate, setNewRescheduleDate] = useState("");
   const [newRescheduleSlot, setNewRescheduleSlot] = useState("");
   const [isSubmittingReschedule, setIsSubmittingReschedule] = useState(false);
+
+  // Mandatory Cleaning Lockout State
+  const [cleaningLockoutTask, setCleaningLockoutTask] = useState<any>(null);
+
+  const checkCleaningLockout = async (targetBranch: string) => {
+    try {
+      const res = await fetch(`/api/cleaning/lockout?branchName=${encodeURIComponent(targetBranch)}`);
+      const data = await res.json();
+      if (data.success && data.lockout && data.task) {
+        setCleaningLockoutTask(data.task);
+      } else {
+        setCleaningLockoutTask(null);
+      }
+    } catch {}
+  };
+
+  // Start Consultation: Updates status to IN_CONSULTATION and moves patient to Active Consultation tab
+  const handleStartConsultation = async (appt: any) => {
+    try {
+      // 1. Optimistic update
+      setAppointments((prev) =>
+        prev.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
+      );
+      // 2. Switch tab to Active Consultation so the patient is visible in Active list
+      setActiveFilter("ACTIVE");
+      setFeedback({
+        type: "success",
+        message: `Consultation started for ${appt.patientName}! Patient moved to Active Consultation.`,
+      });
+
+      // 3. Persist to API
+      await fetch("/api/reception/appointments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_STATUS",
+          id: appt.id,
+          status: "IN_CONSULTATION",
+        }),
+      });
+    } catch (err: any) {
+      console.error("Failed to start consultation:", err);
+      setFeedback({ type: "error", message: "Failed to update appointment status." });
+    }
+  };
 
   // Queue reorder: Move UP
   const handleMoveUp = async (index: number) => {
@@ -204,7 +268,12 @@ export default function ReceptionDashboardPage() {
     setSelectedDate(today);
 
     const saved = localStorage.getItem("branch_name");
-    if (saved) setBranchName(saved);
+    if (saved) {
+      setBranchName(saved);
+      checkCleaningLockout(saved);
+    } else {
+      checkCleaningLockout("Kphb");
+    }
 
     const todayDate = new Date();
     setCurrentDate(
@@ -226,6 +295,7 @@ export default function ReceptionDashboardPage() {
     try {
       const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
       const res = await fetch(`/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
+      if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -233,7 +303,7 @@ export default function ReceptionDashboardPage() {
         setAppointments([]);
       }
     } catch (err) {
-      console.error("Failed to fetch dashboard appointments:", err);
+      console.warn("Failed to fetch dashboard appointments:", err);
       if (!isSilent) setAppointments([]);
     } finally {
       if (!isSilent) {
@@ -242,18 +312,52 @@ export default function ReceptionDashboardPage() {
     }
   };
 
+  // Fetch branch target & live revenue
+  const fetchBranchTarget = async (bName: string) => {
+    try {
+      const cleanBranch = (bName || "KPHB")
+        .toLowerCase()
+        .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+      const res = await fetch("/api/admin/targets?role=ADMIN");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.branches)) {
+        const match = data.branches.find((b: any) => {
+          const bNorm = (b.branch || "")
+            .toLowerCase()
+            .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+          return bNorm === cleanBranch || bNorm.includes(cleanBranch) || cleanBranch.includes(bNorm);
+        });
+        if (match) {
+          setBranchTarget(match);
+        } else if (data.branches.length > 0) {
+          setBranchTarget(data.branches[0]);
+        }
+      }
+    } catch (err) {
+      console.warn("Branch target fetch unavailable:", err);
+    }
+  };
+
   useEffect(() => {
     if (!selectedDate) return;
-    // Initial fetch for the selected date
+    // Initial fetch for the selected date & branch target
     fetchAppointments(branchName, selectedDate, appointments.length > 0);
+    fetchBranchTarget(branchName);
 
     // Auto-sync silently in the background every 10 seconds without showing loading spinner or flashing the table
     const interval = setInterval(() => {
       fetchAppointments(branchName, selectedDate, true);
+      fetchBranchTarget(branchName);
     }, 10000);
 
     const handleFocus = () => {
       fetchAppointments(branchName, selectedDate, true);
+      fetchBranchTarget(branchName);
     };
     window.addEventListener("focus", handleFocus);
 
@@ -345,7 +449,7 @@ export default function ReceptionDashboardPage() {
     [appointments]
   );
   const activeCount = useMemo(
-    () => appointments.filter((a) => a.status === "IN_CONSULTATION").length,
+    () => appointments.filter((a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE").length,
     [appointments]
   );
   const completedCount = useMemo(
@@ -362,7 +466,7 @@ export default function ReceptionDashboardPage() {
       );
     }
     if (activeFilter === "ACTIVE") {
-      return appointments.filter((a) => a.status === "IN_CONSULTATION");
+      return appointments.filter((a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE");
     }
     if (activeFilter === "COMPLETED") {
       return appointments.filter((a) => a.status === "COMPLETED");
@@ -412,158 +516,165 @@ export default function ReceptionDashboardPage() {
           </div>
         </header>
 
-        {/* Overview Stats */}
-        <main className="flex-1 px-4 py-3.5 max-w-7xl w-full mx-auto space-y-3.5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            {/* Card 1: Live Appointments */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Booked Appointments</p>
-                <div className="w-6 h-6 rounded-md bg-[#268ec8]/10 text-[#268ec8] flex items-center justify-center">
-                  <Calendar className="w-3 h-3" />
+        {/* Overview & Target Header Cards (Compact Side-by-Side on Desktop) */}
+        <main className="flex-1 px-4 py-3 max-w-7xl w-full mx-auto space-y-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+            {/* 1. Compact Branch Target Card */}
+            <div className="bg-white rounded-xl border border-sky-100 p-3 shadow-2xs bg-gradient-to-r from-sky-50/40 via-white to-emerald-50/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-[#0284c7]/10 text-[#0284c7] flex items-center justify-center font-bold">
+                    <Target className="w-3.5 h-3.5 text-[#0284c7]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900 tracking-wide flex items-center gap-1.5">
+                      <span>{branchName.replace(/Spiritual Homeopathy/gi, "").trim() || "Clinic"} Branch Target</span>
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-black bg-sky-50 text-sky-700 border border-sky-200">
+                    <TrendingUp className="w-3 h-3 text-[#0284c7]" />
+                    <span>{branchTarget ? `${branchTarget.percentage}% Achieved` : "0% Achieved"}</span>
+                  </span>
+                  {branchTarget?.status && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[9px] font-black border ${
+                        branchTarget.status === "Achieved"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : branchTarget.status === "On Track"
+                          ? "bg-sky-50 text-sky-700 border-sky-200"
+                          : branchTarget.status === "In Progress"
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}
+                    >
+                      {branchTarget.status}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div className="mt-2">
-                <p className="text-lg font-black text-[#268ec8]">{totalCount}</p>
-                <span className="text-[10px] text-slate-400 font-medium">
-                  {waitingCount} Waiting • {activeCount} Active • {completedCount} Done
-                </span>
+
+              {/* 3 Metric Columns */}
+              <div className="grid grid-cols-3 gap-2 bg-white/95 p-2 rounded-lg border border-slate-100 shadow-2xs">
+                <div>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    TARGET GOAL
+                  </span>
+                  <span className="text-xs font-black text-slate-900">
+                    ₹{branchTarget?.targetGoal ? branchTarget.targetGoal.toLocaleString() : "0"}
+                  </span>
+                </div>
+
+                <div className="border-x border-slate-100 px-2">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    TARGET REACHED
+                  </span>
+                  <span className="text-xs font-black text-emerald-600">
+                    ₹{branchTarget?.targetReached ? branchTarget.targetReached.toLocaleString() : "0"}
+                  </span>
+                </div>
+
+                <div className="pl-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                    REMAINING
+                  </span>
+                  <span className="text-xs font-black text-amber-600">
+                    ₹{branchTarget?.remaining ? branchTarget.remaining.toLocaleString() : "0"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden mt-2">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    (branchTarget?.percentage || 0) >= 100
+                      ? "bg-emerald-500"
+                      : (branchTarget?.percentage || 0) >= 75
+                      ? "bg-[#0284c7]"
+                      : (branchTarget?.percentage || 0) >= 40
+                      ? "bg-amber-500"
+                      : "bg-rose-500"
+                  }`}
+                  style={{ width: `${Math.min(100, branchTarget?.percentage || 0)}%` }}
+                />
               </div>
             </div>
 
-            {/* Card 2: All Patients */}
-            <Link
-              href="/reception/all-patients"
-              className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs hover:border-[#268ec8] transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">All Patients</p>
-                <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <Users className="w-3 h-3" />
+            {/* 2. Compact Overview Section */}
+            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Overview</h3>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>LIVE</span>
+                  </span>
                 </div>
-              </div>
-              <div className="mt-2">
-                <p className="text-lg font-black text-slate-800">148</p>
-                <span className="text-[10px] text-emerald-600 font-semibold">+6 Registered this week</span>
-              </div>
-            </Link>
 
-            {/* Card 3: Follow-ups */}
-            <Link
-              href="/reception/follow-ups"
-              className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs hover:border-amber-400 transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Pending Follow-ups</p>
-                <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <CalendarCheck className="w-3 h-3" />
+                <div className="flex items-center gap-1 text-[11px] font-bold text-[#0284c7]">
+                  <Calendar className="w-3 h-3" />
+                  <span>{selectedDate}</span>
                 </div>
               </div>
-              <div className="mt-2">
-                <p className="text-lg font-black text-amber-600">8</p>
-                <span className="text-[10px] text-slate-400 font-medium">Due for review today</span>
-              </div>
-            </Link>
 
-            {/* Card 4: Branch Cleaning */}
-            <Link
-              href="/reception/branch-cleaning"
-              className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs hover:border-[#268ec8] transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Branch Cleaning</p>
-                <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <Sparkles className="w-3 h-3" />
+              {/* Top 4 Stats in 1 row */}
+              <div className="grid grid-cols-4 gap-1.5">
+                <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
+                  <span className="text-sm font-black text-[#0284c7] block leading-tight">{totalCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">Total</span>
                 </div>
-              </div>
-              <div className="mt-2">
-                <p className="text-lg font-black text-[#a8ce3a]">Done</p>
-                <span className="text-[10px] text-emerald-600 font-semibold">Morning checklist verified</span>
-              </div>
-            </Link>
-          </div>
 
-          {/* Quick Reception Action Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-            <Link
-              href="/reception/appointments"
-              className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-[#268ec8] transition-all flex items-center justify-between group shadow-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-[#268ec8]/10 text-[#268ec8] flex items-center justify-center shrink-0">
-                  <Calendar className="w-3.5 h-3.5" />
+                <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
+                  <span className="text-sm font-black text-[#0284c7] block leading-tight">{waitingCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">Waiting</span>
                 </div>
-                <div className="min-w-0">
-                  <h4 className="text-[11.5px] font-bold text-slate-800 truncate">Appointments</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate">Daily clinic bookings</p>
-                </div>
-              </div>
-              <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-[#268ec8] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
-            </Link>
 
-            <Link
-              href="/reception/doctor-no-show"
-              className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-rose-400 transition-all flex items-center justify-between group shadow-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                  <UserX className="w-3.5 h-3.5" />
+                <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
+                  <span className="text-sm font-black text-orange-500 block leading-tight">{activeCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">Active</span>
                 </div>
-                <div className="min-w-0">
-                  <h4 className="text-[11.5px] font-bold text-slate-800 truncate">Doctor No-Show</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate">Leaves &amp; off times</p>
-                </div>
-              </div>
-              <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-rose-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
-            </Link>
 
-            <Link
-              href="/reception/all-patients"
-              className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-[#268ec8] transition-all flex items-center justify-between group shadow-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <Users className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <h4 className="text-[11.5px] font-bold text-slate-800 truncate">All Patients</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate">Search records &amp; MRN</p>
+                <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
+                  <span className="text-sm font-black text-emerald-600 block leading-tight">{completedCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">Done</span>
                 </div>
               </div>
-              <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
-            </Link>
 
-            <Link
-              href="/reception/follow-ups"
-              className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-amber-400 transition-all flex items-center justify-between group shadow-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                  <CalendarCheck className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <h4 className="text-[11.5px] font-bold text-slate-800 truncate">Follow-ups</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate">Confirm next visits</p>
-                </div>
-              </div>
-              <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
-            </Link>
+              {/* Bottom 3 Sub-Stats in 1 row */}
+              <div className="grid grid-cols-3 gap-1.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("ACTIVE")}
+                  className="py-1 px-2 rounded-lg border border-rose-100 bg-rose-50/40 hover:bg-rose-50 flex items-center justify-between text-left transition-all cursor-pointer"
+                >
+                  <span className="text-[9.5px] font-bold text-rose-700">Pay Pending</span>
+                  <span className="text-[11px] font-black text-rose-600">0</span>
+                </button>
 
-            <Link
-              href="/reception/branch-cleaning"
-              className="p-2.5 bg-white rounded-xl border border-slate-200 hover:border-[#268ec8] transition-all flex items-center justify-between group shadow-xs"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-[#a8ce3a]/20 text-[#268ec8] flex items-center justify-center shrink-0">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <h4 className="text-[11.5px] font-bold text-slate-800 truncate">Cleaning</h4>
-                  <p className="text-[9.5px] text-slate-400 truncate">Housekeeping status</p>
-                </div>
+                <Link
+                  href="/reception/follow-ups"
+                  className="py-1 px-2 rounded-lg border border-sky-100 bg-sky-50/40 hover:bg-sky-50 flex items-center justify-between text-left transition-all"
+                >
+                  <span className="text-[9.5px] font-bold text-sky-700">Follow-up Opted</span>
+                  <span className="text-[11px] font-black text-[#0284c7]">
+                    {appointments.filter((a) => a.followUpDate && a.followUpInterval !== "No Follow-up").length}
+                  </span>
+                </Link>
+
+                <Link
+                  href="/reception/follow-ups"
+                  className="py-1 px-2 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-100 flex items-center justify-between text-left transition-all"
+                >
+                  <span className="text-[9.5px] font-bold text-slate-600">Not Opted</span>
+                  <span className="text-[11px] font-black text-slate-600">
+                    {appointments.filter((a) => !a.followUpDate || a.followUpInterval === "No Follow-up").length}
+                  </span>
+                </Link>
               </div>
-              <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-[#268ec8] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
-            </Link>
+            </div>
           </div>
 
           {/* FEEDBACK BANNER */}
@@ -598,9 +709,11 @@ export default function ReceptionDashboardPage() {
             {/* Header Row: Title & Count left, Restore (24h) right */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-100 pb-2.5">
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Upcoming Appointments</h3>
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                  Appointments Schedule
+                </h3>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-200">
-                  {filteredAppointments.length}
+                  {appointments.length}
                 </span>
               </div>
 
@@ -687,7 +800,7 @@ export default function ReceptionDashboardPage() {
                     activeFilter === "ACTIVE" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  Active ({activeCount})
+                  Active Consultation ({activeCount})
                 </button>
                 <button
                   type="button"
@@ -744,7 +857,7 @@ export default function ReceptionDashboardPage() {
                     {filteredAppointments.map((appt, index) => {
                       const status = (appt.status || "WAITING").toUpperCase();
                       const isWaiting = status === "WAITING" || status === "SCHEDULED";
-                      const isActive = status === "IN_CONSULTATION";
+                      const isActive = status === "IN_CONSULTATION" || status === "COLLECT_FEE";
                       const isCompleted = status === "COMPLETED";
                       const isFirst = index === 0;
                       const isLast = index === filteredAppointments.length - 1;
@@ -770,7 +883,12 @@ export default function ReceptionDashboardPage() {
                           <td className="py-2 px-3">
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-slate-900 text-xs">{appt.patientName}</span>
+                                <Link
+                                  href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
+                                  className="font-bold text-slate-900 text-xs hover:text-[#0284c7] hover:underline"
+                                >
+                                  {appt.patientName}
+                                </Link>
                                 {isRevisit && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
                                     <RotateCcw className="w-2.5 h-2.5" />
@@ -802,19 +920,38 @@ export default function ReceptionDashboardPage() {
                             </div>
                           </td>
                           <td className="py-2 px-3">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-wide uppercase ${
-                                isWaiting
-                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                  : isActive
-                                  ? "bg-sky-50 text-[#0284c7] border border-sky-200"
-                                  : isCompleted
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {status.replace("_", " ")}
-                            </span>
+                            {isWaiting ? (
+                              <button
+                                type="button"
+                                onClick={() => handleStartConsultation(appt)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                                title="Click to start consultation and move patient to Active Consultation"
+                              >
+                                <Play className="w-3 h-3 fill-white" />
+                                <span>Start Consultation</span>
+                              </button>
+                            ) : isActive ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPaymentAppt(appt);
+                                  setIsPaymentModalOpen(true);
+                                }}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95 ${status === "COLLECT_FEE" ? "bg-amber-500 hover:bg-amber-600" : "bg-orange-500 hover:bg-orange-600"}`}
+                                title="Collect Fee & Complete Consultation"
+                              >
+                                <span>{status === "COLLECT_FEE" ? "⏳ COLLECT FEE" : "COLLECT FEE"}</span>
+                              </button>
+                            ) : isCompleted ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>COMPLETED</span>
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-slate-100 text-slate-600">
+                                {status.replace("_", " ")}
+                              </span>
+                            )}
                           </td>
                           {/* Queue Order Movers: Up & Down Arrows */}
                           <td className="py-2 px-3 text-center">
@@ -847,9 +984,18 @@ export default function ReceptionDashboardPage() {
                               </button>
                             </div>
                           </td>
-                          {/* Action Buttons: WhatsApp, Reschedule, Delete */}
+                          {/* Action Buttons: Patient File, WhatsApp, Reschedule, Delete */}
                           <td className="py-2 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {/* Open Patient File */}
+                              <Link
+                                href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-sky-700 bg-sky-50 hover:bg-[#0284c7] hover:text-white border border-sky-200 transition-all cursor-pointer"
+                                title="Open Patient File (Prescription, Diet, Fees)"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </Link>
+
                               {/* Direct WhatsApp Button */}
                               <button
                                 type="button"
@@ -1091,6 +1237,38 @@ export default function ReceptionDashboardPage() {
                 </div>
               </div>
             </div>
+          )}
+          {/* Appointment Payment Modal (Collect Fee) */}
+          <AppointmentPaymentWebModal
+            isOpen={isPaymentModalOpen}
+            appointment={selectedPaymentAppt}
+            onClose={() => {
+              setIsPaymentModalOpen(false);
+              setSelectedPaymentAppt(null);
+            }}
+            onPaymentSuccess={() => {
+              fetchAppointments(branchName, selectedDate);
+              fetchBranchTarget(branchName);
+            }}
+            onOpenPatientFile={() => {
+              setIsPaymentModalOpen(false);
+              if (selectedPaymentAppt) {
+                const cleanPhone = (selectedPaymentAppt.phoneNumber || selectedPaymentAppt.phone || "").replace(/[^0-9]/g, "");
+                window.location.href = `/reception/patient-file?id=${selectedPaymentAppt.id}&name=${encodeURIComponent(selectedPaymentAppt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(selectedPaymentAppt.registrationId || selectedPaymentAppt.patientId || "")}`;
+              }
+            }}
+          />
+          {/* Mandatory Branch Cleaning Lockout View */}
+          {cleaningLockoutTask && (
+            <ReceptionCleaningLockoutView
+              initialTask={cleaningLockoutTask}
+              branchName={branchName}
+              onUnlocked={() => {
+                setCleaningLockoutTask(null);
+                fetchAppointments(branchName, selectedDate);
+              }}
+              isFullLockoutScreen={true}
+            />
           )}
         </main>
       </div>

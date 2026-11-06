@@ -117,24 +117,30 @@ export default function WebLoginPage() {
       setErrorMessage("Please enter the verification code");
       return;
     }
+
+    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+    if (validatedData?.role && validatedData.role !== expectedRole) {
+      setErrorMessage(`Role Mismatch: You are not authorized to log in as ${expectedRole}.`);
+      return;
+    }
+
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      if (activeTab === "doctor" || validatedData?.role === "DOCTOR") {
+      if (activeTab === "doctor" && validatedData?.role === "DOCTOR") {
         localStorage.setItem("user_role", "DOCTOR");
         if (validatedData?.doctor?.name) {
           localStorage.setItem("doctor_name", validatedData.doctor.name);
         }
         window.location.href = "/doctor/dashboard";
-      } else if (activeTab === "reception" || validatedData?.role === "RECEPTION") {
+      } else if (activeTab === "reception" && validatedData?.role === "RECEPTION") {
         localStorage.setItem("user_role", "RECEPTION");
         window.location.href = "/reception/dashboard";
-      } else if (activeTab === "telecaller") {
+      } else if (activeTab === "telecaller" && validatedData?.role === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");
         window.location.href = "/telecaller/dashboard";
       } else {
-        localStorage.setItem("user_role", "DOCTOR");
-        window.location.href = "/doctor/dashboard";
+        setErrorMessage("Unauthorized: Please sign in with your registered role.");
       }
     }, 400);
   };

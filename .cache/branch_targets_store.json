@@ -1,0 +1,13 @@
+[
+  {
+    "id": "TGT-1793941501779-bu5d",
+    "branch": "Kphb",
+    "monthYear": "2026-11",
+    "targetAmount": 100000,
+    "setByRole": "ADMIN",
+    "setByName": "Admin",
+    "setAt": "2026-11-06T05:05:01.779Z",
+    "updatedAt": "2026-11-06T05:05:01.779Z",
+    "hrLocked": false
+  }
+]

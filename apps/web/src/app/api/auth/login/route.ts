@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { prisma, branchService } from "@spiritualhomeo/database";
+import {
+  prisma,
+  branchService,
+  doctorScheduleService,
+  employeeService,
+  normalizePhone,
+} from "@spiritualhomeo/database";
 
 export async function POST(request: Request) {
   try {
@@ -12,27 +18,87 @@ export async function POST(request: Request) {
       );
     }
 
-    // Reception login must match an active clinic branch's registered number
-    if (requestedRole === "RECEPTION" || requestedRole === "doctor_reception") {
-      const matchedBranch = await branchService.findBranchByPhone(identifier);
+    const cleanInput = normalizePhone(identifier);
+    const clean10 = cleanInput.length >= 10 ? cleanInput.slice(-10) : identifier.trim();
+    const reqRole = (requestedRole || "").toUpperCase();
 
-      if (!matchedBranch) {
+    // Look up data
+    const branches = await branchService.getAllBranches();
+    const matchedBranch = branches.find((b) => {
+      const bp = normalizePhone(b.phone || "").slice(-10);
+      return bp === clean10;
+    });
+
+    const schedules = await doctorScheduleService.getAllSchedules();
+    const matchedSchedule = schedules.find((s) => {
+      const sp = normalizePhone(s.phone || "").slice(-10);
+      return sp === clean10;
+    });
+
+    const employees = await employeeService.getAllEmployees();
+    const matchedEmployee = employees.find((e) => {
+      const ep = normalizePhone(e.phone || "").slice(-10);
+      return ep === clean10;
+    });
+
+    let dbUser: any = null;
+    try {
+      dbUser = await prisma.user.findFirst({
+        where: {
+          OR: [{ phone: { contains: clean10 } }, { email: identifier }],
+        },
+      });
+    } catch {}
+
+    const isDoctor =
+      !!matchedSchedule ||
+      matchedEmployee?.category === "DOCTOR" ||
+      dbUser?.role === "DOCTOR";
+
+    const isReception =
+      !!matchedBranch ||
+      matchedEmployee?.category === "RECEPTION" ||
+      dbUser?.role === "RECEPTION";
+
+    const isTelecaller =
+      matchedEmployee?.category === "TELECALLER" ||
+      matchedEmployee?.category === "STAFF" ||
+      dbUser?.role === "TELECALLER" ||
+      dbUser?.role === "STAFF";
+
+    // 1. RECEPTION LOGIN
+    if (reqRole === "RECEPTION") {
+      if (isDoctor) {
+        const docName = matchedSchedule?.doctorName || matchedEmployee?.name || "Doctor";
         return NextResponse.json(
           {
-            error:
-              "Not Authorized: This phone number is not registered with any clinic branch. Only registered branch contact numbers can login as Reception.",
+            error: `Access Denied: ${clean10} belongs to ${docName} (Doctor), not Reception. Please use the Doctor portal.`,
           },
           { status: 403 }
         );
       }
 
-      // Generate authorized token for this specific branch reception
+      if (!isReception) {
+        return NextResponse.json(
+          {
+            error: `Access Denied: ${clean10} is not registered with any clinic branch or receptionist.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      const branch = matchedBranch || {
+        id: matchedEmployee?.branchId || `b-${clean10}`,
+        name: matchedEmployee?.branchName || "Clinic Branch",
+        phone: matchedEmployee?.phone || clean10,
+      };
+
       const token = Buffer.from(
         JSON.stringify({
-          userId: `reception-branch-${matchedBranch.id}`,
+          userId: `reception-branch-${branch.id}`,
           role: "RECEPTION",
-          branchId: matchedBranch.id,
-          branchName: matchedBranch.name,
+          branchId: branch.id,
+          branchName: branch.name,
           identifier,
           exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
         })
@@ -42,54 +108,157 @@ export async function POST(request: Request) {
         success: true,
         token,
         user: {
-          id: `reception-branch-${matchedBranch.id}`,
-          name: `${matchedBranch.name} (Reception)`,
+          id: `reception-branch-${branch.id}`,
+          name: `${branch.name} (Reception)`,
           role: "RECEPTION",
           branch: {
-            id: matchedBranch.id,
-            name: matchedBranch.name,
-            phone: matchedBranch.phone,
+            id: branch.id,
+            name: branch.name,
+            phone: branch.phone,
           },
           identifier,
         },
       });
     }
 
-    // Fallback for other roles (Admin, HR, Telecaller, Doctor)
-    let user = null;
-    try {
-      user = await prisma.user.findFirst({
-        where: {
-          OR: [{ phone: identifier }, { email: identifier }],
+    // 2. DOCTOR LOGIN
+    if (reqRole === "DOCTOR") {
+      if (isReception) {
+        const bName = matchedBranch?.name || matchedEmployee?.branchName || "Reception";
+        return NextResponse.json(
+          {
+            error: `Access Denied: ${clean10} belongs to ${bName} (Reception), not Doctor. Please use the Reception portal.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      if (!isDoctor) {
+        return NextResponse.json(
+          {
+            error: `Access Denied: ${clean10} is not registered as a Doctor in the clinic system.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      const docName =
+        matchedSchedule?.doctorName ||
+        matchedEmployee?.name ||
+        dbUser?.name ||
+        "Doctor";
+      const docId =
+        matchedSchedule?.doctorId ||
+        matchedSchedule?.id ||
+        matchedEmployee?.id ||
+        dbUser?.id ||
+        `doc-${clean10}`;
+
+      const token = Buffer.from(
+        JSON.stringify({
+          userId: docId,
+          role: "DOCTOR",
+          name: docName,
+          identifier,
+          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        })
+      ).toString("base64");
+
+      return NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: docId,
+          name: docName,
+          role: "DOCTOR",
+          identifier,
         },
       });
-    } catch (dbErr) {
-      console.warn("User lookup:", dbErr);
     }
 
-    const role = user?.role || requestedRole || "DOCTOR";
-    const userName = user?.name || `Staff Member (${role})`;
-    const userId = user?.id || `dev-${role.toLowerCase()}-1`;
+    // 3. TELECALLER LOGIN
+    if (reqRole === "TELECALLER") {
+      if (isDoctor || isReception) {
+        return NextResponse.json(
+          {
+            error: `Access Denied: ${clean10} is registered under another clinical role, not Telecalling.`,
+          },
+          { status: 403 }
+        );
+      }
 
-    const token = Buffer.from(
-      JSON.stringify({
-        userId,
-        role,
-        identifier,
-        exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      })
-    ).toString("base64");
+      if (!isTelecaller) {
+        return NextResponse.json(
+          {
+            error: `Access Denied: ${clean10} is not registered for telecalling or staff access.`,
+          },
+          { status: 403 }
+        );
+      }
 
-    return NextResponse.json({
-      success: true,
-      token,
-      user: {
-        id: userId,
-        name: userName,
-        role,
-        identifier,
-      },
-    });
+      const tcName = matchedEmployee?.name || dbUser?.name || "Telecaller Staff";
+      const tcId = matchedEmployee?.id || dbUser?.id || `tc-${clean10}`;
+
+      const token = Buffer.from(
+        JSON.stringify({
+          userId: tcId,
+          role: "TELECALLER",
+          name: tcName,
+          identifier,
+          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        })
+      ).toString("base64");
+
+      return NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: tcId,
+          name: tcName,
+          role: "TELECALLER",
+          identifier,
+        },
+      });
+    }
+
+    // 4. ADMIN / HR LOGIN
+    if (reqRole === "ADMIN" || reqRole === "HR") {
+      if (dbUser?.role !== reqRole && matchedEmployee?.category !== reqRole) {
+        return NextResponse.json(
+          { error: `Access Denied: ${identifier} does not have ${reqRole} privileges.` },
+          { status: 403 }
+        );
+      }
+
+      const role = reqRole;
+      const userName = dbUser?.name || matchedEmployee?.name || `${role} Member`;
+      const userId = dbUser?.id || matchedEmployee?.id || `user-${role.toLowerCase()}-1`;
+
+      const token = Buffer.from(
+        JSON.stringify({
+          userId,
+          role,
+          identifier,
+          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        })
+      ).toString("base64");
+
+      return NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: userId,
+          name: userName,
+          role,
+          identifier,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      { error: `Invalid or unrecognized requested role: ${requestedRole}` },
+      { status: 400 }
+    );
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Authentication error" },

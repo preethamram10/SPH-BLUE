@@ -35,6 +35,27 @@ export default function ReceptionAllPatientsPage() {
   React.useEffect(() => {
     const saved = localStorage.getItem("branch_name");
     if (saved) setBranchName(saved);
+
+    fetch(`/api/reception/patients?session=ALL${saved ? `&branch=${encodeURIComponent(saved)}` : ""}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.patients) && data.patients.length > 0) {
+          setPatients(
+            data.patients.map((p: any) => ({
+              id: p.id || p.regId,
+              mrn: p.regId || p.mrn || "SPH-GEN",
+              name: p.name,
+              age: p.age || 30,
+              gender: p.gender || "Other",
+              phone: p.phone,
+              city: p.city || "Hyderabad",
+              lastVisit: p.lastVisitDate || "Registered",
+              totalVisits: p.totalVisits || 0,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Form states for new patient
@@ -204,7 +225,13 @@ export default function ReceptionAllPatientsPage() {
                         <td className="px-6 py-4 text-slate-600">{patient.city}</td>
                         <td className="px-6 py-4 text-slate-500 text-xs">{patient.lastVisit}</td>
                         <td className="px-6 py-4 text-right font-bold text-slate-800">
-                          {patient.totalVisits}
+                          {patient.totalVisits > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100">
+                              {patient.totalVisits} {patient.totalVisits === 1 ? "Visit" : "Visits"}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">-</span>
+                          )}
                         </td>
                       </tr>
                     ))
