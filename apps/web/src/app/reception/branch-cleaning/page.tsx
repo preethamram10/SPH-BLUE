@@ -10,10 +10,12 @@ export default function ReceptionBranchCleaningPage() {
   const [branchName, setBranchName] = useState("Kphb");
   const [loading, setLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<any>(null);
+  const [todayDateStr, setTodayDateStr] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("branch_name") || localStorage.getItem("user_branch");
     if (saved) setBranchName(saved);
+    setTodayDateStr(getTodayDDMMYYYY());
   }, []);
 
   const checkTask = async () => {
@@ -84,7 +86,7 @@ export default function ReceptionBranchCleaningPage() {
                 No Mandatory Cleaning Audit Pending
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                There is currently no pending or rejected cleaning task assigned for <strong>{branchName}</strong> on today&apos;s date ({getTodayDDMMYYYY()}). When Admin or HR assigns a cleaning audit, the required inspection areas will appear here for photo upload.
+                There is currently no pending or rejected cleaning task assigned for <strong>{branchName}</strong> on today&apos;s date ({todayDateStr || "today"}). When Admin or HR assigns a cleaning audit, the required inspection areas will appear here for photo upload.
               </p>
             </div>
           )}

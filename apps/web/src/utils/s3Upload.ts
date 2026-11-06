@@ -154,3 +154,74 @@ export async function uploadBufferToS3(options: S3UploadOptions): Promise<string
   return url;
 }
 
+/**
+ * Authenticated GET for cleaning photos stored in private AWS S3 bucket.
+ * Allows web & mobile clients to display photos without 403 AccessDenied errors.
+ */
+export async function fetchCleaningPhotoFromS3(
+  key: string
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const creds = getCleaningS3Credentials();
+  const cleanKey = key.startsWith("/") ? key.slice(1) : key;
+  const host = `${creds.bucket}.s3.${creds.region}.amazonaws.com`;
+  const url = `https://${host}/${encodeURI(cleanKey)}`;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = hashSha256("");
+
+  const canonicalHeaders =
+    `host:${host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest =
+    `GET\n` +
+    `/${encodeURI(cleanKey)}\n` +
+    `\n` +
+    canonicalHeaders +
+    `\n` +
+    `${signedHeaders}\n` +
+    payloadHash;
+
+  const algorithm = "AWS4-HMAC-SHA256";
+  const credentialScope = `${dateStamp}/${creds.region}/s3/aws4_request`;
+  const stringToSign =
+    `${algorithm}\n` +
+    `${amzDate}\n` +
+    `${credentialScope}\n` +
+    hashSha256(canonicalRequest);
+
+  const kDate = hmac("AWS4" + creds.secretAccessKey, dateStamp);
+  const kRegion = hmac(kDate, creds.region);
+  const kService = hmac(kRegion, "s3");
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = crypto.createHmac("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
+
+  const authorizationHeader =
+    `${algorithm} ` +
+    `Credential=${creds.accessKeyId}/${credentialScope}, ` +
+    `SignedHeaders=${signedHeaders}, ` +
+    `Signature=${signature}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Host: host,
+      "x-amz-date": amzDate,
+      "x-amz-content-sha256": payloadHash,
+      Authorization: authorizationHeader,
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  return { buffer: Buffer.from(arrayBuffer), contentType };
+}
+
+

@@ -227,6 +227,23 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
   };
 
   // Toggle field rejection
+  // Open Review Modal with fresh task data
+  const handleOpenReview = async (task: CleaningTask) => {
+    setReviewTask(task);
+    setRejectedFieldIds([]);
+    setFieldRemarks({});
+    setOverallRemarks("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/cleaning/tasks/${task.id}`);
+      const data = await res.json();
+      if (data.success && data.task) {
+        setReviewTask(data.task);
+      }
+    } catch (err) {
+      console.error("Failed to load fresh task details:", err);
+    }
+  };
+
   const toggleRejectField = (fieldId: string) => {
     if (rejectedFieldIds.includes(fieldId)) {
       setRejectedFieldIds(rejectedFieldIds.filter((id) => id !== fieldId));
@@ -505,12 +522,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <TouchableOpacity
                       style={styles.reviewBtn}
-                      onPress={() => {
-                        setReviewTask(task);
-                        setRejectedFieldIds([]);
-                        setFieldRemarks({});
-                        setOverallRemarks("");
-                      }}
+                      onPress={() => handleOpenReview(task)}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="eye-outline" size={14} color="#ffffff" />
@@ -709,16 +721,19 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
                         <Text style={styles.noPhotoText}>No photo uploaded yet</Text>
                       ) : (
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                          {field.photos.map((p) => (
-                            <TouchableOpacity
-                              key={p.id}
-                              onPress={() => setPreviewPhoto(p.url)}
-                              activeOpacity={0.8}
-                              style={{ marginRight: 8 }}
-                            >
-                              <Image source={{ uri: p.url }} style={styles.reviewPhotoThumb} />
-                            </TouchableOpacity>
-                          ))}
+                          {field.photos.map((p) => {
+                            const imgSrc = `${API_BASE_URL}/cleaning/image?key=${encodeURIComponent(p.key || p.url)}`;
+                            return (
+                              <TouchableOpacity
+                                key={p.id}
+                                onPress={() => setPreviewPhoto(imgSrc)}
+                                activeOpacity={0.8}
+                                style={{ marginRight: 8 }}
+                              >
+                                <Image source={{ uri: imgSrc }} style={styles.reviewPhotoThumb} />
+                              </TouchableOpacity>
+                            );
+                          })}
                         </ScrollView>
                       )}
 

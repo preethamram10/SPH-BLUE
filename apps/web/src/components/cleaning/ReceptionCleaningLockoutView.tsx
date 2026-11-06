@@ -96,33 +96,41 @@ export default function ReceptionCleaningLockoutView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeUploadFieldId, setActiveUploadFieldId] = useState<string | null>(null);
 
-  // Synchronize remote task updates (if HR or Admin approves while viewing)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `/api/cleaning/lockout?branchName=${encodeURIComponent(branchName)}`
-        );
-        const data = await res.json();
-        if (data.success) {
-          if (!data.lockout) {
-            // Unlocked!
-            onUnlocked();
-          } else if (data.task) {
-            setTask(data.task);
-            // If already approved
-            if (data.task.status === "APPROVED") {
-              onUnlocked();
-            }
+  // Manual Check Verification Status state (no background autofetching)
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [checkStatusFeedback, setCheckStatusFeedback] = useState<string | null>(null);
+
+  const handleCheckStatus = async () => {
+    setIsCheckingStatus(true);
+    setCheckStatusFeedback(null);
+    try {
+      const res = await fetch(
+        `/api/cleaning/lockout?branchName=${encodeURIComponent(branchName)}`
+      );
+      const data = await res.json();
+      if (data.success) {
+        if (!data.lockout || data.task?.status === "APPROVED") {
+          setCheckStatusFeedback("✓ Audit Approved! Unlocking Reception...");
+          setTimeout(() => onUnlocked(), 700);
+        } else if (data.task) {
+          setTask(data.task);
+          if (data.task.status === "UNDER_REVIEW") {
+            setCheckStatusFeedback("⏳ Status: Under Review by Admin / HR. Please check back shortly.");
+          } else if (data.task.status === "REJECTED") {
+            setCheckStatusFeedback("⚠ Status: Re-upload required. Please check rejection remarks below.");
+          } else {
+            setCheckStatusFeedback(`Status: ${data.task.status}`);
           }
         }
-      } catch (err) {
-        // Silent poll error
+      } else {
+        setCheckStatusFeedback(data.error || "Could not retrieve status.");
       }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [branchName, onUnlocked]);
+    } catch (err: any) {
+      setCheckStatusFeedback("Network error checking status: " + err.message);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   // Handle local file selection (instant preview with checkmark, upload to AWS happens upon clicking "Send to Verification")
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,15 +340,35 @@ export default function ReceptionCleaningLockoutView({
         )}
 
         {task.status === "UNDER_REVIEW" && (
-          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 flex items-start gap-3">
-            <Clock className="w-5 h-5 text-sky-600 shrink-0 mt-0.5 animate-spin" />
-            <div className="text-xs">
-              <p className="font-extrabold text-sm">Photos Saved &amp; Submitted for Verification</p>
-              <p className="mt-0.5 text-sky-700">
-                All photos are securely uploaded to AWS S3. Waiting for Admin or HR approval. This screen will
-                automatically unlock as soon as accepted!
-              </p>
+          <div className="p-5 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-3">
+                <Clock className="w-5 h-5 text-sky-600 shrink-0 mt-0.5 animate-spin" />
+                <div className="text-xs">
+                  <p className="font-extrabold text-sm">Photos Saved &amp; Submitted for Verification</p>
+                  <p className="mt-0.5 text-sky-700">
+                    All photos are securely uploaded to AWS S3. Waiting for Admin or HR approval.
+                  </p>
+                </div>
+              </div>
+
+              {/* Manual Check Status Button */}
+              <button
+                type="button"
+                disabled={isCheckingStatus}
+                onClick={handleCheckStatus}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-black shadow-xs transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingStatus ? "animate-spin" : ""}`} />
+                <span>{isCheckingStatus ? "Checking Status..." : "Check Status"}</span>
+              </button>
             </div>
+
+            {checkStatusFeedback && (
+              <div className="px-3 py-1.5 rounded-xl bg-white/90 border border-sky-200 text-xs font-bold text-sky-800">
+                {checkStatusFeedback}
+              </div>
+            )}
           </div>
         )}
 
@@ -474,46 +502,52 @@ export default function ReceptionCleaningLockoutView({
                 {/* Staged & Uploaded Photos Gallery */}
                 {localPhotos.length > 0 && (
                   <div className="flex flex-wrap gap-3 pt-1">
-                    {localPhotos.map((photo, pIdx) => (
-                      <div
-                        key={photo.id}
-                        className="group relative w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-900 shadow-xs"
-                      >
-                        <img
-                          src={photo.url}
-                          alt={`${field.name} ${pIdx + 1}`}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform cursor-pointer"
-                          onClick={() => setZoomedPhoto(photo.url)}
-                        />
+                    {localPhotos.map((photo, pIdx) => {
+                      const displayImgSrc = photo.isUploadedToS3
+                        ? `/api/cleaning/image?key=${encodeURIComponent(photo.key || photo.url)}`
+                        : photo.url;
 
-                        {/* Staged indicator badge */}
-                        <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-xs text-[9px] font-bold text-white px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                          {photo.isUploadedToS3 ? "S3" : "Ready"}
-                        </div>
+                      return (
+                        <div
+                          key={photo.id}
+                          className="group relative w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-900 shadow-xs"
+                        >
+                          <img
+                            src={displayImgSrc}
+                            alt={`${field.name} ${pIdx + 1}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform cursor-pointer"
+                            onClick={() => setZoomedPhoto(displayImgSrc)}
+                          />
 
-                        {/* Hover Overlay */}
-                        <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white transition-opacity">
-                          <button
-                            type="button"
-                            onClick={() => setZoomedPhoto(photo.url)}
-                            className="p-1 rounded-md bg-white/20 hover:bg-white/40"
-                            title="Preview Photo"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {task.status !== "UNDER_REVIEW" && (
+                          {/* Staged indicator badge */}
+                          <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-xs text-[9px] font-bold text-white px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                            {photo.isUploadedToS3 ? "S3" : "Ready"}
+                          </div>
+
+                          {/* Hover Overlay */}
+                          <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white transition-opacity">
                             <button
                               type="button"
-                              onClick={() => handleRemovePhoto(field.id, photo.id)}
-                              className="p-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white"
-                              title="Delete Photo"
+                              onClick={() => setZoomedPhoto(displayImgSrc)}
+                              className="p-1 rounded-md bg-white/20 hover:bg-white/40"
+                              title="Preview Photo"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
-                          )}
+                            {task.status !== "UNDER_REVIEW" && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhoto(field.id, photo.id)}
+                                className="p-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white"
+                                title="Delete Photo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -537,15 +571,25 @@ export default function ReceptionCleaningLockoutView({
             )}
           </div>
 
-          {task.status !== "APPROVED" && (
+          {task.status === "UNDER_REVIEW" && (
             <button
               type="button"
-              disabled={!isAllAreasCompleted || isSubmitting || task.status === "UNDER_REVIEW"}
+              disabled={isCheckingStatus}
+              onClick={handleCheckStatus}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black bg-sky-600 hover:bg-sky-700 text-white shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? "animate-spin" : ""}`} />
+              <span>{isCheckingStatus ? "Checking Status..." : "Check Status & Unlock"}</span>
+            </button>
+          )}
+
+          {task.status !== "APPROVED" && task.status !== "UNDER_REVIEW" && (
+            <button
+              type="button"
+              disabled={!isAllAreasCompleted || isSubmitting}
               onClick={handleSubmitForVerification}
               className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black shadow-md transition-all ${
-                task.status === "UNDER_REVIEW"
-                  ? "bg-sky-600 text-white opacity-80 cursor-not-allowed"
-                  : isAllAreasCompleted
+                isAllAreasCompleted
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-[1.01] active:scale-[0.99]"
                   : "bg-slate-200 text-slate-400 cursor-not-allowed"
               }`}
@@ -554,11 +598,6 @@ export default function ReceptionCleaningLockoutView({
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>{uploadProgressText || "Saving to AWS S3 & Submitting..."}</span>
-                </>
-              ) : task.status === "UNDER_REVIEW" ? (
-                <>
-                  <Clock className="w-4 h-4 animate-spin" />
-                  <span>Submitted — Waiting for Admin/HR Approval</span>
                 </>
               ) : (
                 <>

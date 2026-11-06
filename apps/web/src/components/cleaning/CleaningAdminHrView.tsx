@@ -97,7 +97,7 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
   // Schedule Modal
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [newBranch, setNewBranch] = useState("Kphb");
-  const [newDateInput, setNewDateInput] = useState(() => toYYYYMMDD(getTodayDDMMYYYY())); // for <input type="date">
+  const [newDateInput, setNewDateInput] = useState(""); // Hydrated in useEffect to prevent Next.js prerender date warning
   const [newFields, setNewFields] = useState<string[]>([
     "Bathroom / Restroom",
     "Reception Front Desk",
@@ -105,6 +105,10 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
   ]);
   const [customFieldInput, setCustomFieldInput] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
+
+  useEffect(() => {
+    setNewDateInput(toYYYYMMDD(getTodayDDMMYYYY()));
+  }, []);
 
   // Review Modal
   const [reviewTask, setReviewTask] = useState<CleaningTask | null>(null);
@@ -202,11 +206,22 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
   };
 
   // Open Review Modal
-  const openReviewModal = (task: CleaningTask) => {
+  const openReviewModal = async (task: CleaningTask) => {
     setReviewTask(task);
     setSelectedRejectedFields([]);
     setFieldRemarks({});
     setOverallRemarks("");
+
+    // Fetch fresh task details from backend to ensure all latest photos are loaded
+    try {
+      const res = await fetch(`/api/cleaning/tasks/${task.id}`);
+      const data = await res.json();
+      if (data.success && data.task) {
+        setReviewTask(data.task);
+      }
+    } catch (err) {
+      console.error("Failed to load fresh task details:", err);
+    }
   };
 
   // Toggle field rejection checkbox
@@ -787,22 +802,26 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                         </div>
                       ) : (
                         <div className="flex flex-wrap gap-3">
-                          {field.photos.map((p, pIdx) => (
-                            <div
-                              key={p.id}
-                              onClick={() => setZoomedPhoto(p.url)}
-                              className="group relative w-28 h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-900 cursor-pointer shadow-xs hover:shadow-md transition-shadow"
-                            >
-                              <img
-                                src={p.url}
-                                alt={`${field.name} photo ${pIdx + 1}`}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              />
-                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-                                <Eye className="w-5 h-5" />
+                          {field.photos.map((p, pIdx) => {
+                            const imgSrc = `/api/cleaning/image?key=${encodeURIComponent(p.key || p.url)}`;
+                            return (
+                              <div
+                                key={p.id}
+                                onClick={() => setZoomedPhoto(imgSrc)}
+                                className="group relative w-28 h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-900 cursor-pointer shadow-xs hover:shadow-md transition-shadow"
+                              >
+                                <img
+                                  src={imgSrc}
+                                  alt={`${field.name} photo ${pIdx + 1}`}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                  <Eye className="w-5 h-5" />
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 

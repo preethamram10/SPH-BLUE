@@ -142,14 +142,44 @@ export default function ReceptionBranchCleaningScreen() {
     });
   }, []);
 
-  // Poll for status updates (e.g. Admin/HR approval)
-  useEffect(() => {
+  // Manual Check Verification Status (replaces continuous background polling)
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const handleCheckStatus = async () => {
     if (!branchName) return;
-    const interval = setInterval(() => {
-      fetchActiveAudit(branchName);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [branchName]);
+    setIsCheckingStatus(true);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/cleaning/lockout?branchName=${encodeURIComponent(branchName)}`
+      );
+      const data = await res.json();
+      if (data.success) {
+        if (!data.lockout || data.task?.status === "APPROVED") {
+          Alert.alert("✓ Audit Approved!", "Reception has been verified and unlocked.", [
+            { text: "Continue", onPress: () => router.replace("/(reception)" as any) },
+          ]);
+        } else if (data.task) {
+          setTask(data.task);
+          if (data.task.status === "UNDER_REVIEW") {
+            Alert.alert("Status: Under Review", "Waiting for Admin or HR approval. Please check back shortly.");
+          } else if (data.task.status === "REJECTED") {
+            Alert.alert(
+              "Status: Re-upload Required",
+              `Remarks: ${data.task.reviewRemarks || "Please re-upload photos for flagged areas."}`
+            );
+          } else {
+            Alert.alert("Status Check", `Current status: ${data.task.status}`);
+          }
+        }
+      } else {
+        Alert.alert("Status Check", data.error || "Could not check audit status.");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to check status.");
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   // Handle Hardware Back Button if in mandatory lockout
   useFocusEffect(
@@ -461,14 +491,32 @@ export default function ReceptionBranchCleaningScreen() {
           )}
 
           {task.status === "UNDER_REVIEW" && (
-            <View style={[styles.banner, styles.bannerSky]}>
-              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 2 }} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.bannerTitle}>Photos Saved &amp; Submitted for Verification</Text>
-                <Text style={styles.bannerText}>
-                  Your inspection photos have been uploaded to AWS S3. Waiting for Admin or HR approval. Screen will automatically unlock once approved!
-                </Text>
+            <View style={[styles.banner, styles.bannerSky, { flexDirection: "column", gap: 10 }]}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 2 }} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.bannerTitle}>Photos Saved &amp; Submitted for Verification</Text>
+                  <Text style={styles.bannerText}>
+                    Your inspection photos have been uploaded to AWS S3. Waiting for Admin or HR approval.
+                  </Text>
+                </View>
               </View>
+
+              <TouchableOpacity
+                style={styles.btnCheckStatus}
+                onPress={handleCheckStatus}
+                disabled={isCheckingStatus}
+                activeOpacity={0.8}
+              >
+                {isCheckingStatus ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <Ionicons name="refresh" size={15} color="#ffffff" />
+                    <Text style={styles.btnCheckStatusText}>Check Status</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           )}
 
@@ -592,33 +640,39 @@ export default function ReceptionBranchCleaningScreen() {
                     showsHorizontalScrollIndicator={false}
                     style={styles.photosScroll}
                   >
-                    {localPhotos.map((p) => (
-                      <View key={p.id} style={styles.photoContainer}>
-                        <TouchableOpacity
-                          activeOpacity={0.8}
-                          onPress={() => setPreviewPhotoUrl(p.uri)}
-                        >
-                          <Image source={{ uri: p.uri }} style={styles.photoThumb} />
-                        </TouchableOpacity>
+                    {localPhotos.map((p) => {
+                      const displayUri = p.isUploadedToS3
+                        ? `${API_BASE_URL}/cleaning/image?key=${encodeURIComponent(p.key || p.s3Url || p.uri)}`
+                        : p.uri;
 
-                        {/* Staged Tag */}
-                        <View style={styles.photoTag}>
-                          <Text style={styles.photoTagText}>
-                            {p.isUploadedToS3 ? "S3" : "Ready"}
-                          </Text>
-                        </View>
-
-                        {task.status !== "UNDER_REVIEW" && task.status !== "APPROVED" && (
+                      return (
+                        <View key={p.id} style={styles.photoContainer}>
                           <TouchableOpacity
-                            style={styles.deletePhotoBtn}
-                            onPress={() => handleDeletePhoto(field.id, p.id)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            activeOpacity={0.8}
+                            onPress={() => setPreviewPhotoUrl(displayUri)}
                           >
-                            <Ionicons name="trash" size={12} color="#ffffff" />
+                            <Image source={{ uri: displayUri }} style={styles.photoThumb} />
                           </TouchableOpacity>
-                        )}
-                      </View>
-                    ))}
+
+                          {/* Staged Tag */}
+                          <View style={styles.photoTag}>
+                            <Text style={styles.photoTagText}>
+                              {p.isUploadedToS3 ? "S3" : "Ready"}
+                            </Text>
+                          </View>
+
+                          {task.status !== "UNDER_REVIEW" && task.status !== "APPROVED" && (
+                            <TouchableOpacity
+                              style={styles.deletePhotoBtn}
+                              onPress={() => handleDeletePhoto(field.id, p.id)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="trash" size={12} color="#ffffff" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
                   </ScrollView>
                 )}
 
@@ -655,16 +709,36 @@ export default function ReceptionBranchCleaningScreen() {
             );
           })}
 
-          {/* Submit for Verification Button */}
-          {task.status !== "APPROVED" && (
+          {/* Under Review State: Manual Check Status Button */}
+          {task.status === "UNDER_REVIEW" && (
+            <TouchableOpacity
+              style={[styles.submitBtn, { backgroundColor: COLORS.primary }]}
+              disabled={isCheckingStatus}
+              onPress={handleCheckStatus}
+              activeOpacity={0.8}
+            >
+              {isCheckingStatus ? (
+                <>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.submitBtnText}>Checking Status...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={18} color="#ffffff" />
+                  <Text style={styles.submitBtnText}>Check Verification Status</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Pending Upload State: Submit to Verification Button */}
+          {task.status !== "APPROVED" && task.status !== "UNDER_REVIEW" && (
             <TouchableOpacity
               style={[
                 styles.submitBtn,
-                !isAllUploaded || isSubmitting || task.status === "UNDER_REVIEW"
-                  ? styles.submitBtnDisabled
-                  : null,
+                !isAllUploaded || isSubmitting ? styles.submitBtnDisabled : null,
               ]}
-              disabled={!isAllUploaded || isSubmitting || task.status === "UNDER_REVIEW"}
+              disabled={!isAllUploaded || isSubmitting}
               onPress={handleSubmitForVerification}
               activeOpacity={0.8}
             >
@@ -673,13 +747,6 @@ export default function ReceptionBranchCleaningScreen() {
                   <ActivityIndicator size="small" color="#ffffff" />
                   <Text style={styles.submitBtnText}>
                     {submitProgressText || "Saving to AWS S3 & Submitting..."}
-                  </Text>
-                </>
-              ) : task.status === "UNDER_REVIEW" ? (
-                <>
-                  <ActivityIndicator size="small" color="#ffffff" />
-                  <Text style={styles.submitBtnText}>
-                    Submitted — Waiting for Verification
                   </Text>
                 </>
               ) : (
@@ -821,6 +888,18 @@ const styles = StyleSheet.create({
   bannerGreen: { backgroundColor: COLORS.successLight, borderColor: "#bbf7d0" },
   bannerTitle: { fontSize: 13, fontWeight: "800", color: COLORS.textDark },
   bannerText: { fontSize: 11.5, color: COLORS.textMuted, marginTop: 2, lineHeight: 16 },
+  btnCheckStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  btnCheckStatusText: { color: "#ffffff", fontSize: 12, fontWeight: "800" },
   progressCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
