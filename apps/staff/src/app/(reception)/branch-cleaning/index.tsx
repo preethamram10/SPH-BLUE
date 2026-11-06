@@ -44,6 +44,17 @@ interface Photo {
   uploadedAt: string;
 }
 
+interface LocalMobilePhoto {
+  id: string;
+  uri: string;
+  base64?: string;
+  mimeType?: string;
+  isUploadedToS3: boolean;
+  s3Url?: string;
+  key?: string;
+  uploadedAt?: string;
+}
+
 interface CleaningField {
   id: string;
   name: string;
@@ -74,9 +85,12 @@ export default function ReceptionBranchCleaningScreen() {
   const [branchName, setBranchName] = useState("Kphb");
   const [task, setTask] = useState<CleaningTask | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [uploadingFieldId, setUploadingFieldId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgressText, setSubmitProgressText] = useState("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+
+  // Local staged photos map: fieldId -> LocalMobilePhoto[]
+  const [stagedPhotosMap, setStagedPhotosMap] = useState<Record<string, LocalMobilePhoto[]>>({});
 
   // Load branch and check task
   const fetchActiveAudit = async (currentBranch: string) => {
@@ -87,6 +101,29 @@ export default function ReceptionBranchCleaningScreen() {
       const data = await res.json();
       if (data.success && data.task) {
         setTask(data.task);
+
+        // Populate staged photos map with existing S3 photos if empty
+        setStagedPhotosMap((prev) => {
+          const updated = { ...prev };
+          data.task.fields.forEach((f: CleaningField) => {
+            if (!updated[f.id] || updated[f.id].length === 0) {
+              updated[f.id] = (f.photos || []).map((p: Photo) => ({
+                id: p.id,
+                uri: p.url,
+                isUploadedToS3: true,
+                s3Url: p.url,
+                key: p.key,
+                uploadedAt: p.uploadedAt,
+              }));
+            }
+          });
+          return updated;
+        });
+
+        // If approved and in lockout mode, unlock!
+        if (data.task.status === "APPROVED" && isLockoutMode) {
+          router.replace("/(reception)" as any);
+        }
       } else {
         setTask(null);
       }
@@ -110,7 +147,7 @@ export default function ReceptionBranchCleaningScreen() {
     if (!branchName) return;
     const interval = setInterval(() => {
       fetchActiveAudit(branchName);
-    }, 5000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [branchName]);
 
@@ -121,7 +158,7 @@ export default function ReceptionBranchCleaningScreen() {
         if (task && task.status !== "APPROVED" && isLockoutMode) {
           Alert.alert(
             "Lockout Active",
-            "Daily cleaning audit is mandatory. Please upload all photos or wait for Admin/HR approval to unlock reception."
+            "Daily cleaning audit is mandatory. Please add photos for all areas and wait for Admin/HR approval to unlock reception."
           );
           return true; // Prevent going back
         }
@@ -136,61 +173,7 @@ export default function ReceptionBranchCleaningScreen() {
     }, [task, isLockoutMode])
   );
 
-  // Image Upload helper
-  const uploadAssetToS3 = async (asset: ImagePicker.ImagePickerAsset, field: CleaningField) => {
-    if (!task) return;
-
-    setUploadingFieldId(field.id);
-    try {
-      const res = await fetch(`${API_BASE_URL}/cleaning/upload`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          base64: asset.base64,
-          branchName,
-          assignedDate: task.assignedDate,
-          fieldName: field.name,
-          contentType: asset.mimeType || "image/jpeg",
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        Alert.alert("Upload Failed", data.error || "Could not upload photo to AWS S3.");
-        return;
-      }
-
-      // Add to task fields
-      const newPhoto: Photo = {
-        id: `p-${Date.now()}`,
-        url: data.url,
-        key: data.key,
-        uploadedAt: data.uploadedAt,
-      };
-
-      const updatedFields = task.fields.map((f) => {
-        if (f.id === field.id) {
-          return {
-            ...f,
-            photos: [...f.photos, newPhoto],
-            status: "UPLOADED" as const,
-            rejectReason: undefined,
-          };
-        }
-        return f;
-      });
-
-      setTask({ ...task, fields: updatedFields });
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to upload image.");
-    } finally {
-      setUploadingFieldId(null);
-    }
-  };
-
-  // Launch Camera
+  // Launch Camera: adds photo locally with instant green tick mark
   const handleTakePhoto = async (field: CleaningField) => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
@@ -206,11 +189,23 @@ export default function ReceptionBranchCleaningScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      await uploadAssetToS3(result.assets[0], field);
+      const asset = result.assets[0];
+      const newPhoto: LocalMobilePhoto = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        uri: asset.uri,
+        base64: asset.base64 || undefined,
+        mimeType: asset.mimeType || "image/jpeg",
+        isUploadedToS3: false,
+      };
+
+      setStagedPhotosMap((prev) => ({
+        ...prev,
+        [field.id]: [...(prev[field.id] || []), newPhoto],
+      }));
     }
   };
 
-  // Choose from Gallery
+  // Choose from Gallery: adds photo locally with instant green tick mark
   const handleChoosePhoto = async (field: CleaningField) => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -222,75 +217,145 @@ export default function ReceptionBranchCleaningScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
       base64: true,
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: true,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      await uploadAssetToS3(result.assets[0], field);
+    if (!result.canceled && result.assets.length > 0) {
+      const newPhotos: LocalMobilePhoto[] = result.assets.map((asset, i) => ({
+        id: `local-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+        uri: asset.uri,
+        base64: asset.base64 || undefined,
+        mimeType: asset.mimeType || "image/jpeg",
+        isUploadedToS3: false,
+      }));
+
+      setStagedPhotosMap((prev) => ({
+        ...prev,
+        [field.id]: [...(prev[field.id] || []), ...newPhotos],
+      }));
     }
   };
 
-  // Delete photo
+  // Delete photo locally
   const handleDeletePhoto = (fieldId: string, photoId: string) => {
-    if (!task) return;
-    const updatedFields = task.fields.map((f) => {
-      if (f.id === fieldId) {
-        const remaining = f.photos.filter((p) => p.id !== photoId);
-        return {
-          ...f,
-          photos: remaining,
-          status: remaining.length > 0 ? f.status : ("PENDING" as const),
-        };
-      }
-      return f;
-    });
-    setTask({ ...task, fields: updatedFields });
+    setStagedPhotosMap((prev) => ({
+      ...prev,
+      [fieldId]: (prev[fieldId] || []).filter((p) => p.id !== photoId),
+    }));
   };
 
-  // Submit for Verification
+  // Calculate completion
+  const totalCount = task ? task.fields.length : 0;
+  const completedCount = task
+    ? task.fields.filter((f) => (stagedPhotosMap[f.id] || []).length > 0).length
+    : 0;
+  const isAllUploaded = totalCount > 0 && completedCount === totalCount;
+
+  // Submit all photos: Uploads staged photos to AWS S3, then submits task for verification
   const handleSubmitForVerification = async () => {
     if (!task) return;
-    const allDone = task.fields.every((f) => f.photos.length > 0);
-    if (!allDone) {
+    if (!isAllUploaded) {
       Alert.alert(
         "Photos Incomplete",
-        "Please upload photos for all inspection areas before sending for verification."
+        "Please add photos for all required inspection areas before sending for verification."
       );
       return;
     }
 
     setIsSubmitting(true);
-    try {
-      const fieldsData = task.fields.map((f) => ({
-        fieldId: f.id,
-        photos: f.photos,
-      }));
+    setSubmitProgressText("Preparing photos for AWS S3 upload...");
 
+    try {
+      // Count total photos to upload
+      let totalToUpload = 0;
+      Object.values(stagedPhotosMap).forEach((photos) => {
+        photos.forEach((p) => {
+          if (!p.isUploadedToS3 && p.base64) totalToUpload++;
+        });
+      });
+
+      let uploadedSoFar = 0;
+      const finalFieldsData: { fieldId: string; photos: Photo[] }[] = [];
+
+      for (const field of task.fields) {
+        const localPhotos = stagedPhotosMap[field.id] || [];
+        const uploadedPhotosForField: Photo[] = [];
+
+        for (const photoItem of localPhotos) {
+          if (photoItem.isUploadedToS3 && photoItem.s3Url) {
+            // Already uploaded to AWS S3
+            uploadedPhotosForField.push({
+              id: photoItem.id,
+              url: photoItem.s3Url,
+              key: photoItem.key || "",
+              uploadedAt: photoItem.uploadedAt || new Date().toISOString(),
+            });
+          } else if (photoItem.base64) {
+            // Upload to AWS S3 now
+            uploadedSoFar++;
+            setSubmitProgressText(
+              `Saving to AWS S3: Area "${field.name}" (${uploadedSoFar}/${totalToUpload})...`
+            );
+
+            const res = await fetch(`${API_BASE_URL}/cleaning/upload`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                base64: photoItem.base64,
+                branchName,
+                assignedDate: task.assignedDate,
+                fieldName: field.name,
+                contentType: photoItem.mimeType || "image/jpeg",
+              }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+              throw new Error(data.error || `Could not upload photo for ${field.name}`);
+            }
+
+            uploadedPhotosForField.push({
+              id: `p-${Date.now()}-${uploadedSoFar}`,
+              url: data.url,
+              key: data.key,
+              uploadedAt: data.uploadedAt,
+            });
+          }
+        }
+
+        finalFieldsData.push({
+          fieldId: field.id,
+          photos: uploadedPhotosForField,
+        });
+      }
+
+      // Submit to database
+      setSubmitProgressText("Submitting to Admin / HR for review...");
       const res = await fetch(`${API_BASE_URL}/cleaning/tasks/${task.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "SUBMIT",
-          fieldsData,
+          fieldsData: finalFieldsData,
           submittedBy: `${branchName} Reception Staff`,
         }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        Alert.alert("Submission Failed", data.error || "Could not submit photos.");
-        return;
+        throw new Error(data.error || "Could not submit photos.");
       }
 
       setTask(data.task);
       Alert.alert(
-        "Submitted Successfully",
-        "Cleaning photos have been sent for Admin / HR review. This screen will unlock once approved."
+        "Submitted to Cloud",
+        "All inspection photos are saved to AWS S3 and submitted for review. This screen will unlock automatically once Admin or HR approves."
       );
     } catch (err: any) {
-      Alert.alert("Network Error", err.message || "Failed to submit.");
+      Alert.alert("Submission Failed", err.message || "Failed to submit.");
     } finally {
       setIsSubmitting(false);
+      setSubmitProgressText("");
     }
   };
 
@@ -298,101 +363,98 @@ export default function ReceptionBranchCleaningScreen() {
     if (task && task.status !== "APPROVED" && isLockoutMode) {
       Alert.alert(
         "Lockout Active",
-        "Cleaning audit is required before normal reception use."
+        "Mandatory branch hygiene audit is in progress. Please complete upload to unlock."
       );
       return;
     }
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(reception)" as any);
-    }
+    router.back();
   };
 
-  const uploadedCount = task ? task.fields.filter((f) => f.photos.length > 0).length : 0;
-  const totalCount = task ? task.fields.length : 0;
-  const isAllUploaded = totalCount > 0 && uploadedCount === totalCount;
-
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       {/* Top Header */}
       <View style={styles.header}>
-        {(!isLockoutMode || task?.status === "APPROVED") && (
-          <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.textDark} />
-          </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="sparkles" size={16} color={COLORS.teal} />
-            <Text style={styles.headerTitle}>Branch Cleaning Audit</Text>
+        <View style={styles.headerLeft}>
+          {!isLockoutMode && (
+            <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={20} color={COLORS.textDark} />
+            </TouchableOpacity>
+          )}
+          <View>
+            <View style={styles.branchRow}>
+              <Text style={styles.headerTitle}>{branchName} Clinic</Text>
+              <View style={styles.lockoutBadge}>
+                <Ionicons name="lock-closed" size={11} color="#ffffff" />
+                <Text style={styles.lockoutBadgeText}>MANDATORY AUDIT</Text>
+              </View>
+            </View>
+            <Text style={styles.headerSub}>Daily Cleaning &amp; Hygiene Inspection</Text>
           </View>
-          <Text style={styles.headerSub}>
-            {branchName} • {task ? task.assignedDate : "Daily Inspection"}
-          </Text>
         </View>
 
         {task && (
           <View
             style={[
               styles.statusBadge,
-              task.status === "APPROVED"
-                ? styles.statusApproved
-                : task.status === "UNDER_REVIEW"
-                ? styles.statusReview
-                : task.status === "REJECTED"
-                ? styles.statusRejected
-                : styles.statusPending,
+              task.status === "APPROVED" && styles.statusApproved,
+              task.status === "UNDER_REVIEW" && styles.statusReview,
+              task.status === "REJECTED" && styles.statusRejected,
+              task.status === "PENDING_UPLOAD" && styles.statusPending,
             ]}
           >
             <Text
               style={[
                 styles.statusText,
-                task.status === "APPROVED"
-                  ? styles.statusTextApproved
-                  : task.status === "UNDER_REVIEW"
-                  ? styles.statusTextReview
-                  : task.status === "REJECTED"
-                  ? styles.statusTextRejected
-                  : styles.statusTextPending,
+                task.status === "APPROVED" && styles.statusTextApproved,
+                task.status === "UNDER_REVIEW" && styles.statusTextReview,
+                task.status === "REJECTED" && styles.statusTextRejected,
+                task.status === "PENDING_UPLOAD" && styles.statusTextPending,
               ]}
             >
-              {task.status.replace(/_/g, " ")}
+              {task.status === "APPROVED"
+                ? "✓ APPROVED"
+                : task.status === "UNDER_REVIEW"
+                ? "UNDER REVIEW"
+                : task.status === "REJECTED"
+                ? "RE-UPLOAD"
+                : "PENDING"}
             </Text>
           </View>
         )}
       </View>
 
-      {/* Main Content */}
+      {/* Main Body */}
       {isLoading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading cleaning tasks...</Text>
+          <Text style={styles.loadingText}>Checking Cleaning Audit Status...</Text>
         </View>
       ) : !task ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIconCircle}>
-            <Ionicons name="checkmark-done-circle" size={48} color={COLORS.success} />
+            <Ionicons name="checkmark-done" size={40} color={COLORS.success} />
           </View>
-          <Text style={styles.emptyTitle}>No Cleaning Audit Pending</Text>
+          <Text style={styles.emptyTitle}>No Cleaning Audit Today</Text>
           <Text style={styles.emptySubtitle}>
-            There is currently no mandatory cleaning inspection assigned for {branchName}.
+            Your branch has no pending cleaning audits assigned for today. You have full access to Reception.
           </Text>
+          <TouchableOpacity
+            style={styles.btnContinue}
+            onPress={() => router.replace("/(reception)" as any)}
+          >
+            <Text style={styles.btnContinueText}>Go to Reception Dashboard</Text>
+          </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Status Message Banner */}
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          {/* Status Banners */}
           {task.status === "PENDING_UPLOAD" && (
             <View style={[styles.banner, styles.bannerAmber]}>
-              <Ionicons name="time" size={20} color={COLORS.warning} />
+              <Ionicons name="alert-circle" size={20} color={COLORS.warning} style={{ marginTop: 2 }} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.bannerTitle}>Photos Required to Unlock</Text>
+                <Text style={styles.bannerTitle}>Photos Required for Reception Unlock</Text>
                 <Text style={styles.bannerText}>
-                  Please capture clear photos of each assigned area. You can take a live photo or pick from gallery.
+                  Take photos for each required area (Restroom, Reception, Sitting Area, etc.). Each completed area gets a green tick mark (✓). All photos are saved to AWS S3 when submitting!
                 </Text>
               </View>
             </View>
@@ -400,11 +462,11 @@ export default function ReceptionBranchCleaningScreen() {
 
           {task.status === "UNDER_REVIEW" && (
             <View style={[styles.banner, styles.bannerSky]}>
-              <Ionicons name="hourglass" size={20} color={COLORS.primary} />
+              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 2 }} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.bannerTitle}>Under Verification</Text>
+                <Text style={styles.bannerTitle}>Photos Saved &amp; Submitted for Verification</Text>
                 <Text style={styles.bannerText}>
-                  Photos submitted to Admin / HR for review. Screen unlocks immediately upon approval.
+                  Your inspection photos have been uploaded to AWS S3. Waiting for Admin or HR approval. Screen will automatically unlock once approved!
                 </Text>
               </View>
             </View>
@@ -412,11 +474,14 @@ export default function ReceptionBranchCleaningScreen() {
 
           {task.status === "REJECTED" && (
             <View style={[styles.banner, styles.bannerRose]}>
-              <Ionicons name="alert-circle" size={20} color={COLORS.danger} />
+              <Ionicons name="close-circle" size={20} color={COLORS.danger} style={{ marginTop: 2 }} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.bannerTitle}>Re-upload Required</Text>
-                <Text style={styles.bannerText}>
+                <Text style={styles.bannerTitle}>Re-upload Required by {task.reviewedRole || "Admin/HR"}</Text>
+                <Text style={[styles.bannerText, { fontWeight: "700", color: COLORS.danger }]}>
                   Remarks: {task.reviewRemarks || "Some inspection areas did not pass hygiene verification."}
+                </Text>
+                <Text style={styles.bannerText}>
+                  Please re-clean flagged areas, take new photos, and re-submit.
                 </Text>
               </View>
             </View>
@@ -424,11 +489,11 @@ export default function ReceptionBranchCleaningScreen() {
 
           {task.status === "APPROVED" && (
             <View style={[styles.banner, styles.bannerGreen]}>
-              <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.success} style={{ marginTop: 2 }} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.bannerTitle}>Cleaning Approved &amp; Verified</Text>
+                <Text style={styles.bannerTitle}>Audit Approved!</Text>
                 <Text style={styles.bannerText}>
-                  All areas passed inspection. Reception is fully unlocked!
+                  Verified by {task.reviewedBy || "Admin/HR"}. Reception is completely unlocked.
                 </Text>
               </View>
             </View>
@@ -438,8 +503,13 @@ export default function ReceptionBranchCleaningScreen() {
           <View style={styles.progressCard}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressTitle}>Inspection Progress</Text>
-              <Text style={styles.progressCount}>
-                {uploadedCount} of {totalCount} Areas Uploaded
+              <Text
+                style={[
+                  styles.progressCount,
+                  isAllUploaded && { color: COLORS.success, fontWeight: "900" },
+                ]}
+              >
+                {completedCount} of {totalCount} Areas Done
               </Text>
             </View>
             <View style={styles.progressBarBg}>
@@ -447,7 +517,7 @@ export default function ReceptionBranchCleaningScreen() {
                 style={[
                   styles.progressBarFill,
                   {
-                    width: `${totalCount > 0 ? (uploadedCount / totalCount) * 100 : 0}%`,
+                    width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%`,
                     backgroundColor: isAllUploaded ? COLORS.success : COLORS.primary,
                   },
                 ]}
@@ -459,7 +529,8 @@ export default function ReceptionBranchCleaningScreen() {
           <Text style={styles.sectionHeader}>REQUIRED INSPECTION AREAS</Text>
 
           {task.fields.map((field, idx) => {
-            const isUploading = uploadingFieldId === field.id;
+            const localPhotos = stagedPhotosMap[field.id] || [];
+            const hasPhotos = localPhotos.length > 0;
             const isRejected = field.status === "REJECTED";
 
             return (
@@ -467,39 +538,76 @@ export default function ReceptionBranchCleaningScreen() {
                 key={field.id}
                 style={[
                   styles.fieldCard,
+                  hasPhotos && styles.fieldCardCompleted,
                   isRejected && styles.fieldCardRejected,
                 ]}
               >
+                {/* Header Row with Checkmark */}
                 <View style={styles.fieldHeaderRow}>
-                  <View style={styles.fieldNumberBadge}>
-                    <Text style={styles.fieldNumberText}>{idx + 1}</Text>
+                  {hasPhotos ? (
+                    <View style={styles.fieldDoneBadge}>
+                      <Ionicons name="checkmark" size={14} color="#ffffff" />
+                    </View>
+                  ) : (
+                    <View style={styles.fieldNumberBadge}>
+                      <Text style={styles.fieldNumberText}>{idx + 1}</Text>
+                    </View>
+                  )}
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldNameText}>{field.name}</Text>
                   </View>
-                  <Text style={styles.fieldNameText}>{field.name}</Text>
+
+                  {/* Status Pill Badge */}
+                  {hasPhotos && (
+                    <View style={styles.donePill}>
+                      <Ionicons name="checkmark-circle" size={12} color={COLORS.success} />
+                      <Text style={styles.donePillText}>
+                        {localPhotos.length} Photo{localPhotos.length > 1 ? "s" : ""} Added
+                      </Text>
+                    </View>
+                  )}
+                  {!hasPhotos && !isRejected && (
+                    <View style={styles.neededPill}>
+                      <Ionicons name="camera" size={11} color={COLORS.warning} />
+                      <Text style={styles.neededPillText}>Photo Needed</Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Rejection Remark */}
                 {isRejected && field.rejectReason && (
                   <View style={styles.rejectNotice}>
                     <Ionicons name="warning" size={14} color={COLORS.danger} />
-                    <Text style={styles.rejectNoticeText}>{field.rejectReason}</Text>
+                    <Text style={styles.rejectNoticeText}>
+                      Rejection Reason: {field.rejectReason}
+                    </Text>
                   </View>
                 )}
 
                 {/* Uploaded Photos Gallery */}
-                {field.photos.length > 0 && (
+                {localPhotos.length > 0 && (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     style={styles.photosScroll}
                   >
-                    {field.photos.map((p) => (
+                    {localPhotos.map((p) => (
                       <View key={p.id} style={styles.photoContainer}>
                         <TouchableOpacity
                           activeOpacity={0.8}
-                          onPress={() => setPreviewPhotoUrl(p.url)}
+                          onPress={() => setPreviewPhotoUrl(p.uri)}
                         >
-                          <Image source={{ uri: p.url }} style={styles.photoThumb} />
+                          <Image source={{ uri: p.uri }} style={styles.photoThumb} />
                         </TouchableOpacity>
+
+                        {/* Staged Tag */}
+                        <View style={styles.photoTag}>
+                          <Text style={styles.photoTagText}>
+                            {p.isUploadedToS3 ? "S3" : "Ready"}
+                          </Text>
+                        </View>
+
                         {task.status !== "UNDER_REVIEW" && task.status !== "APPROVED" && (
                           <TouchableOpacity
                             style={styles.deletePhotoBtn}
@@ -518,25 +626,24 @@ export default function ReceptionBranchCleaningScreen() {
                 {task.status !== "UNDER_REVIEW" && task.status !== "APPROVED" && (
                   <View style={styles.uploadActionRow}>
                     <TouchableOpacity
-                      style={styles.btnCamera}
+                      style={[
+                        styles.btnCamera,
+                        hasPhotos && { backgroundColor: COLORS.textDark },
+                      ]}
                       onPress={() => handleTakePhoto(field)}
-                      disabled={isUploading}
+                      disabled={isSubmitting}
                       activeOpacity={0.8}
                     >
-                      {isUploading ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <>
-                          <Ionicons name="camera" size={15} color="#ffffff" />
-                          <Text style={styles.btnCameraText}>Take Photo</Text>
-                        </>
-                      )}
+                      <Ionicons name="camera" size={15} color="#ffffff" />
+                      <Text style={styles.btnCameraText}>
+                        {hasPhotos ? "+ Add More" : "Take Photo"}
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.btnGallery}
                       onPress={() => handleChoosePhoto(field)}
-                      disabled={isUploading}
+                      disabled={isSubmitting}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="images-outline" size={15} color={COLORS.primary} />
@@ -553,21 +660,33 @@ export default function ReceptionBranchCleaningScreen() {
             <TouchableOpacity
               style={[
                 styles.submitBtn,
-                !isAllUploaded || task.status === "UNDER_REVIEW" ? styles.submitBtnDisabled : null,
+                !isAllUploaded || isSubmitting || task.status === "UNDER_REVIEW"
+                  ? styles.submitBtnDisabled
+                  : null,
               ]}
               disabled={!isAllUploaded || isSubmitting || task.status === "UNDER_REVIEW"}
               onPress={handleSubmitForVerification}
               activeOpacity={0.8}
             >
               {isSubmitting ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.submitBtnText}>
+                    {submitProgressText || "Saving to AWS S3 & Submitting..."}
+                  </Text>
+                </>
+              ) : task.status === "UNDER_REVIEW" ? (
+                <>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={styles.submitBtnText}>
+                    Submitted — Waiting for Verification
+                  </Text>
+                </>
               ) : (
                 <>
-                  <Ionicons name="send" size={16} color="#ffffff" />
+                  <Ionicons name="cloud-upload" size={18} color="#ffffff" />
                   <Text style={styles.submitBtnText}>
-                    {task.status === "UNDER_REVIEW"
-                      ? "Submitted — Waiting for Verification"
-                      : "Send to Verification & Unlock"}
+                    Save to AWS S3 &amp; Send to Verification
                   </Text>
                 </>
               )}
@@ -610,41 +729,53 @@ export default function ReceptionBranchCleaningScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: COLORS.card,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    gap: 12,
   },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.bg,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  branchRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: COLORS.textDark },
   headerSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2, fontWeight: "600" },
+  lockoutBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: COLORS.danger,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  lockoutBadgeText: { fontSize: 9, fontWeight: "900", color: "#ffffff", letterSpacing: 0.5 },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   statusApproved: { backgroundColor: COLORS.successLight },
-  statusReview: { backgroundColor: COLORS.warningLight },
+  statusReview: { backgroundColor: "#e0f2fe" },
   statusRejected: { backgroundColor: COLORS.dangerLight },
   statusPending: { backgroundColor: "#f1f5f9" },
   statusText: { fontSize: 11, fontWeight: "800" },
   statusTextApproved: { color: COLORS.success },
-  statusTextReview: { color: COLORS.warning },
+  statusTextReview: { color: COLORS.primary },
   statusTextRejected: { color: COLORS.danger },
   statusTextPending: { color: COLORS.textMuted },
   scroll: { flex: 1 },
@@ -669,6 +800,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: "800", color: COLORS.textDark },
   emptySubtitle: { fontSize: 13, color: COLORS.textMuted, textAlign: "center", lineHeight: 18 },
+  btnContinue: {
+    marginTop: 10,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  btnContinueText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
   banner: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -711,9 +850,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
     gap: 12,
+  },
+  fieldCardCompleted: {
+    borderColor: COLORS.success,
+    backgroundColor: "#f0fdf4",
   },
   fieldCardRejected: {
     borderColor: COLORS.danger,
@@ -724,12 +867,44 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: COLORS.textDark,
+    backgroundColor: COLORS.textMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fieldDoneBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.success,
     alignItems: "center",
     justifyContent: "center",
   },
   fieldNumberText: { fontSize: 11, fontWeight: "800", color: "#ffffff" },
-  fieldNameText: { fontSize: 14, fontWeight: "800", color: COLORS.textDark, flex: 1 },
+  fieldNameText: { fontSize: 14, fontWeight: "800", color: COLORS.textDark },
+  donePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.successLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  donePillText: { fontSize: 11, fontWeight: "800", color: COLORS.success },
+  neededPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.warningLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+  },
+  neededPillText: { fontSize: 11, fontWeight: "700", color: COLORS.warning },
   rejectNotice: {
     flexDirection: "row",
     alignItems: "center",
@@ -751,6 +926,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  photoTag: {
+    position: "absolute",
+    bottom: 4,
+    left: 4,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  photoTagText: { color: "#ffffff", fontSize: 9, fontWeight: "800" },
   deletePhotoBtn: {
     position: "absolute",
     top: 4,
