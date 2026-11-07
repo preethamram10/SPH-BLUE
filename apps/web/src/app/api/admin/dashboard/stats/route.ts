@@ -67,17 +67,34 @@ export async function GET(req: Request) {
         .trim();
     };
 
+    const normalizeDateToYYYYMMDD = (dt?: string | null): string => {
+      if (!dt) return "";
+      const trimmed = dt.trim();
+      if (trimmed.includes("T")) return trimmed.split("T")[0];
+      const clean = trimmed.replace(/\//g, "-");
+      const parts = clean.split("-");
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+      }
+      if (parts.length === 3 && parts[2].length === 4) {
+        return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+      }
+      return clean;
+    };
+
     // Calculate Branch Stats
     const branchStats: BranchStat[] = activeBranches.map((branch) => {
       const bKey = cleanBranch(branch.name);
 
       // Appointments today for this branch
       const branchApptsToday = allAppointments.filter((a) => {
-        const aDate = a.appointmentDate || (a.createdAt ? a.createdAt.slice(0, 10) : "");
+        if (a.isDeleted || a.status === "CANCELLED") return false;
+        const aDate = normalizeDateToYYYYMMDD(a.appointmentDate || a.createdAt);
+        const aPaidDate = a.paidAt ? normalizeDateToYYYYMMDD(a.paidAt) : "";
         const aBranchKey = cleanBranch(a.branch || "");
         const matchBranch =
           !bKey || aBranchKey.includes(bKey) || bKey.includes(aBranchKey);
-        const matchDate = aDate === todayStr;
+        const matchDate = aDate === todayStr || aPaidDate === todayStr;
         return matchBranch && matchDate;
       });
 
@@ -88,15 +105,22 @@ export async function GET(req: Request) {
         const isPaid =
           a.isFeeCollected ||
           a.status === "COMPLETED" ||
-          (a.totalAmountDue && a.totalAmountDue > 0);
+          Boolean(a.paidAt) ||
+          (typeof a.totalPaid === "number" && a.totalPaid > 0) ||
+          (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0);
         if (!isPaid) return sum;
-        const cFee = a.consultationFee || 0;
-        const mFee = a.medicineFee || 0;
-        const dFee = a.dietPlanFee || 0;
-        const total =
-          a.totalAmountDue && a.totalAmountDue > 0
-            ? a.totalAmountDue
-            : cFee + mFee + dFee || 500;
+
+        let total = 0;
+        if (typeof a.totalPaid === "number" && a.totalPaid > 0) {
+          total = a.totalPaid;
+        } else if (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0) {
+          total = a.totalAmountDue;
+        } else {
+          const cFee = Number(a.consultationFee) || 0;
+          const mFee = Number(a.medicineFee) || 0;
+          const dFee = Number(a.dietPlanFee) || 0;
+          total = cFee + mFee + dFee || 500;
+        }
         return sum + total;
       }, 0);
 

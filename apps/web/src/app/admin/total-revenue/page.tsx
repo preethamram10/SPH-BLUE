@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 
 // --- Type Definitions ---
@@ -76,8 +77,8 @@ export default function AdminTotalRevenuePage() {
   const [revenueDate, setRevenueDate] = useState("");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
-  const [revenueYear, setRevenueYear] = useState<string>("2026");
-  const [revenueMonth, setRevenueMonth] = useState<string>("11");
+  const [revenueYear, setRevenueYear] = useState<string>("all");
+  const [revenueMonth, setRevenueMonth] = useState<string>("all");
   const [revenueDoctor, setRevenueDoctor] = useState("all");
   const [revenueSource, setRevenueSource] = useState("all");
   const [revenueMethod, setRevenueMethod] = useState("all");
@@ -96,25 +97,29 @@ export default function AdminTotalRevenuePage() {
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
 
   // --- Fetch Transactions from REST API ---
-  useEffect(() => {
-    const fetchRevenueData = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/admin/revenue/transactions");
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setTransactions(data);
-          }
+  const fetchRevenueData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/admin/revenue/transactions", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setTransactions(data);
         }
-      } catch (err) {
-        console.warn("Using local transaction data:", err);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      console.warn("Using local transaction data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchRevenueData();
+    const interval = setInterval(fetchRevenueData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   // Reset Filters
@@ -124,8 +129,8 @@ export default function AdminTotalRevenuePage() {
     setRevenueDate("");
     setCustomStartDate("");
     setCustomEndDate("");
-    setRevenueYear(currentYearStr);
-    setRevenueMonth(currentMonthNumStr);
+    setRevenueYear("all");
+    setRevenueMonth("all");
     setRevenueDoctor("all");
     setRevenueSource("all");
     setRevenueMethod("all");
@@ -186,34 +191,44 @@ export default function AdminTotalRevenuePage() {
           if (!t.branchName.toLowerCase().includes(revenueBranchId.toLowerCase())) return false;
         }
 
+        // Normalize timestamp for standard YYYY-MM-DD comparisons
+        const cleanDate = (t.timestamp || "").replace(/\//g, "-").trim();
+        const parts = cleanDate.split("-");
+        let tDate = cleanDate;
+        if (parts.length === 3 && parts[2].length === 4) {
+          tDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+        } else if (parts.length === 3 && parts[0].length === 4) {
+          tDate = `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+        }
+
         // Date & Date Modes
         if (dateMode === "custom") {
-          if (customStartDate && t.timestamp < customStartDate) return false;
-          if (customEndDate && t.timestamp > customEndDate) return false;
+          if (customStartDate && tDate < customStartDate) return false;
+          if (customEndDate && tDate > customEndDate) return false;
         } else if (revenueDate) {
-          if (t.timestamp !== revenueDate) return false;
+          if (tDate !== revenueDate) return false;
         } else if (dateMode === "today") {
-          if (t.timestamp !== todayStr) return false;
+          if (tDate !== todayStr) return false;
         } else if (dateMode === "this_month") {
-          if (!t.timestamp.startsWith(thisMonthPrefix)) return false;
+          if (!tDate.startsWith(thisMonthPrefix)) return false;
         } else if (dateMode === "prev_month") {
-          if (!t.timestamp.startsWith(prevMonthPrefix)) return false;
+          if (!tDate.startsWith(prevMonthPrefix)) return false;
         } else if (dateMode === "this_year") {
-          if (!t.timestamp.startsWith(currentYearStr)) return false;
+          if (!tDate.startsWith(currentYearStr)) return false;
         } else if (dateMode === "prev_year") {
           const prevYear = String(Number(currentYearStr) - 1);
-          if (!t.timestamp.startsWith(prevYear)) return false;
+          if (!tDate.startsWith(prevYear)) return false;
         }
 
         // Year Filter
         if (revenueYear !== "all") {
-          const [tY] = t.timestamp.split("-");
+          const [tY] = tDate.split("-");
           if (tY !== revenueYear) return false;
         }
 
         // Month Filter
         if (revenueMonth !== "all") {
-          const [, tM] = t.timestamp.split("-");
+          const [, tM] = tDate.split("-");
           if (tM && parseInt(tM, 10) !== parseInt(revenueMonth, 10)) return false;
         }
 
@@ -569,6 +584,14 @@ export default function AdminTotalRevenuePage() {
                 <span>Filter Transactions</span>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchRevenueData}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 rounded-md transition"
+                  title="Reload transactions from database"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh
+                </button>
                 <button
                   onClick={handleResetFilters}
                   className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md transition"

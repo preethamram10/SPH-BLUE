@@ -2510,7 +2510,9 @@ export const branchTargetService = {
 
       const targetReached = branchAppts.reduce((sum, a) => {
         const fee =
-          typeof a.totalAmountDue === "number" && a.totalAmountDue > 0
+          typeof a.totalPaid === "number" && a.totalPaid > 0
+            ? a.totalPaid
+            : typeof a.totalAmountDue === "number" && a.totalAmountDue > 0
             ? a.totalAmountDue
             : (a.consultationFee || 0) + (a.medicineFee || 0) + (a.dietPlanFee || 0);
         return sum + fee;
