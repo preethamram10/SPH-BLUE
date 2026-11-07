@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 import {
@@ -19,14 +18,19 @@ import { DailyWorkReport } from "@/components/staff/StaffDailyWorkSubmission";
 
 export default function EmployeeDailyWorksPage() {
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [reports, setReports] = useState<DailyWorkReport[]>([]);
   const [loading, setLoading] = useState(true);
 
   const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilshuknagar Branch"];
 
+  useEffect(() => {
+    setSelectedDate(new Date().toISOString().split("T")[0]);
+  }, []);
+
   const fetchReports = async () => {
+    if (!selectedDate) return;
     try {
       setLoading(true);
       const url = `/api/staff/daily-work?date=${selectedDate}`;

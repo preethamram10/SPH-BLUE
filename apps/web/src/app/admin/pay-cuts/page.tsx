@@ -55,16 +55,17 @@ export default function AdminPayCutsPage() {
   const [selectedEmpId, setSelectedEmpId] = useState("");
   const [cutAmount, setCutAmount] = useState("");
   const [cutReason, setCutReason] = useState("");
-  const [cutMonth, setCutMonth] = useState(() =>
-    new Date().toLocaleString("en-US", { month: "short", year: "numeric" })
-  );
-  const [cutDate, setCutDate] = useState(() =>
-    new Date().toISOString().split("T")[0]
-  );
+  const [cutMonth, setCutMonth] = useState("");
+  const [cutDate, setCutDate] = useState("");
   const [cutImage, setCutImage] = useState("");
 
   // Printable Notice State
   const [selectedSlip, setSelectedSlip] = useState<PayCutItem | null>(null);
+
+  useEffect(() => {
+    setCutMonth(new Date().toLocaleString("en-US", { month: "short", year: "numeric" }));
+    setCutDate(new Date().toISOString().split("T")[0]);
+  }, []);
 
   const fetchPayCuts = async () => {
     try {

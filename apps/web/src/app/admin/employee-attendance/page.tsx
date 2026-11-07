@@ -19,7 +19,7 @@ import {
 
 export default function EmployeeAttendancePage() {
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +27,12 @@ export default function EmployeeAttendancePage() {
 
   const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilshuknagar Branch"];
 
+  useEffect(() => {
+    setSelectedDate(new Date().toISOString().split("T")[0]);
+  }, []);
+
   const fetchAttendance = async () => {
+    if (!selectedDate) return;
     try {
       setLoading(true);
       const url = `/api/admin/attendance?branch=${encodeURIComponent(selectedBranch)}&date=${selectedDate}`;
