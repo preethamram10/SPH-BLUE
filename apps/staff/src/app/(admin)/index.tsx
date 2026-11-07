@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken } from "../../services/auth";
+import { API_BASE_URL } from "../../config/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -40,15 +41,31 @@ export default function AdminDashboard() {
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Pull-to-refresh state
+  // Pull-to-refresh & Live Stats state
   const [refreshing, setRefreshing] = useState(false);
+  const [statsData, setStatsData] = useState<any>(null);
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/dashboard/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setStatsData(data);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed fetching mobile admin stats:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    // Simulates live backend sync
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 700);
+    fetchStats().finally(() => setRefreshing(false));
   }, []);
 
   const openDrawer = () => {
@@ -165,42 +182,135 @@ export default function AdminDashboard() {
             <View style={styles.cardIconBoxBlue}>
               <Ionicons name="cash-outline" size={20} color={COLORS.white} />
             </View>
-            <Text style={styles.cardNumber}>₹48,500</Text>
-            <Text style={styles.cardLabel}>Today's Revenue</Text>
+            <Text style={styles.cardNumber}>
+              ₹{statsData?.summary?.totalTodayRevenue ? statsData.summary.totalTodayRevenue.toLocaleString("en-IN") : "0"}
+            </Text>
+            <Text style={styles.cardLabel}>Today&apos;s Revenue</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.card}
-            onPress={() => router.push("/(admin)/reports-analytics" as any)}
+            onPress={() => router.push("/(admin)/global-patients" as any)}
             activeOpacity={0.8}
           >
             <View style={styles.cardIconBoxGreen}>
               <Ionicons name="people-outline" size={20} color={COLORS.white} />
             </View>
-            <Text style={styles.cardNumber}>42</Text>
-            <Text style={styles.cardLabel}>Total Footfall</Text>
+            <Text style={styles.cardNumber}>
+              {statsData?.summary?.totalTodayPatients ?? 0}
+            </Text>
+            <Text style={styles.cardLabel}>Today&apos;s Patients</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Quick Branch Management Banner */}
-        <TouchableOpacity
-          style={styles.branchBanner}
-          onPress={() => router.push("/(admin)/branch-management" as any)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.branchBannerLeft}>
-            <View style={styles.branchBannerIcon}>
-              <Ionicons name="business" size={26} color={COLORS.white} />
+        {/* 1. Branch-Wise Live Operations */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10, marginTop: 4 }}>
+          <Text style={styles.sectionTitle}>BRANCH-WISE LIVE OPERATIONS</Text>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.textMuted }}>
+            {statsData?.branchStats?.length || 0} Clinics
+          </Text>
+        </View>
+
+        {/* Branch Cards */}
+        <View style={{ gap: 12, marginBottom: 18 }}>
+          {(statsData?.branchStats || []).map((b: any) => (
+            <View key={b.id} style={styles.branchBoxCard}>
+              <View style={styles.branchBoxHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.branchBoxTitle}>{b.name}</Text>
+                  <Text style={styles.branchBoxPhone}>{b.phone || "Active Clinic"}</Text>
+                </View>
+                <View style={styles.badgeActiveOpd}>
+                  <Text style={styles.badgeActiveOpdText}>Active OPD</Text>
+                </View>
+              </View>
+
+              {/* 4 Metrics in Grid */}
+              <View style={styles.branchMetricsGrid}>
+                <View style={styles.metricItemSky}>
+                  <Text style={styles.metricLabelSky}>Today Patients</Text>
+                  <Text style={styles.metricVal}>{b.todayPatients || 0}</Text>
+                </View>
+                <View style={styles.metricItemGreen}>
+                  <Text style={styles.metricLabelGreen}>Today Revenue</Text>
+                  <Text style={styles.metricVal}>₹{(b.todayRevenue || 0).toLocaleString("en-IN")}</Text>
+                </View>
+                <View style={styles.metricItemSlate}>
+                  <Text style={styles.metricLabelSlate}>Present Members</Text>
+                  <Text style={styles.metricVal}>{b.presentStaff || 0} / {b.totalStaff || 0}</Text>
+                </View>
+                <View style={styles.metricItemRose}>
+                  <Text style={styles.metricLabelRose}>Staff on Leave</Text>
+                  <Text style={styles.metricVal}>{b.leaveStaff || 0}</Text>
+                </View>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.branchBannerTitle}>Clinic Branch Management</Text>
-              <Text style={styles.branchBannerDesc}>
-                View 3 active clinics, add new branches &amp; photos
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.blue} />
-        </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* 2. Today's Staff Punch In & Out Timings */}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <Text style={styles.sectionTitle}>TODAY&apos;S STAFF PUNCH TIMINGS</Text>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.textMuted }}>
+            {statsData?.todayAttendance?.length || 0} Members
+          </Text>
+        </View>
+
+        <View style={{ gap: 8, marginBottom: 18 }}>
+          {(statsData?.todayAttendance || []).slice(0, 15).map((att: any) => {
+            const isInClinic = att.status === "In Clinic";
+            const isLate = att.status === "Late";
+            const isOnLeave = att.status === "On Leave";
+            return (
+              <View key={att.id} style={styles.punchRowCard}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={styles.punchStaffName}>{att.staffName}</Text>
+                    <View style={styles.roleTag}>
+                      <Text style={styles.roleTagText}>{att.role}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.punchBranchName}>{att.branch}</Text>
+                </View>
+
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.punchTimeIn}>In: {att.punchInTime || "-"}</Text>
+                  <Text style={styles.punchTimeOut}>
+                    Out: {att.punchOutTime || (isInClinic ? "In Clinic" : "-")}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.punchStatusPill,
+                    isInClinic
+                      ? styles.statusInClinic
+                      : isLate
+                      ? styles.statusLate
+                      : isOnLeave
+                      ? styles.statusLeave
+                      : styles.statusDefault,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.punchStatusText,
+                      isInClinic
+                        ? styles.statusTextInClinic
+                        : isLate
+                        ? styles.statusTextLate
+                        : isOnLeave
+                        ? styles.statusTextLeave
+                        : styles.statusTextDefault,
+                    ]}
+                  >
+                    {att.status}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
 
         {/* Executive Quick Actions */}
         <Text style={styles.sectionTitle}>EXECUTIVE CONTROLS</Text>
@@ -1019,5 +1129,211 @@ const styles = StyleSheet.create({
     color: COLORS.errorRed,
     fontSize: 14,
     fontWeight: "700",
+  },
+  branchBoxCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  branchBoxHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  branchBoxTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.textDark,
+  },
+  branchBoxPhone: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.blue,
+    marginTop: 2,
+  },
+  badgeActiveOpd: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  badgeActiveOpdText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#059669",
+    textTransform: "uppercase",
+  },
+  branchMetricsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  metricItemSky: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+    borderRadius: 10,
+    padding: 8,
+  },
+  metricLabelSky: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#0369a1",
+    textTransform: "uppercase",
+  },
+  metricItemGreen: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#dcfce7",
+    borderRadius: 10,
+    padding: 8,
+  },
+  metricLabelGreen: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#15803d",
+    textTransform: "uppercase",
+  },
+  metricItemSlate: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 8,
+  },
+  metricLabelSlate: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#475569",
+    textTransform: "uppercase",
+  },
+  metricItemRose: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#fff1f2",
+    borderWidth: 1,
+    borderColor: "#ffe4e6",
+    borderRadius: 10,
+    padding: 8,
+  },
+  metricLabelRose: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#be123c",
+    textTransform: "uppercase",
+  },
+  metricVal: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.textDark,
+    marginTop: 4,
+  },
+  punchRowCard: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  punchStaffName: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.textDark,
+  },
+  roleTag: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  roleTagText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+  },
+  punchBranchName: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  punchTimeIn: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  punchTimeOut: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  punchStatusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  punchStatusText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  statusInClinic: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+  },
+  statusTextInClinic: {
+    color: "#059669",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  statusLate: {
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fef3c7",
+  },
+  statusTextLate: {
+    color: "#b45309",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  statusLeave: {
+    backgroundColor: "#faf5ff",
+    borderWidth: 1,
+    borderColor: "#f3e8ff",
+  },
+  statusTextLeave: {
+    color: "#7e22ce",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  statusDefault: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  statusTextDefault: {
+    color: "#475569",
+    fontSize: 9,
+    fontWeight: "800",
   },
 });
