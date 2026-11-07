@@ -83,6 +83,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
       title: "FINANCE & REVENUE",
       items: [
         { label: "Total Revenue", href: "/admin/total-revenue", icon: DollarSign },
+        { label: "Reports & Visual Analytics", href: "/admin/reports-analytics", icon: BarChart3 },
         { label: "Target Management", href: "/admin/target-management", icon: Target },
         { label: "Fee Requests", href: "/admin/fee-requests", icon: FileCheck2 },
         { label: "Package Members", href: "/admin/package-members", icon: Crown },
@@ -111,7 +112,6 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
       title: "MARKETING & SETTINGS",
       items: [
         { label: "Manage Banners", href: "/admin/manage-banners", icon: ImageIcon },
-        { label: "Reports & Analytics", href: "/admin/reports-analytics", icon: BarChart3 },
         { label: "Delete Profiles (Phone)", href: "/admin/delete-profiles", icon: Trash2 },
         { label: "Clinic Settings", href: "/admin/settings", icon: Settings },
       ],

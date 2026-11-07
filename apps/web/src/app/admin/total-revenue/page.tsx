@@ -118,8 +118,25 @@ export default function AdminTotalRevenuePage() {
 
   useEffect(() => {
     fetchRevenueData();
-    const interval = setInterval(fetchRevenueData, 30000);
-    return () => clearInterval(interval);
+
+    // Auto-sync polling every 30s only when tab is visible
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchRevenueData();
+      }
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchRevenueData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Reset Filters

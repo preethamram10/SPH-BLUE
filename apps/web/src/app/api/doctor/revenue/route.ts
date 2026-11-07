@@ -13,11 +13,17 @@ export async function GET(req: NextRequest) {
     const completed = allAppointments.filter((a) => (a.status || "").toUpperCase() === "COMPLETED");
     const activeWaiting = allAppointments.filter((a) => (a.status || "").toUpperCase() !== "COMPLETED");
 
-    // Standard consultation fee default ₹500
-    const consultationEarnings = completed.length * 500;
+    // Compute consultation & package earnings from real appointments
+    const consultationEarnings = completed.reduce(
+      (sum, a) => sum + (Number(a.consultationFee) || 500),
+      0
+    );
 
-    // Mock/derived package enrollments for this doctor
-    const packageEarnings = 32000;
+    // Actual package / treatment enrollments for this doctor
+    const packageEarnings = completed.reduce(
+      (sum, a) => sum + (Number(a.dietPlanFee || a.otherCharges) || 0),
+      0
+    );
     const totalRevenue = consultationEarnings + packageEarnings;
 
     // Recent revenue transactions
@@ -41,7 +47,7 @@ export async function GET(req: NextRequest) {
         packageEarnings,
         completedConsultations: completed.length,
         pendingConsultations: activeWaiting.length,
-        totalPatientsTreated: completed.length + 15,
+        totalPatientsTreated: completed.length,
         monthlyTarget: 50000,
         targetProgress: Math.min(100, Math.round((totalRevenue / 50000) * 100)),
       },

@@ -66,6 +66,52 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// PUT /api/branches (Update Branch)
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, name, phone, address, city, timings, photoUrl, photoName, doctorsCount, isActive } =
+      body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Branch ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const updated = await branchService.updateBranch(id, {
+      name,
+      phone,
+      address,
+      city,
+      timings,
+      photoUrl,
+      photoName,
+      doctorsCount,
+      isActive,
+    });
+
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, error: "Branch not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Branch updated successfully",
+      data: updated,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err.message || "Failed to update branch" },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE /api/branches?id=123
 export async function DELETE(req: NextRequest) {
   try {

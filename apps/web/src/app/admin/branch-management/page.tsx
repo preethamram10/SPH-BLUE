@@ -15,12 +15,10 @@ import {
   Search,
   RefreshCw,
   Trash2,
-  BarChart3,
-  Users,
-  Settings,
-  LogOut,
+  Pencil,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 interface Branch {
@@ -43,22 +41,38 @@ export default function BranchManagementPage() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Modal State for Branch Creation
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  // Form Fields
   const [newBranchName, setNewBranchName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newAddress, setNewAddress] = useState("");
-  // Clock time picker state
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("20:30");
   const [workingDays, setWorkingDays] = useState("Mon - Sat");
   const [newPhotoName, setNewPhotoName] = useState("");
   const [newPhotoUrl, setNewPhotoUrl] = useState("");
+
+  // Modal State for Branch Editing
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editBranchId, setEditBranchId] = useState("");
+  const [editBranchName, setEditBranchName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editOpenTime, setEditOpenTime] = useState("09:00");
+  const [editCloseTime, setEditCloseTime] = useState("20:30");
+  const [editWorkingDays, setEditWorkingDays] = useState("Mon - Sat");
+  const [editPhotoName, setEditPhotoName] = useState("");
+  const [editPhotoUrl, setEditPhotoUrl] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Modal State for Delete Confirmation Popup
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [branchToDelete, setBranchToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Helper to format 24h clock time to 12h display
   const formatTime12h = (time24: string) => {
@@ -73,6 +87,46 @@ export default function BranchManagementPage() {
   };
 
   const formattedTimings = `${formatTime12h(openTime)} - ${formatTime12h(closeTime)} (${workingDays})`;
+  const editFormattedTimings = `${formatTime12h(editOpenTime)} - ${formatTime12h(
+    editCloseTime
+  )} (${editWorkingDays})`;
+
+  // Helper to parse timings string back into 24h clock times & days
+  const parseTimingsToFields = (timingsStr?: string) => {
+    let open = "09:00";
+    let close = "20:30";
+    let days = "Mon - Sat";
+    if (!timingsStr) return { open, close, days };
+
+    const daysMatch = timingsStr.match(/\((.*?)\)/);
+    if (daysMatch) {
+      days = daysMatch[1].trim();
+    }
+
+    const timePart = timingsStr.replace(/\(.*?\)/, "").trim();
+    const parts = timePart.split("-").map((s) => s.trim());
+
+    const parse12hTo24h = (raw?: string) => {
+      if (!raw) return "";
+      const m = raw.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (!m) return "";
+      let h = parseInt(m[1], 10);
+      const min = m[2];
+      const ampm = (m[3] || "").toUpperCase();
+      if (ampm === "PM" && h < 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      return `${h.toString().padStart(2, "0")}:${min}`;
+    };
+
+    if (parts.length >= 2) {
+      const parsedOpen = parse12hTo24h(parts[0]);
+      const parsedClose = parse12hTo24h(parts[1]);
+      if (parsedOpen) open = parsedOpen;
+      if (parsedClose) close = parsedClose;
+    }
+
+    return { open, close, days };
+  };
 
   // Fetch Branches from API
   const fetchBranches = useCallback(async (isManual = false) => {
@@ -104,6 +158,7 @@ export default function BranchManagementPage() {
       }
     }
   }, []);
+
   // Initial fetch + Automatic Background Sync (every 5 seconds)
   useEffect(() => {
     fetchBranches();
@@ -161,25 +216,91 @@ export default function BranchManagementPage() {
     }
   };
 
-  // Delete Branch Handler
-  const handleDeleteBranch = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete branch "${name}"?`)) return;
+  // Open Edit Branch Modal
+  const handleOpenEditModal = (branch: Branch) => {
+    setEditBranchId(branch.id);
+    setEditBranchName(branch.name);
+    setEditPhone(branch.phone);
+    setEditAddress(branch.address);
+    setEditPhotoName(branch.photoName || "");
+    setEditPhotoUrl(branch.photoUrl || "");
+    setEditIsActive(branch.isActive !== false);
 
+    const { open, close, days } = parseTimingsToFields(branch.timings);
+    setEditOpenTime(open);
+    setEditCloseTime(close);
+    setEditWorkingDays(days);
+    setIsEditModalOpen(true);
+  };
+
+  // Update Branch Handler
+  const handleUpdateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editBranchName || !editPhone || !editAddress) {
+      alert("Please fill in Branch Name, Phone Number, and Address.");
+      return;
+    }
+
+    setEditSubmitting(true);
     try {
-      const res = await fetch(`/api/branches?id=${id}`, {
+      const res = await fetch("/api/branches", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editBranchId,
+          name: editBranchName,
+          phone: editPhone,
+          address: editAddress,
+          city: "Hyderabad",
+          timings: editFormattedTimings,
+          photoUrl: editPhotoUrl,
+          photoName: editPhotoName,
+          isActive: editIsActive,
+        }),
+      });
+
+      if (res.ok) {
+        await fetchBranches();
+        setIsEditModalOpen(false);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to update branch");
+      }
+    } catch (err: any) {
+      alert("Network error: " + err.message);
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Open Delete Confirmation Modal
+  const handleRequestDelete = (branch: Branch) => {
+    setBranchToDelete({ id: branch.id, name: branch.name });
+    setIsDeleteModalOpen(true);
+  };
+
+  // Confirm Delete Branch Handler
+  const handleConfirmDelete = async () => {
+    if (!branchToDelete) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/branches?id=${branchToDelete.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
         await fetchBranches();
+        setIsDeleteModalOpen(false);
+        setBranchToDelete(null);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to delete branch");
       }
     } catch (err: any) {
-      alert("Failed to delete branch");
+      alert("Failed to delete branch: " + err.message);
+    } finally {
+      setDeleting(false);
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("user_role");
-    router.replace("/login");
   };
 
   // Filtered branches
@@ -221,22 +342,20 @@ export default function BranchManagementPage() {
                   Auto-sync active
                 </span>
                 {lastSyncTime && (
-                  <span className="text-[10px] text-slate-400">
-                    Synced: {lastSyncTime}
-                  </span>
+                  <span className="text-[10px] text-slate-400">Synced: {lastSyncTime}</span>
                 )}
               </div>
 
               <button
                 onClick={() => fetchBranches(true)}
                 disabled={isRefreshing}
-                className={`flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition-all ${isRefreshing ? "opacity-75" : ""
-                  }`}
+                className={`flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition-all ${
+                  isRefreshing ? "opacity-75" : ""
+                }`}
                 title="Refresh branches data from database"
               >
                 <RefreshCw
-                  className={`w-3.5 h-3.5 text-[#268ec8] ${isRefreshing ? "animate-spin" : ""
-                    }`}
+                  className={`w-3.5 h-3.5 text-[#268ec8] ${isRefreshing ? "animate-spin" : ""}`}
                 />
                 <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
               </button>
@@ -302,47 +421,47 @@ export default function BranchManagementPage() {
               {filteredBranches.map((branch) => (
                 <div
                   key={branch.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden hover:shadow-md transition-shadow group flex flex-col"
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden hover:shadow-md transition-shadow group flex flex-col justify-between"
                 >
-                  {/* Branch Image */}
-                  <div className="relative h-48 w-full bg-slate-100 overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={
-                        branch.photoUrl ||
-                        "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=500&q=80"
-                      }
-                      alt={branch.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=500&q=80";
-                      }}
-                    />
-                    <div className="absolute top-3 right-3 bg-emerald-500 text-white font-bold text-[10px] px-2.5 py-1 rounded-full shadow-sm flex items-center space-x-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
-                      <span>ACTIVE</span>
+                  {/* Branch Top Image & Badges */}
+                  <div>
+                    <div className="relative h-48 w-full bg-slate-100 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={
+                          branch.photoUrl ||
+                          "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=500&q=80"
+                        }
+                        alt={branch.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=500&q=80";
+                        }}
+                      />
+
+                      {/* Status Badge */}
+                      <div
+                        className={`absolute top-3 right-3 font-bold text-[10px] px-2.5 py-1 rounded-full shadow-sm flex items-center space-x-1 ${
+                          branch.isActive !== false
+                            ? "bg-emerald-500 text-white"
+                            : "bg-slate-500 text-white"
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                        <span>{branch.isActive !== false ? "ACTIVE" : "INACTIVE"}</span>
+                      </div>
+
+                      {branch.photoName && (
+                        <div className="absolute bottom-2 left-2 bg-slate-900/70 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded flex items-center space-x-1">
+                          <ImageIcon className="w-3 h-3 text-[#a8ce3a]" />
+                          <span className="truncate max-w-[180px]">{branch.photoName}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteBranch(branch.id, branch.name)}
-                      className="absolute top-3 left-3 bg-white/90 hover:bg-rose-50 text-slate-400 hover:text-rose-600 p-1.5 rounded-lg shadow-sm transition-colors"
-                      title="Delete Branch"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {branch.photoName && (
-                      <div className="absolute bottom-2 left-2 bg-slate-900/70 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded flex items-center space-x-1">
-                        <ImageIcon className="w-3 h-3 text-[#a8ce3a]" />
-                        <span className="truncate max-w-[180px]">{branch.photoName}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Branch Info */}
-                  <div className="p-5 flex-1 flex flex-col justify-between">
-                    <div>
+                    {/* Branch Info */}
+                    <div className="p-5">
                       <h3 className="font-bold text-slate-900 text-base leading-snug mb-3">
                         {branch.name}
                       </h3>
@@ -361,16 +480,31 @@ export default function BranchManagementPage() {
                           <span className="text-slate-600 font-medium">{branch.timings}</span>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs bg-[#268ec8]/10 text-[#268ec8] font-semibold px-2.5 py-1 rounded-md">
+                      <div className="inline-block text-xs bg-[#268ec8]/10 text-[#268ec8] font-semibold px-2.5 py-1 rounded-md">
                         {branch.doctorsCount} Doctors Available
-                      </span>
-                      <span className="text-xs font-semibold text-[#268ec8] hover:underline cursor-pointer">
-                        Manage Staff →
-                      </span>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Card Bottom Actions: Edit & Delete Buttons */}
+                  <div className="p-4 pt-3 border-t border-slate-100 flex items-center gap-2 bg-slate-50/50">
+                    <button
+                      onClick={() => handleOpenEditModal(branch)}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-white hover:bg-sky-50 text-sky-700 border border-sky-200/80 shadow-2xs hover:border-sky-300 transition"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Edit Branch</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRequestDelete(branch)}
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs hover:border-rose-300 transition"
+                      title="Delete Branch"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -379,10 +513,12 @@ export default function BranchManagementPage() {
         </main>
       </div>
 
-      {/* Add Branch Modal */}
+      {/* ========================================================================= */}
+      {/* ADD BRANCH MODAL                                                          */}
+      {/* ========================================================================= */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center space-x-2">
@@ -436,12 +572,12 @@ export default function BranchManagementPage() {
                   rows={2}
                   value={newAddress}
                   onChange={(e) => setNewAddress(e.target.value)}
-                  placeholder="Door/Plot No., Street, Landmark, City &amp; PIN code"
+                  placeholder="Door/Plot No., Street, Landmark, City & PIN code"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#268ec8]/30 focus:border-[#268ec8]"
                 />
               </div>
 
-              {/* Working Hours with Interactive Clock Pickers */}
+              {/* Working Hours with Clock Pickers */}
               <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -457,7 +593,7 @@ export default function BranchManagementPage() {
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
                       <Clock className="w-3 h-3 text-[#268ec8]" />
-                      Opening Time (Clock)
+                      Opening Time
                     </label>
                     <input
                       type="time"
@@ -471,7 +607,7 @@ export default function BranchManagementPage() {
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
                       <Clock className="w-3 h-3 text-[#a8ce3a]" />
-                      Closing Time (Clock)
+                      Closing Time
                     </label>
                     <input
                       type="time"
@@ -483,7 +619,7 @@ export default function BranchManagementPage() {
                   </div>
                 </div>
 
-                {/* Days Selector & Quick Presets */}
+                {/* Days Selector & Presets */}
                 <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] text-slate-500 font-medium">Days:</span>
@@ -503,7 +639,6 @@ export default function BranchManagementPage() {
                     ))}
                   </div>
 
-                  {/* Quick Timing Presets */}
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -565,6 +700,261 @@ export default function BranchManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* EDIT BRANCH MODAL                                                         */}
+      {/* ========================================================================= */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-sky-50/50">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Edit Clinic Branch</h3>
+                  <p className="text-[11px] text-slate-500">Update clinic details, timings and status</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleUpdateBranch} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Branch Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editBranchName}
+                  onChange={(e) => setEditBranchName(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Branch Status
+                  </label>
+                  <select
+                    value={editIsActive ? "active" : "inactive"}
+                    onChange={(e) => setEditIsActive(e.target.value === "active")}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 bg-white"
+                  >
+                    <option value="active">Active (Operational)</option>
+                    <option value="inactive">Inactive (Closed)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Full Address *
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                />
+              </div>
+
+              {/* Working Hours with Clock Pickers */}
+              <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-sky-600" />
+                    <span>Working Hours (Clock) *</span>
+                  </label>
+                  <span className="text-[11px] font-bold text-sky-700 bg-white border border-sky-300 px-2 py-0.5 rounded-md shadow-xs">
+                    {editFormattedTimings}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-sky-600" />
+                      Opening Time
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={editOpenTime}
+                      onChange={(e) => setEditOpenTime(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-emerald-600" />
+                      Closing Time
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={editCloseTime}
+                      onChange={(e) => setEditCloseTime(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Days Selector & Presets */}
+                <div className="pt-2 border-t border-slate-200/60 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-slate-500 font-medium">Days:</span>
+                    {["Mon - Sat", "Mon - Sun", "Mon - Fri"].map((dayOpt) => (
+                      <button
+                        key={dayOpt}
+                        type="button"
+                        onClick={() => setEditWorkingDays(dayOpt)}
+                        className={`text-[11px] px-2 py-0.5 rounded font-semibold transition-all ${
+                          editWorkingDays === dayOpt
+                            ? "bg-sky-600 text-white"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {dayOpt}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditOpenTime("09:00");
+                        setEditCloseTime("20:30");
+                        setEditWorkingDays("Mon - Sat");
+                      }}
+                      className="text-[10px] text-sky-600 hover:underline font-semibold"
+                    >
+                      Reset (9AM - 8:30PM)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Photo URL
+                </label>
+                <input
+                  type="url"
+                  value={editPhotoUrl}
+                  onChange={(e) => setEditPhotoUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="flex items-center space-x-1.5 px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-semibold shadow transition-colors disabled:opacity-60"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{editSubmitting ? "Saving Changes..." : "Save Changes"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DELETE CONFIRMATION POPUP / MODAL                                         */}
+      {/* ========================================================================= */}
+      {isDeleteModalOpen && branchToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Warning Icon & Header */}
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
+                <AlertTriangle className="w-7 h-7 text-rose-600" />
+              </div>
+
+              <h3 className="text-lg font-extrabold text-slate-900">
+                Confirm Branch Deletion
+              </h3>
+
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                Are you sure you want to delete branch:
+              </p>
+
+              <div className="my-3 p-3 bg-rose-50 border border-rose-200/80 rounded-xl">
+                <div className="font-extrabold text-rose-900 text-sm">
+                  {branchToDelete.name}
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                This action cannot be undone. The clinic location will be removed across Admin and Mobile Staff apps.
+              </p>
+            </div>
+
+            {/* Modal Actions (OK / Cancel) */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setBranchToDelete(null);
+                }}
+                disabled={deleting}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm hover:shadow transition disabled:opacity-60"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{deleting ? "Deleting..." : "OK, Confirm Delete"}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

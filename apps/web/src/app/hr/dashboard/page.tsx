@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LogOut, Users, CalendarCheck, Clock, Award, FileCheck2, Target } from "lucide-react";
+import { LogOut, Users, CalendarCheck, Clock, Award, FileCheck2, Target, BarChart3 } from "lucide-react";
 import Link from "next/link";
 
 export default function HRDashboardPage() {
@@ -126,6 +126,32 @@ export default function HRDashboardPage() {
             className="px-5 py-2.5 bg-white text-emerald-700 hover:bg-emerald-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
           >
             Manage Branch Targets →
+          </Link>
+        </div>
+
+        {/* Finance: Reports & Visual Analytics Dashboard Action Card */}
+        <div className="bg-gradient-to-r from-sky-600 to-indigo-600 rounded-2xl p-6 text-white shadow-md mb-8 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+              <BarChart3 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-extrabold text-white">Reports &amp; Visual Analytics Dashboard</h3>
+                <span className="text-[10px] uppercase font-black bg-white/25 px-2 py-0.5 rounded-full text-white">
+                  Finance
+                </span>
+              </div>
+              <p className="text-xs text-sky-100 mt-0.5">
+                Multi-month revenue trajectory, interactive spike curve, branch comparisons &amp; patient acquisition channels
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/hr/reports-analytics"
+            className="px-5 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+          >
+            Open Analytics Dashboard →
           </Link>
         </div>
 

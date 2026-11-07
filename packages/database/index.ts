@@ -244,6 +244,63 @@ export const branchService = {
     return newRecord;
   },
 
+  // Update an existing branch (saves to Prisma + local store)
+  async updateBranch(
+    id: string,
+    input: Partial<{
+      name: string;
+      phone: string;
+      address: string;
+      city?: string;
+      timings?: string;
+      photoUrl?: string;
+      photoName?: string;
+      doctorsCount?: number;
+      isActive?: boolean;
+    }>
+  ): Promise<BranchRecord | null> {
+    try {
+      await prisma.branch.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined && { name: input.name.trim() }),
+          ...(input.phone !== undefined && { phone: input.phone.trim() }),
+          ...(input.address !== undefined && { address: input.address.trim() }),
+          ...(input.city !== undefined && { city: input.city.trim() }),
+          ...(input.timings !== undefined && { timings: input.timings.trim() }),
+          ...(input.photoUrl !== undefined && { photoUrl: input.photoUrl }),
+          ...(input.photoName !== undefined && { photoName: input.photoName }),
+          ...(input.doctorsCount !== undefined && { doctorsCount: input.doctorsCount }),
+          ...(input.isActive !== undefined && { isActive: input.isActive }),
+        },
+      });
+    } catch {
+      // Prisma offline or not found
+    }
+
+    const store = getMemoryStore();
+    const idx = store.findIndex((b) => b.id === id);
+    if (idx !== -1) {
+      store[idx] = {
+        ...store[idx],
+        ...(input.name !== undefined && { name: input.name.trim() }),
+        ...(input.phone !== undefined && { phone: input.phone.trim() }),
+        ...(input.address !== undefined && { address: input.address.trim() }),
+        ...(input.city !== undefined && { city: input.city.trim() }),
+        ...(input.timings !== undefined && { timings: input.timings.trim() }),
+        ...(input.photoUrl !== undefined && { photoUrl: input.photoUrl }),
+        ...(input.photoName !== undefined && { photoName: input.photoName }),
+        ...(input.doctorsCount !== undefined && { doctorsCount: input.doctorsCount }),
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        updatedAt: new Date().toISOString(),
+      };
+      global.__sphBranchesStore = store;
+      saveBranchesToDisk(store);
+      return store[idx];
+    }
+    return null;
+  },
+
   // Delete branch
   async deleteBranch(id: string): Promise<boolean> {
     try {
