@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,7 +29,7 @@ interface Employee {
   name: string;
   category: "STAFF" | "DOCTOR" | "HR";
   doctorCategory?: "HEAD" | "EMPLOYEE";
-  email: string;
+  email?: string;
   password?: string;
   phone: string;
   branchName: string;
@@ -199,7 +198,7 @@ export default function StaffManagementPage() {
     setFormPhone("");
     setFormBranch(branches[0]?.name ? branches[0].name.replace(/Spiritual Homeopathy/gi, "").replace(/Branch/gi, "").trim() : "KPHB");
     setFormEmail("");
-    setFormPassword("email123");
+    setFormPassword("");
     setFormSalary("25000");
     setDoctorCategory("EMPLOYEE");
     setShiftType("SINGLE_STRICT");
@@ -209,7 +208,7 @@ export default function StaffManagementPage() {
     setLogoutHour("06");
     setLogoutMin("00");
     setLogoutAmPm("PM");
-    setFormAccessGranted(false);
+    setFormAccessGranted(true);
     setFormGraceMinutes("15");
     setEditingEmployee(null);
   };
@@ -228,8 +227,8 @@ export default function StaffManagementPage() {
     setFormName(emp.name);
     setFormPhone(emp.phone.replace("+91", "").trim());
     setFormBranch(emp.branchName);
-    setFormEmail(emp.email);
-    setFormPassword(emp.password || "email123");
+    setFormEmail(emp.email || "");
+    setFormPassword(emp.password || "");
     setFormSalary(String(emp.salary));
     setShiftType(emp.shiftType || "SINGLE_STRICT");
     setFormAccessGranted(emp.isAccessGranted !== false);
@@ -250,26 +249,32 @@ export default function StaffManagementPage() {
       return;
     }
 
+    if (categoryToSave === "HR" && (!formEmail.trim() || !formPassword.trim())) {
+      alert("Please enter HR Login ID and Password.");
+      return;
+    }
+
     const isHeadDoctor = categoryToSave === "DOCTOR" && doctorCategory === "HEAD";
+    const isHR = categoryToSave === "HR";
 
     const payload = {
       id: editingEmployee ? editingEmployee.id : undefined,
       name: formName.trim(),
       category: categoryToSave,
       doctorCategory: categoryToSave === "DOCTOR" ? doctorCategory : undefined,
-      email: formEmail.trim() || `${formName.toLowerCase().replace(/\s+/g, "")}@sph.com`,
-      password: formPassword.trim() || "email123",
+      email: formEmail.trim() || "",
+      password: formPassword.trim() || "",
       phone: formPhone.trim().startsWith("+91") ? formPhone.trim() : `+91 ${formPhone.trim()}`,
-      branchName: categoryToSave === "DOCTOR" ? "" : (formBranch?.trim() || "KPHB"),
-      salary: isHeadDoctor ? 0 : (parseInt(formSalary, 10) || 0),
-      shiftType: isHeadDoctor ? "SINGLE_STRICT" : shiftType,
-      shiftHours: isHeadDoctor ? "-" : formattedShiftHours,
-      dailyHours: isHeadDoctor ? "-" : calculatedDailyHours,
-      shift1Start: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LoginH}:${s1LoginM} ${s1LoginAmPm}` : `${loginHour}:${loginMin} ${loginAmPm}`),
-      shift1End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LogoutH}:${s1LogoutM} ${s1LogoutAmPm}` : `${logoutHour}:${logoutMin} ${logoutAmPm}`),
-      shift2Start: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LoginH}:${s2LoginM} ${s2LoginAmPm}` : undefined),
-      shift2End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LogoutH}:${s2LogoutM} ${s2LogoutAmPm}` : undefined),
-      isAccessGranted: categoryToSave === "DOCTOR" ? true : formAccessGranted,
+      branchName: categoryToSave === "STAFF" ? (formBranch?.trim() || "KPHB") : "",
+      salary: (isHeadDoctor || isHR) ? 0 : (parseInt(formSalary, 10) || 0),
+      shiftType: (isHeadDoctor || isHR) ? "SINGLE_STRICT" : shiftType,
+      shiftHours: (isHeadDoctor || isHR) ? "-" : formattedShiftHours,
+      dailyHours: (isHeadDoctor || isHR) ? "-" : calculatedDailyHours,
+      shift1Start: (isHeadDoctor || isHR) ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LoginH}:${s1LoginM} ${s1LoginAmPm}` : `${loginHour}:${loginMin} ${loginAmPm}`),
+      shift1End: (isHeadDoctor || isHR) ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LogoutH}:${s1LogoutM} ${s1LogoutAmPm}` : `${logoutHour}:${logoutMin} ${logoutAmPm}`),
+      shift2Start: (isHeadDoctor || isHR) ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LoginH}:${s2LoginM} ${s2LoginAmPm}` : undefined),
+      shift2End: (isHeadDoctor || isHR) ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LogoutH}:${s2LogoutM} ${s2LogoutAmPm}` : undefined),
+      isAccessGranted: true,
       shiftStartTime: `${loginHour}:${loginMin} ${loginAmPm}`,
       graceMinutes: parseInt(formGraceMinutes, 10) || 15,
     };
@@ -413,13 +418,19 @@ export default function StaffManagementPage() {
                 {/* Header */}
                 <thead className="bg-[#f8fafc] border-b border-slate-200/80 text-[11px] font-bold text-slate-700 tracking-wider">
                   <tr>
-                    <th className="px-6 py-4">STAFF NAME</th>
+                    <th className="px-6 py-4">
+                      {activeCategory === "DOCTOR" ? "DOCTOR NAME" : activeCategory === "HR" ? "HR NAME" : "STAFF NAME"}
+                    </th>
                     <th className="px-6 py-4">MOBILE NUMBER</th>
-                    <th className="px-6 py-4">ASSIGNED BRANCH</th>
-                    <th className="px-6 py-4">SHIFT HOURS</th>
-                    <th className="px-6 py-4">DAILY HOURS</th>
-                    <th className="px-6 py-4">MONTHLY SALARY</th>
-                    <th className="px-6 py-4 text-center">LOGIN ACCESS</th>
+                    {activeCategory === "STAFF" && <th className="px-6 py-4">ASSIGNED BRANCH</th>}
+                    {activeCategory === "HR" && <th className="px-6 py-4">LOGIN ID</th>}
+                    {activeCategory !== "HR" && (
+                      <>
+                        <th className="px-6 py-4">SHIFT HOURS</th>
+                        <th className="px-6 py-4">DAILY HOURS</th>
+                        <th className="px-6 py-4">MONTHLY SALARY</th>
+                      </>
+                    )}
                     <th className="px-6 py-4 text-center">ACTIONS</th>
                   </tr>
                 </thead>
@@ -428,13 +439,13 @@ export default function StaffManagementPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                        Loading staff records...
+                      <td colSpan={activeCategory === "STAFF" ? 7 : activeCategory === "DOCTOR" ? 6 : 4} className="px-6 py-12 text-center text-slate-400">
+                        Loading {activeCategory === "DOCTOR" ? "doctors" : activeCategory === "HR" ? "HR staff" : "staff members"}...
                       </td>
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-16 text-center">
+                      <td colSpan={activeCategory === "STAFF" ? 7 : activeCategory === "DOCTOR" ? 6 : 4} className="px-6 py-16 text-center">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <Users className="w-10 h-10 text-slate-300 stroke-[1.5]" />
                           <p className="text-sm font-semibold text-slate-700">
@@ -454,7 +465,7 @@ export default function StaffManagementPage() {
 
                       return (
                         <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
-                          {/* 1. STAFF NAME + EMAIL + PASSWORD */}
+                          {/* 1. NAME */}
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-slate-900 text-sm">{emp.name}</span>
@@ -462,21 +473,13 @@ export default function StaffManagementPage() {
                                 <span
                                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                     isHeadDoc
-                                      ? "bg-purple-50 text-purple-700 border border-purple-200"
-                                      : "bg-blue-50 text-blue-700 border border-blue-200"
+                                      ? "bg-slate-100 text-slate-800 border border-slate-300"
+                                      : "bg-slate-50 text-slate-600 border border-slate-200"
                                   }`}
                                 >
                                   {isHeadDoc ? "Head Doctor" : "Employee Doctor"}
                                 </span>
                               )}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-[#0284c7] mt-0.5">
-                              <span className="text-rose-400">✉️</span>
-                              <span className="font-medium">{emp.email}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
-                              <span className="text-amber-500">🔑</span>
-                              <span>{emp.password || "email123"}</span>
                             </div>
                           </td>
 
@@ -488,100 +491,83 @@ export default function StaffManagementPage() {
                             </div>
                           </td>
 
-                          {/* 3. ASSIGNED BRANCH */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {isHeadDoc || (isDoctor && (!emp.branchName || emp.branchName === "KPHB" || emp.branchName === "-" || emp.branchName === "All Branches")) ? (
-                              <span className="text-slate-400 font-medium text-xs">-</span>
-                            ) : (
+                          {/* 3. ASSIGNED BRANCH (Staff Only) */}
+                          {activeCategory === "STAFF" && (
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <span className="text-[#0284c7] font-bold text-xs">
-                                {emp.branchName}
+                                {emp.branchName || "KPHB"}
                               </span>
-                            )}
-                          </td>
+                            </td>
+                          )}
 
-                          {/* 4. SHIFT HOURS (Single or Multi Strict) */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {isHeadDoc ? (
-                              <span className="text-slate-400 font-medium text-xs">-</span>
-                            ) : !isMulti ? (
-                              <span className="font-medium text-slate-700 text-xs">
-                                {emp.shiftHours && emp.shiftHours !== "-" ? emp.shiftHours : "-"}
+                          {/* 4. LOGIN ID (HR Only) */}
+                          {activeCategory === "HR" && (
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="font-mono text-xs text-slate-700 font-semibold">
+                                {emp.email || "-"}
                               </span>
-                            ) : (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 text-[11px]">
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-[#0284c7] font-bold text-[10px]">
-                                    Shift 1
-                                  </span>
-                                  <span className="font-medium text-slate-700">
-                                    {emp.shift1Start && emp.shift1End
-                                      ? `${emp.shift1Start} - ${emp.shift1End}`
-                                      : "10:00 AM - 02:00 PM"}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 text-[11px]">
-                                  <span className="px-1.5 py-0.5 rounded bg-blue-100 text-[#0284c7] font-bold text-[10px]">
-                                    Shift 2
-                                  </span>
-                                  <span className="font-medium text-slate-700">
-                                    {emp.shift2Start && emp.shift2End
-                                      ? `${emp.shift2Start} - ${emp.shift2End}`
-                                      : "04:30 PM - 08:30 PM"}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </td>
+                            </td>
+                          )}
 
-                          {/* 5. DAILY HOURS */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {isHeadDoc ? (
-                              <span className="text-slate-400 font-medium text-xs">-</span>
-                            ) : (
-                              <span className="text-emerald-600 font-bold text-xs">
-                                {emp.dailyHours && emp.dailyHours !== "-" ? emp.dailyHours : "-"}
-                              </span>
-                            )}
-                          </td>
+                          {/* 5. SHIFT HOURS, DAILY HOURS, SALARY (Staff & Doctor Only) */}
+                          {activeCategory !== "HR" && (
+                            <>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {isHeadDoc ? (
+                                  <span className="text-slate-400 font-medium text-xs">-</span>
+                                ) : !isMulti ? (
+                                  <span className="font-medium text-slate-700 text-xs">
+                                    {emp.shiftHours && emp.shiftHours !== "-" ? emp.shiftHours : "-"}
+                                  </span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="px-1.5 py-0.5 rounded bg-blue-100 text-[#0284c7] font-bold text-[10px]">
+                                        Shift 1
+                                      </span>
+                                      <span className="font-medium text-slate-700">
+                                        {emp.shift1Start && emp.shift1End
+                                          ? `${emp.shift1Start} - ${emp.shift1End}`
+                                          : "10:00 AM - 02:00 PM"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px]">
+                                      <span className="px-1.5 py-0.5 rounded bg-blue-100 text-[#0284c7] font-bold text-[10px]">
+                                        Shift 2
+                                      </span>
+                                      <span className="font-medium text-slate-700">
+                                        {emp.shift2Start && emp.shift2End
+                                          ? `${emp.shift2Start} - ${emp.shift2End}`
+                                          : "04:30 PM - 08:30 PM"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
 
-                          {/* 6. MONTHLY SALARY */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {isHeadDoc || !emp.salary ? (
-                              <span className="text-slate-400 font-medium text-xs">-</span>
-                            ) : (
-                              <span className="font-extrabold text-slate-900 text-xs">
-                                ₹{emp.salary.toLocaleString("en-IN")}
-                              </span>
-                            )}
-                          </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {isHeadDoc ? (
+                                  <span className="text-slate-400 font-medium text-xs">-</span>
+                                ) : (
+                                  <span className="text-emerald-600 font-bold text-xs">
+                                    {emp.dailyHours && emp.dailyHours !== "-" ? emp.dailyHours : "-"}
+                                  </span>
+                                )}
+                              </td>
 
-                          {/* 7. LOGIN ACCESS (Admin / HR Grants Access) */}
-                          <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleAccess(emp)}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold transition shadow-xs cursor-pointer ${
-                                emp.isAccessGranted !== false
-                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
-                                  : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
-                              }`}
-                              title={emp.isAccessGranted !== false ? "Click to revoke access" : "Click to grant login access"}
-                            >
-                              {emp.isAccessGranted !== false ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Access Granted</span>
-                                </>
-                              ) : (
-                                <>
-                                  <X className="w-3.5 h-3.5 text-amber-700" />
-                                  <span>Access Not Granted</span>
-                                </>
-                              )}
-                            </button>
-                          </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {isHeadDoc || !emp.salary ? (
+                                  <span className="text-slate-400 font-medium text-xs">-</span>
+                                ) : (
+                                  <span className="font-extrabold text-slate-900 text-xs">
+                                    ₹{emp.salary.toLocaleString("en-IN")}
+                                  </span>
+                                )}
+                              </td>
+                            </>
+                          )}
 
-                          {/* 8. ACTIONS (Edit & Delete Buttons) */}
+                          {/* ACTIONS */}
                           <td className="px-6 py-4 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-2">
                               {/* Edit Button */}
@@ -624,10 +610,14 @@ export default function StaffManagementPage() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base">
-                  {editingEmployee ? "✏️ Edit Staff Member" : "➕ Add Staff Member"}
+                  {editingEmployee
+                    ? `✏️ Edit ${activeCategory === "HR" ? "HR Member" : "Staff Member"}`
+                    : `➕ Add ${activeCategory === "HR" ? "HR Member" : "Staff Member"}`}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Assign staff role, branch location, monthly salary &amp; shift timings.
+                  {activeCategory === "HR"
+                    ? "Enter HR member details, login ID and password."
+                    : "Assign branch location, monthly salary & shift timings."}
                 </p>
               </div>
               <button
@@ -684,111 +674,76 @@ export default function StaffManagementPage() {
                 </div>
               </div>
 
-              {/* Assign to Branch */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Assign to Branch *
-                </label>
-                <select
-                  value={formBranch}
-                  onChange={(e) => setFormBranch(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
-                >
-                  {branches.length === 0 ? (
-                    <>
-                      <option value="KPHB">KPHB</option>
-                      <option value="Nallagandla">Nallagandla</option>
-                      <option value="Chandanagar">Chandanagar</option>
-                      <option value="Dilshuknagar">Dilshuknagar</option>
-                    </>
-                  ) : (
-                    branches.map((b) => (
-                      <option key={b.id} value={cleanBranch(b.name)}>
-                        {cleanBranch(b.name)}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              {/* Staff Login Credentials Container */}
-              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
-                    <span>🔐</span>
-                    <span>Staff Login Credentials</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">
-                    Staff Login
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* FOR HR: Login ID & Password ONLY */}
+              {activeCategory === "HR" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Staff Login Email ID *
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      HR Login ID / Email ID *
                     </label>
                     <input
-                      type="email"
+                      type="text"
                       required
-                      placeholder="e.g. anil@sph.com"
+                      placeholder="e.g. hr.divya or divya@sph.com"
                       value={formEmail}
                       onChange={(e) => setFormEmail(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                     />
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[11px] font-semibold text-slate-600">
-                        Staff Login Password *
+                      <label className="block text-xs font-bold text-slate-700">
+                        Login Password *
                       </label>
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="text-[10px] text-[#0284c7] font-bold hover:underline"
+                        className="text-[10px] text-slate-600 font-semibold hover:underline"
                       >
-                        {showPassword ? "Hide" : "Show Password"}
+                        {showPassword ? "Hide" : "Show"}
                       </button>
                     </div>
                     <input
                       type={showPassword ? "text" : "password"}
                       required
-                      placeholder="••••••••"
+                      placeholder="Enter HR login password"
                       value={formPassword}
                       onChange={(e) => setFormPassword(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-mono focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                     />
                   </div>
                 </div>
-
-                <p className="text-[10.5px] text-slate-500 italic">
-                  Standard default password is email123. HR/Admin can edit ID &amp; password at any time.
-                </p>
-
-                {/* Login Access Authorization Toggle */}
-                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+              ) : (
+                <>
+                  {/* FOR STAFF ONLY: Assign to Branch */}
                   <div>
-                    <label className="text-xs font-bold text-slate-800 block">
-                      Grant Staff Login Access
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Assign to Branch *
                     </label>
-                    <span className="text-[10.5px] text-slate-500 block">
-                      Staff can only log in after HR or Admin gives access.
-                    </span>
+                    <select
+                      value={formBranch}
+                      onChange={(e) => setFormBranch(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                    >
+                      {branches.length === 0 ? (
+                        <>
+                          <option value="KPHB">KPHB</option>
+                          <option value="Nallagandla">Nallagandla</option>
+                          <option value="Chandanagar">Chandanagar</option>
+                          <option value="Dilshuknagar">Dilshuknagar</option>
+                        </>
+                      ) : (
+                        branches.map((b) => (
+                          <option key={b.id} value={cleanBranch(b.name)}>
+                            {cleanBranch(b.name)}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formAccessGranted}
-                      onChange={(e) => setFormAccessGranted(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                  </label>
-                </div>
-              </div>
 
-              {/* Salary & Work Schedule Container */}
+                  {/* Salary & Work Schedule Container */}
               <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
@@ -1039,6 +994,8 @@ export default function StaffManagementPage() {
                   )}
                 </div>
               </div>
+                </>
+              )}
 
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
@@ -1054,7 +1011,9 @@ export default function StaffManagementPage() {
                   onClick={() => handleSaveEmployee(activeCategory)}
                   className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0284c7] hover:bg-[#0369a1] text-white shadow-md transition-all cursor-pointer"
                 >
-                  {editingEmployee ? "Update Staff Member" : "Save Staff Member"}
+                  {editingEmployee
+                    ? `Update ${activeCategory === "HR" ? "HR Member" : "Staff Member"}`
+                    : `Save ${activeCategory === "HR" ? "HR Member" : "Staff Member"}`}
                 </button>
               </div>
             </div>
@@ -1108,7 +1067,7 @@ export default function StaffManagementPage() {
                     onClick={() => setDoctorCategory("HEAD")}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all ${
                       doctorCategory === "HEAD"
-                        ? "bg-[#0284c7] text-white border-[#0284c7] shadow-sm"
+                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
                         : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                     }`}
                   >
@@ -1119,7 +1078,7 @@ export default function StaffManagementPage() {
                     onClick={() => setDoctorCategory("EMPLOYEE")}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all ${
                       doctorCategory === "EMPLOYEE"
-                        ? "bg-[#0284c7] text-white border-[#0284c7] shadow-sm"
+                        ? "bg-slate-800 text-white border-slate-800 shadow-sm"
                         : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                     }`}
                   >

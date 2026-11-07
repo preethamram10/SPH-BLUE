@@ -298,7 +298,7 @@ export interface EmployeeRecord {
   name: string;
   category: "STAFF" | "DOCTOR" | "HR" | "RECEPTION" | "TELECALLER" | "ADMIN" | string;
   doctorCategory?: "HEAD" | "EMPLOYEE";
-  email: string;
+  email?: string;
   password?: string;
   phone: string;
   branchName: string;
@@ -386,8 +386,8 @@ export const employeeService = {
       name: input.name ? input.name.trim() : "Staff Member",
       category: (input.category || "STAFF") as any,
       doctorCategory: input.doctorCategory,
-      email: input.email ? input.email.trim() : `${Date.now()}@sph.com`,
-      password: input.password || "email123",
+      email: input.email ? input.email.trim() : undefined,
+      password: input.password ? input.password.trim() : undefined,
       phone: input.phone?.trim().startsWith("+91") ? input.phone.trim() : `+91 ${input.phone?.trim() || ""}`,
       branchName: input.category === "DOCTOR" ? (input.branchName?.trim() || "") : (input.branchName?.trim() || "KPHB"),
       branchId: input.branchId,
