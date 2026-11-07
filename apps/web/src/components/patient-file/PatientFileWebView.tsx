@@ -28,6 +28,31 @@ import {
   Eraser,
 } from "lucide-react";
 
+export const resolvePrescriptionImageUrl = (url: string) => {
+  if (!url) return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("file:") ||
+    url.startsWith("content:") ||
+    url.includes("/api/patient-file/image") ||
+    url.includes("/api/cleaning/image")
+  ) {
+    return url;
+  }
+  if (url.includes("/uploads/")) {
+    const relativePath = url.substring(url.indexOf("/uploads/"));
+    return relativePath;
+  }
+  if (url.includes(".amazonaws.com/")) {
+    return `/api/patient-file/image?url=${encodeURIComponent(url)}`;
+  }
+  if (url.startsWith("prescriptions/") || url.startsWith("/prescriptions/")) {
+    return `/api/patient-file/image?key=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
+
 interface PatientFileWebViewProps {
   role: "DOCTOR" | "RECEPTION";
   sidebar: React.ReactNode;
@@ -38,10 +63,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const searchParams = useSearchParams();
 
   const appointmentId = searchParams.get("id") || "";
-  const initialName = searchParams.get("name") || "N Harshvardhan";
-  const initialPhone = searchParams.get("phone") || "8247374447";
-  const initialRegId = searchParams.get("registrationId") || "SPH-KPB-0294";
-  const initialBranch = searchParams.get("branch") || "KPHB Branch";
+  const initialName = searchParams.get("name") || searchParams.get("patientName") || "Patient";
+  const initialPhone = searchParams.get("phone") || searchParams.get("phoneNumber") || "";
+  const initialRegId = searchParams.get("registrationId") || searchParams.get("regId") || searchParams.get("patientId") || "SPH-GEN";
+  const initialBranch = searchParams.get("branch") || "Spiritual Homeopathy";
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,6 +111,27 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const [viewerIndex, setViewerIndex] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [zoomScale, setZoomScale] = useState(1);
+  const touchStartX = useRef<number>(0);
+
+  // Keyboard navigation (< Left Arrow, > Right Arrow, Escape)
+  useEffect(() => {
+    if (!isViewerOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        setViewerIndex((idx) => Math.max(0, idx - 1));
+        setRotation(0);
+        setZoomScale(1);
+      } else if (e.key === "ArrowRight") {
+        setViewerIndex((idx) => Math.min(uploadedImages.length - 1, idx + 1));
+        setRotation(0);
+        setZoomScale(1);
+      } else if (e.key === "Escape") {
+        setIsViewerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isViewerOpen, uploadedImages.length]);
 
   // Load from API
   useEffect(() => {
@@ -131,10 +177,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       interval === "1 Month"
         ? 30
         : interval === "2 Months"
-        ? 60
-        : interval === "3 Months"
-        ? 90
-        : 120;
+          ? 60
+          : interval === "3 Months"
+            ? 90
+            : 120;
     const targetDate = new Date(Date.now() + daysToAdd * 86400000);
     const d = String(targetDate.getDate()).padStart(2, "0");
     const m = String(targetDate.getMonth() + 1).padStart(2, "0");
@@ -398,31 +444,28 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
               <div className="flex gap-2 overflow-x-auto pb-1">
                 <button
                   onClick={() => setActiveTab("clinical")}
-                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
-                    activeTab === "clinical"
-                      ? "bg-sky-100 border-sky-300 text-sky-700"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${activeTab === "clinical"
+                    ? "bg-sky-100 border-sky-300 text-sky-700"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   Clinical Form
                 </button>
                 <button
                   onClick={() => setActiveTab("diet")}
-                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
-                    activeTab === "diet"
-                      ? "bg-sky-100 border-sky-300 text-sky-700"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${activeTab === "diet"
+                    ? "bg-sky-100 border-sky-300 text-sky-700"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   Diet Plan
                 </button>
                 <button
                   onClick={() => setActiveTab("media")}
-                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${
-                    activeTab === "media"
-                      ? "bg-sky-100 border-sky-300 text-sky-700"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                  className={`px-3.5 py-1.5 rounded-lg border text-xs font-bold transition-colors whitespace-nowrap ${activeTab === "media"
+                    ? "bg-sky-100 border-sky-300 text-sky-700"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
                 >
                   Share Media
                 </button>
@@ -548,7 +591,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                             setIsViewerOpen(true);
                           }}
                         >
-                          <img src={src} alt={`Rx ${idx + 1}`} className="w-full h-full object-cover" />
+                          <img src={resolvePrescriptionImageUrl(src)} alt={`Rx ${idx + 1}`} className="w-full h-full object-cover" />
                           <button
                             type="button"
                             onClick={(e) => {
@@ -578,11 +621,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                         key={interval}
                         type="button"
                         onClick={() => handleSelectInterval(interval)}
-                        className={`py-1.5 px-3 rounded-lg border font-bold text-xs transition-colors shrink-0 text-center ${
-                          followUpInterval === interval
-                            ? "bg-sky-600 border-sky-600 text-white shadow-2xs"
-                            : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
-                        }`}
+                        className={`py-1.5 px-3 rounded-lg border font-bold text-xs transition-colors shrink-0 text-center ${followUpInterval === interval
+                          ? "bg-sky-600 border-sky-600 text-white shadow-2xs"
+                          : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+                          }`}
                       >
                         {interval}
                       </button>
@@ -625,9 +667,13 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 <button
                   onClick={handleSendToReception}
                   disabled={isSubmitting}
-                  className="w-full py-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs transition-colors shadow-sm disabled:opacity-60"
+                  className="w-full py-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs transition-colors shadow-sm disabled:opacity-60 cursor-pointer"
                 >
-                  {isSubmitting ? "Submitting..." : "Send to Reception & Collect Fee"}
+                  {isSubmitting
+                    ? "Submitting..."
+                    : role === "RECEPTION"
+                      ? "Complete Consultation & Move to Collect Fee"
+                      : "Send to Reception & Collect Fee"}
                 </button>
               </div>
 
@@ -646,25 +692,22 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
                   <button
                     onClick={() => setHistoryTab("all")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${
-                      historyTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
-                    }`}
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                      }`}
                   >
                     All ({patientHistory.length})
                   </button>
                   <button
                     onClick={() => setHistoryTab("prescriptions")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${
-                      historyTab === "prescriptions" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
-                    }`}
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "prescriptions" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                      }`}
                   >
                     Prescriptions
                   </button>
                   <button
                     onClick={() => setHistoryTab("payments")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${
-                      historyTab === "payments" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
-                    }`}
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "payments" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                      }`}
                   >
                     Payments
                   </button>
@@ -683,19 +726,29 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                           <div className="font-bold text-slate-800 text-xs">{h.date}</div>
                           <div className="text-[11px] text-slate-500">{h.doctorName}</div>
                           {h.prescriptionImages && h.prescriptionImages.length > 0 && (
-                            <div className="flex gap-1 mt-1">
+                            <div className="flex gap-1.5 mt-1.5 flex-wrap">
                               {h.prescriptionImages.map((rxUrl: string, rIdx: number) => (
-                                <img
+                                <div
                                   key={rIdx}
-                                  src={rxUrl}
-                                  alt="Rx"
-                                  className="w-8 h-8 rounded border border-slate-300 object-cover cursor-pointer"
                                   onClick={() => {
                                     setUploadedImages(h.prescriptionImages);
                                     setViewerIndex(rIdx);
+                                    setRotation(0);
+                                    setZoomScale(1);
                                     setIsViewerOpen(true);
                                   }}
-                                />
+                                  className="group relative cursor-pointer"
+                                  title="Click to preview prescription"
+                                >
+                                  <img
+                                    src={resolvePrescriptionImageUrl(rxUrl)}
+                                    alt="Rx"
+                                    className="w-10 h-10 rounded-md border border-slate-300 object-cover shadow-2xs group-hover:border-sky-500 transition-all"
+                                  />
+                                  <span className="absolute bottom-0 right-0 bg-slate-900/80 text-white text-[8px] font-bold px-1 rounded-tl">
+                                    Rx {rIdx + 1}
+                                  </span>
+                                </div>
                               ))}
                             </div>
                           )}
@@ -757,9 +810,8 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     type="button"
                     onClick={() => setPenColor(c.color)}
                     style={{ backgroundColor: c.color }}
-                    className={`w-5 h-5 rounded-full border-2 transition-transform cursor-pointer ${
-                      penColor === c.color ? "border-slate-900 scale-125" : "border-transparent"
-                    }`}
+                    className={`w-5 h-5 rounded-full border-2 transition-transform cursor-pointer ${penColor === c.color ? "border-slate-900 scale-125" : "border-transparent"
+                      }`}
                     title={c.label}
                   />
                 ))}
@@ -777,11 +829,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     key={w.label}
                     type="button"
                     onClick={() => setPenWidth(w.width)}
-                    className={`px-2.5 py-0.5 rounded text-xs font-bold border transition-colors cursor-pointer ${
-                      penWidth === w.width
-                        ? "bg-slate-900 border-slate-900 text-white"
-                        : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
-                    }`}
+                    className={`px-2.5 py-0.5 rounded text-xs font-bold border transition-colors cursor-pointer ${penWidth === w.width
+                      ? "bg-slate-900 border-slate-900 text-white"
+                      : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+                      }`}
                   >
                     {w.label}
                   </button>
@@ -905,48 +956,84 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             </div>
           </div>
 
-          {/* Main Viewport */}
-          <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-            {/* Prev Arrow */}
-            {viewerIndex > 0 && (
+          {/* Main Viewport with touch swiping */}
+          <div
+            className="flex-1 relative flex items-center justify-center overflow-hidden touch-pan-y"
+            onTouchStart={(e) => {
+              touchStartX.current = e.touches[0].clientX;
+            }}
+            onTouchEnd={(e) => {
+              const diff = touchStartX.current - e.changedTouches[0].clientX;
+              if (diff > 40 && viewerIndex < uploadedImages.length - 1) {
+                setViewerIndex((idx) => idx + 1);
+                setRotation(0);
+                setZoomScale(1);
+              } else if (diff < -40 && viewerIndex > 0) {
+                setViewerIndex((idx) => idx - 1);
+                setRotation(0);
+                setZoomScale(1);
+              }
+            }}
+          >
+            {/* Prev Arrow (<) */}
+            {uploadedImages.length > 1 && (
               <button
+                type="button"
                 onClick={() => {
-                  setViewerIndex(viewerIndex - 1);
-                  setRotation(0);
-                  setZoomScale(1);
+                  if (viewerIndex > 0) {
+                    setViewerIndex(viewerIndex - 1);
+                    setRotation(0);
+                    setZoomScale(1);
+                  }
                 }}
-                className="absolute left-4 z-10 w-11 h-11 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center transition-transform hover:scale-110"
+                disabled={viewerIndex === 0}
+                className="absolute left-4 z-10 w-12 h-12 rounded-full bg-black/70 hover:bg-black/90 border border-white/20 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed hover:scale-105 shadow-2xl cursor-pointer"
+                title="Previous image (<)"
               >
-                <ChevronLeft className="w-7 h-7" />
+                <ChevronLeft className="w-8 h-8" />
               </button>
             )}
 
-            <div className="max-w-3xl max-h-[70vh] flex items-center justify-center">
+            <div className="max-w-3xl max-h-[70vh] flex items-center justify-center select-none">
               <img
-                src={uploadedImages[viewerIndex]}
+                src={resolvePrescriptionImageUrl(uploadedImages[viewerIndex])}
                 alt="Prescription"
                 style={{
                   transform: `scale(${zoomScale}) rotate(${rotation}deg)`,
                   transition: "transform 0.2s ease-out",
                 }}
-                className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl"
+                className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl pointer-events-none"
               />
             </div>
 
-            {/* Next Arrow */}
-            {viewerIndex < uploadedImages.length - 1 && (
+            {/* Next Arrow (>) */}
+            {uploadedImages.length > 1 && (
               <button
+                type="button"
                 onClick={() => {
-                  setViewerIndex(viewerIndex + 1);
-                  setRotation(0);
-                  setZoomScale(1);
+                  if (viewerIndex < uploadedImages.length - 1) {
+                    setViewerIndex(viewerIndex + 1);
+                    setRotation(0);
+                    setZoomScale(1);
+                  }
                 }}
-                className="absolute right-4 z-10 w-11 h-11 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center transition-transform hover:scale-110"
+                disabled={viewerIndex === uploadedImages.length - 1}
+                className="absolute right-4 z-10 w-12 h-12 rounded-full bg-black/70 hover:bg-black/90 border border-white/20 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed hover:scale-105 shadow-2xl cursor-pointer"
+                title="Next image (>)"
               >
-                <ChevronRight className="w-7 h-7" />
+                <ChevronRight className="w-8 h-8" />
               </button>
             )}
           </div>
+
+          {/* Swipe Hint */}
+          {uploadedImages.length > 1 && (
+            <div className="flex items-center justify-center gap-2 py-1 text-white/60 text-[11px] font-semibold select-none">
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Tap &lt; and &gt; arrows or swipe to flip images ({viewerIndex + 1} of {uploadedImages.length})</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </div>
+          )}
 
           {/* Bottom Thumbnails Strip */}
           <div className="border-t border-white/10 pt-3 flex justify-center gap-2 overflow-x-auto pb-2">
@@ -958,11 +1045,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                   setRotation(0);
                   setZoomScale(1);
                 }}
-                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${
-                  idx === viewerIndex ? "border-sky-500 scale-105" : "border-transparent opacity-60 hover:opacity-100"
-                }`}
+                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${idx === viewerIndex ? "border-sky-500 scale-105" : "border-transparent opacity-60 hover:opacity-100"
+                  }`}
               >
-                <img src={src} alt="Thumb" className="w-full h-full object-cover" />
+                <img src={resolvePrescriptionImageUrl(src)} alt="Thumb" className="w-full h-full object-cover" />
               </button>
             ))}
           </div>

@@ -19,6 +19,7 @@ import {
   Send,
   Check,
   CloudUpload,
+  ExternalLink,
 } from "lucide-react";
 import { toDDMMYYYY, getTodayDDMMYYYY } from "@/utils/cleaningDate";
 
@@ -218,7 +219,7 @@ export default function ReceptionCleaningLockoutView({
             // Upload to AWS S3 now
             uploadedSoFar++;
             setUploadProgressText(
-              `Saving to AWS S3: Area "${field.name}" (${uploadedSoFar}/${totalPhotosToUpload})...`
+              `Uploading Area "${field.name}" (${uploadedSoFar}/${totalPhotosToUpload})...`
             );
 
             const formData = new FormData();
@@ -417,58 +418,63 @@ export default function ReceptionCleaningLockoutView({
             return (
               <div
                 key={field.id}
-                className={`p-5 rounded-2xl border-2 transition-all ${
+                className={`p-5 rounded-2xl border-2 transition-all shadow-xs ${
                   isRejected
-                    ? "bg-rose-50/60 border-rose-300 ring-1 ring-rose-200"
+                    ? "bg-rose-50/40 border-rose-300 ring-1 ring-rose-200"
                     : hasPhotos
-                    ? "bg-emerald-50/20 border-emerald-400 shadow-xs"
-                    : "bg-slate-50 border-slate-200"
+                    ? "bg-white border-emerald-400 shadow-sm ring-1 ring-emerald-200/50"
+                    : "bg-white border-slate-200/90 hover:border-slate-300"
                 }`}
               >
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
                   {/* Area Title & Prominent Tick Mark */}
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     {hasPhotos ? (
-                      <div className="w-7 h-7 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md">
                         <Check className="w-4 h-4 stroke-[3]" />
                       </div>
                     ) : (
-                      <div className="w-7 h-7 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-black">
+                      <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center text-xs font-black">
                         {idx + 1}
                       </div>
                     )}
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-black text-slate-900">{field.name}</h3>
+                        <h3 className="text-sm font-extrabold text-slate-900">{field.name}</h3>
                         {hasPhotos && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-200">
                             ✓ Done
                           </span>
                         )}
                       </div>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {hasPhotos
+                          ? `${localPhotos.length} photo${localPhotos.length > 1 ? "s" : ""} attached`
+                          : "Photo evidence required for verification"}
+                      </p>
                     </div>
                   </div>
 
                   {/* Badges & Actions */}
                   <div className="flex items-center gap-2">
                     {field.status === "APPROVED" && (
-                      <span className="px-2.5 py-0.5 rounded-lg text-xs font-black bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-200">
                         <Check className="w-3.5 h-3.5" /> Approved
                       </span>
                     )}
                     {isRejected && (
-                      <span className="px-2.5 py-0.5 rounded-lg text-xs font-black bg-rose-100 text-rose-800">
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-200">
                         ⚠ Rejected — Re-upload
                       </span>
                     )}
                     {hasPhotos && (
-                      <span className="px-2.5 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-100 text-emerald-800 flex items-center gap-1 border border-emerald-200">
-                        ✓ {localPhotos.length} Photo{localPhotos.length > 1 ? "s" : ""} Added
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 flex items-center gap-1 border border-emerald-200 shadow-2xs">
+                        ✓ {localPhotos.length} Photo{localPhotos.length > 1 ? "s" : ""} Ready
                       </span>
                     )}
                     {!hasPhotos && !isRejected && (
-                      <span className="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 flex items-center gap-1">
-                        <Camera className="w-3.5 h-3.5" /> Photo Needed
+                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 flex items-center gap-1 border border-amber-200">
+                        <Camera className="w-3.5 h-3.5 text-amber-600" /> Photo Needed
                       </span>
                     )}
 
@@ -476,14 +482,14 @@ export default function ReceptionCleaningLockoutView({
                       <button
                         type="button"
                         onClick={() => triggerUploadForField(field.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl shadow-xs transition-colors ${
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] ${
                           hasPhotos
                             ? "bg-slate-800 hover:bg-slate-900 text-white"
                             : "bg-[#0284c7] hover:bg-[#0369a1] text-white"
                         }`}
                       >
                         <Camera className="w-3.5 h-3.5" />
-                        {hasPhotos ? "+ Add More" : "Add Photos / Camera"}
+                        {hasPhotos ? "+ Add More" : "Attach Photo"}
                       </button>
                     )}
                   </div>
@@ -491,17 +497,28 @@ export default function ReceptionCleaningLockoutView({
 
                 {/* Rejection Remark */}
                 {isRejected && field.rejectReason && (
-                  <div className="p-3 rounded-xl bg-white border border-rose-200 text-xs font-bold text-rose-700 mb-3 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-700 mb-4 flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-black">Rejection Reason:</span> {field.rejectReason}
                     </div>
                   </div>
                 )}
 
+                {/* Empty State Prompt if no photos */}
+                {localPhotos.length === 0 && task.status !== "UNDER_REVIEW" && (
+                  <div
+                    onClick={() => triggerUploadForField(field.id)}
+                    className="p-4 rounded-xl border border-dashed border-slate-300 hover:border-sky-400 bg-slate-50/70 hover:bg-sky-50/40 text-center cursor-pointer transition-colors flex items-center justify-center gap-2 text-xs font-bold text-slate-500 hover:text-sky-700"
+                  >
+                    <Camera className="w-4 h-4 text-slate-400" />
+                    <span>Click here to snap photo or upload image of {field.name}</span>
+                  </div>
+                )}
+
                 {/* Staged & Uploaded Photos Gallery */}
                 {localPhotos.length > 0 && (
-                  <div className="flex flex-wrap gap-3 pt-1">
+                  <div className="flex flex-wrap gap-3.5 pt-1">
                     {localPhotos.map((photo, pIdx) => {
                       const displayImgSrc = photo.isUploadedToS3
                         ? `/api/cleaning/image?key=${encodeURIComponent(photo.key || photo.url)}`
@@ -510,26 +527,27 @@ export default function ReceptionCleaningLockoutView({
                       return (
                         <div
                           key={photo.id}
-                          className="group relative w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-900 shadow-xs"
+                          className="group relative w-28 h-28 rounded-2xl overflow-hidden border border-slate-200/90 bg-slate-900 shadow-sm hover:shadow-md transition-shadow"
                         >
                           <img
                             src={displayImgSrc}
                             alt={`${field.name} ${pIdx + 1}`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform cursor-pointer"
                             onClick={() => setZoomedPhoto(displayImgSrc)}
+                            loading="lazy"
                           />
 
                           {/* Staged indicator badge */}
-                          <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-xs text-[9px] font-bold text-white px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                            {photo.isUploadedToS3 ? "S3" : "Ready"}
+                          <div className="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur-xs text-[9px] font-extrabold text-white px-2 py-0.5 rounded-md flex items-center gap-1">
+                            {photo.isUploadedToS3 ? "Cloud S3" : "Ready"}
                           </div>
 
                           {/* Hover Overlay */}
-                          <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white transition-opacity">
+                          <div className="absolute inset-0 bg-slate-950/45 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 text-white transition-opacity">
                             <button
                               type="button"
                               onClick={() => setZoomedPhoto(displayImgSrc)}
-                              className="p-1 rounded-md bg-white/20 hover:bg-white/40"
+                              className="p-1.5 rounded-lg bg-white/20 hover:bg-white/40 text-white backdrop-blur-xs"
                               title="Preview Photo"
                             >
                               <Eye className="w-4 h-4" />
@@ -538,7 +556,7 @@ export default function ReceptionCleaningLockoutView({
                               <button
                                 type="button"
                                 onClick={() => handleRemovePhoto(field.id, photo.id)}
-                                className="p-1 rounded-md bg-rose-600 hover:bg-rose-700 text-white"
+                                className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white"
                                 title="Delete Photo"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -597,12 +615,12 @@ export default function ReceptionCleaningLockoutView({
               {isSubmitting ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>{uploadProgressText || "Saving to AWS S3 & Submitting..."}</span>
+                  <span>{uploadProgressText || "Uploading & Submitting..."}</span>
                 </>
               ) : (
                 <>
-                  <CloudUpload className="w-4 h-4" />
-                  <span>Save to AWS S3 &amp; Send to Verification</span>
+                  <Send className="w-4 h-4" />
+                  <span>Send to Verification</span>
                 </>
               )}
             </button>
@@ -623,19 +641,55 @@ export default function ReceptionCleaningLockoutView({
 
       {/* Photo Zoom Modal */}
       {zoomedPhoto && (
-        <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="relative max-w-4xl max-h-[90vh]">
-            <button
-              onClick={() => setZoomedPhoto(null)}
-              className="absolute -top-12 right-0 p-2 text-white/80 hover:text-white bg-white/10 rounded-full"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <img
-              src={zoomedPhoto}
-              alt="Zoomed Area"
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl border border-white/10 shadow-2xl"
-            />
+        <div
+          className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 transition-all"
+          onClick={() => setZoomedPhoto(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full max-h-[92vh] bg-slate-900/90 rounded-3xl overflow-hidden border border-slate-700/60 shadow-2xl flex flex-col items-center justify-center p-2 sm:p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+              <a
+                href={zoomedPhoto}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white text-xs font-bold transition-colors border border-slate-600 flex items-center gap-1.5"
+                title="Open full size"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span className="hidden sm:inline">Open Full</span>
+              </a>
+              <button
+                onClick={() => setZoomedPhoto(null)}
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-600 text-white transition-colors border border-slate-600"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full h-full flex items-center justify-center min-h-[300px]">
+              <img
+                src={zoomedPhoto}
+                alt="Inspection Preview"
+                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-lg border border-slate-800"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = "none";
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+              <div
+                style={{ display: "none" }}
+                className="flex-col items-center justify-center gap-2 text-slate-400 p-8 text-center"
+              >
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+                <p className="text-sm font-bold text-white">Could not preview image</p>
+                <p className="text-xs text-slate-400">The photo may still be uploading or is temporarily unavailable.</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

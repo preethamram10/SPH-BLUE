@@ -255,6 +255,61 @@ export async function POST(request: Request) {
       });
     }
 
+    // 5. STAFF LOGIN
+    if (reqRole === "STAFF") {
+      const isStaffUser =
+        matchedEmployee?.category === "STAFF" ||
+        matchedEmployee?.category === "RECEPTION" ||
+        matchedEmployee?.category === "TELECALLER" ||
+        dbUser?.role === "STAFF";
+
+      if (!isStaffUser) {
+        return NextResponse.json(
+          { error: `Access Denied: ${clean10} is not registered as a Staff member.` },
+          { status: 403 }
+        );
+      }
+
+      if (matchedEmployee && matchedEmployee.isAccessGranted === false) {
+        return NextResponse.json(
+          {
+            error: `Access Not Granted: Staff login has not been activated by HR or Admin yet. Please contact your Branch HR/Admin to give you access.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      const staffName = matchedEmployee?.name || dbUser?.name || "Staff Member";
+      const staffId = matchedEmployee?.id || dbUser?.id || `staff-${clean10}`;
+      const branchName = matchedEmployee?.branchName || "KPHB Branch";
+
+      const token = Buffer.from(
+        JSON.stringify({
+          userId: staffId,
+          role: "STAFF",
+          name: staffName,
+          branchName,
+          identifier,
+          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        })
+      ).toString("base64");
+
+      return NextResponse.json({
+        success: true,
+        token,
+        user: {
+          id: staffId,
+          name: staffName,
+          role: "STAFF",
+          branchName,
+          branch: { name: branchName },
+          shiftStartTime: matchedEmployee?.shiftStartTime || "09:00 AM",
+          graceMinutes: matchedEmployee?.graceMinutes || 15,
+          identifier,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: `Invalid or unrecognized requested role: ${requestedRole}` },
       { status: 400 }

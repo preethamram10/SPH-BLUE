@@ -94,6 +94,9 @@ export default function DoctorDashboardPage() {
   // Consultation Actions
   const handleUpdateStatus = async (id: string, action: "START_CONSULTATION" | "COMPLETE_CONSULTATION", appt?: any) => {
     try {
+      if (action === "START_CONSULTATION" && appt) {
+        openPatientFile(appt);
+      }
       const res = await fetch("/api/doctor/appointments", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -102,9 +105,6 @@ export default function DoctorDashboardPage() {
       const data = await res.json();
       if (data.success) {
         fetchDoctorAppointments(selectedDate, true);
-        if (action === "START_CONSULTATION" && appt) {
-          openPatientFile(appt);
-        }
       } else {
         setFeedback({ type: "error", message: data.error || "Failed to update status." });
       }
@@ -376,7 +376,7 @@ export default function DoctorDashboardPage() {
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs cursor-pointer transition-all"
                                 >
                                   <Play className="w-3 h-3 fill-current" />
-                                  <span>Call Patient</span>
+                                  <span>Start Prescription</span>
                                 </button>
                               )}
 

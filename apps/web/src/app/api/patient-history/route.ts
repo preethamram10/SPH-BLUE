@@ -226,19 +226,43 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "DELETE_IMAGE") {
-      if (!appointmentId || typeof imageIndex !== "number") {
-        return NextResponse.json({ success: false, error: "Appointment ID and imageIndex are required" }, { status: 400 });
+      const { imageUrl, appointmentId, imageIndex } = body;
+
+      // 1. If appointmentId is provided
+      if (appointmentId) {
+        const appt = await appointmentService.getAppointmentById(appointmentId);
+        if (appt) {
+          const existing = appt.prescriptionImages || [];
+          let updated: string[] = [];
+          if (typeof imageIndex === "number") {
+            updated = existing.filter((_, idx) => idx !== imageIndex);
+          } else if (imageUrl) {
+            updated = existing.filter((url: string) => url !== imageUrl);
+          } else {
+            updated = existing;
+          }
+          await appointmentService.updatePatientFile(appointmentId, {
+            prescriptionImages: updated,
+          });
+          return NextResponse.json({ success: true, message: "Prescription image deleted from database", images: updated });
+        }
       }
-      const appt = await appointmentService.getAppointmentById(appointmentId);
-      if (!appt) {
-        return NextResponse.json({ success: false, error: "Appointment not found" }, { status: 404 });
+
+      // 2. Fallback: Search all appointments for this regId matching the imageUrl
+      if (imageUrl) {
+        const allAppts = await appointmentService.getAppointments();
+        for (const a of allAppts) {
+          if (!a.isDeleted && Array.isArray(a.prescriptionImages) && a.prescriptionImages.includes(imageUrl)) {
+            const updated = a.prescriptionImages.filter((url: string) => url !== imageUrl);
+            await appointmentService.updatePatientFile(a.id, {
+              prescriptionImages: updated,
+            });
+            return NextResponse.json({ success: true, message: "Prescription image deleted from database", images: updated });
+          }
+        }
       }
-      const existing = appt.prescriptionImages || [];
-      const updated = existing.filter((_, idx) => idx !== imageIndex);
-      await appointmentService.updatePatientFile(appointmentId, {
-        prescriptionImages: updated,
-      });
-      return NextResponse.json({ success: true, message: "Prescription image deleted", images: updated });
+
+      return NextResponse.json({ success: false, error: "Image not found or missing parameters" }, { status: 400 });
     }
 
     return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });

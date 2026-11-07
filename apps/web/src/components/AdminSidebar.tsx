@@ -79,6 +79,8 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
         { label: "Leave Requests", href: "/admin/leave-requests", icon: CalendarX },
         { label: "Employee Attendance", href: "/admin/employee-attendance", icon: UserCheck },
         { label: "Employee Daily Works", href: "/admin/employee-daily-works", icon: Briefcase },
+        { label: "Staff Payroll & Penalties", href: "/admin/payroll", icon: DollarSign },
+        { label: "Miscellaneous Pay Cuts", href: "/admin/pay-cuts", icon: DollarSign },
         { label: "Branch Cleaning", href: "/admin/branch-cleaning", icon: Sparkles },
       ],
     },

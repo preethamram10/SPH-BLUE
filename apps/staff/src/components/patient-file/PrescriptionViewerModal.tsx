@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,9 +8,37 @@ import {
   Dimensions,
   ScrollView,
   Alert,
+  PanResponder,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { API_BASE_URL } from "../../config/api";
+
+const resolveImageUrl = (url: string) => {
+  if (!url) return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("file:") ||
+    url.startsWith("content:") ||
+    url.includes("/api/patient-file/image") ||
+    url.includes("/api/cleaning/image")
+  ) {
+    return url;
+  }
+  if (url.includes("/uploads/")) {
+    const relativePath = url.substring(url.indexOf("/uploads/"));
+    const hostUrl = API_BASE_URL.replace(/\/api\/?$/, "");
+    return `${hostUrl}${relativePath}`;
+  }
+  if (url.includes(".amazonaws.com/")) {
+    return `${API_BASE_URL}/patient-file/image?url=${encodeURIComponent(url)}`;
+  }
+  if (url.startsWith("prescriptions/") || url.startsWith("/prescriptions/")) {
+    return `${API_BASE_URL}/patient-file/image?key=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
 
 interface PrescriptionViewerModalProps {
   visible: boolean;
@@ -48,7 +76,7 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
 
   const handleNext = () => {
     if (currentIndex < images.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex((prev) => prev + 1);
       setRotation(0);
       setZoomScale(1);
     }
@@ -56,11 +84,30 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
 
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      setCurrentIndex((prev) => prev - 1);
       setRotation(0);
       setZoomScale(1);
     }
   };
+
+  // Swipe gesture support to flip images left/right
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 15;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -40) {
+          // Swiped Left -> go to Next image
+          handleNext();
+        } else if (gestureState.dx > 40) {
+          // Swiped Right -> go to Prev image
+          handlePrev();
+        }
+      },
+    })
+  ).current;
 
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360);
@@ -192,23 +239,33 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
           </View>
         </View>
 
-        {/* MAIN VIEWPORT WITH IMAGE */}
-        <View style={styles.imageViewport}>
-          {/* Left Arrow Button */}
-          {currentIndex > 0 && (
+        {/* MAIN VIEWPORT WITH IMAGE AND SWIPING */}
+        <View style={styles.imageViewport} {...panResponder.panHandlers}>
+          {/* Left Arrow Button (<) */}
+          {images.length > 1 && (
             <TouchableOpacity
-              style={[styles.navArrow, styles.navArrowLeft]}
+              style={[
+                styles.navArrow,
+                styles.navArrowLeft,
+                currentIndex === 0 && styles.navArrowDisabled,
+              ]}
               onPress={handlePrev}
-              activeOpacity={0.8}
+              disabled={currentIndex === 0}
+              activeOpacity={0.7}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             >
-              <Ionicons name="chevron-back" size={26} color="#ffffff" />
+              <Ionicons
+                name="chevron-back"
+                size={28}
+                color={currentIndex === 0 ? "rgba(255, 255, 255, 0.25)" : "#ffffff"}
+              />
             </TouchableOpacity>
           )}
 
           {/* Center Image with Zoom & Rotate Transform */}
           <View style={styles.imageContainer}>
             <ExpoImage
-              source={currentImage}
+              source={resolveImageUrl(currentImage)}
               style={[
                 styles.mainImage,
                 {
@@ -222,17 +279,36 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
             />
           </View>
 
-          {/* Right Arrow Button */}
-          {currentIndex < images.length - 1 && (
+          {/* Right Arrow Button (>) */}
+          {images.length > 1 && (
             <TouchableOpacity
-              style={[styles.navArrow, styles.navArrowRight]}
+              style={[
+                styles.navArrow,
+                styles.navArrowRight,
+                currentIndex === images.length - 1 && styles.navArrowDisabled,
+              ]}
               onPress={handleNext}
-              activeOpacity={0.8}
+              disabled={currentIndex === images.length - 1}
+              activeOpacity={0.7}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             >
-              <Ionicons name="chevron-forward" size={26} color="#ffffff" />
+              <Ionicons
+                name="chevron-forward"
+                size={28}
+                color={currentIndex === images.length - 1 ? "rgba(255, 255, 255, 0.25)" : "#ffffff"}
+              />
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Swipe & Navigation Hint */}
+        {images.length > 1 && (
+          <View style={styles.swipeHintRow}>
+            <Ionicons name="chevron-back" size={12} color="rgba(255, 255, 255, 0.5)" />
+            <Text style={styles.swipeHintText}>Swipe or tap arrows to view ({currentIndex + 1} of {images.length})</Text>
+            <Ionicons name="chevron-forward" size={12} color="rgba(255, 255, 255, 0.5)" />
+          </View>
+        )}
 
         {/* BOTTOM THUMBNAIL STRIP */}
         <View style={styles.bottomBar}>
@@ -257,7 +333,7 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
                   }}
                   activeOpacity={0.7}
                 >
-                  <ExpoImage source={uri} style={styles.thumbImage} contentFit="cover" />
+                  <ExpoImage source={resolveImageUrl(uri)} style={styles.thumbImage} contentFit="cover" />
                   {isSelected && (
                     <View style={styles.activeIndicatorDot} />
                   )}
@@ -375,6 +451,23 @@ const styles = StyleSheet.create({
   },
   navArrowRight: {
     right: 12,
+  },
+  navArrowDisabled: {
+    opacity: 0.25,
+    backgroundColor: "rgba(0, 0, 0, 0.25)",
+  },
+  swipeHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+  },
+  swipeHintText: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 11,
+    fontWeight: "600",
   },
   bottomBar: {
     paddingVertical: 14,

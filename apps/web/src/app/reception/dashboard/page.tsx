@@ -27,12 +27,17 @@ import {
   ArrowDown,
   CalendarRange,
   FileText,
+  History,
   Play,
   Target,
   TrendingUp,
+  Activity,
+  CreditCard,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
-import { AppointmentPaymentWebModal } from "@/components/payment/AppointmentPaymentWebModal";
+import { useRouter } from "next/navigation";
+import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -42,6 +47,7 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
 );
 
 export default function ReceptionDashboardPage() {
+  const router = useRouter();
   const [branchName, setBranchName] = useState("Spiritual Homeopathy Clinic");
   const [currentDate, setCurrentDate] = useState("");
 
@@ -89,7 +95,7 @@ export default function ReceptionDashboardPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COMPLETED">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COLLECT_FEE" | "COMPLETED">("ALL");
 
   // 24-Hour Restore Modal State (Reception view)
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
@@ -132,7 +138,7 @@ export default function ReceptionDashboardPage() {
     } catch {}
   };
 
-  // Start Consultation: Updates status to IN_CONSULTATION and moves patient to Active Consultation tab
+  // Start Consultation: Updates status to IN_CONSULTATION and immediately opens Patient File
   const handleStartConsultation = async (appt: any) => {
     try {
       // 1. Optimistic update
@@ -143,11 +149,11 @@ export default function ReceptionDashboardPage() {
       setActiveFilter("ACTIVE");
       setFeedback({
         type: "success",
-        message: `Consultation started for ${appt.patientName}! Patient moved to Active Consultation.`,
+        message: `Consultation started for ${appt.patientName}! Opening Patient File...`,
       });
 
       // 3. Persist to API
-      await fetch("/api/reception/appointments", {
+      fetch("/api/reception/appointments", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -155,7 +161,13 @@ export default function ReceptionDashboardPage() {
           id: appt.id,
           status: "IN_CONSULTATION",
         }),
-      });
+      }).catch((err) => console.error("Failed to update status:", err));
+
+      // 4. Immediately open Patient File for Reception
+      const cleanPhone = (appt.phoneNumber || appt.phone || "").replace(/\D/g, "");
+      router.push(
+        `/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || appt.name || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&registrationId=${encodeURIComponent(appt.registrationId || appt.patientId || "SPH-GEN")}`
+      );
     } catch (err: any) {
       console.error("Failed to start consultation:", err);
       setFeedback({ type: "error", message: "Failed to update appointment status." });
@@ -448,10 +460,15 @@ export default function ReceptionDashboardPage() {
     () => appointments.filter((a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING").length,
     [appointments]
   );
-  const activeCount = useMemo(
-    () => appointments.filter((a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE").length,
+  const inConsultationCount = useMemo(
+    () => appointments.filter((a) => a.status === "IN_CONSULTATION").length,
     [appointments]
   );
+  const collectFeeCount = useMemo(
+    () => appointments.filter((a) => a.status === "COLLECT_FEE").length,
+    [appointments]
+  );
+  const activeCount = inConsultationCount;
   const completedCount = useMemo(
     () => appointments.filter((a) => a.status === "COMPLETED").length,
     [appointments]
@@ -466,7 +483,10 @@ export default function ReceptionDashboardPage() {
       );
     }
     if (activeFilter === "ACTIVE") {
-      return appointments.filter((a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE");
+      return appointments.filter((a) => a.status === "IN_CONSULTATION");
+    }
+    if (activeFilter === "COLLECT_FEE") {
+      return appointments.filter((a) => a.status === "COLLECT_FEE");
     }
     if (activeFilter === "COMPLETED") {
       return appointments.filter((a) => a.status === "COMPLETED");
@@ -620,7 +640,7 @@ export default function ReceptionDashboardPage() {
                 </div>
               </div>
 
-              {/* Top 4 Stats in 1 row */}
+              {/* Top 5 Stats in 1 row */}
               <div className="grid grid-cols-4 gap-1.5">
                 <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
                   <span className="text-sm font-black text-[#0284c7] block leading-tight">{totalCount}</span>
@@ -633,13 +653,13 @@ export default function ReceptionDashboardPage() {
                 </div>
 
                 <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
-                  <span className="text-sm font-black text-orange-500 block leading-tight">{activeCount}</span>
-                  <span className="text-[9px] font-bold text-slate-500 truncate block">Active</span>
+                  <span className="text-sm font-black text-sky-600 block leading-tight">{inConsultationCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">In Consult</span>
                 </div>
 
                 <div className="bg-slate-50/70 p-1.5 rounded-lg border border-slate-100 text-center">
-                  <span className="text-sm font-black text-emerald-600 block leading-tight">{completedCount}</span>
-                  <span className="text-[9px] font-bold text-slate-500 truncate block">Done</span>
+                  <span className="text-sm font-black text-amber-500 block leading-tight">{collectFeeCount}</span>
+                  <span className="text-[9px] font-bold text-slate-500 truncate block">Collect Fee</span>
                 </div>
               </div>
 
@@ -647,11 +667,11 @@ export default function ReceptionDashboardPage() {
               <div className="grid grid-cols-3 gap-1.5 mt-2">
                 <button
                   type="button"
-                  onClick={() => setActiveFilter("ACTIVE")}
-                  className="py-1 px-2 rounded-lg border border-rose-100 bg-rose-50/40 hover:bg-rose-50 flex items-center justify-between text-left transition-all cursor-pointer"
+                  onClick={() => setActiveFilter("COLLECT_FEE")}
+                  className="py-1 px-2 rounded-lg border border-amber-200 bg-amber-50/50 hover:bg-amber-100 flex items-center justify-between text-left transition-all cursor-pointer"
                 >
-                  <span className="text-[9.5px] font-bold text-rose-700">Pay Pending</span>
-                  <span className="text-[11px] font-black text-rose-600">0</span>
+                  <span className="text-[9.5px] font-bold text-amber-800">Pay Pending</span>
+                  <span className="text-[11px] font-black text-amber-600">{collectFeeCount}</span>
                 </button>
 
                 <Link
@@ -800,7 +820,16 @@ export default function ReceptionDashboardPage() {
                     activeFilter === "ACTIVE" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
                   }`}
                 >
-                  Active Consultation ({activeCount})
+                  In Consult ({inConsultationCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("COLLECT_FEE")}
+                  className={`px-2.5 py-1 rounded-md transition-all ${
+                    activeFilter === "COLLECT_FEE" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Collect Fee ({collectFeeCount})
                 </button>
                 <button
                   type="button"
@@ -883,12 +912,21 @@ export default function ReceptionDashboardPage() {
                           <td className="py-2 px-3">
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <Link
-                                  href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
-                                  className="font-bold text-slate-900 text-xs hover:text-[#0284c7] hover:underline"
-                                >
-                                  {appt.patientName}
-                                </Link>
+                                {isCompleted ? (
+                                  <Link
+                                    href={`/reception/patient-history?id=${appt.registrationId || appt.patientId || appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}`}
+                                    className="font-bold text-slate-900 text-xs hover:text-[#0284c7] hover:underline"
+                                  >
+                                    {appt.patientName}
+                                  </Link>
+                                ) : (
+                                  <Link
+                                    href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&registrationId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
+                                    className="font-bold text-slate-900 text-xs hover:text-[#0284c7] hover:underline"
+                                  >
+                                    {appt.patientName}
+                                  </Link>
+                                )}
                                 {isRevisit && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
                                     <RotateCcw className="w-2.5 h-2.5" />
@@ -925,28 +963,52 @@ export default function ReceptionDashboardPage() {
                                 type="button"
                                 onClick={() => handleStartConsultation(appt)}
                                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
-                                title="Click to start consultation and move patient to Active Consultation"
+                                title="Click to start prescription and open Patient File"
                               >
                                 <Play className="w-3 h-3 fill-white" />
-                                <span>Start Consultation</span>
+                                <span>Start Prescription</span>
                               </button>
-                            ) : isActive ? (
+                            ) : status === "IN_CONSULTATION" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cleanPhone = (appt.phoneNumber || appt.phone || "").replace(/\D/g, "");
+                                  router.push(
+                                    `/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || appt.name || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&registrationId=${encodeURIComponent(appt.registrationId || appt.patientId || "SPH-GEN")}`
+                                  );
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                                title="Currently In Consultation - Click to view Patient File"
+                              >
+                                <Activity className="w-3 h-3 text-white" />
+                                <span>In Consultation</span>
+                              </button>
+                            ) : status === "COLLECT_FEE" ? (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setSelectedPaymentAppt(appt);
                                   setIsPaymentModalOpen(true);
                                 }}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95 ${status === "COLLECT_FEE" ? "bg-amber-500 hover:bg-amber-600" : "bg-orange-500 hover:bg-orange-600"}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-amber-500 hover:bg-amber-600 shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
                                 title="Collect Fee & Complete Consultation"
                               >
-                                <span>{status === "COLLECT_FEE" ? "⏳ COLLECT FEE" : "COLLECT FEE"}</span>
+                                <CreditCard className="w-3 h-3" />
+                                <span>COLLECT FEE</span>
                               </button>
                             ) : isCompleted ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 className="w-2.5 h-2.5" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPaymentAppt(appt);
+                                  setIsPaymentModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all cursor-pointer shadow-xs active:scale-95"
+                                title="View & Print Payment Receipt / Invoice"
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                                 <span>COMPLETED</span>
-                              </span>
+                              </button>
                             ) : (
                               <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-slate-100 text-slate-600">
                                 {status.replace("_", " ")}
@@ -987,14 +1049,40 @@ export default function ReceptionDashboardPage() {
                           {/* Action Buttons: Patient File, WhatsApp, Reschedule, Delete */}
                           <td className="py-2 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              {/* Open Patient File */}
+                              {/* Open Patient History */}
                               <Link
-                                href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-sky-700 bg-sky-50 hover:bg-[#0284c7] hover:text-white border border-sky-200 transition-all cursor-pointer"
-                                title="Open Patient File (Prescription, Diet, Fees)"
+                                href={`/reception/patient-history?id=${appt.registrationId || appt.patientId || appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}`}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-600 hover:text-white border border-indigo-200 transition-all cursor-pointer"
+                                title="Open Patient History (All Visits, Prescriptions, Payments)"
                               >
-                                <FileText className="w-3.5 h-3.5" />
+                                <History className="w-3.5 h-3.5" />
                               </Link>
+
+                              {/* View Receipt for Completed Visits */}
+                              {isCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPaymentAppt(appt);
+                                    setIsPaymentModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-md text-emerald-700 bg-emerald-50 hover:bg-emerald-600 hover:text-white border border-emerald-200 transition-all cursor-pointer"
+                                  title="View & Print Official Receipt / Tax Invoice"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {/* Open Patient File (Only for pending / in-consultation, NOT completed) */}
+                              {!isCompleted && (
+                                <Link
+                                  href={`/reception/patient-file?id=${appt.id}&name=${encodeURIComponent(appt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&registrationId=${encodeURIComponent(appt.registrationId || appt.patientId || "")}`}
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-md text-sky-700 bg-sky-50 hover:bg-[#0284c7] hover:text-white border border-sky-200 transition-all cursor-pointer"
+                                  title="Open Patient File (Prescription, Diet, Fees)"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </Link>
+                              )}
 
                               {/* Direct WhatsApp Button */}
                               <button
@@ -1238,26 +1326,31 @@ export default function ReceptionDashboardPage() {
               </div>
             </div>
           )}
-          {/* Appointment Payment Modal (Collect Fee) */}
-          <AppointmentPaymentWebModal
-            isOpen={isPaymentModalOpen}
-            appointment={selectedPaymentAppt}
-            onClose={() => {
-              setIsPaymentModalOpen(false);
-              setSelectedPaymentAppt(null);
-            }}
-            onPaymentSuccess={() => {
-              fetchAppointments(branchName, selectedDate);
-              fetchBranchTarget(branchName);
-            }}
-            onOpenPatientFile={() => {
-              setIsPaymentModalOpen(false);
-              if (selectedPaymentAppt) {
-                const cleanPhone = (selectedPaymentAppt.phoneNumber || selectedPaymentAppt.phone || "").replace(/[^0-9]/g, "");
-                window.location.href = `/reception/patient-file?id=${selectedPaymentAppt.id}&name=${encodeURIComponent(selectedPaymentAppt.patientName || "")}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(branchName)}&regId=${encodeURIComponent(selectedPaymentAppt.registrationId || selectedPaymentAppt.patientId || "")}`;
-              }
-            }}
-          />
+          {/* Official Payment & Invoice Modal (Collect Fee or View Receipt) */}
+          {isPaymentModalOpen && selectedPaymentAppt && (
+            <FeeCheckoutAndInvoiceModal
+              isOpen={isPaymentModalOpen}
+              appointment={selectedPaymentAppt}
+              onClose={() => {
+                setIsPaymentModalOpen(false);
+                setSelectedPaymentAppt(null);
+              }}
+              onSubmitPayment={async (invoiceData) => {
+                const res = await fetch("/api/reception/payment", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(invoiceData),
+                });
+                const data = await res.json();
+                if (!data.success) {
+                  throw new Error(data.error || "Payment failed");
+                }
+                fetchAppointments(branchName, selectedDate);
+                fetchBranchTarget(branchName);
+                return data;
+              }}
+            />
+          )}
           {/* Mandatory Branch Cleaning Lockout View */}
           {cleaningLockoutTask && (
             <ReceptionCleaningLockoutView

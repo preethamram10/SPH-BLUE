@@ -133,6 +133,14 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
 
   // Full-screen Photo Preview
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [isPhotoLoading, setIsPhotoLoading] = useState(false);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
+
+  const handleOpenPhotoPreview = (url: string) => {
+    setPhotoLoadError(false);
+    setIsPhotoLoading(true);
+    setPreviewPhoto(url);
+  };
 
   // Logs Modal
   const [logsTask, setLogsTask] = useState<CleaningTask | null>(null);
@@ -726,7 +734,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
                             return (
                               <TouchableOpacity
                                 key={p.id}
-                                onPress={() => setPreviewPhoto(imgSrc)}
+                                onPress={() => handleOpenPhotoPreview(imgSrc)}
                                 activeOpacity={0.8}
                                 style={{ marginRight: 8 }}
                               >
@@ -831,13 +839,38 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
       {/* ------------------------------------------------ */}
       {/* 4. PHOTO PREVIEW MODAL                            */}
       {/* ------------------------------------------------ */}
-      <Modal visible={!!previewPhoto} transparent animationType="fade">
+      <Modal visible={!!previewPhoto} transparent animationType="fade" onRequestClose={() => setPreviewPhoto(null)}>
         <View style={styles.fullPhotoBg}>
           <TouchableOpacity style={styles.closeFullPhoto} onPress={() => setPreviewPhoto(null)}>
             <Ionicons name="close" size={26} color="#ffffff" />
           </TouchableOpacity>
-          {previewPhoto && (
-            <Image source={{ uri: previewPhoto }} style={styles.fullPhoto} resizeMode="contain" />
+
+          {isPhotoLoading && (
+            <ActivityIndicator size="large" color="#ffffff" style={{ position: "absolute" }} />
+          )}
+
+          {previewPhoto && !photoLoadError && (
+            <Image
+              source={{ uri: previewPhoto }}
+              style={styles.fullPhoto}
+              resizeMode="contain"
+              onLoadStart={() => setIsPhotoLoading(true)}
+              onLoadEnd={() => setIsPhotoLoading(false)}
+              onError={() => {
+                setIsPhotoLoading(false);
+                setPhotoLoadError(true);
+              }}
+            />
+          )}
+
+          {photoLoadError && (
+            <View style={{ alignItems: "center", gap: 10, padding: 20 }}>
+              <Ionicons name="alert-circle" size={40} color={COLORS.danger} />
+              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 14 }}>Could not load photo preview</Text>
+              <Text style={{ color: "#94a3b8", fontSize: 12, textAlign: "center" }}>
+                Tap close button to return.
+              </Text>
+            </View>
           )}
         </View>
       </Modal>

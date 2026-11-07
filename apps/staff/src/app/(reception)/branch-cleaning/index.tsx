@@ -88,6 +88,14 @@ export default function ReceptionBranchCleaningScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitProgressText, setSubmitProgressText] = useState("");
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [isPhotoLoading, setIsPhotoLoading] = useState(false);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
+
+  const handleOpenPhotoPreview = (url: string) => {
+    setPhotoLoadError(false);
+    setIsPhotoLoading(true);
+    setPreviewPhotoUrl(url);
+  };
 
   // Local staged photos map: fieldId -> LocalMobilePhoto[]
   const [stagedPhotosMap, setStagedPhotosMap] = useState<Record<string, LocalMobilePhoto[]>>({});
@@ -324,7 +332,7 @@ export default function ReceptionBranchCleaningScreen() {
             // Upload to AWS S3 now
             uploadedSoFar++;
             setSubmitProgressText(
-              `Saving to AWS S3: Area "${field.name}" (${uploadedSoFar}/${totalToUpload})...`
+              `Uploading Area "${field.name}" (${uploadedSoFar}/${totalToUpload})...`
             );
 
             const res = await fetch(`${API_BASE_URL}/cleaning/upload`, {
@@ -378,8 +386,8 @@ export default function ReceptionBranchCleaningScreen() {
 
       setTask(data.task);
       Alert.alert(
-        "Submitted to Cloud",
-        "All inspection photos are saved to AWS S3 and submitted for review. This screen will unlock automatically once Admin or HR approves."
+        "Submitted for Verification",
+        "All inspection photos have been uploaded and submitted for review. This screen will unlock once Admin or HR approves."
       );
     } catch (err: any) {
       Alert.alert("Submission Failed", err.message || "Failed to submit.");
@@ -649,7 +657,7 @@ export default function ReceptionBranchCleaningScreen() {
                         <View key={p.id} style={styles.photoContainer}>
                           <TouchableOpacity
                             activeOpacity={0.8}
-                            onPress={() => setPreviewPhotoUrl(displayUri)}
+                            onPress={() => handleOpenPhotoPreview(displayUri)}
                           >
                             <Image source={{ uri: displayUri }} style={styles.photoThumb} />
                           </TouchableOpacity>
@@ -746,15 +754,13 @@ export default function ReceptionBranchCleaningScreen() {
                 <>
                   <ActivityIndicator size="small" color="#ffffff" />
                   <Text style={styles.submitBtnText}>
-                    {submitProgressText || "Saving to AWS S3 & Submitting..."}
+                    {submitProgressText || "Uploading & Submitting..."}
                   </Text>
                 </>
               ) : (
                 <>
-                  <Ionicons name="cloud-upload" size={18} color="#ffffff" />
-                  <Text style={styles.submitBtnText}>
-                    Save to AWS S3 &amp; Send to Verification
-                  </Text>
+                  <Ionicons name="send" size={18} color="#ffffff" />
+                  <Text style={styles.submitBtnText}>Send to Verification</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -774,7 +780,7 @@ export default function ReceptionBranchCleaningScreen() {
       )}
 
       {/* Full-Screen Photo Preview Modal */}
-      <Modal visible={!!previewPhotoUrl} transparent animationType="fade">
+      <Modal visible={!!previewPhotoUrl} transparent animationType="fade" onRequestClose={() => setPreviewPhotoUrl(null)}>
         <View style={styles.modalBg}>
           <TouchableOpacity
             style={styles.closeModalBtn}
@@ -782,12 +788,33 @@ export default function ReceptionBranchCleaningScreen() {
           >
             <Ionicons name="close" size={26} color="#ffffff" />
           </TouchableOpacity>
-          {previewPhotoUrl && (
+
+          {isPhotoLoading && (
+            <ActivityIndicator size="large" color="#ffffff" style={{ position: "absolute" }} />
+          )}
+
+          {previewPhotoUrl && !photoLoadError && (
             <Image
               source={{ uri: previewPhotoUrl }}
               style={styles.modalImage}
               resizeMode="contain"
+              onLoadStart={() => setIsPhotoLoading(true)}
+              onLoadEnd={() => setIsPhotoLoading(false)}
+              onError={() => {
+                setIsPhotoLoading(false);
+                setPhotoLoadError(true);
+              }}
             />
+          )}
+
+          {photoLoadError && (
+            <View style={{ alignItems: "center", gap: 10, padding: 20 }}>
+              <Ionicons name="alert-circle" size={40} color={COLORS.danger} />
+              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 14 }}>Could not load photo</Text>
+              <Text style={{ color: "#94a3b8", fontSize: 12, textAlign: "center" }}>
+                Tap close button to return.
+              </Text>
+            </View>
           )}
         </View>
       </Modal>

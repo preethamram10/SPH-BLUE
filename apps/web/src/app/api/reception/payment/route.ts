@@ -9,13 +9,21 @@ export async function POST(req: NextRequest) {
       consultationFee,
       medicineFee,
       dietPlanFee,
+      dietFee,
+      otherCharges,
       totalAmountDue,
       paymentMethod,
+      paymentMode,
       medicinesList,
+      medicines,
       medicineDuration,
       discountApproved,
+      discount,
+      discountReason,
       discountNotes,
       discountStatus,
+      totalPaid,
+      invoiceId,
     } = body;
 
     if (!appointmentId) {
@@ -34,9 +42,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Prescription validation: must have at least 1 prescription image
+    // Prescription validation: must have at least 1 prescription image unless already completed
     const rxImages = appt.prescriptionImages || [];
-    if (rxImages.length === 0) {
+    if (rxImages.length === 0 && !appt.isFeeCollected && appt.status !== "COMPLETED") {
       return NextResponse.json(
         {
           success: false,
@@ -47,17 +55,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const effectiveMedicines = Array.isArray(medicinesList) && medicinesList.length > 0
+      ? medicinesList
+      : Array.isArray(medicines)
+      ? medicines
+      : [];
+
+    const effectiveDietFee = typeof dietPlanFee === "number"
+      ? dietPlanFee
+      : typeof dietFee === "number"
+      ? dietFee
+      : parseFloat(dietFee || dietPlanFee) || 0;
+
+    const effectiveDiscount = typeof discountApproved === "number" && discountApproved > 0
+      ? discountApproved
+      : typeof discount === "number"
+      ? discount
+      : parseFloat(discount) || 0;
+
+    const finalMethod = (paymentMethod || paymentMode || "Counter UPI") as any;
+
     const updated = await appointmentService.recordAppointmentPayment(appointmentId, {
       consultationFee: typeof consultationFee === "number" ? consultationFee : parseFloat(consultationFee) || 0,
       medicineFee: typeof medicineFee === "number" ? medicineFee : parseFloat(medicineFee) || 0,
-      dietPlanFee: typeof dietPlanFee === "number" ? dietPlanFee : parseFloat(dietPlanFee) || 0,
+      dietPlanFee: effectiveDietFee,
+      otherCharges: typeof otherCharges === "number" ? otherCharges : parseFloat(otherCharges) || 0,
       totalAmountDue: typeof totalAmountDue === "number" ? totalAmountDue : parseFloat(totalAmountDue) || 0,
-      paymentMethod: paymentMethod || "CASH",
-      medicinesList: Array.isArray(medicinesList) ? medicinesList : [],
+      paymentMethod: finalMethod,
+      medicinesList: effectiveMedicines,
       medicineDuration: medicineDuration || "1 Month",
-      discountApproved: typeof discountApproved === "number" ? discountApproved : 0,
-      discountNotes: discountNotes || "",
-      discountStatus: discountStatus || (discountApproved ? "APPROVED" : "NONE"),
+      discount: effectiveDiscount,
+      discountApproved: effectiveDiscount,
+      discountReason: discountReason || discountNotes || "",
+      discountNotes: discountNotes || discountReason || "",
+      discountStatus: discountStatus || (effectiveDiscount > 0 ? "APPROVED" : "NONE"),
+      totalPaid: typeof totalPaid === "number" ? totalPaid : (typeof totalAmountDue === "number" ? totalAmountDue : parseFloat(totalAmountDue) || 0),
+      invoiceId: invoiceId || `INV-${Date.now().toString().slice(-6)}`,
     });
 
     if (!updated) {

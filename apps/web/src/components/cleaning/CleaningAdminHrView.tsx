@@ -900,28 +900,58 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
       )}
 
       {/* ---------------------------------------------------- */}
-      {/* 3. PHOTO ZOOM MODAL                                  */}
+      {/* 3. PHOTO ZOOM MODAL (High z-index to overlay modals)  */}
       {/* ---------------------------------------------------- */}
       {zoomedPhoto && (
         <div
-          className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 transition-all"
           onClick={() => setZoomedPhoto(null)}
         >
           <div
-            className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl overflow-hidden p-2"
+            className="relative max-w-4xl w-full max-h-[92vh] bg-slate-900/90 rounded-3xl overflow-hidden border border-slate-700/60 shadow-2xl flex flex-col items-center justify-center p-2 sm:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => setZoomedPhoto(null)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <img
-              src={zoomedPhoto}
-              alt="Zoomed preview"
-              className="w-full h-full max-h-[85vh] object-contain rounded-xl"
-            />
+            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+              <a
+                href={zoomedPhoto}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white text-xs font-bold transition-colors border border-slate-600 flex items-center gap-1.5"
+                title="Open original"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span className="hidden sm:inline">Open Full</span>
+              </a>
+              <button
+                onClick={() => setZoomedPhoto(null)}
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-600 text-white transition-colors border border-slate-600"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full h-full flex items-center justify-center min-h-[300px]">
+              <img
+                src={zoomedPhoto}
+                alt="Inspection Preview"
+                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-lg border border-slate-800"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = "none";
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+              <div
+                style={{ display: "none" }}
+                className="flex-col items-center justify-center gap-2 text-slate-400 p-8 text-center"
+              >
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+                <p className="text-sm font-bold text-white">Could not preview image</p>
+                <p className="text-xs text-slate-400">The image may still be uploading or the link has expired.</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -78,7 +78,7 @@ export default function ReceptionDashboard() {
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   // Active Status Filter
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COMPLETED">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COLLECT_FEE" | "COMPLETED">("ALL");
 
   // Calendar Modal State for picking any future or past date
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
@@ -387,28 +387,33 @@ export default function ReceptionDashboard() {
     } as any);
   };
 
-  // Start Consultation: Updates status to IN_CONSULTATION so patient moves immediately into Active Consultations below
-  const handleStartConsultation = async (appt: any) => {
-    const isCurrentlyActive = (appt.status || "").toUpperCase() === "IN_CONSULTATION";
-    if (!isCurrentlyActive) {
-      // 1. Optimistic status update: patient leaves upcomingAppointments and appears in activeAppointments
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
-      );
+  const openPatientHistory = (appt: any) => {
+    const regId = appt.registrationId || appt.patientId || "SPH-GEN";
+    const name = encodeURIComponent(appt.patientName || appt.name || "");
+    const phone = encodeURIComponent((appt.phoneNumber || appt.phone || "").replace(/\D/g, "").slice(-10));
+    const branch = encodeURIComponent(appt.branch || activeBranch?.name || "Clinic");
+    router.push(`/(reception)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
+  };
 
-      // 2. Persist to API
-      apiFetch("/reception/appointments", {
-        method: "PATCH",
-        body: JSON.stringify({
-          action: "UPDATE_STATUS",
-          id: appt.id,
-          status: "IN_CONSULTATION",
-        }),
-      }).catch((err) => console.error("Failed to update status:", err));
-    } else {
-      // If already active in consultation, tapping opens patient file
-      openPatientFile(appt);
-    }
+  // Start Consultation: Updates status to IN_CONSULTATION and immediately opens Patient File
+  const handleStartConsultation = async (appt: any) => {
+    // 1. Optimistic status update: patient leaves upcomingAppointments and appears in activeAppointments
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
+    );
+
+    // 2. Persist to API
+    apiFetch("/reception/appointments", {
+      method: "PATCH",
+      body: JSON.stringify({
+        action: "UPDATE_STATUS",
+        id: appt.id,
+        status: "IN_CONSULTATION",
+      }),
+    }).catch((err) => console.error("Failed to update status:", err));
+
+    // 3. Immediately open patient file for Reception
+    openPatientFile({ ...appt, status: "IN_CONSULTATION" });
   };
 
   const fetchDeletedAppointments = async () => {
@@ -498,8 +503,12 @@ export default function ReceptionDashboard() {
     () => appointments.filter((a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING"),
     [appointments]
   );
-  const activeAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE"),
+  const inConsultationAppointments = useMemo(
+    () => appointments.filter((a) => a.status === "IN_CONSULTATION"),
+    [appointments]
+  );
+  const collectFeeAppointments = useMemo(
+    () => appointments.filter((a) => a.status === "COLLECT_FEE"),
     [appointments]
   );
   const completedAppointments = useMemo(
@@ -507,10 +516,15 @@ export default function ReceptionDashboard() {
     [appointments]
   );
 
+  // Backward compatibility alias for in-consultation
+  const activeAppointments = inConsultationAppointments;
+
   // Status Counts
   const totalCount = appointments.length;
   const waitingCount = upcomingAppointments.length;
-  const activeCount = activeAppointments.length;
+  const inConsultationCount = inConsultationAppointments.length;
+  const collectFeeCount = collectFeeAppointments.length;
+  const activeCount = inConsultationCount;
   const completedCount = completedAppointments.length;
 
   const filteredAppointments = appointments;
@@ -609,10 +623,22 @@ export default function ReceptionDashboard() {
       route: "/(reception)/all-patients",
     },
     {
+      id: "old-entry",
+      title: "Old Entry (Rx)",
+      icon: "folder-open-outline",
+      route: "/(reception)/old-entry",
+    },
+    {
       id: "follow-ups",
       title: "Follow-ups",
       icon: "call-outline",
       route: "/(reception)/follow-ups",
+    },
+    {
+      id: "medical-requests",
+      title: "Medical Requests",
+      icon: "document-text-outline",
+      route: "/(reception)/medical-requests",
     },
     {
       id: "doctor-no-show",
@@ -791,37 +817,53 @@ export default function ReceptionDashboard() {
             </View>
           </View>
 
-          {/* Top 4 Stats Cards */}
+          {/* Top 4 Stats Cards (Clickable Filter Boxes) */}
           <View style={styles.overviewGrid}>
-            <View style={styles.overviewStatCard}>
+            <TouchableOpacity
+              style={[styles.overviewStatCard, activeFilter === "ALL" && styles.overviewStatCardActiveBlue]}
+              onPress={() => setActiveFilter("ALL")}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBigBlue}>{totalCount}</Text>
               <Text style={styles.statCardSubtitle}>Total Bookings</Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.overviewStatCard}>
+            <TouchableOpacity
+              style={[styles.overviewStatCard, activeFilter === "UPCOMING" && styles.overviewStatCardActiveBlue]}
+              onPress={() => setActiveFilter("UPCOMING")}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBigBlue}>{waitingCount}</Text>
               <Text style={styles.statCardSubtitle}>Waiting</Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.overviewStatCard}>
+            <TouchableOpacity
+              style={[styles.overviewStatCard, activeFilter === "ACTIVE" && styles.overviewStatCardActiveOrange]}
+              onPress={() => setActiveFilter("ACTIVE")}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBigOrange}>{activeCount}</Text>
               <Text style={styles.statCardSubtitle}>Active Consult</Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.overviewStatCard}>
+            <TouchableOpacity
+              style={[styles.overviewStatCard, activeFilter === "COMPLETED" && styles.overviewStatCardActiveGreen]}
+              onPress={() => setActiveFilter("COMPLETED")}
+              activeOpacity={0.7}
+            >
               <Text style={styles.statBigGreen}>{completedCount}</Text>
               <Text style={styles.statCardSubtitle}>Completed</Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Bottom 3 Stats Cards */}
           <View style={styles.subStatsRow}>
             <TouchableOpacity
               style={styles.subStatCard}
-              onPress={() => router.push("/(reception)/appointments" as any)}
+              onPress={() => setActiveFilter("COLLECT_FEE")}
               activeOpacity={0.8}
             >
-              <Text style={styles.subStatRed}>0</Text>
+              <Text style={styles.subStatRed}>{collectFeeCount}</Text>
               <Text style={styles.subStatTextRed}>Pay Pending →</Text>
             </TouchableOpacity>
 
@@ -918,6 +960,59 @@ export default function ReceptionDashboard() {
             </View>
           </View>
 
+          {/* SEGMENTED FILTER PILLS / BOXES */}
+          <View style={styles.filterPillsRow}>
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "ALL" && styles.filterPillActive]}
+              onPress={() => setActiveFilter("ALL")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "ALL" && styles.filterPillTextActive]}>
+                All ({appointments.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "UPCOMING" && styles.filterPillActiveUpcoming]}
+              onPress={() => setActiveFilter("UPCOMING")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "UPCOMING" && styles.filterPillTextActive]}>
+                Upcoming ({upcomingAppointments.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "ACTIVE" && styles.filterPillActive]}
+              onPress={() => setActiveFilter("ACTIVE")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "ACTIVE" && styles.filterPillTextActive]}>
+                In Consult ({inConsultationAppointments.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "COLLECT_FEE" && styles.filterPillActiveOrange]}
+              onPress={() => setActiveFilter("COLLECT_FEE")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "COLLECT_FEE" && styles.filterPillTextActive]}>
+                Collect Fee ({collectFeeAppointments.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "COMPLETED" && styles.filterPillActiveGreen]}
+              onPress={() => setActiveFilter("COMPLETED")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "COMPLETED" && styles.filterPillTextActive]}>
+                Completed ({completedAppointments.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Appointments List / Empty State */}
           {isLoadingAppointments && appointments.length === 0 ? (
             <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
@@ -971,495 +1066,642 @@ export default function ReceptionDashboard() {
           ) : (
             <View style={{ gap: 14 }}>
               {/* 5A. UPCOMING APPOINTMENTS SECTION */}
-              <View style={styles.sectionContainer}>
-                <View style={styles.stackHeaderRow}>
-                  <View style={styles.sectionTitleBadgeRow}>
-                    <Ionicons name="time-outline" size={16} color="#0284c7" />
-                    <Text style={styles.sectionHeaderTitle}>Upcoming Appointments</Text>
-                    <View style={styles.upcomingCountBadge}>
-                      <Text style={styles.upcomingCountText}>{upcomingAppointments.length}</Text>
+              {(activeFilter === "ALL" || activeFilter === "UPCOMING") && (
+                <View style={styles.sectionContainer}>
+                  <View style={styles.stackHeaderRow}>
+                    <View style={styles.sectionTitleBadgeRow}>
+                      <View style={styles.sectionIconBadge}>
+                        <Ionicons name="time-outline" size={15} color="#0284c7" />
+                      </View>
+                      <Text style={styles.sectionHeaderTitle}>Upcoming Appointments</Text>
+                      <View style={styles.upcomingCountBadge}>
+                        <Text style={styles.upcomingCountText}>{upcomingAppointments.length}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {upcomingAppointments.length === 0 ? (
-                  <View style={styles.compactEmptyCard}>
-                    <Text style={styles.compactEmptyText}>No upcoming appointments scheduled</Text>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8 }}>
-                    {upcomingAppointments.map((appt, index) => {
-                      const phoneNum = appt.phoneNumber || appt.phone || "";
-                      const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                      const displayPhone = cleanPhone || "No Mobile";
-                      const isFirst = index === 0;
-                      const isLast = index === upcomingAppointments.length - 1;
-                      const isRevisit = !!appt.isReback;
+                  {upcomingAppointments.length === 0 ? (
+                    <View style={styles.compactEmptyCard}>
+                      <Text style={styles.compactEmptyText}>No upcoming appointments scheduled</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {upcomingAppointments.map((appt, index) => {
+                        const phoneNum = appt.phoneNumber || appt.phone || "";
+                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
+                        const displayPhone = cleanPhone || "No Mobile";
+                        const isFirst = index === 0;
+                        const isLast = index === upcomingAppointments.length - 1;
+                        const isRevisit = !!appt.isReback;
 
-                      return (
-                        <View key={appt.id || appt.token || `upcoming-${index}`} style={styles.appointmentCard}>
-                          {/* Top Row: Q#, Name, ID, Revisit, Phone, and START CONSULTATION */}
-                          <View style={styles.cardTopRow}>
-                            <View style={styles.queueBox}>
-                              <Text style={styles.queueBoxLabel}>Q</Text>
-                              <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                            </View>
-
-                            <View style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                {isRevisit && (
-                                  <View style={styles.revisitBadge}>
-                                    <Ionicons name="refresh" size={9} color="#d97706" />
-                                    <Text style={styles.revisitBadgeText}>REVISIT</Text>
-                                  </View>
-                                )}
+                        return (
+                          <View key={appt.id || appt.token || `upcoming-${index}`} style={styles.appointmentCard}>
+                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and START CONSULTATION */}
+                            <View style={styles.cardTopRow}>
+                              <View style={styles.queueBox}>
+                                <Text style={styles.queueBoxLabel}>Q</Text>
+                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
                               </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                <View style={styles.patientIdBadge}>
-                                  <Text style={styles.patientIdBadgeText}>
-                                    {appt.registrationId || appt.patientId || "ID: N/A"}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
 
-                            {/* START CONSULTATION Button */}
-                            <TouchableOpacity
-                              style={styles.startConsultBtn}
-                              onPress={() => handleStartConsultation(appt)}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={styles.startConsultBtnText}>START CONSULTATION</Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          {/* Middle Row: Doctor • Time • Branch */}
-                          <View style={styles.cardInfoRow}>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="time-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText}>
-                                {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="location-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {/* Bottom Action Row: [ ↑ ] [ ↓ ]  [ 📄 ]  [ 📞 ]  [ 💬 ]  [ 📅 ]  [ 🗑️ ] */}
-                          <View style={styles.cardActionRow}>
-                            <View style={styles.arrowButtonGroup}>
                               <TouchableOpacity
-                                style={[styles.arrowButton, isFirst && styles.arrowButtonDisabled]}
-                                onPress={() => handleMoveUp(index)}
-                                disabled={isFirst}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="arrow-up" size={14} color={isFirst ? "#93c5fd" : "#ffffff"} />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[styles.arrowButton, isLast && styles.arrowButtonDisabled]}
-                                onPress={() => handleMoveDown(index)}
-                                disabled={isLast}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="arrow-down" size={14} color={isLast ? "#93c5fd" : "#ffffff"} />
-                              </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.iconActionsGroup}>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
+                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
                                 onPress={() => openPatientFile(appt)}
                                 activeOpacity={0.7}
                               >
-                                <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                                  {isRevisit && (
+                                    <View style={styles.revisitBadge}>
+                                      <Ionicons name="refresh" size={9} color="#d97706" />
+                                      <Text style={styles.revisitBadgeText}>REVISIT</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
+                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
+                                  <View style={styles.patientIdBadge}>
+                                    <Text style={styles.patientIdBadgeText}>
+                                      {appt.registrationId || appt.patientId || "ID: N/A"}
+                                    </Text>
+                                  </View>
+                                </View>
                               </TouchableOpacity>
+
+                              {/* START PRESCRIPTION Button */}
                               <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => handleCallPatient(cleanPhone)}
-                                activeOpacity={0.7}
+                                style={styles.startConsultBtn}
+                                onPress={() => handleStartConsultation(appt)}
+                                activeOpacity={0.8}
                               >
-                                <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() =>
-                                  handleWhatsAppPatient(
-                                    cleanPhone,
-                                    appt.patientName,
-                                    appt.doctorName,
-                                    appt.timeSlot || appt.selectedTimeSlot
-                                  )
-                                }
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => openRescheduleModal(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                                <Ionicons name="play" size={10} color="#ffffff" style={{ marginRight: 3 }} />
+                                <Text style={styles.startConsultBtnText}>START PRESCRIPTION</Text>
                               </TouchableOpacity>
                             </View>
+
+                            {/* Middle Row: Doctor • Time • Branch */}
+                            <View style={styles.cardInfoRow}>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="time-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText}>
+                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="location-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {/* Bottom Action Row: [ ↑ ] [ ↓ ]  [ 📄 ]  [ 📞 ]  [ 💬 ]  [ 📅 ]  [ 🗑️ ] */}
+                            <View style={styles.cardActionRow}>
+                              <View style={styles.arrowButtonGroup}>
+                                <TouchableOpacity
+                                  style={[styles.arrowButton, isFirst && styles.arrowButtonDisabled]}
+                                  onPress={() => handleMoveUp(index)}
+                                  disabled={isFirst}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="arrow-up" size={14} color={isFirst ? "#93c5fd" : "#ffffff"} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.arrowButton, isLast && styles.arrowButtonDisabled]}
+                                  onPress={() => handleMoveDown(index)}
+                                  disabled={isLast}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="arrow-down" size={14} color={isLast ? "#93c5fd" : "#ffffff"} />
+                                </TouchableOpacity>
+                              </View>
+
+                              <View style={styles.iconActionsGroup}>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openPatientFile(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleCallPatient(cleanPhone)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() =>
+                                    handleWhatsAppPatient(
+                                      cleanPhone,
+                                      appt.patientName,
+                                      appt.doctorName,
+                                      appt.timeSlot || appt.selectedTimeSlot
+                                    )
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openRescheduleModal(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
                           </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* 5B. ACTIVE CONSULTATIONS SECTION */}
-              <View style={styles.sectionContainer}>
-                <View style={styles.stackHeaderRow}>
-                  <View style={styles.sectionTitleBadgeRow}>
-                    <Ionicons name="pulse" size={16} color="#0284c7" />
-                    <Text style={styles.sectionHeaderTitle}>Active Consultations</Text>
-                    <View style={styles.upcomingCountBadge}>
-                      <Text style={styles.upcomingCountText}>{activeAppointments.length}</Text>
+              {(activeFilter === "ALL" || activeFilter === "ACTIVE") && (
+                <View style={styles.sectionContainer}>
+                  <View style={styles.stackHeaderRow}>
+                    <View style={styles.sectionTitleBadgeRow}>
+                      <View style={styles.sectionIconBadge}>
+                        <Ionicons name="pulse" size={15} color="#0284c7" />
+                      </View>
+                      <Text style={styles.sectionHeaderTitle}>Active Consultations</Text>
+                      <View style={styles.upcomingCountBadge}>
+                        <Text style={styles.upcomingCountText}>{inConsultationAppointments.length}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {activeAppointments.length === 0 ? (
-                  <View style={styles.compactEmptyCard}>
-                    <Text style={styles.compactEmptyText}>No active consultations in progress</Text>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8 }}>
-                    {activeAppointments.map((appt, index) => {
-                      const phoneNum = appt.phoneNumber || appt.phone || "";
-                      const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                      const displayPhone = cleanPhone || "No Mobile";
-                      const isRevisit = !!appt.isReback;
-                      const isCollectFee = appt.status === "COLLECT_FEE";
+                  {inConsultationAppointments.length === 0 ? (
+                    <View style={styles.compactEmptyCard}>
+                      <Text style={styles.compactEmptyText}>No active consultations in progress</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {inConsultationAppointments.map((appt, index) => {
+                        const phoneNum = appt.phoneNumber || appt.phone || "";
+                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
+                        const displayPhone = cleanPhone || "No Mobile";
+                        const isRevisit = !!appt.isReback;
 
-                      return (
-                        <View
-                          key={appt.id || appt.token || `active-${index}`}
-                          style={styles.appointmentCard}
-                        >
-                          {/* Top Row: Q#, Name, ID, Revisit, Phone, and IN CONSULTATION */}
-                          <View style={styles.cardTopRow}>
-                            <View style={styles.queueBox}>
-                              <Text style={styles.queueBoxLabel}>Q</Text>
-                              <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                            </View>
-
-                            <View style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                {isRevisit && (
-                                  <View style={styles.revisitBadge}>
-                                    <Ionicons name="refresh" size={9} color="#d97706" />
-                                    <Text style={styles.revisitBadgeText}>REVISIT</Text>
-                                  </View>
-                                )}
+                        return (
+                          <View
+                            key={appt.id || appt.token || `active-${index}`}
+                            style={styles.appointmentCard}
+                          >
+                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and IN CONSULTATION */}
+                            <View style={styles.cardTopRow}>
+                              <View style={styles.queueBox}>
+                                <Text style={styles.queueBoxLabel}>Q</Text>
+                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
                               </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                <View style={styles.patientIdBadge}>
-                                  <Text style={styles.patientIdBadgeText}>
-                                    {appt.registrationId || appt.patientId || "ID: N/A"}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
 
-                            {/* COLLECT FEE Button (Amber for COLLECT_FEE, Orange for IN_CONSULTATION) */}
-                            <TouchableOpacity
-                              style={[styles.startConsultBtn, { backgroundColor: isCollectFee ? "#f59e0b" : "#f97316" }]}
-                              onPress={() => {
-                                setSelectedPaymentAppt(appt);
-                                setPaymentModalVisible(true);
-                              }}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={styles.startConsultBtnText}>{isCollectFee ? "⏳ COLLECT FEE" : "COLLECT FEE"}</Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          {/* Middle Row: Doctor • Time • Branch */}
-                          <View style={styles.cardInfoRow}>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="time-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText}>
-                                {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="location-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {/* Bottom Action Row */}
-                          <View style={styles.cardActionRow}>
-                            <View style={{ flex: 1 }} />
-
-                            <View style={styles.iconActionsGroup}>
                               <TouchableOpacity
-                                style={styles.outlineIconBtn}
+                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
                                 onPress={() => openPatientFile(appt)}
                                 activeOpacity={0.7}
                               >
-                                <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                                  {isRevisit && (
+                                    <View style={styles.revisitBadge}>
+                                      <Ionicons name="refresh" size={9} color="#d97706" />
+                                      <Text style={styles.revisitBadgeText}>REVISIT</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
+                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
+                                  <View style={styles.patientIdBadge}>
+                                    <Text style={styles.patientIdBadgeText}>
+                                      {appt.registrationId || appt.patientId || "ID: N/A"}
+                                    </Text>
+                                  </View>
+                                </View>
                               </TouchableOpacity>
+
+                              {/* IN CONSULTATION Button */}
                               <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => handleCallPatient(cleanPhone)}
-                                activeOpacity={0.7}
+                                style={[styles.startConsultBtn, { backgroundColor: "#0284c7" }]}
+                                onPress={() => openPatientFile(appt)}
+                                activeOpacity={0.8}
                               >
-                                <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() =>
-                                  handleWhatsAppPatient(
-                                    cleanPhone,
-                                    appt.patientName,
-                                    appt.doctorName,
-                                    appt.timeSlot || appt.selectedTimeSlot
-                                  )
-                                }
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => openRescheduleModal(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                                <Ionicons name="pulse" size={11} color="#ffffff" style={{ marginRight: 3 }} />
+                                <Text style={styles.startConsultBtnText}>IN CONSULTATION</Text>
                               </TouchableOpacity>
                             </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
 
-              {/* 5C. COMPLETED CONSULTATIONS SECTION */}
-              <View style={styles.sectionContainer}>
-                <View style={styles.stackHeaderRow}>
-                  <View style={styles.sectionTitleBadgeRow}>
-                    <Ionicons name="checkmark-done-circle-outline" size={16} color="#64748b" />
-                    <Text style={styles.sectionHeaderTitle}>Completed Consultations</Text>
-                    <View style={[styles.upcomingCountBadge, { backgroundColor: "#f1f5f9" }]}>
-                      <Text style={[styles.upcomingCountText, { color: "#475569" }]}>
-                        {completedAppointments.length}
-                      </Text>
+                            {/* Middle Row: Doctor • Time • Branch */}
+                            <View style={styles.cardInfoRow}>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="time-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText}>
+                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="location-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {/* Bottom Action Row */}
+                            <View style={styles.cardActionRow}>
+                              <View style={{ flex: 1 }} />
+
+                              <View style={styles.iconActionsGroup}>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openPatientFile(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleCallPatient(cleanPhone)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() =>
+                                    handleWhatsAppPatient(
+                                      cleanPhone,
+                                      appt.patientName,
+                                      appt.doctorName,
+                                      appt.timeSlot || appt.selectedTimeSlot
+                                    )
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openRescheduleModal(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* 5C. COLLECT FEE SECTION */}
+              {(activeFilter === "ALL" || activeFilter === "COLLECT_FEE") && (
+                <View style={styles.sectionContainer}>
+                  <View style={styles.stackHeaderRow}>
+                    <View style={styles.sectionTitleBadgeRow}>
+                      <View style={styles.sectionIconBadge}>
+                        <Ionicons name="wallet-outline" size={15} color="#ea580c" />
+                      </View>
+                      <Text style={styles.sectionHeaderTitle}>Collect Fee</Text>
+                      <View style={[styles.upcomingCountBadge, { backgroundColor: "#ffedd5" }]}>
+                        <Text style={[styles.upcomingCountText, { color: "#ea580c" }]}>{collectFeeAppointments.length}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                {completedAppointments.length === 0 ? (
-                  <View style={styles.compactEmptyCard}>
-                    <Text style={styles.compactEmptyText}>No completed consultations yet for {selectedDate}</Text>
-                  </View>
-                ) : (
-                  <View style={{ gap: 8 }}>
-                    {completedAppointments.map((appt, index) => {
-                      const phoneNum = appt.phoneNumber || appt.phone || "";
-                      const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                      const displayPhone = cleanPhone || "No Mobile";
-                      const isRevisit = !!appt.isReback;
+                  {collectFeeAppointments.length === 0 ? (
+                    <View style={styles.compactEmptyCard}>
+                      <Text style={styles.compactEmptyText}>No pending fee collections</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {collectFeeAppointments.map((appt, index) => {
+                        const phoneNum = appt.phoneNumber || appt.phone || "";
+                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
+                        const displayPhone = cleanPhone || "No Mobile";
+                        const isRevisit = !!appt.isReback;
 
-                      return (
-                        <View
-                          key={appt.id || appt.token || `completed-${index}`}
-                          style={styles.appointmentCard}
-                        >
-                          {/* Top Row: Q#, Name, ID, Revisit, Phone, and COMPLETED */}
-                          <View style={styles.cardTopRow}>
-                            <View style={styles.queueBox}>
-                              <Text style={styles.queueBoxLabel}>Q</Text>
-                              <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                            </View>
-
-                            <View style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                {isRevisit && (
-                                  <View style={styles.revisitBadge}>
-                                    <Ionicons name="refresh" size={9} color="#d97706" />
-                                    <Text style={styles.revisitBadgeText}>REVISIT</Text>
-                                  </View>
-                                )}
+                        return (
+                          <View
+                            key={appt.id || appt.token || `fee-${index}`}
+                            style={styles.appointmentCard}
+                          >
+                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and COLLECT FEE Button */}
+                            <View style={styles.cardTopRow}>
+                              <View style={[styles.queueBox, { backgroundColor: "#fff7ed", borderColor: "#fdba74" }]}>
+                                <Text style={[styles.queueBoxLabel, { color: "#c2410c" }]}>Q</Text>
+                                <Text style={[styles.queueBoxNum, { color: "#ea580c" }]}>{index + 1}</Text>
                               </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                <View style={styles.patientIdBadge}>
-                                  <Text style={styles.patientIdBadgeText}>
-                                    {appt.registrationId || appt.patientId || "ID: N/A"}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
 
-                            {/* COMPLETED Badge */}
-                            <TouchableOpacity
-                              style={[styles.startConsultBtn, { backgroundColor: "#64748b" }]}
-                              onPress={() => openPatientFile(appt)}
-                              activeOpacity={0.8}
-                            >
-                              <Text style={styles.startConsultBtnText}>COMPLETED</Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          {/* Middle Row */}
-                          <View style={styles.cardInfoRow}>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="time-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText}>
-                                {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                              </Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                              <Ionicons name="location-outline" size={13} color="#64748b" />
-                              <Text style={styles.infoItemText} numberOfLines={1}>
-                                {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {/* Bottom Action Row */}
-                          <View style={styles.cardActionRow}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                              <Ionicons name="checkmark-circle" size={12} color="#16a34a" />
-                              <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#16a34a" }}>Consultation Done</Text>
-                            </View>
-
-                            <View style={styles.iconActionsGroup}>
                               <TouchableOpacity
-                                style={styles.outlineIconBtn}
+                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
                                 onPress={() => openPatientFile(appt)}
                                 activeOpacity={0.7}
                               >
-                                <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                                  {isRevisit && (
+                                    <View style={styles.revisitBadge}>
+                                      <Ionicons name="refresh" size={9} color="#d97706" />
+                                      <Text style={styles.revisitBadgeText}>REVISIT</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
+                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
+                                  <View style={styles.patientIdBadge}>
+                                    <Text style={styles.patientIdBadgeText}>
+                                      {appt.registrationId || appt.patientId || "ID: N/A"}
+                                    </Text>
+                                  </View>
+                                </View>
                               </TouchableOpacity>
+
+                              {/* COLLECT FEE Button */}
                               <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() => handleCallPatient(cleanPhone)}
-                                activeOpacity={0.7}
+                                style={[styles.startConsultBtn, { backgroundColor: "#f59e0b" }]}
+                                onPress={() => {
+                                  setSelectedPaymentAppt(appt);
+                                  setPaymentModalVisible(true);
+                                }}
+                                activeOpacity={0.8}
                               >
-                                <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.outlineIconBtn}
-                                onPress={() =>
-                                  handleWhatsAppPatient(
-                                    cleanPhone,
-                                    appt.patientName,
-                                    appt.doctorName,
-                                    appt.timeSlot || appt.selectedTimeSlot
-                                  )
-                                }
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                                <Ionicons name="card" size={11} color="#ffffff" style={{ marginRight: 3 }} />
+                                <Text style={styles.startConsultBtnText}>COLLECT FEE</Text>
                               </TouchableOpacity>
                             </View>
+
+                            {/* Middle Row: Doctor • Time • Branch */}
+                            <View style={styles.cardInfoRow}>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="time-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText}>
+                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="location-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {/* Bottom Action Row */}
+                            <View style={styles.cardActionRow}>
+                              <View style={{ flex: 1 }} />
+
+                              <View style={styles.iconActionsGroup}>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openPatientFile(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleCallPatient(cleanPhone)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() =>
+                                    handleWhatsAppPatient(
+                                      cleanPhone,
+                                      appt.patientName,
+                                      appt.doctorName,
+                                      appt.timeSlot || appt.selectedTimeSlot
+                                    )
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openRescheduleModal(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
                           </View>
-                        </View>
-                      );
-                    })}
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* 5D. COMPLETED CONSULTATIONS SECTION */}
+              {(activeFilter === "ALL" || activeFilter === "COMPLETED") && (
+                <View style={styles.sectionContainer}>
+                  <View style={styles.stackHeaderRow}>
+                    <View style={styles.sectionTitleBadgeRow}>
+                      <View style={styles.sectionIconBadge}>
+                        <Ionicons name="checkmark-done-circle-outline" size={15} color="#0284c7" />
+                      </View>
+                      <Text style={styles.sectionHeaderTitle}>Completed Consultations</Text>
+                      <View style={styles.upcomingCountBadge}>
+                        <Text style={styles.upcomingCountText}>
+                          {completedAppointments.length}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                )}
-              </View>
+
+                  {completedAppointments.length === 0 ? (
+                    <View style={styles.compactEmptyCard}>
+                      <Text style={styles.compactEmptyText}>No completed consultations yet for {selectedDate}</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {completedAppointments.map((appt, index) => {
+                        const phoneNum = appt.phoneNumber || appt.phone || "";
+                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
+                        const displayPhone = cleanPhone || "No Mobile";
+                        const isRevisit = !!appt.isReback;
+
+                        return (
+                          <View
+                            key={appt.id || appt.token || `completed-${index}`}
+                            style={styles.appointmentCard}
+                          >
+                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and COMPLETED */}
+                            <View style={styles.cardTopRow}>
+                              <View style={styles.queueBox}>
+                                <Text style={styles.queueBoxLabel}>Q</Text>
+                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
+                              </View>
+
+                              <TouchableOpacity
+                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
+                                onPress={() => openPatientHistory(appt)}
+                                activeOpacity={0.7}
+                              >
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
+                                  {isRevisit && (
+                                    <View style={styles.revisitBadge}>
+                                      <Ionicons name="refresh" size={9} color="#d97706" />
+                                      <Text style={styles.revisitBadgeText}>REVISIT</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
+                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
+                                  <View style={styles.patientIdBadge}>
+                                    <Text style={styles.patientIdBadgeText}>
+                                      {appt.registrationId || appt.patientId || "ID: N/A"}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </TouchableOpacity>
+
+                              {/* COMPLETED Badge -> Opens Payment Receipt */}
+                              <TouchableOpacity
+                                style={[styles.startConsultBtn, { backgroundColor: "#15803d", flexDirection: "row", alignItems: "center", gap: 3 }]}
+                                onPress={() => {
+                                  setSelectedPaymentAppt(appt);
+                                  setPaymentModalVisible(true);
+                                }}
+                                activeOpacity={0.8}
+                              >
+                                <Ionicons name="receipt-outline" size={11} color="#ffffff" />
+                                <Text style={styles.startConsultBtnText}>COMPLETED</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {/* Middle Row */}
+                            <View style={styles.cardInfoRow}>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="time-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText}>
+                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
+                                </Text>
+                              </View>
+                              <View style={styles.infoItem}>
+                                <Ionicons name="location-outline" size={13} color="#64748b" />
+                                <Text style={styles.infoItemText} numberOfLines={1}>
+                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {/* Bottom Action Row */}
+                            <View style={styles.cardActionRow}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                <Ionicons name="checkmark-circle" size={12} color="#16a34a" />
+                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#16a34a" }}>Consultation Done</Text>
+                              </View>
+
+                              <View style={styles.iconActionsGroup}>
+                                <TouchableOpacity
+                                  style={[styles.outlineIconBtn, { backgroundColor: "#f0fdf4", borderColor: "#86efac" }]}
+                                  onPress={() => {
+                                    setSelectedPaymentAppt(appt);
+                                    setPaymentModalVisible(true);
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="receipt-outline" size={14.5} color="#15803d" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => openPatientHistory(appt)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="time-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() => handleCallPatient(cleanPhone)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.outlineIconBtn}
+                                  onPress={() =>
+                                    handleWhatsAppPatient(
+                                      cleanPhone,
+                                      appt.patientName,
+                                      appt.doctorName,
+                                      appt.timeSlot || appt.selectedTimeSlot
+                                    )
+                                  }
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           )}
         </View>
-
-        {/* 5b. DOCTOR NO-SHOW QUICK ACCESS CARD */}
-        <TouchableOpacity
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            backgroundColor: "#ffffff",
-            borderWidth: 1,
-            borderColor: "#fecdd3",
-            borderRadius: 14,
-            padding: 14,
-            marginBottom: 20,
-            shadowColor: "#000",
-            shadowOpacity: 0.03,
-            shadowRadius: 4,
-            elevation: 1,
-          }}
-          onPress={() => router.push("/(reception)/doctor-no-show" as any)}
-          activeOpacity={0.8}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                backgroundColor: "#fff1f2",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="person-remove" size={18} color="#e11d48" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
-                Doctor No-Show Management
-              </Text>
-              <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                Mark leaves or unavailable timings for {branchShortName} doctors
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#e11d48" />
-        </TouchableOpacity>
       </ScrollView>
 
       {/* 6. FIXED BOTTOM NAVIGATION BAR (Matching Reference Screenshot) */}
@@ -2328,6 +2570,21 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
+  overviewStatCardActiveBlue: {
+    borderColor: "#0284c7",
+    borderWidth: 1.5,
+    backgroundColor: "#f0f9ff",
+  },
+  overviewStatCardActiveOrange: {
+    borderColor: "#f97316",
+    borderWidth: 1.5,
+    backgroundColor: "#fff7ed",
+  },
+  overviewStatCardActiveGreen: {
+    borderColor: "#16a34a",
+    borderWidth: 1.5,
+    backgroundColor: "#f0fdf4",
+  },
   statBigBlue: {
     fontSize: 16,
     fontWeight: "900",
@@ -2411,29 +2668,105 @@ const styles = StyleSheet.create({
   filterPillsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 14,
     flexWrap: "wrap",
   },
   filterPill: {
     backgroundColor: "#f1f5f9",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
   filterPillActive: {
     backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  filterPillActiveUpcoming: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  filterPillActiveOrange: {
+    backgroundColor: "#f97316",
+    borderColor: "#f97316",
+  },
+  filterPillActiveGreen: {
+    backgroundColor: "#16a34a",
+    borderColor: "#16a34a",
   },
   filterPillText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: "700",
     color: COLORS.textDark,
   },
   filterPillTextActive: {
     color: COLORS.white,
+    fontWeight: "800",
   },
 
-  // 5. APPOINTMENTS STACK SECTIONS
+  // 5. APPOINTMENTS STACK SECTIONS & BOXES
+  sectionCardBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    padding: 12,
+    marginBottom: 16,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    width: "100%",
+  },
+  sectionIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    backgroundColor: "#e0f2fe",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sectionSubBadgeBlue: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sectionSubBadgeTextBlue: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
+  sectionSubBadgeOrange: {
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sectionSubBadgeTextOrange: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#ea580c",
+  },
+  sectionSubBadgeGreen: {
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sectionSubBadgeTextGreen: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#16a34a",
+  },
   sectionContainer: {
     marginBottom: 16,
     width: "100%",

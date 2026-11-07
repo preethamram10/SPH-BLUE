@@ -12,6 +12,8 @@ import {
   Building2,
   Phone,
   UserX,
+  FolderPlus,
+  ClipboardList,
 } from "lucide-react";
 
 interface ReceptionSidebarProps {
@@ -58,10 +60,22 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
       icon: Users,
     },
     {
+      id: "old-entry",
+      name: "Old Entry (Rx)",
+      href: "/reception/old-entry",
+      icon: FolderPlus,
+    },
+    {
       id: "follow-ups",
       name: "Follow-ups",
       href: "/reception/follow-ups",
       icon: CalendarCheck,
+    },
+    {
+      id: "medical-requests",
+      name: "Medical Requests",
+      href: "/reception/medical-requests",
+      icon: ClipboardList,
     },
     {
       id: "doctor-no-show",

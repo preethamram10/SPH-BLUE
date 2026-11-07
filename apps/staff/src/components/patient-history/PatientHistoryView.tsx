@@ -19,6 +19,7 @@ import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../services/auth";
 import { PrescriptionViewerModal } from "../patient-file/PrescriptionViewerModal";
+import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
 
 interface PatientHistoryViewProps {
   role: "DOCTOR" | "RECEPTION";
@@ -65,6 +66,10 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
   const [appointments, setAppointments] = useState<any[]>([]);
   const [latestAppointment, setLatestAppointment] = useState<any>(null);
   const [allImages, setAllImages] = useState<any[]>([]);
+
+  // Invoice Receipt Modal State
+  const [selectedInvoiceAppt, setSelectedInvoiceAppt] = useState<any>(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   // Viewer state
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -266,10 +271,10 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
   };
 
   // Delete Prescription Image
-  const handleDeleteImage = async (appointmentId: string, imageIndex: number) => {
+  const handleDeleteImage = async (appointmentId?: string, imageIndex?: number, imageUrl?: string) => {
     Alert.alert(
       "Delete Prescription Image",
-      "Are you sure you want to remove this prescription scan?",
+      "Are you sure you want to remove this prescription scan from this patient's records?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -285,6 +290,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                   regId: patient.regId,
                   appointmentId,
                   imageIndex,
+                  imageUrl,
                 }),
               });
               if (res.success) {
@@ -428,16 +434,18 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
 
           {/* Action Buttons Row */}
           <View style={styles.heroButtonsRow}>
-            {/* Edit Latest Rx */}
-            <TouchableOpacity style={styles.heroBlueBtn} onPress={() => handleEditRx()} activeOpacity={0.8}>
-              <View style={styles.heroBtnContent}>
-                <Ionicons name="document-text-outline" size={20} color="#ffffff" style={{ marginRight: 8 }} />
-                <View>
-                  <Text style={styles.heroBtnTitle}>Edit Latest Rx</Text>
-                  <Text style={styles.heroBtnSub}>Latest: {latestDateFormatted}</Text>
+            {/* Edit Latest Rx (Only for Doctor clinical consultation) */}
+            {role === "DOCTOR" && (
+              <TouchableOpacity style={styles.heroBlueBtn} onPress={() => handleEditRx()} activeOpacity={0.8}>
+                <View style={styles.heroBtnContent}>
+                  <Ionicons name="document-text-outline" size={20} color="#ffffff" style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.heroBtnTitle}>Edit Latest Rx</Text>
+                    <Text style={styles.heroBtnSub}>Latest: {latestDateFormatted}</Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            )}
 
             {/* + Upload Rx */}
             <TouchableOpacity
@@ -612,15 +620,17 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                               <Text style={styles.rxTitleText}>Updated Prescriptions & Remedies</Text>
                             </View>
 
-                            {/* Edit Rx button */}
-                            <TouchableOpacity
-                              style={styles.editRxSmallBtn}
-                              onPress={() => handleEditRx(item.id)}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons name="pencil" size={12} color="#0284c7" />
-                              <Text style={styles.editRxSmallBtnText}>Edit Rx</Text>
-                            </TouchableOpacity>
+                            {/* Edit Rx button (Doctor only) */}
+                            {role === "DOCTOR" && (
+                              <TouchableOpacity
+                                style={styles.editRxSmallBtn}
+                                onPress={() => handleEditRx(item.id)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="pencil" size={12} color="#0284c7" />
+                                <Text style={styles.editRxSmallBtnText}>Edit Rx</Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
 
                           {/* Diagnosis Box */}
@@ -894,6 +904,37 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                             📅 Appt Date: {item.appointmentDate} • {item.timeSlot}
                           </Text>
                         </View>
+
+                        {/* View Receipt Button */}
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 5,
+                            backgroundColor: "#f0fdf4",
+                            borderWidth: 1,
+                            borderColor: "#86efac",
+                            paddingVertical: 7,
+                            borderRadius: 8,
+                            marginTop: 10,
+                          }}
+                          onPress={() => {
+                            setSelectedInvoiceAppt({
+                              ...item,
+                              patientName: patient?.name || item.patientName,
+                              phoneNumber: patient?.phone || item.phoneNumber,
+                              registrationId: patient?.regId || item.registrationId,
+                            });
+                            setIsInvoiceModalOpen(true);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="receipt-outline" size={13} color="#15803d" />
+                          <Text style={{ fontSize: 11, fontWeight: "800", color: "#15803d" }}>
+                            View Official Receipt &amp; Tax Invoice
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   );
@@ -909,6 +950,23 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
         images={viewerImages}
         initialIndex={viewerInitialIndex}
         onClose={() => setIsViewerOpen(false)}
+        onDeleteImage={(idx) => {
+          const currentUrl = viewerImages[idx];
+          if (currentUrl) {
+            const found = allImages.find((m) => m.url === currentUrl);
+            handleDeleteImage(found?.appointmentId, found?.index ?? idx, currentUrl);
+          }
+        }}
+      />
+      {/* OFFICIAL INVOICE & RECEIPT MODAL */}
+      <AppointmentPaymentModal
+        visible={isInvoiceModalOpen}
+        appointment={selectedInvoiceAppt}
+        onClose={() => {
+          setIsInvoiceModalOpen(false);
+          setSelectedInvoiceAppt(null);
+        }}
+        onPaymentSuccess={() => {}}
       />
       {/* Optional Bottom Navigation */}
       {bottomNav}

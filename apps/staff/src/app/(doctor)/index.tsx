@@ -465,7 +465,11 @@ export default function DoctorDashboard() {
                   </View>
 
                   {/* Name & ID & Revisit Badge + Phone */}
-                  <View style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}
+                    onPress={() => openPatientFile(appt)}
+                    activeOpacity={0.7}
+                  >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                       <Text style={styles.apptPatientName}>{patientName}</Text>
                       {/* Patient ID Pill */}
@@ -482,7 +486,7 @@ export default function DoctorDashboard() {
                       )}
                     </View>
                     <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                  </View>
+                  </TouchableOpacity>
 
                   {/* START CONSULTATION / IN CONSULTATION / COMPLETED Button */}
                   <TouchableOpacity
@@ -495,7 +499,7 @@ export default function DoctorDashboard() {
                     activeOpacity={0.8}
                   >
                     <Text style={styles.startConsultBtnText}>
-                      {isActive ? "IN CONSULTATION" : isCompleted ? "COMPLETED" : "START CONSULTATION"}
+                      {isActive ? "IN CONSULTATION" : isCompleted ? "COMPLETED" : "START PRESCRIPTION"}
                     </Text>
                   </TouchableOpacity>
                 </View>

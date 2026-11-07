@@ -10,6 +10,10 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  Image,
+  Linking,
+  Share,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -96,19 +100,31 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // View state: 'collect_fee' vs 'invoice_receipt'
+  const [currentView, setCurrentView] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
+  const [completedInvoice, setCompletedInvoice] = useState<any>(appointment);
+
   // Initialize on modal open
   useEffect(() => {
     if (visible && appointment) {
+      setCompletedInvoice(appointment);
+      const isPaid = Boolean(
+        appointment.isFeeCollected ||
+        appointment.status === "COMPLETED" ||
+        (appointment.totalPaid !== undefined && appointment.totalPaid > 0)
+      );
+      setCurrentView(isPaid ? "invoice_receipt" : "collect_fee");
+
       const docFee =
         typeof appointment.consultationFee === "number" && appointment.consultationFee > 0
           ? appointment.consultationFee
           : 0;
       setTargetAmount(docFee > 0 ? String(docFee) : "");
       setConsultationFee(docFee);
-      setMedicineFee(0);
-      setIncludeConsult(true);
-      setIncludeMedicine(false);
-      setIncludeDiet(false);
+      setMedicineFee(appointment.medicineFee || 0);
+      setIncludeConsult(docFee > 0 || !isPaid);
+      setIncludeMedicine(Boolean(appointment.medicineFee && appointment.medicineFee > 0));
+      setIncludeDiet(Boolean(appointment.dietPlanFee && appointment.dietPlanFee > 0));
       setPaymentType("consultation");
       setSelectedMethod(null);
       setDiscountStatus(appointment.discountStatus || "NONE");
@@ -324,19 +340,20 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       });
 
       if (res.success) {
-        Alert.alert(
-          "Payment Confirmed ✓",
-          `Payment of ₹${totalAmountDue} via ${selectedMethod} recorded successfully!\n${appointment.patientName}'s consultation is now completed.`,
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                onPaymentSuccess(res.appointment || { ...appointment, status: "COMPLETED" });
-                onClose();
-              },
-            },
-          ]
-        );
+        const updated = res.appointment || {
+          ...appointment,
+          status: "COMPLETED",
+          isFeeCollected: true,
+          totalPaid: totalAmountDue,
+          totalAmountDue,
+          paymentMethod: selectedMethod,
+          paymentMode: selectedMethod,
+          paidAt: new Date().toISOString(),
+          invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+        };
+        setCompletedInvoice(updated);
+        setCurrentView("invoice_receipt");
+        onPaymentSuccess(updated);
       } else {
         Alert.alert("Payment Error", res.error || "Failed to process payment.");
       }
@@ -347,31 +364,385 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     }
   };
 
+  // --- WHATSAPP SHARE RECEIPT ---
+  const handleShareWhatsApp = () => {
+    const rawPhone = completedInvoice?.phoneNumber || completedInvoice?.phone || appointment?.phoneNumber || appointment?.phone || "";
+    const phone = rawPhone.replace(/\D/g, "").slice(-10);
+    const invoiceNum = completedInvoice?.invoiceId || "INV-RECEIPT";
+    const totalPaidNum = Number(
+      completedInvoice?.totalPaid ?? completedInvoice?.totalAmountDue ?? totalAmountDue
+    ).toFixed(2);
+    const dateStr = completedInvoice?.appointmentDate || appointment?.appointmentDate || new Date().toISOString().slice(0, 10);
+    const timeStr = completedInvoice?.timeSlot ? ` at ${completedInvoice.timeSlot}` : "";
+    const method = completedInvoice?.paymentMode || completedInvoice?.paymentMethod || selectedMethod || "Counter UPI";
+
+    const message = encodeURIComponent(
+      `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
+      `--------------------------------\n` +
+      `Receipt No: ${invoiceNum}\n` +
+      `Patient Name: ${completedInvoice?.patientName || appointment?.patientName}\n` +
+      `Phone: +91 ${phone}\n` +
+      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Branch: ${completedInvoice?.branch || appointment?.branch || "KPHB Branch"}\n` +
+      `Schedule: ${dateStr}${timeStr}\n` +
+      `Specialty: Homeopathy\n` +
+      `--------------------------------\n` +
+      `*TOTAL AMOUNT PAID: ₹${totalPaidNum}*\n` +
+      `Payment Mode: VIA ${method.toUpperCase()}\n` +
+      `Payment Status: PAID ✓\n` +
+      `--------------------------------\n` +
+      `*Fee Breakdown:*\n` +
+      (Number(completedInvoice?.consultationFee ?? consultationFee) > 0
+        ? `• Consultation Fee: ₹${Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}\n`
+        : "") +
+      (Number(completedInvoice?.medicineFee ?? medicineFee) > 0
+        ? `• Medicine Fee (${completedInvoice?.medicineDuration || medicineDuration || "1 Month"}): ₹${Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}\n`
+        : "") +
+      (Number(completedInvoice?.dietPlanFee ?? dietFee) > 0
+        ? `• Diet Plan: ₹${Number(completedInvoice?.dietPlanFee ?? dietFee).toFixed(2)}\n`
+        : "") +
+      (Number(completedInvoice?.otherCharges ?? 0) > 0
+        ? `• Other Charges: ₹${Number(completedInvoice?.otherCharges).toFixed(2)}\n`
+        : "") +
+      (Number(completedInvoice?.discount ?? 0) > 0
+        ? `• Discount Applied: -₹${Number(completedInvoice?.discount).toFixed(2)}\n`
+        : "") +
+      `--------------------------------\n` +
+      `Helpline: 9030176176 | spiritualhomeoclinic.com\n` +
+      `This is a computer-generated bill. No signature is required.`
+    );
+
+    Linking.openURL(`https://wa.me/91${phone}?text=${message}`).catch(() => {
+      Alert.alert("Unable to open WhatsApp", "Please make sure WhatsApp is installed on your device.");
+    });
+  };
+
+  // --- PRINT / SHARE RECEIPT ---
+  const handlePrintOrShare = async () => {
+    if (Platform.OS === "web" && typeof window !== "undefined" && (window as any).print) {
+      (window as any).print();
+      return;
+    }
+    const rawPhone = completedInvoice?.phoneNumber || completedInvoice?.phone || appointment?.phoneNumber || appointment?.phone || "";
+    const phone = rawPhone.replace(/\D/g, "").slice(-10);
+    const invoiceNum = completedInvoice?.invoiceId || "INV-RECEIPT";
+    const totalPaidNum = Number(
+      completedInvoice?.totalPaid ?? completedInvoice?.totalAmountDue ?? totalAmountDue
+    ).toFixed(2);
+    const dateStr = completedInvoice?.appointmentDate || appointment?.appointmentDate || new Date().toISOString().slice(0, 10);
+    const method = completedInvoice?.paymentMode || completedInvoice?.paymentMethod || selectedMethod || "Counter UPI";
+
+    const summary =
+      `SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT\n` +
+      `Receipt No: ${invoiceNum}\n` +
+      `Patient: ${completedInvoice?.patientName || appointment?.patientName} (+91 ${phone})\n` +
+      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Branch: ${completedInvoice?.branch || appointment?.branch || "KPHB Branch"}\n` +
+      `Date: ${dateStr}\n` +
+      `TOTAL PAID: ₹${totalPaidNum} (VIA ${method.toUpperCase()})\n` +
+      `Status: PAID ✓\n` +
+      `Helpline: 9030176176 | spiritualhomeoclinic.com`;
+
+    try {
+      await Share.share({
+        title: `Payment Receipt - ${completedInvoice?.patientName || appointment?.patientName}`,
+        message: summary,
+      });
+    } catch {
+      // Ignored
+    }
+  };
+
   if (!visible || !appointment) {
     return null;
   }
+
+  const rawPhone = completedInvoice?.phoneNumber || completedInvoice?.phone || appointment?.phoneNumber || appointment?.phone || "";
+  const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
+  const displayTotal = Number(
+    completedInvoice?.totalPaid ?? completedInvoice?.totalAmountDue ?? totalAmountDue
+  ).toFixed(2);
+  const displayPaymentMode = (
+    completedInvoice?.paymentMode ||
+    completedInvoice?.paymentMethod ||
+    selectedMethod ||
+    "Counter UPI"
+  ).toUpperCase();
+  const issuedDateObj = completedInvoice?.paidAt ? new Date(completedInvoice.paidAt) : new Date();
+  const formattedIssuedDate = `${issuedDateObj.toLocaleDateString("en-GB")}, ${issuedDateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}`;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#ffffff" }} edges={["top", "bottom", "left", "right"]}>
         <View style={styles.container}>
-        {/* TOP HEADER (Matching Screenshot) */}
-        <View style={styles.topHeader}>
-          <TouchableOpacity style={styles.headerBackBtn} onPress={onClose} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={20} color="#0f172a" />
-          </TouchableOpacity>
+          {currentView === "invoice_receipt" ? (
+            <View style={{ flex: 1 }}>
+              {/* TOP ACTION TOOLBAR */}
+              <View style={styles.receiptTopBar}>
+                <TouchableOpacity style={styles.headerBackBtn} onPress={onClose} activeOpacity={0.7}>
+                  <Ionicons name="arrow-back" size={20} color="#0f172a" />
+                </TouchableOpacity>
 
-          <View style={styles.headerTitleCol}>
-            <Text style={styles.headerTitle}>Appointment Payment</Text>
-            <Text style={styles.headerSubtitle}>Review and complete payment</Text>
-          </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.receiptTopBarTitle}>Receipt &amp; Tax Invoice</Text>
+                  <Text style={styles.receiptTopBarSub}>{completedInvoice?.patientName || appointment.patientName} • {completedInvoice?.branch || appointment.branch || "KPHB"}</Text>
+                </View>
 
-          <TouchableOpacity style={styles.headerCloseBtn} onPress={onClose} activeOpacity={0.7}>
-            <Ionicons name="close" size={20} color="#64748b" />
-          </TouchableOpacity>
-        </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TouchableOpacity
+                    style={styles.whatsAppTopBtn}
+                    onPress={handleShareWhatsApp}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="logo-whatsapp" size={13} color="#15803d" />
+                    <Text style={styles.whatsAppTopBtnText}>WhatsApp</Text>
+                  </TouchableOpacity>
 
-        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+                  <TouchableOpacity
+                    style={styles.shareTopBtn}
+                    onPress={handlePrintOrShare}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="share-social-outline" size={13} color="#ffffff" />
+                    <Text style={styles.shareTopBtnText}>Share</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* SCROLLABLE RECEIPT PAPER */}
+              <ScrollView style={styles.scrollArea} contentContainerStyle={styles.receiptScrollContent}>
+                <View style={styles.receiptCard}>
+                  {/* 1. Header: Logo Left, Website/Email Right */}
+                  <View style={styles.receiptHeaderRow}>
+                    <Image
+                      source={require("../../../assets/SH logo.png")}
+                      style={styles.receiptLogo}
+                      resizeMode="contain"
+                    />
+
+                    <View style={styles.receiptContactCol}>
+                      <Text style={styles.receiptWebText}>spiritualhomeoclinic.com</Text>
+                      <Text style={styles.receiptEmailText}>support@spiritualhomeoclinic.com</Text>
+                    </View>
+                  </View>
+
+                  {/* 2. Lime Green Accent Bar */}
+                  <View style={styles.receiptGreenBar} />
+
+                  {/* 3. Title & Receipt Badge */}
+                  <View style={styles.receiptTitleRow}>
+                    <Text style={styles.receiptTitleText}>PAYMENT RECEIPT</Text>
+                    <View style={styles.receiptBadgePill}>
+                      <Text style={styles.receiptBadgeText}>RECEIPT</Text>
+                    </View>
+                  </View>
+
+                  {/* 4. Patient Details Grid */}
+                  <View style={styles.receiptSectionBox}>
+                    <Text style={styles.receiptSectionHeader}>PATIENT DETAILS</Text>
+
+                    <View style={styles.receiptGridRow}>
+                      {/* Left Column */}
+                      <View style={styles.receiptGridCol}>
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>PATIENT NAME</Text>
+                          <Text style={styles.receiptFieldValueBold}>{completedInvoice?.patientName || appointment.patientName}</Text>
+                        </View>
+                        <View style={styles.receiptDividerLine} />
+
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>CONSULTANT DOCTOR</Text>
+                          <Text style={styles.receiptFieldValueBold}>{completedInvoice?.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya"}</Text>
+                        </View>
+                        <View style={styles.receiptDividerLine} />
+
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>APPOINTMENT SCHEDULE</Text>
+                          <Text style={styles.receiptFieldValueBold}>
+                            {completedInvoice?.appointmentDate || appointment.appointmentDate || new Date().toISOString().slice(0, 10)}
+                            {completedInvoice?.timeSlot ? ` at ${completedInvoice.timeSlot}` : " at 02:30 PM"}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Right Column */}
+                      <View style={styles.receiptGridCol}>
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>PHONE NUMBER</Text>
+                          <Text style={styles.receiptFieldValueBold}>+91 {cleanPhone || "9248868597"}</Text>
+                        </View>
+                        <View style={styles.receiptDividerLine} />
+
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>CLINIC BRANCH</Text>
+                          <Text style={styles.receiptFieldValueBold}>{completedInvoice?.branch || appointment.branch || "KPHB Branch"}</Text>
+                        </View>
+                        <View style={styles.receiptDividerLine} />
+
+                        <View style={styles.receiptFieldGroup}>
+                          <Text style={styles.receiptFieldLabel}>SPECIALTY</Text>
+                          <Text style={styles.receiptFieldValueBold}>Homeopathy</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 5. Payment Information Dashed Box */}
+                  <View style={styles.receiptSectionBox}>
+                    <Text style={styles.receiptSectionHeader}>PAYMENT INFORMATION</Text>
+
+                    <View style={styles.receiptPaymentBox}>
+                      <View>
+                        <Text style={styles.receiptPaymentBoxLabel}>TOTAL AMOUNT PAID</Text>
+                        <Text style={styles.receiptPaymentBoxAmount}>₹{displayTotal}</Text>
+                      </View>
+
+                      <View style={{ alignItems: "flex-end" }}>
+                        <View style={styles.receiptPaidPill}>
+                          <Text style={styles.receiptPaidPillText}>PAID ✓</Text>
+                        </View>
+                        <Text style={styles.receiptViaText}>VIA {displayPaymentMode}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 6. Fee Breakdown Table */}
+                  <View style={styles.receiptSectionBox}>
+                    <Text style={styles.receiptSectionHeader}>FEE BREAKDOWN</Text>
+
+                    <View style={styles.breakdownTable}>
+                      <View style={styles.breakdownHeadRow}>
+                        <Text style={styles.breakdownHeadDesc}>DESCRIPTION</Text>
+                        <Text style={styles.breakdownHeadAmount}>AMOUNT (₹)</Text>
+                      </View>
+
+                      {/* Consultation Fee */}
+                      {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
+                          <Text style={styles.breakdownRowAmount}>
+                            ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Medicines */}
+                      {completedInvoice?.medicines && completedInvoice.medicines.length > 0 ? (
+                        completedInvoice.medicines.map((m: any, idx: number) => (
+                          <View key={idx} style={styles.breakdownRow}>
+                            <Text style={styles.breakdownRowDesc}>
+                              {m.name || "Prescribed Medicine"} {m.type ? `(${m.type})` : ""}
+                            </Text>
+                            <Text style={styles.breakdownRowAmount}>₹{Number(m.amount).toFixed(2)}</Text>
+                          </View>
+                        ))
+                      ) : Number(completedInvoice?.medicineFee ?? medicineFee) > 0 ? (
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownRowDesc}>
+                            Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                          </Text>
+                          <Text style={styles.breakdownRowAmount}>
+                            ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {/* Diet Plan */}
+                      {Number(completedInvoice?.dietPlanFee ?? dietFee) > 0 && (
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownRowDesc}>Diet &amp; Nutrition Plan</Text>
+                          <Text style={styles.breakdownRowAmount}>
+                            ₹{Number(completedInvoice?.dietPlanFee ?? dietFee).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Other Charges */}
+                      {Number(completedInvoice?.otherCharges ?? 0) > 0 && (
+                        <View style={styles.breakdownRow}>
+                          <Text style={styles.breakdownRowDesc}>Other Clinic Charges</Text>
+                          <Text style={styles.breakdownRowAmount}>
+                            ₹{Number(completedInvoice?.otherCharges).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Discount */}
+                      {Number(completedInvoice?.discount ?? 0) > 0 && (
+                        <View style={styles.breakdownRow}>
+                          <Text style={[styles.breakdownRowDesc, { color: "#dc2626" }]}>
+                            Discount ({completedInvoice?.discountReason || "Special Waiver"})
+                          </Text>
+                          <Text style={[styles.breakdownRowAmount, { color: "#dc2626" }]}>
+                            - ₹{Number(completedInvoice?.discount).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* TOTAL PAID ROW */}
+                      <View style={styles.breakdownTotalRow}>
+                        <Text style={styles.breakdownTotalDesc}>TOTAL PAID ({displayPaymentMode})</Text>
+                        <Text style={styles.breakdownTotalAmount}>₹{displayTotal}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* 7. Metadata & Disclaimer */}
+                  <View style={styles.receiptMetaCol}>
+                    <Text style={styles.receiptMetaText}>
+                      Payment ID: <Text style={{ fontFamily: Platform.OS === "ios" ? "Courier" : "monospace", color: "#334155" }}>{completedInvoice?.invoiceId || "WALKIN_COUNTER_UPI"}</Text>
+                    </Text>
+                    <Text style={styles.receiptMetaText}>Issued At: {formattedIssuedDate}</Text>
+                    <Text style={styles.receiptDisclaimer}>This is a computer generated bill. No signature is required.</Text>
+                  </View>
+
+                  {/* 8. Bottom Green Footer Bar */}
+                  <View style={styles.receiptFooterGreen}>
+                    <View style={styles.receiptFooterItem}>
+                      <Ionicons name="call" size={10} color="#ffffff" />
+                      <Text style={styles.receiptFooterItemText}>9030176176</Text>
+                    </View>
+                    <View style={styles.receiptFooterItem}>
+                      <Ionicons name="mail" size={10} color="#ffffff" />
+                      <Text style={styles.receiptFooterItemText}>support@spiritualhomeoclinic.com</Text>
+                    </View>
+                    <View style={styles.receiptFooterItem}>
+                      <Ionicons name="globe-outline" size={10} color="#ffffff" />
+                      <Text style={styles.receiptFooterItemText}>spiritualhomeoclinic.com</Text>
+                    </View>
+                    <View style={styles.receiptFooterItem}>
+                      <Ionicons name="location" size={10} color="#ffffff" />
+                      <Text style={styles.receiptFooterItemText}>{completedInvoice?.branch || "KPHB BRANCH"}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Return Button */}
+                <TouchableOpacity style={styles.receiptDoneBtn} onPress={onClose} activeOpacity={0.8}>
+                  <Text style={styles.receiptDoneBtnText}>Close &amp; Return</Text>
+                </TouchableOpacity>
+                <View style={{ height: 25 }} />
+              </ScrollView>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }}>
+              {/* TOP HEADER (Matching Screenshot) */}
+              <View style={styles.topHeader}>
+                <TouchableOpacity style={styles.headerBackBtn} onPress={onClose} activeOpacity={0.7}>
+                  <Ionicons name="arrow-back" size={20} color="#0f172a" />
+                </TouchableOpacity>
+
+                <View style={styles.headerTitleCol}>
+                  <Text style={styles.headerTitle}>Appointment Payment</Text>
+                  <Text style={styles.headerSubtitle}>Review and complete payment</Text>
+                </View>
+
+                <TouchableOpacity style={styles.headerCloseBtn} onPress={onClose} activeOpacity={0.7}>
+                  <Ionicons name="close" size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
           {/* 1. TARGET AMOUNT BOX (Matching Screenshot 2) */}
           <View style={styles.targetCard}>
             <View style={{ flex: 1 }}>
@@ -893,9 +1264,11 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             </View>
           </View>
         </Modal>
-      </View>
-    </SafeAreaView>
-  </Modal>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 };
 
@@ -1499,6 +1872,311 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "800",
     color: "#ffffff",
+  },
+  // RECEIPT VIEW STYLES
+  receiptTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  receiptTopBarTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  receiptTopBarSub: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  whatsAppTopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  whatsAppTopBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#15803d",
+  },
+  shareTopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#0f172a",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  shareTopBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#ffffff",
+  },
+  receiptScrollContent: {
+    padding: 12,
+    backgroundColor: "#f8fafc",
+  },
+  receiptCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  receiptHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  receiptLogo: {
+    width: 145,
+    height: 40,
+  },
+  receiptContactCol: {
+    alignItems: "flex-end",
+  },
+  receiptWebText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  receiptEmailText: {
+    fontSize: 9,
+    fontWeight: "500",
+    color: "#64748b",
+    marginTop: 1,
+  },
+  receiptGreenBar: {
+    height: 3,
+    backgroundColor: "#84cc16",
+    width: "100%",
+    borderRadius: 2,
+    marginVertical: 10,
+  },
+  receiptTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  receiptTitleText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0f172a",
+    letterSpacing: 0.2,
+  },
+  receiptBadgePill: {
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  receiptBadgeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#0284c7",
+    letterSpacing: 0.5,
+  },
+  receiptSectionBox: {
+    marginBottom: 12,
+  },
+  receiptSectionHeader: {
+    fontSize: 9.5,
+    fontWeight: "900",
+    color: "#94a3b8",
+    letterSpacing: 0.5,
+    marginBottom: 5,
+  },
+  receiptGridRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  receiptGridCol: {
+    flex: 1,
+  },
+  receiptFieldGroup: {
+    paddingVertical: 3,
+  },
+  receiptFieldLabel: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#94a3b8",
+  },
+  receiptFieldValueBold: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0f172a",
+    marginTop: 1,
+  },
+  receiptDividerLine: {
+    height: 1,
+    backgroundColor: "#f1f5f9",
+    marginVertical: 2,
+  },
+  receiptPaymentBox: {
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1.5,
+    borderColor: "#86efac",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  receiptPaymentBoxLabel: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#166534",
+    letterSpacing: 0.5,
+  },
+  receiptPaymentBoxAmount: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#16a34a",
+    marginTop: 2,
+  },
+  receiptPaidPill: {
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  receiptPaidPillText: {
+    fontSize: 10.5,
+    fontWeight: "900",
+    color: "#ffffff",
+  },
+  receiptViaText: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#166534",
+    marginTop: 3,
+    letterSpacing: 0.3,
+  },
+  breakdownTable: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#e2e8f0",
+    paddingVertical: 4,
+  },
+  breakdownHeadRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 4,
+    marginBottom: 4,
+  },
+  breakdownHeadDesc: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#94a3b8",
+  },
+  breakdownHeadAmount: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: "#94a3b8",
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
+  breakdownRowDesc: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1e293b",
+    flex: 1,
+  },
+  breakdownRowAmount: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0f172a",
+    marginLeft: 8,
+  },
+  breakdownTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 1.5,
+    borderTopColor: "#0f172a",
+    paddingTop: 6,
+    marginTop: 4,
+  },
+  breakdownTotalDesc: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  breakdownTotalAmount: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  receiptMetaCol: {
+    marginVertical: 10,
+    gap: 2,
+  },
+  receiptMetaText: {
+    fontSize: 9,
+    color: "#64748b",
+  },
+  receiptDisclaimer: {
+    fontSize: 8.5,
+    color: "#94a3b8",
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  receiptFooterGreen: {
+    backgroundColor: "#84cc16",
+    borderRadius: 8,
+    padding: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 6,
+  },
+  receiptFooterItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  receiptFooterItemText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#ffffff",
+  },
+  receiptDoneBtn: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  receiptDoneBtnText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#334155",
   },
 });
 

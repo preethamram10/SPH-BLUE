@@ -20,6 +20,33 @@ import { apiFetch } from "../../services/auth";
 import { Image as ExpoImage } from "expo-image";
 import { DrawingCanvasModal } from "./DrawingCanvasModal";
 import { PrescriptionViewerModal } from "./PrescriptionViewerModal";
+import { API_BASE_URL } from "../../config/api";
+
+export const resolvePrescriptionImageUrl = (url: string) => {
+  if (!url) return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("file:") ||
+    url.startsWith("content:") ||
+    url.includes("/api/patient-file/image") ||
+    url.includes("/api/cleaning/image")
+  ) {
+    return url;
+  }
+  if (url.includes("/uploads/")) {
+    const relativePath = url.substring(url.indexOf("/uploads/"));
+    const hostUrl = API_BASE_URL.replace(/\/api\/?$/, "");
+    return `${hostUrl}${relativePath}`;
+  }
+  if (url.includes(".amazonaws.com/")) {
+    return `${API_BASE_URL}/patient-file/image?url=${encodeURIComponent(url)}`;
+  }
+  if (url.startsWith("prescriptions/") || url.startsWith("/prescriptions/")) {
+    return `${API_BASE_URL}/patient-file/image?key=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
 
 interface PatientFileViewProps {
   role: "DOCTOR" | "RECEPTION";
@@ -31,10 +58,10 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const params = useLocalSearchParams();
 
   const appointmentId = (params.id as string) || "";
-  const initialName = (params.name as string) || (params.patientName as string) || "N Harshvardhan";
-  const initialPhone = (params.phone as string) || "8247374447";
-  const initialRegId = (params.registrationId as string) || "SPH-KPB-0294";
-  const initialBranch = (params.branch as string) || "KPHB Branch";
+  const initialName = (params.name as string) || (params.patientName as string) || "Patient";
+  const initialPhone = (params.phone as string) || (params.phoneNumber as string) || "";
+  const initialRegId = (params.registrationId as string) || (params.regId as string) || (params.patientId as string) || "SPH-GEN";
+  const initialBranch = (params.branch as string) || "Spiritual Homeopathy";
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -553,7 +580,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                         }}
                         activeOpacity={0.8}
                       >
-                        <ExpoImage source={uri} style={styles.thumbnailImg} contentFit="cover" />
+                        <ExpoImage source={resolvePrescriptionImageUrl(uri)} style={styles.thumbnailImg} contentFit="cover" />
                         <TouchableOpacity
                           style={styles.removeImgBtn}
                           onPress={() => handleRemoveImage(idx)}
@@ -633,7 +660,9 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
                   <Text style={styles.sendToReceptionText}>
-                    Send to Reception & Collect Fee
+                    {role === "RECEPTION"
+                      ? "Complete Consultation & Move to Collect Fee"
+                      : "Send to Reception & Collect Fee"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -719,6 +748,56 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                         Notes: {h.diagnosisNotes}
                       </Text>
                     ) : null}
+
+                    {/* Prescriptions Gallery for this History Visit */}
+                    {h.prescriptionImages && h.prescriptionImages.length > 0 && (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#64748b", marginBottom: 3 }}>
+                          Prescriptions ({h.prescriptionImages.length}):
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                          {h.prescriptionImages.map((rxUrl: string, rIdx: number) => (
+                            <TouchableOpacity
+                              key={rIdx}
+                              style={{
+                                width: 50,
+                                height: 50,
+                                borderRadius: 6,
+                                borderWidth: 1,
+                                borderColor: "#cbd5e1",
+                                overflow: "hidden",
+                                marginRight: 6,
+                                backgroundColor: "#f8fafc",
+                              }}
+                              onPress={() => {
+                                setUploadedImages(h.prescriptionImages);
+                                setViewerInitialIndex(rIdx);
+                                setIsViewerOpen(true);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <ExpoImage
+                                source={resolvePrescriptionImageUrl(rxUrl)}
+                                style={{ width: "100%", height: "100%" }}
+                                contentFit="cover"
+                              />
+                              <View
+                                style={{
+                                  position: "absolute",
+                                  bottom: 0,
+                                  right: 0,
+                                  backgroundColor: "rgba(15, 23, 42, 0.8)",
+                                  paddingHorizontal: 3,
+                                  borderTopLeftRadius: 4,
+                                }}
+                              >
+                                <Text style={{ color: "#ffffff", fontSize: 8, fontWeight: "bold" }}>Rx {rIdx + 1}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 ))
               )}
@@ -739,7 +818,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       {/* FULL-SCREEN INTERACTIVE PRESCRIPTION VIEWER (SLIDER, ROTATE, ZOOM) */}
       <PrescriptionViewerModal
         visible={isViewerOpen}
-        images={uploadedImages}
+        images={uploadedImages.map(resolvePrescriptionImageUrl)}
         initialIndex={viewerInitialIndex}
         onClose={() => setIsViewerOpen(false)}
         onDeleteImage={handleRemoveImage}

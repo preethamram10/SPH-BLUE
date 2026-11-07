@@ -42,6 +42,9 @@ interface Employee {
   shift1End?: string;
   shift2Start?: string;
   shift2End?: string;
+  isAccessGranted?: boolean;
+  shiftStartTime?: string;
+  graceMinutes?: number;
 }
 
 interface Branch {
@@ -73,6 +76,8 @@ export default function StaffManagementPage() {
   const [formPassword, setFormPassword] = useState("email123");
   const [showPassword, setShowPassword] = useState(false);
   const [formSalary, setFormSalary] = useState("25000");
+  const [formAccessGranted, setFormAccessGranted] = useState(false);
+  const [formGraceMinutes, setFormGraceMinutes] = useState("15");
 
   // Doctor Specific
   const [doctorCategory, setDoctorCategory] = useState<"HEAD" | "EMPLOYEE">("EMPLOYEE");
@@ -204,6 +209,8 @@ export default function StaffManagementPage() {
     setLogoutHour("06");
     setLogoutMin("00");
     setLogoutAmPm("PM");
+    setFormAccessGranted(false);
+    setFormGraceMinutes("15");
     setEditingEmployee(null);
   };
 
@@ -225,6 +232,8 @@ export default function StaffManagementPage() {
     setFormPassword(emp.password || "email123");
     setFormSalary(String(emp.salary));
     setShiftType(emp.shiftType || "SINGLE_STRICT");
+    setFormAccessGranted(emp.isAccessGranted !== false);
+    setFormGraceMinutes(String(emp.graceMinutes || 15));
     if (emp.doctorCategory) setDoctorCategory(emp.doctorCategory);
 
     if (emp.category === "DOCTOR") {
@@ -260,6 +269,9 @@ export default function StaffManagementPage() {
       shift1End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s1LogoutH}:${s1LogoutM} ${s1LogoutAmPm}` : `${logoutHour}:${logoutMin} ${logoutAmPm}`),
       shift2Start: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LoginH}:${s2LoginM} ${s2LoginAmPm}` : undefined),
       shift2End: isHeadDoctor ? undefined : (shiftType === "MULTI_STRICT" ? `${s2LogoutH}:${s2LogoutM} ${s2LogoutAmPm}` : undefined),
+      isAccessGranted: categoryToSave === "DOCTOR" ? true : formAccessGranted,
+      shiftStartTime: `${loginHour}:${loginMin} ${loginAmPm}`,
+      graceMinutes: parseInt(formGraceMinutes, 10) || 15,
     };
 
     try {
@@ -298,6 +310,27 @@ export default function StaffManagementPage() {
       }
     } catch {
       alert("Network error while deleting");
+    }
+  };
+
+  // Toggle staff login access (Admin or HR grants/revokes access)
+  const handleToggleAccess = async (emp: Employee) => {
+    const nextAccess = emp.isAccessGranted === false;
+    try {
+      const res = await fetch(`/api/admin/employees/${emp.id}/toggle-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAccessGranted: nextAccess }),
+      });
+      if (res.ok) {
+        setEmployees((prev) =>
+          prev.map((e) => (e.id === emp.id ? { ...e, isAccessGranted: nextAccess } : e))
+        );
+      } else {
+        alert("Failed to update staff access");
+      }
+    } catch {
+      alert("Network error updating access");
     }
   };
 
@@ -386,6 +419,7 @@ export default function StaffManagementPage() {
                     <th className="px-6 py-4">SHIFT HOURS</th>
                     <th className="px-6 py-4">DAILY HOURS</th>
                     <th className="px-6 py-4">MONTHLY SALARY</th>
+                    <th className="px-6 py-4 text-center">LOGIN ACCESS</th>
                     <th className="px-6 py-4 text-center">ACTIONS</th>
                   </tr>
                 </thead>
@@ -394,13 +428,13 @@ export default function StaffManagementPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                         Loading staff records...
                       </td>
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-16 text-center">
+                      <td colSpan={8} className="px-6 py-16 text-center">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <Users className="w-10 h-10 text-slate-300 stroke-[1.5]" />
                           <p className="text-sm font-semibold text-slate-700">
@@ -521,7 +555,33 @@ export default function StaffManagementPage() {
                             )}
                           </td>
 
-                          {/* 7. ACTIONS (Edit & Delete Buttons) */}
+                          {/* 7. LOGIN ACCESS (Admin / HR Grants Access) */}
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAccess(emp)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold transition shadow-xs cursor-pointer ${
+                                emp.isAccessGranted !== false
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
+                                  : "bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200"
+                              }`}
+                              title={emp.isAccessGranted !== false ? "Click to revoke access" : "Click to grant login access"}
+                            >
+                              {emp.isAccessGranted !== false ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Access Granted</span>
+                                </>
+                              ) : (
+                                <>
+                                  <X className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>Access Not Granted</span>
+                                </>
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 8. ACTIONS (Edit & Delete Buttons) */}
                           <td className="px-6 py-4 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-2">
                               {/* Edit Button */}
@@ -705,6 +765,27 @@ export default function StaffManagementPage() {
                 <p className="text-[10.5px] text-slate-500 italic">
                   Standard default password is email123. HR/Admin can edit ID &amp; password at any time.
                 </p>
+
+                {/* Login Access Authorization Toggle */}
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 block">
+                      Grant Staff Login Access
+                    </label>
+                    <span className="text-[10.5px] text-slate-500 block">
+                      Staff can only log in after HR or Admin gives access.
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formAccessGranted}
+                      onChange={(e) => setFormAccessGranted(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
               </div>
 
               {/* Salary & Work Schedule Container */}

@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2 } from "lucide-react";
+import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2, UserCheck } from "lucide-react";
 
-type TabType = "doctor" | "reception" | "admin_hr" | "telecaller";
+type TabType = "doctor" | "reception" | "admin_hr" | "telecaller" | "staff";
 
 export default function WebLoginPage() {
   const [activeTab, setActiveTab] = useState<TabType>("doctor");
@@ -32,6 +32,8 @@ export default function WebLoginPage() {
         window.location.href = "/doctor/dashboard";
       } else if (role === "TELECALLER") {
         window.location.href = "/telecaller/dashboard";
+      } else if (role === "STAFF") {
+        window.location.href = "/staff";
       }
     } catch {}
   }, []);
@@ -67,7 +69,7 @@ export default function WebLoginPage() {
     setLoading(true);
 
     try {
-      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : activeTab === "staff" ? "STAFF" : "TELECALLER";
       const res = await fetch("/api/auth/validate-phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,6 +87,15 @@ export default function WebLoginPage() {
       }
 
       setValidatedData(data);
+
+      if (data.staff) {
+        localStorage.setItem("staff_id", data.staff.id);
+        localStorage.setItem("staff_name", data.staff.name);
+        localStorage.setItem("staff_branch", data.staff.branch || "KPHB Branch");
+        localStorage.setItem("user_branch", data.staff.branch || "KPHB Branch");
+        localStorage.setItem("shift_start_time", data.staff.shiftStartTime || "09:00 AM");
+        localStorage.setItem("grace_minutes", String(data.staff.graceMinutes || 15));
+      }
 
       if (data.branch) {
         localStorage.setItem("branch_id", data.branch.id);
@@ -118,7 +129,7 @@ export default function WebLoginPage() {
       return;
     }
 
-    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : activeTab === "staff" ? "STAFF" : "TELECALLER";
     if (validatedData?.role && validatedData.role !== expectedRole) {
       setErrorMessage(`Role Mismatch: You are not authorized to log in as ${expectedRole}.`);
       return;
@@ -139,6 +150,9 @@ export default function WebLoginPage() {
       } else if (activeTab === "telecaller" && validatedData?.role === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");
         window.location.href = "/telecaller/dashboard";
+      } else if (activeTab === "staff" && validatedData?.role === "STAFF") {
+        localStorage.setItem("user_role", "STAFF");
+        window.location.href = "/staff";
       } else {
         setErrorMessage("Unauthorized: Please sign in with your registered role.");
       }
@@ -237,7 +251,7 @@ export default function WebLoginPage() {
           <button
             type="button"
             onClick={() => handleTabChange("telecaller")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
               activeTab === "telecaller"
                 ? "bg-white text-[#268ec8] shadow-sm"
                 : "text-slate-500 hover:text-slate-800"
@@ -245,6 +259,19 @@ export default function WebLoginPage() {
           >
             <Headphones className="w-3.5 h-3.5 shrink-0" />
             <span>Telecaller</span>
+          </button>
+          {/* Tab 5: Staff */}
+          <button
+            type="button"
+            onClick={() => handleTabChange("staff")}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+              activeTab === "staff"
+                ? "bg-white text-[#268ec8] shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Staff</span>
           </button>
         </div>
 

@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchCleaningPhotoFromS3 } from "@/utils/s3Upload";
+import { fetchCleaningPhotoFromS3, extractS3Key } from "@/utils/s3Upload";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    let key = searchParams.get("key") || "";
-    const rawUrl = searchParams.get("url") || "";
+    const keyParam = searchParams.get("key") || "";
+    const urlParam = searchParams.get("url") || "";
 
-    if (!key && rawUrl) {
-      try {
-        const parsed = new URL(rawUrl);
-        key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
-      } catch {
-        key = rawUrl.replace(/^https?:\/\/[^\/]+\//, "");
-      }
-    }
+    const rawKey = keyParam || urlParam;
+    const key = extractS3Key(rawKey);
 
     if (!key) {
       return NextResponse.json(
@@ -32,7 +26,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return new NextResponse(new Uint8Array(result.buffer), {
+    return new Response(new Uint8Array(result.buffer), {
       status: 200,
       headers: {
         "Content-Type": result.contentType || "image/jpeg",

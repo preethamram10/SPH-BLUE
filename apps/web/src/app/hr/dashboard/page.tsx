@@ -129,6 +129,66 @@ export default function HRDashboardPage() {
           </Link>
         </div>
 
+        {/* Staff Operations Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Card 1: Attendance & Shift Logs */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
+                <Clock className="w-5 h-5" />
+              </div>
+              <h4 className="font-bold text-slate-800 text-base">Staff Attendance &amp; GPS Logs</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                View employee selfie punch logs, real-time GPS locations &amp; shift punctuality.
+              </p>
+            </div>
+            <Link
+              href="/hr/attendance"
+              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+            >
+              Open Attendance Logs →
+            </Link>
+          </div>
+
+          {/* Card 2: Leave Requests */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-sky-100 text-[#0284c7] flex items-center justify-center mb-3">
+                <CalendarCheck className="w-5 h-5" />
+              </div>
+              <h4 className="font-bold text-slate-800 text-base">Leave Request Desk</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Review pending staff leaves with one-click approval or rejection with reason.
+              </p>
+            </div>
+            <Link
+              href="/hr/leave-requests"
+              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+            >
+              Manage Leave Requests →
+            </Link>
+          </div>
+
+          {/* Card 3: Payroll & Late Policy */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center mb-3">
+                <Users className="w-5 h-5" />
+              </div>
+              <h4 className="font-bold text-slate-800 text-base">Payroll &amp; Late Penalties</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                Automated 3-day &gt; 15m late penalty deductions, salary cuts &amp; disbursement slips.
+              </p>
+            </div>
+            <Link
+              href="/hr/payroll"
+              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+            >
+              Open Payroll Desk →
+            </Link>
+          </div>
+        </div>
+
         <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-12 text-center">
           <div className="w-12 h-12 rounded-full bg-emerald-50 text-[#a8ce3a] flex items-center justify-center mx-auto mb-3">
             <CalendarCheck className="w-6 h-6" />

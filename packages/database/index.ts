@@ -311,6 +311,9 @@ export interface EmployeeRecord {
   shift1End?: string;
   shift2Start?: string;
   shift2End?: string;
+  isAccessGranted?: boolean;
+  shiftStartTime?: string;
+  graceMinutes?: number;
   createdAt: string;
   updatedAt?: string;
 }
@@ -396,6 +399,9 @@ export const employeeService = {
       shift1End: input.shift1End,
       shift2Start: input.shift2Start,
       shift2End: input.shift2End,
+      isAccessGranted: input.isAccessGranted !== undefined ? Boolean(input.isAccessGranted) : (input.category === "DOCTOR" || input.category === "ADMIN" || input.category === "HR"),
+      shiftStartTime: input.shiftStartTime || "09:00 AM",
+      graceMinutes: input.graceMinutes !== undefined ? Number(input.graceMinutes) : 15,
       createdAt: new Date().toISOString(),
     };
     store.unshift(newRecord);
@@ -1076,6 +1082,11 @@ export interface AppointmentRecord {
   discountNotes?: string;
   discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
   paidAt?: string;
+  otherCharges?: number;
+  discount?: number;
+  discountReason?: string;
+  totalPaid?: number;
+  invoiceId?: string;
 }
 
 function getPatientsCachePath(): string {
@@ -1682,6 +1693,11 @@ export const appointmentService = {
       discountApproved?: number;
       discountNotes?: string;
       discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+      otherCharges?: number;
+      discount?: number;
+      discountReason?: string;
+      totalPaid?: number;
+      invoiceId?: string;
     }
   ): Promise<AppointmentRecord | null> {
     const store = getAppointmentsStore();
@@ -1699,6 +1715,15 @@ export const appointmentService = {
     if (data.discountApproved !== undefined) appt.discountApproved = data.discountApproved;
     if (data.discountNotes !== undefined) appt.discountNotes = data.discountNotes;
     if (data.discountStatus !== undefined) appt.discountStatus = data.discountStatus;
+    if (data.otherCharges !== undefined) appt.otherCharges = data.otherCharges;
+    if (data.discount !== undefined) appt.discount = data.discount;
+    if (data.discountReason !== undefined) appt.discountReason = data.discountReason;
+    if (data.totalPaid !== undefined) appt.totalPaid = data.totalPaid;
+    if (data.invoiceId) {
+      appt.invoiceId = data.invoiceId;
+    } else if (!appt.invoiceId) {
+      appt.invoiceId = `INV-${Date.now().toString().slice(-6)}`;
+    }
 
     appt.status = "COMPLETED";
     appt.isFeeCollected = true;
@@ -3000,6 +3025,681 @@ export const cleaningTaskService = {
     return true;
   },
 };
+
+// ==========================================
+// 11. MEDICINE / MEDICAL REQUESTS SERVICE
+// ==========================================
+
+export interface MedicineRequestItem {
+  id: string;
+  name: string;
+  type?: string;
+  timing?: string;
+  amount?: number;
+}
+
+export interface MedicineRequestRecord {
+  id: string;
+  requestId: string;
+  patientName: string;
+  phone: string;
+  gender: string;
+  age?: string;
+  branchName: string;
+  duration: string;
+  totalAmount: number;
+  medicines: MedicineRequestItem[];
+  deliveryAddress?: string;
+  status: "pending" | "completed" | "dispatched";
+  createdAt: string;
+  updatedAt?: string;
+}
+
+declare global {
+  var __sphMedicineRequestsStore: MedicineRequestRecord[] | undefined;
+}
+
+function getMedicineRequestsCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "medicine_requests_store.json"))) {
+    return path.join(webCache, "medicine_requests_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "medicine_requests_store.json"))) {
+    return path.join(rootCache, "medicine_requests_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "medicine_requests_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".medicine_requests_store.json");
+    }
+  }
+  return path.join(rootCache, "medicine_requests_store.json");
+}
+
+function saveMedicineRequestsToDisk(data: MedicineRequestRecord[]): void {
+  const file = getMedicineRequestsCachePath();
+  safeAtomicWrite(file, data);
+}
+
+function getMedicineRequestsStore(): MedicineRequestRecord[] {
+  if (global.__sphMedicineRequestsStore && global.__sphMedicineRequestsStore.length > 0) {
+    return global.__sphMedicineRequestsStore;
+  }
+  const file = getMedicineRequestsCachePath();
+  if (fs.existsSync(file)) {
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        global.__sphMedicineRequestsStore = parsed;
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Failed to load medicine requests from disk:", e);
+    }
+  }
+  global.__sphMedicineRequestsStore = [];
+  return [];
+}
+
+export const medicineRequestService = {
+  async getAllRequests(branch?: string, status?: string): Promise<MedicineRequestRecord[]> {
+    let store = getMedicineRequestsStore();
+    if (branch && branch !== "ALL") {
+      const cleanBranch = branch.toLowerCase().replace(/branch/gi, "").trim();
+      store = store.filter((item) => {
+        const itemBranch = item.branchName.toLowerCase().replace(/branch/gi, "").trim();
+        return itemBranch === cleanBranch || cleanBranch.includes(itemBranch) || itemBranch.includes(cleanBranch);
+      });
+    }
+    if (status && status !== "ALL") {
+      const s = status.toLowerCase();
+      store = store.filter((item) => item.status.toLowerCase() === s);
+    }
+    return store;
+  },
+
+  async createRequest(
+    data: Omit<MedicineRequestRecord, "id" | "requestId" | "createdAt" | "status"> & {
+      id?: string;
+      requestId?: string;
+      status?: "pending" | "completed" | "dispatched";
+      createdAt?: string;
+    }
+  ): Promise<MedicineRequestRecord> {
+    const store = getMedicineRequestsStore();
+    const generatedId = `med_req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newRecord: MedicineRequestRecord = {
+      ...data,
+      id: data.id || generatedId,
+      requestId: data.requestId || `MED-${Date.now().toString().slice(-6)}`,
+      status: data.status || "pending",
+      createdAt: data.createdAt || new Date().toISOString(),
+    };
+    store.unshift(newRecord);
+    global.__sphMedicineRequestsStore = store;
+    saveMedicineRequestsToDisk(store);
+    return newRecord;
+  },
+
+  async updateRequestStatus(
+    id: string,
+    status: "pending" | "completed" | "dispatched"
+  ): Promise<MedicineRequestRecord | null> {
+    const store = getMedicineRequestsStore();
+    const item = store.find((r) => r.id === id || r.requestId === id);
+    if (!item) return null;
+    item.status = status;
+    item.updatedAt = new Date().toISOString();
+    global.__sphMedicineRequestsStore = store;
+    saveMedicineRequestsToDisk(store);
+    return item;
+  },
+
+  async deleteRequest(id: string): Promise<boolean> {
+    const store = getMedicineRequestsStore();
+    const filtered = store.filter((r) => r.id !== id && r.requestId !== id);
+    if (filtered.length === store.length) return false;
+    global.__sphMedicineRequestsStore = filtered;
+    saveMedicineRequestsToDisk(filtered);
+    return true;
+  },
+};
+
+// ============================================================================
+// 1. STAFF ATTENDANCE SERVICE (Punch In/Out, Selfie, GPS, Late Tracking)
+// ============================================================================
+
+export interface StaffAttendanceRecord {
+  id?: string;
+  staffId: string;
+  staffName: string;
+  branch: string;
+  date: string; // YYYY-MM-DD
+  punchInTime?: string;
+  punchInLocation?: string;
+  punchInPhoto?: string;
+  punchInCoords?: { lat: number; lng: number };
+  punchOutTime?: string;
+  punchOutLocation?: string;
+  punchOutPhoto?: string;
+  punchOutCoords?: { lat: number; lng: number };
+  workingHours?: string;
+  status: "Present" | "Late" | "Half Day" | "Absent";
+  lateMinutes?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+declare global {
+  var __sphStaffAttendanceStore: StaffAttendanceRecord[] | undefined;
+  var __sphStaffLeavesStore: StaffLeaveRecord[] | undefined;
+  var __sphStaffDailyWorksStore: StaffDailyWorkRecord[] | undefined;
+  var __sphPayCutsStore: MiscellaneousPayCutRecord[] | undefined;
+  var __sphLatePenaltyConfig: LatePenaltyRuleConfig | undefined;
+}
+
+function getStaffAttendanceCachePath(): string {
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  return path.join(rootCache, "staff_attendance_store.json");
+}
+
+function loadStaffAttendanceFromDisk(): StaffAttendanceRecord[] {
+  try {
+    const file = getStaffAttendanceCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed reading staff attendance cache:", e);
+  }
+  return [];
+}
+
+function saveStaffAttendanceToDisk(data: StaffAttendanceRecord[]): void {
+  try {
+    const file = getStaffAttendanceCachePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed writing staff attendance cache:", e);
+  }
+}
+
+function getStaffAttendanceStore(): StaffAttendanceRecord[] {
+  if (!global.__sphStaffAttendanceStore) {
+    global.__sphStaffAttendanceStore = loadStaffAttendanceFromDisk();
+  }
+  return global.__sphStaffAttendanceStore;
+}
+
+export const staffAttendanceService = {
+  async getAllRecords(branch?: string, date?: string): Promise<StaffAttendanceRecord[]> {
+    const store = getStaffAttendanceStore();
+    return store.filter((r) => {
+      const matchBranch = !branch || branch === "All Branches" || r.branch.toLowerCase().includes(branch.toLowerCase());
+      const matchDate = !date || r.date === date;
+      return matchBranch && matchDate;
+    });
+  },
+
+  async getTodayRecord(staffId: string, dateStr?: string): Promise<StaffAttendanceRecord | null> {
+    const today = dateStr || new Date().toISOString().split("T")[0];
+    const store = getStaffAttendanceStore();
+    return store.find((r) => r.staffId === staffId && r.date === today) || null;
+  },
+
+  async recordPunch(payload: {
+    staffId: string;
+    staffName: string;
+    branch: string;
+    type: "in" | "out";
+    photo: string;
+    location: string;
+    coords?: { lat: number; lng: number } | null;
+    timestamp?: string;
+  }): Promise<StaffAttendanceRecord> {
+    const store = getStaffAttendanceStore();
+    const today = new Date().toISOString().split("T")[0];
+    const nowTime = new Date().toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+
+    let existing = store.find((r) => r.staffId === payload.staffId && r.date === today);
+
+    // Calculate late status on Punch In (Default shift 09:00 AM, 15m grace)
+    if (payload.type === "in") {
+      const now = new Date();
+      const shiftStart = new Date();
+      shiftStart.setHours(9, 0, 0, 0); // 09:00 AM
+      const diffMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / (1000 * 60)));
+      const isLate = diffMinutes > 15;
+
+      if (!existing) {
+        existing = {
+          id: `ATT-${Date.now()}`,
+          staffId: payload.staffId,
+          staffName: payload.staffName,
+          branch: payload.branch,
+          date: today,
+          punchInTime: nowTime,
+          punchInLocation: payload.location,
+          punchInPhoto: payload.photo,
+          punchInCoords: payload.coords || undefined,
+          status: isLate ? "Late" : "Present",
+          lateMinutes: diffMinutes,
+          createdAt: new Date().toISOString(),
+        };
+        store.unshift(existing);
+      } else {
+        existing.punchInTime = nowTime;
+        existing.punchInLocation = payload.location;
+        existing.punchInPhoto = payload.photo;
+        existing.punchInCoords = payload.coords || undefined;
+        existing.status = isLate ? "Late" : "Present";
+        existing.lateMinutes = diffMinutes;
+        existing.updatedAt = new Date().toISOString();
+      }
+    } else {
+      // Punch Out
+      if (!existing) {
+        existing = {
+          id: `ATT-${Date.now()}`,
+          staffId: payload.staffId,
+          staffName: payload.staffName,
+          branch: payload.branch,
+          date: today,
+          punchOutTime: nowTime,
+          punchOutLocation: payload.location,
+          punchOutPhoto: payload.photo,
+          punchOutCoords: payload.coords || undefined,
+          status: "Present",
+          createdAt: new Date().toISOString(),
+        };
+        store.unshift(existing);
+      } else {
+        existing.punchOutTime = nowTime;
+        existing.punchOutLocation = payload.location;
+        existing.punchOutPhoto = payload.photo;
+        existing.punchOutCoords = payload.coords || undefined;
+        existing.updatedAt = new Date().toISOString();
+
+        // Calculate working hours if punch-in exists
+        if (existing.punchInTime) {
+          try {
+            const inDate = new Date(`${today} ${existing.punchInTime}`);
+            const outDate = new Date(`${today} ${nowTime}`);
+            const diffMs = Math.max(0, outDate.getTime() - inDate.getTime());
+            const hours = Math.floor(diffMs / (1000 * 60 * 60));
+            const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            existing.workingHours = `${hours} hrs ${mins} mins`;
+          } catch {
+            existing.workingHours = "8 hrs";
+          }
+        }
+      }
+    }
+
+    global.__sphStaffAttendanceStore = store;
+    saveStaffAttendanceToDisk(store);
+    return existing;
+  },
+};
+
+// ============================================================================
+// 2. STAFF LEAVE SERVICE
+// ============================================================================
+
+export interface StaffLeaveRecord {
+  id?: string;
+  staffId: string;
+  staffName: string;
+  branch: string;
+  leaveType: "Casual" | "Sick" | "Privilege" | "Emergency" | "Half Day";
+  fromDate: string;
+  toDate: string;
+  joiningDate: string;
+  reason: string;
+  status: "Pending" | "Approved" | "Rejected";
+  rejectionReason?: string;
+  reviewedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+function getStaffLeavesCachePath(): string {
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  return path.join(rootCache, "staff_leaves_store.json");
+}
+
+function loadStaffLeavesFromDisk(): StaffLeaveRecord[] {
+  try {
+    const file = getStaffLeavesCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed reading staff leaves cache:", e);
+  }
+  return [];
+}
+
+function saveStaffLeavesToDisk(data: StaffLeaveRecord[]): void {
+  try {
+    const file = getStaffLeavesCachePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed writing staff leaves cache:", e);
+  }
+}
+
+function getStaffLeavesStore(): StaffLeaveRecord[] {
+  if (!global.__sphStaffLeavesStore) {
+    global.__sphStaffLeavesStore = loadStaffLeavesFromDisk();
+  }
+  return global.__sphStaffLeavesStore;
+}
+
+export const staffLeaveService = {
+  async getAllLeaves(staffId?: string): Promise<StaffLeaveRecord[]> {
+    const store = getStaffLeavesStore();
+    if (staffId) {
+      return store.filter((l) => l.staffId === staffId);
+    }
+    return store;
+  },
+
+  async applyLeave(payload: Omit<StaffLeaveRecord, "id">): Promise<StaffLeaveRecord> {
+    const store = getStaffLeavesStore();
+    const newRecord: StaffLeaveRecord = {
+      ...payload,
+      id: `LV-${Date.now()}`,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    };
+    store.unshift(newRecord);
+    global.__sphStaffLeavesStore = store;
+    saveStaffLeavesToDisk(store);
+    return newRecord;
+  },
+
+  async approveLeave(id: string, reviewedBy: string = "Admin"): Promise<StaffLeaveRecord | null> {
+    const store = getStaffLeavesStore();
+    const item = store.find((l) => l.id === id);
+    if (!item) return null;
+    item.status = "Approved";
+    item.reviewedBy = reviewedBy;
+    item.updatedAt = new Date().toISOString();
+    global.__sphStaffLeavesStore = store;
+    saveStaffLeavesToDisk(store);
+    return item;
+  },
+
+  async rejectLeave(id: string, rejectionReason: string, reviewedBy: string = "Admin"): Promise<StaffLeaveRecord | null> {
+    const store = getStaffLeavesStore();
+    const item = store.find((l) => l.id === id);
+    if (!item) return null;
+    item.status = "Rejected";
+    item.rejectionReason = rejectionReason;
+    item.reviewedBy = reviewedBy;
+    item.updatedAt = new Date().toISOString();
+    global.__sphStaffLeavesStore = store;
+    saveStaffLeavesToDisk(store);
+    return item;
+  },
+};
+
+// ============================================================================
+// 3. STAFF DAILY WORK SERVICE
+// ============================================================================
+
+export interface StaffDailyWorkRecord {
+  id?: string;
+  staffId: string;
+  staffName: string;
+  branch: string;
+  date: string;
+  totalCalls: number;
+  followUps: number;
+  contacts: number;
+  gReviews: number;
+  videoReviews: number;
+  workNotes: string;
+  submittedAt: string;
+}
+
+function getStaffDailyWorksCachePath(): string {
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  return path.join(rootCache, "staff_daily_works_store.json");
+}
+
+function loadStaffDailyWorksFromDisk(): StaffDailyWorkRecord[] {
+  try {
+    const file = getStaffDailyWorksCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed reading staff daily works cache:", e);
+  }
+  return [];
+}
+
+function saveStaffDailyWorksToDisk(data: StaffDailyWorkRecord[]): void {
+  try {
+    const file = getStaffDailyWorksCachePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed writing staff daily works cache:", e);
+  }
+}
+
+function getStaffDailyWorksStore(): StaffDailyWorkRecord[] {
+  if (!global.__sphStaffDailyWorksStore) {
+    global.__sphStaffDailyWorksStore = loadStaffDailyWorksFromDisk();
+  }
+  return global.__sphStaffDailyWorksStore;
+}
+
+export const staffDailyWorkService = {
+  async getAllReports(staffId?: string, date?: string): Promise<StaffDailyWorkRecord[]> {
+    const store = getStaffDailyWorksStore();
+    return store.filter((r) => {
+      const matchStaff = !staffId || r.staffId === staffId;
+      const matchDate = !date || r.date === date;
+      return matchStaff && matchDate;
+    });
+  },
+
+  async getTodayReport(staffId: string, dateStr?: string): Promise<StaffDailyWorkRecord | null> {
+    const today = dateStr || new Date().toISOString().split("T")[0];
+    const store = getStaffDailyWorksStore();
+    return store.find((r) => r.staffId === staffId && r.date === today) || null;
+  },
+
+  async submitReport(payload: Omit<StaffDailyWorkRecord, "id">): Promise<StaffDailyWorkRecord> {
+    const store = getStaffDailyWorksStore();
+    const existing = store.find((r) => r.staffId === payload.staffId && r.date === payload.date);
+    if (existing) {
+      Object.assign(existing, payload);
+      saveStaffDailyWorksToDisk(store);
+      return existing;
+    }
+    const newRecord: StaffDailyWorkRecord = {
+      ...payload,
+      id: `DW-${Date.now()}`,
+    };
+    store.unshift(newRecord);
+    global.__sphStaffDailyWorksStore = store;
+    saveStaffDailyWorksToDisk(store);
+    return newRecord;
+  },
+};
+
+// ============================================================================
+// 4. MISCELLANEOUS PAY CUTS & DISCIPLINARY DEDUCTIONS SERVICE
+// ============================================================================
+
+export interface MiscellaneousPayCutRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  branch: string;
+  amount: number;
+  reason: string;
+  month: string; // e.g. "Nov 2026"
+  date: string;
+  image?: string;
+  issuedBy: string; // "HR" or "Admin"
+  createdAt: string;
+}
+
+function getPayCutsCachePath(): string {
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  return path.join(rootCache, "staff_pay_cuts_store.json");
+}
+
+function loadPayCutsFromDisk(): MiscellaneousPayCutRecord[] {
+  try {
+    const file = getPayCutsCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed reading pay cuts cache:", e);
+  }
+  return [];
+}
+
+function savePayCutsToDisk(data: MiscellaneousPayCutRecord[]): void {
+  try {
+    const file = getPayCutsCachePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed writing pay cuts cache:", e);
+  }
+}
+
+function getPayCutsStore(): MiscellaneousPayCutRecord[] {
+  if (!global.__sphPayCutsStore) {
+    global.__sphPayCutsStore = loadPayCutsFromDisk();
+  }
+  return global.__sphPayCutsStore;
+}
+
+export const payCutService = {
+  async getAllPayCuts(employeeId?: string, month?: string): Promise<MiscellaneousPayCutRecord[]> {
+    const store = getPayCutsStore();
+    return store.filter((p) => {
+      const matchEmp = !employeeId || p.employeeId === employeeId;
+      const matchMonth = !month || p.month === month;
+      return matchEmp && matchMonth;
+    });
+  },
+
+  async createPayCut(payload: Omit<MiscellaneousPayCutRecord, "id" | "createdAt">): Promise<MiscellaneousPayCutRecord> {
+    const store = getPayCutsStore();
+    const newCut: MiscellaneousPayCutRecord = {
+      ...payload,
+      id: `PC-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    store.unshift(newCut);
+    global.__sphPayCutsStore = store;
+    savePayCutsToDisk(store);
+    return newCut;
+  },
+
+  async deletePayCut(id: string): Promise<boolean> {
+    const store = getPayCutsStore();
+    const filtered = store.filter((p) => p.id !== id);
+    if (filtered.length === store.length) return false;
+    global.__sphPayCutsStore = filtered;
+    savePayCutsToDisk(filtered);
+    return true;
+  },
+};
+
+// ============================================================================
+// 5. LATE PENALTY & PAYROLL CONFIGURATION SERVICE
+// ============================================================================
+
+export interface LatePenaltyRuleConfig {
+  shiftStartTime: string; // e.g. "09:00 AM"
+  graceMinutes: number; // e.g. 15
+  lateThresholdDays: number; // default: 3 days late
+  lateThresholdMinutes: number; // default: 15 minutes total
+  penaltyAmount: number; // default: 500
+}
+
+const DEFAULT_LATE_CONFIG: LatePenaltyRuleConfig = {
+  shiftStartTime: "09:00 AM",
+  graceMinutes: 15,
+  lateThresholdDays: 3,
+  lateThresholdMinutes: 15,
+  penaltyAmount: 500,
+};
+
+function getLateConfigCachePath(): string {
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  return path.join(rootCache, "late_penalty_config.json");
+}
+
+function loadLateConfigFromDisk(): LatePenaltyRuleConfig {
+  try {
+    const file = getLateConfigCachePath();
+    if (fs.existsSync(file)) {
+      return { ...DEFAULT_LATE_CONFIG, ...JSON.parse(fs.readFileSync(file, "utf-8")) };
+    }
+  } catch (e) {
+    console.warn("Failed reading late penalty config:", e);
+  }
+  return { ...DEFAULT_LATE_CONFIG };
+}
+
+function saveLateConfigToDisk(cfg: LatePenaltyRuleConfig): void {
+  try {
+    const file = getLateConfigCachePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed writing late penalty config:", e);
+  }
+}
+
+export const payrollSettingsService = {
+  async getLatePenaltyConfig(): Promise<LatePenaltyRuleConfig> {
+    if (!global.__sphLatePenaltyConfig) {
+      global.__sphLatePenaltyConfig = loadLateConfigFromDisk();
+    }
+    return global.__sphLatePenaltyConfig;
+  },
+
+  async updateLatePenaltyConfig(updates: Partial<LatePenaltyRuleConfig>): Promise<LatePenaltyRuleConfig> {
+    const current = await payrollSettingsService.getLatePenaltyConfig();
+    const updated = { ...current, ...updates };
+    global.__sphLatePenaltyConfig = updated;
+    saveLateConfigToDisk(updated);
+    return updated;
+  },
+};
+
+
 
 
 

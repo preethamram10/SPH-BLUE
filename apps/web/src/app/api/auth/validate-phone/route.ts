@@ -274,6 +274,56 @@ export async function POST(req: NextRequest) {
     }
 
     // ----------------------------------------------------
+    // CASE 3B: STAFF LOGIN REQUESTED
+    // ----------------------------------------------------
+    if (requestedRole === "STAFF") {
+      const isStaffUser =
+        matchedEmployee?.category === "STAFF" ||
+        matchedEmployee?.category === "RECEPTION" ||
+        matchedEmployee?.category === "TELECALLER" ||
+        dbUser?.role === "STAFF";
+
+      if (!isStaffUser) {
+        return NextResponse.json(
+          {
+            authorized: false,
+            error: `Access Denied: Mobile number ${clean10} is not registered as a Staff member in the clinic system.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      if (matchedEmployee && matchedEmployee.isAccessGranted === false) {
+        return NextResponse.json(
+          {
+            authorized: false,
+            error: `Access Not Granted: Staff login has not been activated by HR or Admin yet. Please contact your Branch HR/Admin to give you access.`,
+          },
+          { status: 403 }
+        );
+      }
+
+      return NextResponse.json({
+        authorized: true,
+        role: "STAFF",
+        user: {
+          id: matchedEmployee?.id || `staff-${clean10}`,
+          name: matchedEmployee?.name || "Staff Member",
+          branch: matchedEmployee?.branchName || "KPHB Branch",
+          shiftStartTime: matchedEmployee?.shiftStartTime || "09:00 AM",
+          graceMinutes: matchedEmployee?.graceMinutes || 15,
+        },
+        staff: {
+          id: matchedEmployee?.id || `staff-${clean10}`,
+          name: matchedEmployee?.name || "Staff Member",
+          branch: matchedEmployee?.branchName || "KPHB Branch",
+          shiftStartTime: matchedEmployee?.shiftStartTime || "09:00 AM",
+          graceMinutes: matchedEmployee?.graceMinutes || 15,
+        },
+      });
+    }
+
+    // ----------------------------------------------------
     // CASE 4: COMBINED doctor_reception (SMART AUTO-DETECT)
     // ----------------------------------------------------
     if (requestedRole === "DOCTOR_RECEPTION") {
