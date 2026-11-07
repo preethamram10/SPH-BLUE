@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { appointmentService } from "@spiritualhomeo/database";
 
-export const dynamic = "force-dynamic";
 export interface TransactionRecord {
   id: string;
   patientId: string;
