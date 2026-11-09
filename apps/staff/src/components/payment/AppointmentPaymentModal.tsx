@@ -48,7 +48,13 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   onOpenPatientFile,
 }) => {
   const rxImages = appointment?.prescriptionImages || [];
-  const hasPrescription = rxImages.length > 0;
+  const hasPrescription =
+    rxImages.length > 0 ||
+    Boolean(appointment?.hasPackage) ||
+    Boolean(appointment?.activePackage) ||
+    Boolean(appointment?.isSentToReception) ||
+    Boolean(appointment?.diagnosisNotes) ||
+    Boolean(appointment?.consultationFee);
 
   // Initial Target Amount from Doctor (no hardcoded default - blank if not entered)
   const initialDoctorFee =
@@ -119,6 +125,13 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   // Selected Payment Method
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifyingUpi, setIsVerifyingUpi] = useState(false);
+  const [isUpiPaid, setIsUpiPaid] = useState(false);
+
+  // Split payment breakdown state
+  const [splitUpi, setSplitUpi] = useState<number>(0);
+  const [splitCash, setSplitCash] = useState<number>(0);
+  const [splitCard, setSplitCard] = useState<number>(0);
 
   // View state: 'collect_fee' vs 'invoice_receipt'
   const [currentView, setCurrentView] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
@@ -161,6 +174,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       }
 
       setSelectedMethod(null);
+      setSplitUpi(0);
+      setSplitCash(0);
+      setSplitCard(0);
       setDiscountStatus(appointment.discountStatus || "NONE");
       setDiscountApprovedAmount(appointment.discountApproved || 0);
     }
@@ -385,6 +401,17 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       return;
     }
 
+    if (selectedMethod === "Split") {
+      const splitAllocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+      if (splitAllocated !== totalAmountDue) {
+        Alert.alert(
+          "Split Amount Mismatch",
+          `Split amounts (₹${splitAllocated}) must equal total amount due (₹${totalAmountDue}). Difference: ₹${Math.abs(totalAmountDue - splitAllocated)}.`
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const payload = {
@@ -410,6 +437,11 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             : selectedMethod === "Split"
             ? "SPLIT"
             : "SEND_TO_APP",
+        splitDetails: selectedMethod === "Split" ? {
+          upi: splitUpi,
+          cash: splitCash,
+          card: splitCard,
+        } : undefined,
         medicinesList: (!isPackageMode && includeMedicine) ? medicines : [],
         medicineDuration,
         discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
@@ -446,6 +478,116 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       setIsSubmitting(false);
     }
   };
+
+  // --- MOBILE RAZORPAY UPI VERIFICATION ---
+  const handleCheckUpiStatus = async (force: boolean = false) => {
+    if (!appointment?.id || totalAmountDue <= 0) return;
+    setIsVerifyingUpi(true);
+    try {
+      const res = await apiFetch<any>(
+        `/reception/razorpay/check-status?amount=${totalAmountDue}&appointmentId=${appointment.id}&allowAnyRecent=true${force ? "&forceVerify=true" : ""}`
+      );
+      if (res.success && res.isPaid) {
+        setIsUpiPaid(true);
+        Alert.alert(
+          "Payment Detected! ✓",
+          `Payment of ₹${res.payment?.amount || totalAmountDue} received via UPI (ID: ${res.payment?.id || 'Razorpay'}). Completing appointment...`
+        );
+        const updated = res.appointment || {
+          ...appointment,
+          status: "COMPLETED",
+          isFeeCollected: true,
+          totalPaid: totalAmountDue,
+          totalAmountDue,
+          paymentMethod: selectedMethod || "Counter UPI",
+          paymentMode: selectedMethod || "Counter UPI",
+          paidAt: new Date().toISOString(),
+          invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+        };
+        setCompletedInvoice(updated);
+        setCurrentView("invoice_receipt");
+        onPaymentSuccess(updated);
+      } else {
+        Alert.alert(
+          "Payment Pending",
+          "Payment not detected yet in Razorpay.\n\nIf the patient has already completed payment or money was debited, tap 'Patient Paid / Confirm Receipt' below."
+        );
+      }
+    } catch (err: any) {
+      Alert.alert("Verification Error", err.message || "Failed to check payment status.");
+    } finally {
+      setIsVerifyingUpi(false);
+    }
+  };
+
+  const handleManualConfirmUpi = async () => {
+    setIsVerifyingUpi(true);
+    try {
+      const res = await apiFetch<any>(
+        `/reception/razorpay/check-status?amount=${totalAmountDue}&appointmentId=${appointment?.id}&confirmManual=true`
+      );
+      if (res.success && res.isPaid) {
+        setIsUpiPaid(true);
+        const updated = res.appointment || {
+          ...appointment,
+          status: "COMPLETED",
+          isFeeCollected: true,
+          totalPaid: totalAmountDue,
+          totalAmountDue,
+          paymentMethod: selectedMethod || "Counter UPI",
+          paymentMode: selectedMethod || "Counter UPI",
+          paidAt: new Date().toISOString(),
+          invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+        };
+        setCompletedInvoice(updated);
+        setCurrentView("invoice_receipt");
+        onPaymentSuccess(updated);
+      }
+    } catch (err: any) {
+      Alert.alert("Confirmation Error", err.message || "Could not confirm payment.");
+    } finally {
+      setIsVerifyingUpi(false);
+    }
+  };
+
+  // Background polling for live payment detection on mobile
+  useEffect(() => {
+    if (!visible || !appointment?.id || currentView !== "collect_fee" || isUpiPaid) return;
+    if (selectedMethod !== "Counter UPI" && selectedMethod !== "UPI / QR Code") return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch<any>(
+          `/reception/razorpay/check-status?amount=${totalAmountDue}&appointmentId=${appointment.id}&allowAnyRecent=true`
+        );
+        if (isMounted && res.success && res.isPaid) {
+          setIsUpiPaid(true);
+          const updated = res.appointment || {
+            ...appointment,
+            status: "COMPLETED",
+            isFeeCollected: true,
+            totalPaid: totalAmountDue,
+            totalAmountDue,
+            paymentMethod: selectedMethod || "Counter UPI",
+            paymentMode: selectedMethod || "Counter UPI",
+            paidAt: new Date().toISOString(),
+            invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+          };
+          setCompletedInvoice(updated);
+          setCurrentView("invoice_receipt");
+          onPaymentSuccess(updated);
+        }
+      } catch {
+        // silent
+      }
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [visible, appointment?.id, currentView, selectedMethod, totalAmountDue, isUpiPaid]);
 
   // --- WHATSAPP SHARE RECEIPT ---
   const handleShareWhatsApp = () => {
@@ -1347,9 +1489,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             <View style={styles.methodsGrid}>
               {(
                 [
-                  "Cash",
                   "Counter UPI",
                   "UPI / QR Code",
+                  "Cash",
                   "Card",
                   "Split",
                   "Send Pay to app",
@@ -1360,7 +1502,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                   <TouchableOpacity
                     key={method}
                     style={[styles.methodBtn, isMethodSelected && styles.methodBtnSelected]}
-                    onPress={() => setSelectedMethod(method)}
+                    onPress={() => {
+                      setSelectedMethod(method);
+                      if (method === "Split" && splitUpi === 0 && splitCash === 0 && splitCard === 0) {
+                        const half = Math.round(totalAmountDue / 2);
+                        setSplitUpi(half);
+                        setSplitCash(totalAmountDue - half);
+                        setSplitCard(0);
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.methodBtnText, isMethodSelected && styles.methodBtnTextSelected]}>
@@ -1370,6 +1520,274 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                 );
               })}
             </View>
+
+            {/* RAZORPAY UPI QR CODE CARD (MOBILE APP) */}
+            {(selectedMethod === "Counter UPI" || selectedMethod === "UPI / QR Code") && (
+              <View style={{ marginTop: 14, backgroundColor: "#f0f9ff", borderWidth: 2, borderColor: "#38bdf8", borderRadius: 20, padding: 14, alignItems: "center" }}>
+                {/* Header */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="qr-code" size={18} color="#ffffff" />
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay UPI QR Code</Text>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Spiritual Homeopathy • Auto-Detect</Text>
+                    </View>
+                  </View>
+                  <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1" }}>LIVE QR</Text>
+                  </View>
+                </View>
+
+                {/* Amount Due Pill */}
+                <View style={{ backgroundColor: "#dcfce7", borderWidth: 1, borderColor: "#86efac", borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, marginBottom: 12, alignItems: "center", width: "100%" }}>
+                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textTransform: "uppercase", letterSpacing: 0.5 }}>Amount Due to Pay</Text>
+                  <Text style={{ fontSize: 24, fontWeight: "900", color: "#14532d" }}>₹{totalAmountDue.toLocaleString()}</Text>
+                  <Text style={{ fontSize: 9.5, fontWeight: "600", color: "#15803d" }}>VPA: sseomni9k9v0j291124pos@mairtel</Text>
+                </View>
+
+                {/* Dynamic QR Code Image */}
+                <View style={{ backgroundColor: "#ffffff", padding: 12, borderRadius: 18, borderWidth: 1.5, borderColor: "#cbd5e1", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 6, elevation: 2, marginBottom: 12 }}>
+                  <Image
+                    source={{
+                      uri: `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
+                        `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${totalAmountDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
+                      )}`,
+                    }}
+                    style={{ width: 220, height: 220, borderRadius: 8 }}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                {/* Status indicator */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, backgroundColor: "#e0f2fe", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 }}>
+                  <ActivityIndicator size="small" color="#0284c7" />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#0369a1" }}>
+                    Waiting for patient scan • Auto-detecting...
+                  </Text>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={{ width: "100%", gap: 8 }}>
+                  <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+                    <TouchableOpacity
+                      onPress={() => handleCheckUpiStatus(true)}
+                      disabled={isVerifyingUpi}
+                      style={{ flex: 1, backgroundColor: "#0f172a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      {isVerifyingUpi ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Ionicons name="refresh" size={15} color="#ffffff" />
+                      )}
+                      <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>
+                        {isVerifyingUpi ? "Checking..." : "Verify Status"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                        const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${totalAmountDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                        const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${totalAmountDue} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
+                        Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`).catch(() => {
+                          Alert.alert("Unable to open WhatsApp", "Please make sure WhatsApp is installed.");
+                        });
+                      }}
+                      style={{ flex: 1, backgroundColor: "#16a34a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                    >
+                      <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
+                      <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>WhatsApp Link</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Direct Confirmation Button */}
+                  <TouchableOpacity
+                    onPress={handleManualConfirmUpi}
+                    disabled={isVerifyingUpi}
+                    style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                  >
+                    <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                    <Text style={{ color: "#166534", fontWeight: "900", fontSize: 12 }}>Patient Paid / Confirm Receipt</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* SPLIT PAYMENT BREAKDOWN (MOBILE APP) */}
+            {selectedMethod === "Split" && (
+              <View style={{ marginTop: 12, backgroundColor: "#f0f9ff", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 16, padding: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                      <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>⚡</Text>
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 12, fontWeight: "800", color: "#0f172a" }}>Split Payment Breakdown</Text>
+                      <Text style={{ fontSize: 10, color: "#64748b" }}>Total Due: ₹{totalAmountDue.toLocaleString()}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const half = Math.round(totalAmountDue / 2);
+                        setSplitUpi(half);
+                        setSplitCash(totalAmountDue - half);
+                        setSplitCard(0);
+                      }}
+                      style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
+                    >
+                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>50/50</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSplitUpi(totalAmountDue);
+                        setSplitCash(0);
+                        setSplitCard(0);
+                      }}
+                      style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
+                    >
+                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All UPI</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSplitUpi(0);
+                        setSplitCash(totalAmountDue);
+                        setSplitCard(0);
+                      }}
+                      style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
+                    >
+                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All Cash</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Inputs for UPI, Cash, Card */}
+                <View style={{ gap: 8 }}>
+                  {/* UPI */}
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155", marginBottom: 4 }}>UPI / Counter UPI (₹)</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                      <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                      <TextInput
+                        style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        value={splitUpi > 0 ? String(splitUpi) : ""}
+                        onChangeText={(txt) => {
+                          const val = Math.max(0, parseFloat(txt) || 0);
+                          setSplitUpi(val);
+                          const rem = Math.max(0, totalAmountDue - val - splitCard);
+                          setSplitCash(rem);
+                        }}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Cash */}
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155" }}>Cash Amount (₹)</Text>
+                      {totalAmountDue - (splitUpi + splitCash + splitCard) !== 0 && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const rem = totalAmountDue - splitUpi - splitCard;
+                            setSplitCash(Math.max(0, rem));
+                          }}
+                        >
+                          <Text style={{ fontSize: 9.5, fontWeight: "700", color: "#0284c7" }}>Fill Remaining</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                      <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                      <TextInput
+                        style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        value={splitCash > 0 ? String(splitCash) : ""}
+                        onChangeText={(txt) => {
+                          const val = Math.max(0, parseFloat(txt) || 0);
+                          setSplitCash(val);
+                          const rem = Math.max(0, totalAmountDue - val - splitCard);
+                          setSplitUpi(rem);
+                        }}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Card */}
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Card / POS (₹)</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                      <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                      <TextInput
+                        style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        value={splitCard > 0 ? String(splitCard) : ""}
+                        onChangeText={(txt) => {
+                          const val = Math.max(0, parseFloat(txt) || 0);
+                          setSplitCard(val);
+                          const rem = Math.max(0, totalAmountDue - splitUpi - val);
+                          setSplitCash(rem);
+                        }}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Status Bar */}
+                {(() => {
+                  const allocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+                  const isMatch = allocated === totalAmountDue;
+                  const diff = totalAmountDue - allocated;
+
+                  return (
+                    <View
+                      style={{
+                        marginTop: 8,
+                        padding: 8,
+                        borderRadius: 8,
+                        backgroundColor: isMatch ? "#ecfdf5" : diff > 0 ? "#fffbeb" : "#fff1f2",
+                        borderWidth: 1,
+                        borderColor: isMatch ? "#a7f3d0" : diff > 0 ? "#fde68a" : "#fecdd3",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: "700",
+                          color: isMatch ? "#065f46" : diff > 0 ? "#92400e" : "#9f1239",
+                          flex: 1,
+                        }}
+                      >
+                        {isMatch
+                          ? `✓ Perfectly Split: UPI ₹${splitUpi} + Cash ₹${splitCash}${splitCard > 0 ? ` + Card ₹${splitCard}` : ""}`
+                          : diff > 0
+                          ? `⚠️ ₹${diff} remaining to allocate`
+                          : `⚠️ Exceeds total by ₹${Math.abs(diff)}`}
+                      </Text>
+                      {!isMatch && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            const rem = totalAmountDue - splitUpi - splitCard;
+                            setSplitCash(Math.max(0, rem));
+                          }}
+                          style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}
+                        >
+                          <Text style={{ fontSize: 9, fontWeight: "800", color: "#78350f" }}>Auto-Balance Cash</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })()}
+              </View>
+            )}
           </View>
 
           {/* 9. SUMMARY TOTAL CARD (Matching Screenshot 1) */}

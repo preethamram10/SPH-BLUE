@@ -9,6 +9,9 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  Smartphone,
+  Layers,
+  ArrowRight,
   Calendar,
   User,
   Phone,
@@ -21,7 +24,9 @@ import {
   Stethoscope,
   Mail,
   Globe,
+  RefreshCw,
 } from "lucide-react";
+import { RazorpayQRModal } from "./RazorpayQRModal";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -115,6 +120,15 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   // Payment Mode
   const [paymentMode, setPaymentMode] = useState<string>("Counter UPI");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Split payment breakdown state
+  const [splitUpi, setSplitUpi] = useState<number>(0);
+  const [splitCash, setSplitCash] = useState<number>(0);
+  const [splitCard, setSplitCard] = useState<number>(0);
+
+  // Razorpay Dynamic QR Modal state
+  const [isRazorpayQROpen, setIsRazorpayQROpen] = useState(false);
+  const [razorpayQRAmount, setRazorpayQRAmount] = useState(0);
 
   // Package member installment state
   const isPackageMember = Boolean(
@@ -241,6 +255,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   // --- CONFIRM PAYMENT HANDLER ---
   const handleConfirmPayment = async () => {
     if (!appointment) return;
+
+    if (paymentMode === "Split") {
+      const splitAllocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+      if (splitAllocated !== grandTotalDue) {
+        alert(
+          `Split payment amounts (₹${splitAllocated}) must equal the total amount due (₹${grandTotalDue}). Difference: ₹${Math.abs(grandTotalDue - splitAllocated)}.`
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const generatedInvoiceId =
@@ -276,6 +301,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         packageInstallmentPaid: isPackageMode ? grandTotalDue : undefined,
         paymentMode,
         paymentMethod: paymentMode,
+        splitDetails: paymentMode === "Split" ? {
+          upi: splitUpi,
+          cash: splitCash,
+          card: splitCard,
+        } : undefined,
         paidAt: nowIso,
         invoiceId: generatedInvoiceId,
         isFeeCollected: true,
@@ -777,12 +807,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
                   Select Payment Mode
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                   {[
-                    { id: "Counter UPI", label: "Counter UPI", icon: QrCode },
+                    { id: "Counter UPI", label: "Counter UPI", icon: Smartphone },
+                    { id: "UPI / QR Code", label: "UPI / QR Code", icon: QrCode },
                     { id: "Cash", label: "Cash", icon: Banknote },
                     { id: "Card", label: "Card / POS", icon: CreditCard },
-                    { id: "Google Pay", label: "UPI Direct", icon: QrCode },
+                    { id: "Split", label: "Split", icon: Layers },
+                    { id: "Send Pay to app", label: "Send Pay to app", icon: ArrowRight },
                   ].map((mode) => {
                     const Icon = mode.icon;
                     const active = paymentMode === mode.id;
@@ -790,10 +822,23 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       <button
                         key={mode.id}
                         type="button"
-                        onClick={() => setPaymentMode(mode.id)}
+                        onClick={() => {
+                          setPaymentMode(mode.id);
+                          if (mode.id === "UPI / QR Code" || mode.id === "Counter UPI") {
+                            setRazorpayQRAmount(grandTotalDue);
+                            setIsRazorpayQROpen(true);
+                          } else if (mode.id === "Split") {
+                            if (splitUpi === 0 && splitCash === 0 && splitCard === 0) {
+                              const half = Math.round(grandTotalDue / 2);
+                              setSplitUpi(half);
+                              setSplitCash(grandTotalDue - half);
+                              setSplitCard(0);
+                            }
+                          }
+                        }}
                         className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
                           active
-                            ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs"
+                            ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs ring-2 ring-sky-500"
                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                         }`}
                       >
@@ -803,6 +848,298 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     );
                   })}
                 </div>
+
+                {/* RAZORPAY DYNAMIC QR CODE DISPLAY */}
+                {(paymentMode === "UPI / QR Code" || paymentMode === "Counter UPI") && (
+                  <div className="mt-3 bg-sky-50/90 border-2 border-sky-400 rounded-2xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                          <QrCode className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-black text-slate-900 text-xs block">
+                            Razorpay Dynamic UPI QR Code
+                          </span>
+                          <span className="text-[10.5px] text-slate-500 font-medium">
+                            Amount: <strong className="text-slate-900">₹{grandTotalDue.toLocaleString()}</strong> • Auto-detects payment when scanned
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRazorpayQRAmount(grandTotalDue);
+                          setIsRazorpayQROpen(true);
+                        }}
+                        className="py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Open Full Screen QR</span>
+                      </button>
+                    </div>
+
+                    {/* Inline QR preview */}
+                    <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-sky-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=4&data=${encodeURIComponent(
+                          `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${grandTotalDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
+                        )}`}
+                        alt="Razorpay UPI QR"
+                        className="w-32 h-32 object-contain rounded-lg border border-slate-200 shadow-2xs"
+                      />
+                      <div className="flex-1 space-y-1.5 text-left">
+                        <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
+                          <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping" />
+                          <span>Ready to scan with any UPI app</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600">
+                          Scan using <strong>Google Pay, PhonePe, Paytm, CRED</strong> to pay <strong>₹{grandTotalDue.toLocaleString()}</strong>.
+                        </p>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRazorpayQRAmount(grandTotalDue);
+                              setIsRazorpayQROpen(true);
+                            }}
+                            className="py-1 px-2.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Live Tracker</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                              const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${grandTotalDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                              const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${grandTotalDue} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
+                              window.open(`https://wa.me/91${cleanPh}?text=${msg}`, "_blank");
+                            }}
+                            className="py-1 px-2.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>WhatsApp Link</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SPLIT BREAKDOWN INPUTS & PRESETS */}
+                {paymentMode === "Split" && (
+                  <div className="mt-3 bg-sky-50/80 border-2 border-sky-400 rounded-2xl p-4 space-y-3.5 shadow-sm animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center font-black text-xs">
+                          ⚡
+                        </span>
+                        <div>
+                          <span className="font-black text-slate-900 text-xs block">
+                            Split Payment Allocation
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            Total Due: <strong className="text-slate-900">₹{grandTotalDue.toLocaleString()}</strong> — Allocate UPI &amp; remaining in Cash / Card
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const half = Math.round(grandTotalDue / 2);
+                            setSplitUpi(half);
+                            setSplitCash(grandTotalDue - half);
+                            setSplitCard(0);
+                          }}
+                          className="text-[10px] font-extrabold px-2 py-1 rounded bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                        >
+                          50 / 50 Half
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplitUpi(grandTotalDue);
+                            setSplitCash(0);
+                            setSplitCard(0);
+                          }}
+                          className="text-[10px] font-extrabold px-2 py-1 rounded bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                        >
+                          All UPI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplitUpi(0);
+                            setSplitCash(grandTotalDue);
+                            setSplitCard(0);
+                          }}
+                          className="text-[10px] font-extrabold px-2 py-1 rounded bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                        >
+                          All Cash
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* UPI */}
+                      <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                            <Smartphone className="w-3.5 h-3.5 text-sky-600" /> UPI / Counter UPI
+                          </label>
+                          {splitUpi > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRazorpayQRAmount(splitUpi);
+                                setIsRazorpayQROpen(true);
+                              }}
+                              className="text-[9.5px] font-bold text-sky-700 hover:text-sky-900 underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <QrCode className="w-2.5 h-2.5" />
+                              <span>Scan QR</span>
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
+                          <span className="text-slate-500 font-bold text-xs">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={grandTotalDue}
+                            value={splitUpi || ""}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              setSplitUpi(val);
+                              const rem = Math.max(0, grandTotalDue - val - splitCard);
+                              setSplitCash(rem);
+                            }}
+                            placeholder="0"
+                            className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                          />
+                        </div>
+                        <span className="text-[9.5px] text-slate-400 block">
+                          GPay, Counter UPI
+                        </span>
+                      </div>
+
+                      {/* Cash */}
+                      <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                            <Banknote className="w-3.5 h-3.5 text-emerald-600" /> Cash
+                          </label>
+                          {grandTotalDue - (splitUpi + splitCash + splitCard) !== 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const rem = grandTotalDue - splitUpi - splitCard;
+                                setSplitCash(Math.max(0, rem));
+                              }}
+                              className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
+                            >
+                              Fill Remaining
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
+                          <span className="text-slate-500 font-bold text-xs">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={grandTotalDue}
+                            value={splitCash || ""}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              setSplitCash(val);
+                              const rem = Math.max(0, grandTotalDue - val - splitCard);
+                              setSplitUpi(rem);
+                            }}
+                            placeholder="0"
+                            className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                          />
+                        </div>
+                        <span className="text-[9.5px] text-slate-400 block">
+                          Counter Cash
+                        </span>
+                      </div>
+
+                      {/* Card */}
+                      <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                            <CreditCard className="w-3.5 h-3.5 text-indigo-600" /> Card / POS
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
+                          <span className="text-slate-500 font-bold text-xs">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={grandTotalDue}
+                            value={splitCard || ""}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              setSplitCard(val);
+                              const rem = Math.max(0, grandTotalDue - splitUpi - val);
+                              setSplitCash(rem);
+                            }}
+                            placeholder="0"
+                            className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                          />
+                        </div>
+                        <span className="text-[9.5px] text-slate-400 block">
+                          Card swipe
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status badge */}
+                    {(() => {
+                      const allocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+                      const isMatch = allocated === grandTotalDue;
+                      const diff = grandTotalDue - allocated;
+
+                      return (
+                        <div
+                          className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${
+                            isMatch
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                              : diff > 0
+                              ? "bg-amber-50 border-amber-300 text-amber-900"
+                              : "bg-rose-50 border-rose-300 text-rose-900"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{isMatch ? "✓" : "⚠️"}</span>
+                            <span>
+                              {isMatch
+                                ? `Split matches total (₹${grandTotalDue.toLocaleString()}): UPI ₹${(splitUpi || 0).toLocaleString()} + Cash ₹${(splitCash || 0).toLocaleString()}${splitCard > 0 ? ` + Card ₹${splitCard.toLocaleString()}` : ""}`
+                                : diff > 0
+                                ? `₹${diff.toLocaleString()} remaining to allocate (Total due: ₹${grandTotalDue.toLocaleString()})`
+                                : `Split exceeds total due by ₹${Math.abs(diff).toLocaleString()}`}
+                            </span>
+                          </div>
+                          {!isMatch && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const rem = grandTotalDue - splitUpi - splitCard;
+                                setSplitCash(Math.max(0, rem));
+                              }}
+                              className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[10px] font-black cursor-pointer shadow-2xs"
+                            >
+                              Auto-Balance in Cash
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* 5. SUMMARY FOOTER & SUBMIT */}
@@ -1127,6 +1464,24 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
         </div>
       </div>
+
+      {/* Razorpay Dynamic QR Modal */}
+      <RazorpayQRModal
+        isOpen={isRazorpayQROpen}
+        appointmentId={appointment?.id}
+        patientName={appointment?.patientName || "Patient"}
+        phone={appointment?.phoneNumber || appointment?.phone || ""}
+        amount={razorpayQRAmount || grandTotalDue}
+        onClose={() => setIsRazorpayQROpen(false)}
+        onPaymentSuccess={(updated) => {
+          setIsRazorpayQROpen(false);
+          alert(`Payment of ₹${razorpayQRAmount || grandTotalDue} received & verified via Razorpay UPI! Consultation completed.`);
+          if (updated) {
+            setCompletedInvoice(updated);
+            setCurrentStep("invoice_receipt");
+          }
+        }}
+      />
     </>
   );
 };

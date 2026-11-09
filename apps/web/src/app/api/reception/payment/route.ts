@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       packageInstallmentPaid,
       isRegularBilling,
       skipPackagePayment,
+      splitDetails,
     } = body;
 
     if (!appointmentId) {
@@ -46,9 +47,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Prescription validation: must have at least 1 prescription image unless already completed
+    // Prescription validation: must have at least 1 prescription image unless already completed or clinical details are present
     const rxImages = appt.prescriptionImages || [];
-    if (rxImages.length === 0 && !appt.isFeeCollected && appt.status !== "COMPLETED") {
+    const isExempt =
+      appt.hasPackage ||
+      Boolean((appt as any).activePackage) ||
+      Boolean(hasPackage) ||
+      Boolean(isRegularBilling) ||
+      Boolean(appt.isSentToReception) ||
+      Boolean(appt.diagnosisNotes) ||
+      (Array.isArray(medicinesList) && medicinesList.length > 0) ||
+      (Array.isArray(medicines) && medicines.length > 0);
+
+    if (rxImages.length === 0 && !appt.isFeeCollected && appt.status !== "COMPLETED" && !isExempt) {
       return NextResponse.json(
         {
           success: false,
@@ -99,6 +110,7 @@ export async function POST(req: NextRequest) {
       packageInstallmentPaid,
       isRegularBilling,
       skipPackagePayment,
+      splitDetails,
     } as any);
 
     if (!updated) {

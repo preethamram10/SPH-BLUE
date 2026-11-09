@@ -34,7 +34,8 @@ export interface TransactionRecord {
   packageFee: number;
   totalAmount: number;
   paymentMethod: "cash" | "upi" | "card" | "split";
-  splitDetails?: { cash: number; upi: number };
+  displayPaymentMethod?: string;
+  splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string;    // YYYY-MM-DD
   dateTime: string;     // Formatted display date e.g. "07/11/2026, 11:30 AM"
   status: "PAID" | "PENDING" | "COMPLETED";
@@ -255,8 +256,20 @@ export default function AdminTotalRevenuePage() {
         // Source
         if (revenueSource !== "all" && t.source !== revenueSource) return false;
 
-        // Payment Method
-        if (revenueMethod !== "all" && t.paymentMethod !== revenueMethod) return false;
+        // Payment Method (Counter UPI and UPI are unified as UPI in revenue)
+        if (revenueMethod !== "all") {
+          if (revenueMethod === "upi") {
+            if (t.paymentMethod !== "upi") return false;
+          } else if (revenueMethod === "counter_upi") {
+            const disp = (t.displayPaymentMethod || "").toLowerCase();
+            if (!disp.includes("counter")) return false;
+          } else if (revenueMethod === "online_upi") {
+            const disp = (t.displayPaymentMethod || "").toLowerCase();
+            if (disp.includes("counter") || t.paymentMethod !== "upi") return false;
+          } else if (t.paymentMethod !== revenueMethod) {
+            return false;
+          }
+        }
 
         // Revenue Split
         if (revenueSplitType !== "all") {
@@ -342,6 +355,7 @@ export default function AdminTotalRevenuePage() {
         if (t.splitDetails) {
           cashTotal += t.splitDetails.cash || 0;
           upiTotal += t.splitDetails.upi || 0;
+          cardTotal += (t.splitDetails as any).card || 0;
         } else {
           cashTotal += Math.round(t.totalAmount / 2);
           upiTotal += Math.round(t.totalAmount / 2);
@@ -520,7 +534,7 @@ export default function AdminTotalRevenuePage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">UPI / GPay:</span>
+                  <span className="text-slate-500">UPI / Counter UPI:</span>
                   <span className="font-bold text-emerald-600">
                     ₹{revenueSummary.upiTotal.toLocaleString("en-IN")}
                   </span>
@@ -794,8 +808,10 @@ export default function AdminTotalRevenuePage() {
                   className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium"
                 >
                   <option value="all">All Modes</option>
+                  <option value="upi">UPI / Counter UPI (All UPI)</option>
+                  <option value="counter_upi">Counter UPI Only</option>
+                  <option value="online_upi">Online UPI / QR Only</option>
                   <option value="cash">Cash</option>
-                  <option value="upi">UPI / GPay / PhonePe</option>
                   <option value="card">Card</option>
                   <option value="split">Split Payment</option>
                 </select>
@@ -981,8 +997,20 @@ export default function AdminTotalRevenuePage() {
                         <td className="py-2 px-3 font-black text-slate-900 text-xs">
                           ₹{t.totalAmount.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-2 px-3 uppercase font-bold text-slate-700 text-[10.5px]">
-                          {t.paymentMethod}
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-bold ${
+                              (t.displayPaymentMethod || "").toLowerCase().includes("counter")
+                                ? "bg-sky-50 text-sky-800 border border-sky-200"
+                                : t.paymentMethod === "upi"
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : t.paymentMethod === "cash"
+                                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                : "bg-slate-100 text-slate-700 border border-slate-200"
+                            }`}
+                          >
+                            {t.displayPaymentMethod || t.paymentMethod.toUpperCase()}
+                          </span>
                         </td>
                         <td className="py-2 px-3 text-slate-500 whitespace-nowrap">{t.dateTime}</td>
                         <td className="py-2 px-3">

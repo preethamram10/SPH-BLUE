@@ -15,7 +15,8 @@ export interface TransactionRecord {
   packageFee: number;
   totalAmount: number;
   paymentMethod: "cash" | "upi" | "card" | "split";
-  splitDetails?: { cash: number; upi: number };
+  displayPaymentMethod?: string;
+  splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string; // YYYY-MM-DD
   dateTime: string;
   status: "PAID" | "PENDING" | "COMPLETED";
@@ -90,7 +91,7 @@ export async function GET(req: Request) {
       else if (a.notes && a.notes.toLowerCase().includes("package")) split = "Package";
 
       let method: "cash" | "upi" | "card" | "split" = "upi";
-      const rawMethod = (a.paymentMethod || "").toUpperCase();
+      const rawMethod = (a.paymentMethod || (a as any).paymentMode || "").toUpperCase();
       if (rawMethod.includes("CASH")) method = "cash";
       else if (rawMethod.includes("CARD")) method = "card";
       else if (rawMethod.includes("SPLIT")) method = "split";
@@ -99,7 +100,34 @@ export async function GET(req: Request) {
         rawMethod.includes("ONLINE") ||
         rawMethod.includes("COUNTER")
       ) {
+        // Counter UPI and UPI are unified into the same UPI revenue category
         method = "upi";
+      }
+
+      let displayMethod = "UPI";
+      if (rawMethod.includes("COUNTER")) {
+        displayMethod = "Counter UPI";
+      } else if (rawMethod.includes("ONLINE") || rawMethod.includes("QR")) {
+        displayMethod = "UPI / QR Code";
+      } else if (rawMethod.includes("CASH")) {
+        displayMethod = "Cash";
+      } else if (rawMethod.includes("CARD")) {
+        displayMethod = "Card";
+      } else if (rawMethod.includes("SPLIT")) {
+        displayMethod = "Split";
+        if (a.splitDetails) {
+          const parts: string[] = [];
+          if (a.splitDetails.upi) parts.push(`UPI ₹${a.splitDetails.upi}`);
+          if (a.splitDetails.cash) parts.push(`Cash ₹${a.splitDetails.cash}`);
+          if (a.splitDetails.card) parts.push(`Card ₹${a.splitDetails.card}`);
+          if (parts.length > 0) {
+            displayMethod = `Split (${parts.join(" + ")})`;
+          }
+        }
+      } else if (rawMethod.includes("APP")) {
+        displayMethod = "Send Pay to app";
+      } else if (a.paymentMethod) {
+        displayMethod = a.paymentMethod;
       }
 
       // Determine clean date: paidAt first, then appointmentDate, then createdAt
@@ -139,6 +167,8 @@ export async function GET(req: Request) {
         packageFee: dFee,
         totalAmount: total,
         paymentMethod: method,
+        displayPaymentMethod: displayMethod,
+        splitDetails: a.splitDetails,
         timestamp: dt,
         dateTime: `${dt}, ${formattedTime}`,
         status: isPaid ? "PAID" : "PENDING",
