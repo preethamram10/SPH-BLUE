@@ -8,6 +8,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -226,70 +228,83 @@ export default function AdminTelecallersManagementScreen() {
       {/* Add Telecaller Modal */}
       <Modal visible={showAddModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Telecaller Agent</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
-              </TouchableOpacity>
-            </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <ScrollView
+              style={{ maxHeight: "90%", width: "100%" }}
+              contentContainerStyle={{ alignItems: "center", paddingVertical: 10 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Add Telecaller Agent</Text>
+                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                    <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
+                  </TouchableOpacity>
+                </View>
 
-            <View style={styles.modalForm}>
-              <Text style={styles.label}>Agent Full Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Swathi Reddy"
-                placeholderTextColor={COLORS.textLight}
-                value={name}
-                onChangeText={setName}
-              />
+                <View style={styles.modalForm}>
+                  <Text style={styles.label}>Agent Full Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Swathi Reddy"
+                    placeholderTextColor={COLORS.textLight}
+                    value={name}
+                    onChangeText={setName}
+                  />
 
-              <Text style={styles.label}>Mobile Number *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+91 98765 43210"
-                placeholderTextColor={COLORS.textLight}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
+                  <Text style={styles.label}>Mobile Number *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="+91 98765 43210"
+                    placeholderTextColor={COLORS.textLight}
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                  />
 
-              <Text style={styles.label}>Branch / Hub Location</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Central Hub / KPHB"
-                placeholderTextColor={COLORS.textLight}
-                value={branch}
-                onChangeText={setBranch}
-              />
+                  <Text style={styles.label}>Branch / Hub Location</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Central Hub / KPHB"
+                    placeholderTextColor={COLORS.textLight}
+                    value={branch}
+                    onChangeText={setBranch}
+                  />
 
-              <Text style={styles.label}>Spoken Languages</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Telugu, English, Hindi"
-                placeholderTextColor={COLORS.textLight}
-                value={language}
-                onChangeText={setLanguage}
-              />
+                  <Text style={styles.label}>Spoken Languages</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Telugu, English, Hindi"
+                    placeholderTextColor={COLORS.textLight}
+                    value={language}
+                    onChangeText={setLanguage}
+                  />
 
-              <Text style={styles.label}>Work Shift</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Morning (09:00 AM - 05:00 PM)"
-                placeholderTextColor={COLORS.textLight}
-                value={shift}
-                onChangeText={setShift}
-              />
+                  <Text style={styles.label}>Work Shift</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Morning (09:00 AM - 05:00 PM)"
+                    placeholderTextColor={COLORS.textLight}
+                    value={shift}
+                    onChangeText={setShift}
+                  />
 
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleAddTelecaller}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.submitBtnText}>Save Telecaller Record</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+                  <TouchableOpacity
+                    style={styles.submitBtn}
+                    onPress={handleAddTelecaller}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.submitBtnText}>Save Telecaller Record</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

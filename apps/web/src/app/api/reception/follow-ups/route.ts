@@ -56,7 +56,10 @@ export async function GET(req: NextRequest) {
     const query = (searchParams.get("search") || searchParams.get("query") || "").toLowerCase().trim();
     const branchFilter = searchParams.get("branch") || "";
     const statusFilter = searchParams.get("status") || "All";
-    const periodFilter = searchParams.get("period") || "all"; // "all" | "overdue" | "this_month" | "next_month" | "due_today"
+    const periodFilter = searchParams.get("period") || "all"; // "all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range"
+    const selectedMonth = (searchParams.get("selectedMonth") || "").trim(); // YYYY-MM
+    const startDate = (searchParams.get("startDate") || "").trim();
+    const endDate = (searchParams.get("endDate") || "").trim();
     const dateParam = searchParams.get("date") || "";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const pageSize = Math.max(1, parseInt(searchParams.get("pageSize") || "35", 10));
@@ -152,7 +155,7 @@ export async function GET(req: NextRequest) {
       const targetDateNorm = normalizeToDDMMYYYY(dateParam);
       filtered = filtered.filter((f) => f.dueDate === targetDateNorm);
     } else {
-      // Period / Month filter: all, overdue, this_month, next_month, due_today
+      // Period / Month / Range filter: all, overdue, this_month, next_month, due_today, month, range
       if (periodFilter === "overdue") {
         filtered = filtered.filter((f) => f.isOverdue);
       } else if (periodFilter === "this_month") {
@@ -161,6 +164,15 @@ export async function GET(req: NextRequest) {
         filtered = filtered.filter((f) => f.isNextMonth);
       } else if (periodFilter === "due_today") {
         filtered = filtered.filter((f) => f.isDueToday);
+      } else if (periodFilter === "month" && selectedMonth) {
+        const [sYear, sMonth] = selectedMonth.split("-").map(Number);
+        filtered = filtered.filter(
+          (f) => f.dueYear === sYear && f.dueMonth === sMonth
+        );
+      } else if (periodFilter === "range" || (startDate && endDate)) {
+        const startTime = startDate ? parseDDMMYYYYToTime(startDate) : 0;
+        const endTime = endDate ? parseDDMMYYYYToTime(endDate) + 86399999 : Infinity;
+        filtered = filtered.filter((f) => f.dueTime >= startTime && f.dueTime <= endTime);
       }
     }
 

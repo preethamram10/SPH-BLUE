@@ -8,6 +8,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -228,86 +230,99 @@ export default function AdminStaffManagementScreen() {
       {/* Add Staff Modal */}
       <Modal visible={showAddModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Register Branch Staff</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalForm}>
-              <Text style={styles.label}>Employee Full Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Ramesh Babu"
-                placeholderTextColor={COLORS.textLight}
-                value={name}
-                onChangeText={setName}
-              />
-
-              <Text style={styles.label}>Phone Number *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="+91 98765 43210"
-                placeholderTextColor={COLORS.textLight}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-
-              <Text style={styles.label}>Branch</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="KPHB Branch"
-                placeholderTextColor={COLORS.textLight}
-                value={branch}
-                onChangeText={setBranch}
-              />
-
-              <Text style={styles.label}>Designation / Role</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  {ROLES.map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      style={[
-                        styles.roleChip,
-                        role === r && styles.roleChipSelected,
-                      ]}
-                      onPress={() => setRole(r)}
-                    >
-                      <Text
-                        style={[
-                          styles.roleChipText,
-                          role === r && styles.roleChipTextSelected,
-                        ]}
-                      >
-                        {r}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <ScrollView
+              style={{ maxHeight: "90%", width: "100%" }}
+              contentContainerStyle={{ alignItems: "center", paddingVertical: 10 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Register Branch Staff</Text>
+                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                    <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
+                  </TouchableOpacity>
                 </View>
-              </ScrollView>
 
-              <Text style={styles.label}>Shift Schedule</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Full-Time (08:30 AM - 05:30 PM)"
-                placeholderTextColor={COLORS.textLight}
-                value={shift}
-                onChangeText={setShift}
-              />
+                <View style={styles.modalForm}>
+                  <Text style={styles.label}>Employee Full Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Ramesh Babu"
+                    placeholderTextColor={COLORS.textLight}
+                    value={name}
+                    onChangeText={setName}
+                  />
 
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleAddStaff}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.submitBtnText}>Save Staff Record</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+                  <Text style={styles.label}>Phone Number *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="+91 98765 43210"
+                    placeholderTextColor={COLORS.textLight}
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                  />
+
+                  <Text style={styles.label}>Branch</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="KPHB Branch"
+                    placeholderTextColor={COLORS.textLight}
+                    value={branch}
+                    onChangeText={setBranch}
+                  />
+
+                  <Text style={styles.label}>Designation / Role</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {ROLES.map((r) => (
+                        <TouchableOpacity
+                          key={r}
+                          style={[
+                            styles.roleChip,
+                            role === r && styles.roleChipSelected,
+                          ]}
+                          onPress={() => setRole(r)}
+                        >
+                          <Text
+                            style={[
+                              styles.roleChipText,
+                              role === r && styles.roleChipTextSelected,
+                            ]}
+                          >
+                            {r}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+
+                  <Text style={styles.label}>Shift Schedule</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Full-Time (08:30 AM - 05:30 PM)"
+                    placeholderTextColor={COLORS.textLight}
+                    value={shift}
+                    onChangeText={setShift}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.submitBtn}
+                    onPress={handleAddStaff}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.submitBtnText}>Save Staff Record</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

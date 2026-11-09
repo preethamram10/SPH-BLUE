@@ -351,6 +351,8 @@ export default function ReceptionAllPatientsScreen() {
           renderItem={renderPatientCard}
           ListEmptyComponent={renderEmptyState}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}

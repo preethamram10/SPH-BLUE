@@ -12,6 +12,8 @@ import {
   Dimensions,
   Share,
   Linking,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -502,6 +504,10 @@ export default function MedicalRequestsScreen() {
          ======================================================== */}
       <Modal visible={isFormOpen} animationType="slide" transparent={false}>
         <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1 }}
+          >
           {/* Modal Header */}
           <View style={styles.topBar}>
             <TouchableOpacity onPress={() => setIsFormOpen(false)} style={styles.backBtn}>
@@ -529,7 +535,12 @@ export default function MedicalRequestsScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scrollArea} contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {/* Step 1: Patient & Clinic Details */}
             <View style={styles.formCard}>
               <View style={styles.formSectionHeader}>
@@ -721,6 +732,7 @@ export default function MedicalRequestsScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
 

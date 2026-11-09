@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   BackHandler,
   Image,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -316,7 +318,15 @@ export default function MobileOldPrescriptionEntryScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
         {/* MRN ID CARD */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
@@ -519,6 +529,7 @@ export default function MobileOldPrescriptionEntryScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

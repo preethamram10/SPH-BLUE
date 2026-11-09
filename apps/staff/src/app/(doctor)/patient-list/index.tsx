@@ -309,6 +309,8 @@ export default function DoctorPatientListScreen() {
             data={filteredPatients}
             keyExtractor={(item, idx) => item.id || item.registrationId || String(idx)}
             renderItem={renderCard}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onPullRefresh} colors={[COLORS.primary]} />}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>

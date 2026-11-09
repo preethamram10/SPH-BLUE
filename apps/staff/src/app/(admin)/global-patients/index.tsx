@@ -44,7 +44,12 @@ export default function MobileGlobalPatientsScreen() {
         />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {patients.map((p) => (
           <View key={p.mrn} style={styles.card}>
             <View style={styles.cardTop}>

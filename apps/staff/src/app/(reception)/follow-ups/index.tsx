@@ -201,7 +201,12 @@ export default function ReceptionFollowUpsScreen() {
       </View>
 
       {/* 4. Follow-up List */}
-      <ScrollView style={styles.listContainer} contentContainerStyle={styles.listContent}>
+      <ScrollView
+        style={styles.listContainer}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {isLoading ? (
           <View style={styles.emptyStateContainer}>
             <ActivityIndicator size="large" color="#0284c7" />

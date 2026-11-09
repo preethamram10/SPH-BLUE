@@ -11,6 +11,8 @@ import {
   Platform,
   ScrollView,
   Image,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -46,6 +48,24 @@ export default function StaffLoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Keyboard state for smooth resizing on mobile
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // OTP State
   const [step, setStep] = useState<"INPUT" | "OTP">("INPUT");
@@ -229,34 +249,46 @@ export default function StaffLoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={[
-        styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+      style={styles.container}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: Math.max(insets.top > 0 ? 16 : 30, 24),
-            paddingBottom: Math.max(insets.bottom, 24),
+            paddingTop: Math.max(insets.top > 0 ? (isKeyboardVisible ? 12 : 24) : 16, 16),
+            paddingBottom: isKeyboardVisible ? 140 : Math.max(insets.bottom, 24),
+            justifyContent: isKeyboardVisible ? "flex-start" : "center",
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
         {/* Top Branding */}
-        <View style={styles.brandingContainer}>
+        <View
+          style={[
+            styles.brandingContainer,
+            isKeyboardVisible && styles.brandingContainerCompact,
+          ]}
+        >
           <Image
             source={require("../../../assets/images/logo.png")}
-            style={styles.logo}
+            style={[styles.logo, isKeyboardVisible && styles.logoCompact]}
             resizeMode="contain"
           />
-          <Text style={styles.mainTitle}>Spiritual Homeopathy</Text>
-          <Text style={styles.subtitle}>
-            Doctor, Staff, HR, Reception &amp; Admin Portal
-          </Text>
+          {!isKeyboardVisible ? (
+            <>
+              <Text style={styles.mainTitle}>Spiritual Homeopathy</Text>
+              <Text style={styles.subtitle}>
+                Doctor, Staff, HR, Reception &amp; Admin Portal
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.mainTitleCompact}>Spiritual Homeopathy</Text>
+          )}
         </View>
 
         {/* Card */}
@@ -581,14 +613,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
+  brandingContainerCompact: {
+    alignItems: "center",
+    marginBottom: 10,
+    marginTop: 2,
+  },
   logo: {
     width: 140,
     height: 60,
     marginBottom: 10,
   },
+  logoCompact: {
+    width: 90,
+    height: 38,
+    marginBottom: 4,
+  },
   mainTitle: {
     fontSize: 24,
     fontWeight: "800",
+    color: COLORS.textDark,
+    textAlign: "center",
+  },
+  mainTitleCompact: {
+    fontSize: 18,
+    fontWeight: "700",
     color: COLORS.textDark,
     textAlign: "center",
   },

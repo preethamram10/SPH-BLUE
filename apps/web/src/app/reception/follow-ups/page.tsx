@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import ReceptionSidebar from "@/components/reception/ReceptionSidebar";
 import { useRouter } from "next/navigation";
@@ -25,7 +24,6 @@ import {
   CalendarPlus,
   RotateCcw,
 } from "lucide-react";
-
 export interface FollowUpItem {
   id: string;
   appointmentId: string;
@@ -90,8 +88,14 @@ function ReceptionFollowUpsContent() {
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today"
-  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today">("all");
+  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "month", "range"
+  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range">("this_month");
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -155,6 +159,13 @@ function ReceptionFollowUpsContent() {
         params.set("page", String(currentPage));
         params.set("pageSize", String(pageSize));
         params.set("period", periodFilter);
+        if (periodFilter === "month" && selectedMonth) {
+          params.set("selectedMonth", selectedMonth);
+        }
+        if (periodFilter === "range") {
+          if (startDate) params.set("startDate", startDate);
+          if (endDate) params.set("endDate", endDate);
+        }
 
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
         if (selectedBranch && selectedBranch !== "All Branches") params.set("branch", selectedBranch);
@@ -185,7 +196,7 @@ function ReceptionFollowUpsContent() {
         setRefreshing(false);
       }
     },
-    [currentPage, pageSize, periodFilter, searchTerm, selectedBranch, statusFilter]
+    [currentPage, pageSize, periodFilter, searchTerm, selectedBranch, statusFilter, selectedMonth, startDate, endDate]
   );
 
   useEffect(() => {
@@ -203,7 +214,7 @@ function ReceptionFollowUpsContent() {
     setCurrentPage(1);
   };
 
-  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today") => {
+  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range") => {
     setPeriodFilter(period);
     setCurrentPage(1);
   };
@@ -324,6 +335,11 @@ function ReceptionFollowUpsContent() {
       const params = new URLSearchParams();
       params.set("export", "true");
       params.set("period", periodFilter);
+      if (periodFilter === "month" && selectedMonth) params.set("selectedMonth", selectedMonth);
+      if (periodFilter === "range") {
+        if (startDate) params.set("startDate", startDate);
+        if (endDate) params.set("endDate", endDate);
+      }
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
       if (selectedBranch && selectedBranch !== "All Branches") params.set("branch", selectedBranch);
       if (statusFilter && statusFilter !== "All") params.set("status", statusFilter);
@@ -513,76 +529,19 @@ function ReceptionFollowUpsContent() {
                 Period Filter:
               </span>
 
-              {/* All Follow-Ups */}
-              <button
-                onClick={() => handlePeriodChange("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "all"
-                    ? "bg-slate-900 text-white shadow-2xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                }`}
-              >
-                <span>All Follow-Ups</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-current font-extrabold">
-                  {stats.total}
-                </span>
-              </button>
-
-              {/* Overdue (Follow-up date passed) */}
-              <button
-                onClick={() => handlePeriodChange("overdue")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "overdue"
-                    ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
-                    : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
-                }`}
-              >
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>Overdue (Date Passed)</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
-                  }`}
-                >
-                  {stats.overdue}
-                </span>
-              </button>
-
-              {/* Due Today */}
-              <button
-                onClick={() => handlePeriodChange("due_today")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "due_today"
-                    ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
-                    : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Due Today</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
-                  }`}
-                >
-                  {stats.dueToday}
-                </span>
-              </button>
-
-              {/* This Month */}
+              {/* This Month (FIRST & DEFAULT) */}
               <button
                 onClick={() => handlePeriodChange("this_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "this_month"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "this_month"
                     ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
                     : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
-                }`}
+                  }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
                 <span>This Month</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
-                  }`}
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
+                    }`}
                 >
                   {stats.thisMonth}
                 </span>
@@ -591,21 +550,123 @@ function ReceptionFollowUpsContent() {
               {/* Next Month */}
               <button
                 onClick={() => handlePeriodChange("next_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "next_month"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
                     ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
                     : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
-                }`}
+                  }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Next Month</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                    periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
-                  }`}
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
+                    }`}
                 >
                   {stats.nextMonth}
                 </span>
+              </button>
+
+              {/* Due Today */}
+              <button
+                onClick={() => handlePeriodChange("due_today")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "due_today"
+                    ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
+                    : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
+                  }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Due Today</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
+                    }`}
+                >
+                  {stats.dueToday}
+                </span>
+              </button>
+
+              {/* Overdue (Follow-up date passed) */}
+              <button
+                onClick={() => handlePeriodChange("overdue")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "overdue"
+                    ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
+                    : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                  }`}
+              >
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Overdue (Date Passed)</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
+                    }`}
+                >
+                  {stats.overdue}
+                </span>
+              </button>
+
+              {/* All Follow-Ups */}
+              <button
+                onClick={() => handlePeriodChange("all")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "all"
+                    ? "bg-slate-900 text-white shadow-2xs"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  }`}
+              >
+                <span>All Follow-Ups</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-current font-extrabold">
+                  {stats.total}
+                </span>
+              </button>
+
+              {/* Next Month */}
+              <button
+                onClick={() => handlePeriodChange("next_month")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
+                    ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
+                    : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
+                  }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Next Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
+                    }`}
+                >
+                  {stats.nextMonth}
+                </span>
+              </button>
+
+              {/* Choose Month */}
+              <button
+                onClick={() => handlePeriodChange("month")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "month"
+                    ? "bg-purple-600 text-white shadow-2xs shadow-purple-200"
+                    : "bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Choose Month</span>
+                {periodFilter === "month" && selectedMonth && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-800 text-white font-mono">
+                    {selectedMonth}
+                  </span>
+                )}
+              </button>
+
+              {/* Date Range */}
+              <button
+                onClick={() => handlePeriodChange("range")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "range"
+                    ? "bg-teal-600 text-white shadow-2xs shadow-teal-200"
+                    : "bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200"
+                }`}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>Date Range</span>
+                {periodFilter === "range" && (startDate || endDate) && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-800 text-white">
+                    Active
+                  </span>
+                )}
               </button>
             </div>
 
@@ -626,6 +687,79 @@ function ReceptionFollowUpsContent() {
                 <option value={100}>100</option>
               </select>
             </div>
+
+            {/* Extended controls for Choose Month */}
+            {periodFilter === "month" && (
+              <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-purple-50/50 p-2.5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Select Specific Month:</span>
+                  </span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      setSelectedMonth(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                  />
+                </div>
+                <span className="text-[11px] text-slate-500 font-semibold">
+                  Showing follow-ups scheduled in month: <strong className="text-purple-800">{selectedMonth}</strong>
+                </span>
+              </div>
+            )}
+
+            {/* Extended controls for Date Range */}
+            {periodFilter === "range" && (
+              <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-teal-50/50 p-2.5 rounded-lg">
+                <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Choose Date Range:</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500">From:</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500">To:</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
+                  />
+                </div>
+                {(startDate || endDate) && (
+                  <button
+                    onClick={() => {
+                      setStartDate("");
+                      setEndDate("");
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-bold text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 transition"
+                  >
+                    Clear Range
+                  </button>
+                )}
+                <span className="text-[11px] text-slate-500 font-semibold">
+                  Showing follow-ups between <strong className="text-teal-800">{startDate || "Start"}</strong> and <strong className="text-teal-800">{endDate || "End"}</strong>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Follow-Ups Table Card */}
@@ -741,15 +875,14 @@ function ReceptionFollowUpsContent() {
                           {/* Status */}
                           <td className="py-3 px-3 text-center">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] tracking-wide uppercase ${
-                                item.status === "Overdue"
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] tracking-wide uppercase ${item.status === "Overdue"
                                   ? "bg-rose-100 text-rose-800 border border-rose-200"
                                   : item.status === "Due Today"
-                                  ? "bg-amber-100 text-amber-800 border border-amber-200"
-                                  : item.status === "Completed"
-                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                  : "bg-sky-100 text-sky-800 border border-sky-200"
-                              }`}
+                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                    : item.status === "Completed"
+                                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                      : "bg-sky-100 text-sky-800 border border-sky-200"
+                                }`}
                             >
                               {item.status === "Overdue" && <AlertCircle className="w-2.5 h-2.5" />}
                               {item.status === "Due Today" && <Clock className="w-2.5 h-2.5" />}
@@ -1068,22 +1201,20 @@ function ReceptionFollowUpsContent() {
                   <button
                     type="button"
                     onClick={() => setBookMode("In-Clinic")}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${
-                      bookMode === "In-Clinic"
+                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${bookMode === "In-Clinic"
                         ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
+                      }`}
                   >
                     In-Clinic Visit
                   </button>
                   <button
                     type="button"
                     onClick={() => setBookMode("Video Call")}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${
-                      bookMode === "Video Call"
+                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${bookMode === "Video Call"
                         ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
+                      }`}
                   >
                     Video Consultation
                   </button>

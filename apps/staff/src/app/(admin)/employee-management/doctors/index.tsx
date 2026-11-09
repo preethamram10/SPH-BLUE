@@ -8,6 +8,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -209,76 +211,89 @@ export default function AdminDoctorsManagementScreen() {
       {/* Add Doctor Modal */}
       <Modal visible={showAddModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Consulting Doctor</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalForm}>
-              <Text style={styles.label}>Doctor Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Dr. Rajesh Kumar"
-                placeholderTextColor={COLORS.textLight}
-                value={name}
-                onChangeText={setName}
-              />
-
-              <View style={styles.formRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Qualification</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="MD (Hom) / BHMS"
-                    placeholderTextColor={COLORS.textLight}
-                    value={qualification}
-                    onChangeText={setQualification}
-                  />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <ScrollView
+              style={{ maxHeight: "90%", width: "100%" }}
+              contentContainerStyle={{ alignItems: "center", paddingVertical: 10 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalSheet}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Add Consulting Doctor</Text>
+                  <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                    <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
+                  </TouchableOpacity>
                 </View>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Phone Number *</Text>
+                <View style={styles.modalForm}>
+                  <Text style={styles.label}>Doctor Name *</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="+91 98765 43210"
+                    placeholder="e.g. Dr. Rajesh Kumar"
                     placeholderTextColor={COLORS.textLight}
-                    keyboardType="phone-pad"
-                    value={phone}
-                    onChangeText={setPhone}
+                    value={name}
+                    onChangeText={setName}
                   />
+
+                  <View style={styles.formRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Qualification</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="MD (Hom) / BHMS"
+                        placeholderTextColor={COLORS.textLight}
+                        value={qualification}
+                        onChangeText={setQualification}
+                      />
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Phone Number *</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="+91 98765 43210"
+                        placeholderTextColor={COLORS.textLight}
+                        keyboardType="phone-pad"
+                        value={phone}
+                        onChangeText={setPhone}
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.label}>Specialization</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Classical Homeopathy / Chronic Disorders"
+                    placeholderTextColor={COLORS.textLight}
+                    value={specialty}
+                    onChangeText={setSpecialty}
+                  />
+
+                  <Text style={styles.label}>Consultation Hours</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="10:00 AM - 02:00 PM"
+                    placeholderTextColor={COLORS.textLight}
+                    value={timing}
+                    onChangeText={setTiming}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.submitBtn}
+                    onPress={handleAddDoctor}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.submitBtnText}>Save Doctor Profile</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-
-              <Text style={styles.label}>Specialization</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Classical Homeopathy / Chronic Disorders"
-                placeholderTextColor={COLORS.textLight}
-                value={specialty}
-                onChangeText={setSpecialty}
-              />
-
-              <Text style={styles.label}>Consultation Hours</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="10:00 AM - 02:00 PM"
-                placeholderTextColor={COLORS.textLight}
-                value={timing}
-                onChangeText={setTiming}
-              />
-
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleAddDoctor}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.submitBtnText}>Save Doctor Profile</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

@@ -47,7 +47,10 @@ export async function GET(req: NextRequest) {
     const query = String(searchParams.get("search") || "").trim().toLowerCase();
     const branchFilter = String(searchParams.get("branch") || "").trim();
     const statusFilter = String(searchParams.get("status") || "").trim();
-    const periodFilter = String(searchParams.get("period") || "all").trim().toLowerCase(); // all, overdue, this_month, next_month, due_today
+    const periodFilter = String(searchParams.get("period") || "all").trim().toLowerCase(); // all, overdue, this_month, next_month, due_today, month, range
+    const selectedMonth = String(searchParams.get("selectedMonth") || "").trim(); // YYYY-MM
+    const startDate = String(searchParams.get("startDate") || "").trim();
+    const endDate = String(searchParams.get("endDate") || "").trim();
     const exportAll = searchParams.get("export") === "true";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "35", 10)));
@@ -173,7 +176,7 @@ export async function GET(req: NextRequest) {
     // Filter
     let filtered = followUpsList;
 
-    // Period / Month filter: all, overdue, this_month, next_month, due_today
+    // Period / Month / Range filter: all, overdue, this_month, next_month, due_today, month, range
     if (periodFilter === "overdue") {
       filtered = filtered.filter((f) => f.isOverdue);
     } else if (periodFilter === "this_month") {
@@ -182,6 +185,15 @@ export async function GET(req: NextRequest) {
       filtered = filtered.filter((f) => f.isNextMonth);
     } else if (periodFilter === "due_today") {
       filtered = filtered.filter((f) => f.isDueToday);
+    } else if (periodFilter === "month" && selectedMonth) {
+      const [sYear, sMonth] = selectedMonth.split("-").map(Number);
+      filtered = filtered.filter(
+        (f) => f.dueYear === sYear && f.dueMonth === sMonth - 1
+      );
+    } else if (periodFilter === "range" || (startDate && endDate)) {
+      const startTime = startDate ? parseDDMMYYYYToTime(startDate) : 0;
+      const endTime = endDate ? parseDDMMYYYYToTime(endDate) + 86399999 : Infinity;
+      filtered = filtered.filter((f) => f.dueTime >= startTime && f.dueTime <= endTime);
     }
 
     // Branch filter

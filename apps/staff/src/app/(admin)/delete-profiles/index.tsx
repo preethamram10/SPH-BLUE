@@ -7,6 +7,8 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -63,46 +65,56 @@ export default function MobileDeleteProfilesScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <View style={styles.warningBox}>
-          <Ionicons name="warning" size={20} color="#d97706" />
-          <Text style={styles.warningText}>
-            Removing a profile purges all associated appointment histories and contact logs.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>ENTER MOBILE NUMBER</Text>
-          <View style={styles.searchRow}>
-            <TextInput
-              placeholder="e.g. 9848012345"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              style={styles.input}
-              placeholderTextColor="#94a3b8"
-            />
-            <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
-              <Text style={styles.searchBtnText}>Search</Text>
-            </TouchableOpacity>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          <View style={styles.warningBox}>
+            <Ionicons name="warning" size={20} color="#d97706" />
+            <Text style={styles.warningText}>
+              Removing a profile purges all associated appointment histories and contact logs.
+            </Text>
           </View>
-        </View>
 
-        {found && (
-          <View style={styles.foundCard}>
-            <Text style={styles.foundTag}>PROFILE FOUND</Text>
-            <Text style={styles.foundName}>{found.name}</Text>
-            <Text style={styles.foundPhone}>📞 {found.phone}</Text>
-            <Text style={styles.foundBranch}>Branch: {found.branch}</Text>
-            <Text style={styles.foundVisits}>{found.visits}</Text>
-
-            <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={16} color="#ffffff" />
-              <Text style={styles.deleteBtnText}>Permanently Delete Profile</Text>
-            </TouchableOpacity>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>ENTER MOBILE NUMBER</Text>
+            <View style={styles.searchRow}>
+              <TextInput
+                placeholder="e.g. 9848012345"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                style={styles.input}
+                placeholderTextColor="#94a3b8"
+              />
+              <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
+                <Text style={styles.searchBtnText}>Search</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      </ScrollView>
+
+          {found && (
+            <View style={styles.foundCard}>
+              <Text style={styles.foundTag}>PROFILE FOUND</Text>
+              <Text style={styles.foundName}>{found.name}</Text>
+              <Text style={styles.foundPhone}>📞 {found.phone}</Text>
+              <Text style={styles.foundBranch}>Branch: {found.branch}</Text>
+              <Text style={styles.foundVisits}>{found.visits}</Text>
+
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <Ionicons name="trash-outline" size={16} color="#ffffff" />
+                <Text style={styles.deleteBtnText}>Permanently Delete Profile</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

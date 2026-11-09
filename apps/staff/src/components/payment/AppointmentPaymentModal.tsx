@@ -14,6 +14,7 @@ import {
   Linking,
   Share,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -474,7 +475,11 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#ffffff" }} edges={["top", "bottom", "left", "right"]}>
-        <View style={styles.container}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.container}>
           {currentView === "invoice_receipt" ? (
             <View style={{ flex: 1 }}>
               {/* TOP ACTION TOOLBAR */}
@@ -742,7 +747,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+              <ScrollView
+                style={styles.scrollArea}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
           {/* 1. TARGET AMOUNT BOX (Matching Screenshot 2) */}
           <View style={styles.targetCard}>
             <View style={{ flex: 1 }}>
@@ -1214,59 +1224,65 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           animationType="fade"
           onRequestClose={() => setIsDiscountModalOpen(false)}
         >
-          <View style={styles.subModalBackdrop}>
-            <View style={styles.subModalCard}>
-              <Text style={styles.subModalTitle}>Request Medicine Discount</Text>
-              <Text style={styles.subModalSubtitle}>
-                Requires approval from HR or Admin before fee collection.
-              </Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.subModalBackdrop}>
+              <View style={styles.subModalCard}>
+                <Text style={styles.subModalTitle}>Request Medicine Discount</Text>
+                <Text style={styles.subModalSubtitle}>
+                  Requires approval from HR or Admin before fee collection.
+                </Text>
 
-              <Text style={styles.inputFieldLabel}>Discount Amount (₹):</Text>
-              <TextInput
-                style={styles.subModalInput}
-                placeholder="e.g. 200"
-                placeholderTextColor="#94a3b8"
-                keyboardType="numeric"
-                value={discountRequestedAmount}
-                onChangeText={setDiscountRequestedAmount}
-              />
+                <Text style={styles.inputFieldLabel}>Discount Amount (₹):</Text>
+                <TextInput
+                  style={styles.subModalInput}
+                  placeholder="e.g. 200"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  value={discountRequestedAmount}
+                  onChangeText={setDiscountRequestedAmount}
+                />
 
-              <Text style={styles.inputFieldLabel}>Reason / Notes:</Text>
-              <TextInput
-                style={[styles.subModalInput, { height: 60, textAlignVertical: "top" }]}
-                placeholder="e.g. Economically weaker patient, recommended by Dr."
-                placeholderTextColor="#94a3b8"
-                multiline
-                value={discountNotes}
-                onChangeText={setDiscountNotes}
-              />
+                <Text style={styles.inputFieldLabel}>Reason / Notes:</Text>
+                <TextInput
+                  style={[styles.subModalInput, { height: 60, textAlignVertical: "top" }]}
+                  placeholder="e.g. Economically weaker patient, recommended by Dr."
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  value={discountNotes}
+                  onChangeText={setDiscountNotes}
+                />
 
-              <View style={styles.subModalActions}>
-                <TouchableOpacity
-                  style={styles.subModalCancelBtn}
-                  onPress={() => setIsDiscountModalOpen(false)}
-                >
-                  <Text style={styles.subModalCancelText}>Cancel</Text>
-                </TouchableOpacity>
+                <View style={styles.subModalActions}>
+                  <TouchableOpacity
+                    style={styles.subModalCancelBtn}
+                    onPress={() => setIsDiscountModalOpen(false)}
+                  >
+                    <Text style={styles.subModalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.subModalSubmitBtn}
-                  onPress={handleRequestDiscountSubmit}
-                  disabled={isRequestingDiscount}
-                >
-                  {isRequestingDiscount ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <Text style={styles.subModalSubmitText}>Send to HR & Admin</Text>
-                  )}
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.subModalSubmitBtn}
+                    onPress={handleRequestDiscountSubmit}
+                    disabled={isRequestingDiscount}
+                  >
+                    {isRequestingDiscount ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.subModalSubmitText}>Send to HR & Admin</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
             </View>
           )}
         </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

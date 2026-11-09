@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -353,7 +354,16 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         </View>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
         {isLoading ? (
           <View style={{ padding: 40, alignItems: "center" }}>
             <ActivityIndicator size="large" color="#0284c7" />
@@ -823,6 +833,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         onClose={() => setIsViewerOpen(false)}
         onDeleteImage={handleRemoveImage}
       />
+
+      </KeyboardAvoidingView>
 
       {/* Bottom Bar */}
       {bottomNav}

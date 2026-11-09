@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Dimensions,
   BackHandler,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -445,22 +447,31 @@ export default function ReceptionDoctorNoShowScreen() {
         onRequestClose={() => setIsModalOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Mark Doctor No-Show</Text>
-                <Text style={styles.modalSubtitle}>Branch: {branchClean}</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={styles.modalContainer}>
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>Mark Doctor No-Show</Text>
+                  <Text style={styles.modalSubtitle}>Branch: {branchClean}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setIsModalOpen(false)}
+                  style={styles.closeModalBtn}
+                >
+                  <Ionicons name="close" size={20} color={COLORS.textDark} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => setIsModalOpen(false)}
-                style={styles.closeModalBtn}
-              >
-                <Ionicons name="close" size={20} color={COLORS.textDark} />
-              </TouchableOpacity>
-            </View>
 
-            <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.modalForm}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
               {/* Doctor Selector */}
               <Text style={styles.inputLabel}>Select Doctor *</Text>
               <TouchableOpacity
@@ -684,6 +695,7 @@ export default function ReceptionDoctorNoShowScreen() {
               </View>
             </ScrollView>
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

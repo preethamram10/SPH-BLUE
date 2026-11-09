@@ -78,7 +78,12 @@ export default function MobileAllFollowUpsScreen() {
         />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {filtered.map((item) => (
           <View key={item.id} style={styles.card}>
             <View style={styles.cardHeader}>

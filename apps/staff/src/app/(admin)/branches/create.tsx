@@ -143,6 +143,7 @@ export default function CreateBranchScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Form Card */}
           <View style={styles.card}>

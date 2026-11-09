@@ -1037,6 +1037,7 @@ export default function ReceptionBookAppointmentScreen() {
           showsVerticalScrollIndicator={false}
           nestedScrollEnabled={true}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* CARD 1: PATIENT DETAILS */}
           <View style={[styles.card, { zIndex: isModeOpen ? 90 : 1 }]}>
@@ -1951,6 +1952,10 @@ export default function ReceptionBookAppointmentScreen() {
           }}
         >
           <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ width: "100%", alignItems: "center" }}
+            >
             <View
               style={{
                 backgroundColor: "#ffffff",
@@ -2292,6 +2297,7 @@ export default function ReceptionBookAppointmentScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
 

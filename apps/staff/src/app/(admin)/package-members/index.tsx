@@ -63,7 +63,12 @@ export default function MobilePackageMembersScreen() {
         />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {members.map((m) => (
           <View key={m.id} style={styles.card}>
             <View style={styles.cardTop}>

@@ -10,6 +10,8 @@ import {
   RefreshControl,
   Modal,
   TextInput,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -398,63 +400,68 @@ export default function MobileTargetManagementScreen() {
       {isEditModalOpen && editBranch && (
         <Modal visible={isEditModalOpen} transparent animationType="fade">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>Set Branch Target</Text>
-                  <Text style={styles.modalSub}>
-                    {editBranch.branch} • {selectedMonth}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setIsEditModalOpen(false)}>
-                  <Ionicons name="close" size={22} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalBody}>
-                <Text style={styles.modalInputLabel}>Target Revenue (₹)</Text>
-                <View style={styles.modalInputWrapper}>
-                  <Text style={styles.modalRupee}>₹</Text>
-                  <TextInput
-                    style={styles.modalTextInput}
-                    keyboardType="numeric"
-                    placeholder="e.g. 500000"
-                    placeholderTextColor="#94a3b8"
-                    value={inputTargetAmount}
-                    onChangeText={setInputTargetAmount}
-                  />
-                </View>
-
-                {userRole === "HR" && (
-                  <View style={styles.modalWarningBox}>
-                    <Ionicons name="alert-circle" size={16} color="#d97706" />
-                    <Text style={styles.modalWarningText}>
-                      HR can set this target once per month. Once confirmed, only Admin can edit it.
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ width: "100%", alignItems: "center" }}
+            >
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalTitle}>Set Branch Target</Text>
+                    <Text style={styles.modalSub}>
+                      {editBranch.branch} • {selectedMonth}
                     </Text>
                   </View>
-                )}
-              </View>
+                  <TouchableOpacity onPress={() => setIsEditModalOpen(false)}>
+                    <Ionicons name="close" size={22} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setIsEditModalOpen(false)}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalSaveBtn, isSavingTarget && { opacity: 0.6 }]}
-                  disabled={isSavingTarget}
-                  onPress={handleSaveTarget}
-                >
-                  {isSavingTarget ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <Text style={styles.modalSaveText}>Save Target</Text>
+                <View style={styles.modalBody}>
+                  <Text style={styles.modalInputLabel}>Target Revenue (₹)</Text>
+                  <View style={styles.modalInputWrapper}>
+                    <Text style={styles.modalRupee}>₹</Text>
+                    <TextInput
+                      style={styles.modalTextInput}
+                      keyboardType="numeric"
+                      placeholder="e.g. 500000"
+                      placeholderTextColor="#94a3b8"
+                      value={inputTargetAmount}
+                      onChangeText={setInputTargetAmount}
+                    />
+                  </View>
+
+                  {userRole === "HR" && (
+                    <View style={styles.modalWarningBox}>
+                      <Ionicons name="alert-circle" size={16} color="#d97706" />
+                      <Text style={styles.modalWarningText}>
+                        HR can set this target once per month. Once confirmed, only Admin can edit it.
+                      </Text>
+                    </View>
                   )}
-                </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={() => setIsEditModalOpen(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalSaveBtn, isSavingTarget && { opacity: 0.6 }]}
+                    disabled={isSavingTarget}
+                    onPress={handleSaveTarget}
+                  >
+                    {isSavingTarget ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.modalSaveText}>Save Target</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
       )}

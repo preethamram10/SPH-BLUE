@@ -11,6 +11,8 @@ import {
   Modal,
   TextInput,
   RefreshControl,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -561,18 +563,27 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
       {/* ------------------------------------------------ */}
       <Modal visible={isScheduleOpen} transparent animationType="slide">
         <View style={styles.modalBg}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="sparkles" size={18} color={COLORS.teal} />
-                <Text style={styles.modalTitle}>Schedule Cleaning Audit</Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="sparkles" size={18} color={COLORS.teal} />
+                  <Text style={styles.modalTitle}>Schedule Cleaning Audit</Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsScheduleOpen(false)}>
+                  <Ionicons name="close" size={22} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => setIsScheduleOpen(false)}>
-                <Ionicons name="close" size={22} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                contentContainerStyle={{ gap: 14 }}
+              >
               {/* Branch */}
               <View>
                 <Text style={styles.inputLabel}>Clinic Branch</Text>
@@ -669,6 +680,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
               </TouchableOpacity>
             </ScrollView>
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -678,18 +690,27 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
       {reviewTask && (
         <Modal visible={!!reviewTask} transparent animationType="slide">
           <View style={styles.modalBg}>
-            <View style={[styles.modalSheet, { maxHeight: "90%" }]}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>{reviewTask.branchName}</Text>
-                  <Text style={styles.headerSub}>Inspection Date: {reviewTask.assignedDate}</Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ width: "100%", alignItems: "center" }}
+            >
+              <View style={[styles.modalSheet, { maxHeight: "90%" }]}>
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalTitle}>{reviewTask.branchName}</Text>
+                    <Text style={styles.headerSub}>Inspection Date: {reviewTask.assignedDate}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setReviewTask(null)}>
+                    <Ionicons name="close" size={22} color={COLORS.textMuted} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => setReviewTask(null)}>
-                  <Ionicons name="close" size={22} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  contentContainerStyle={{ gap: 14 }}
+                >
                 <Text style={styles.inputLabel}>SUBMITTED PHOTOS PER AREA</Text>
 
                 {reviewTask.fields.map((field) => {
@@ -797,6 +818,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
                 </View>
               </ScrollView>
             </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
       )}

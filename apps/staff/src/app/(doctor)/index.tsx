@@ -11,6 +11,8 @@ import {
   Linking,
   Modal,
   TextInput,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -301,6 +303,8 @@ export default function DoctorDashboard() {
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={isPullRefreshing}
@@ -611,56 +615,61 @@ export default function DoctorDashboard() {
         onRequestClose={() => setIsRescheduleOpen(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Reschedule Appointment</Text>
-                <Text style={styles.modalSub}>
-                  {rescheduleTarget?.name || rescheduleTarget?.patientName}
-                </Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", alignItems: "center" }}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle}>Reschedule Appointment</Text>
+                  <Text style={styles.modalSub}>
+                    {rescheduleTarget?.name || rescheduleTarget?.patientName}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setIsRescheduleOpen(false)}
+                  style={styles.modalCloseBtn}
+                >
+                  <Ionicons name="close" size={18} color="#64748b" />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => setIsRescheduleOpen(false)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={18} color="#64748b" />
-              </TouchableOpacity>
+
+              <View style={{ gap: 8 }}>
+                <Text style={styles.modalInputLabel}>Appointment Date (DD-MM-YYYY)</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={rescheduleDate}
+                  onChangeText={setRescheduleDate}
+                  placeholder="DD-MM-YYYY"
+                />
+
+                <Text style={styles.modalInputLabel}>Time Slot</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={rescheduleSlot}
+                  onChangeText={setRescheduleSlot}
+                  placeholder="e.g. 11:00 AM"
+                />
+
+                <TouchableOpacity
+                  style={[styles.confirmRescheduleBtn, isRescheduling && { opacity: 0.7 }]}
+                  onPress={handleConfirmReschedule}
+                  disabled={isRescheduling}
+                  activeOpacity={0.8}
+                >
+                  {isRescheduling ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
+                      <Text style={styles.confirmRescheduleBtnText}>Confirm Reschedule</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <View style={{ gap: 8 }}>
-              <Text style={styles.modalInputLabel}>Appointment Date (DD-MM-YYYY)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={rescheduleDate}
-                onChangeText={setRescheduleDate}
-                placeholder="DD-MM-YYYY"
-              />
-
-              <Text style={styles.modalInputLabel}>Time Slot</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={rescheduleSlot}
-                onChangeText={setRescheduleSlot}
-                placeholder="e.g. 11:00 AM"
-              />
-
-              <TouchableOpacity
-                style={[styles.confirmRescheduleBtn, isRescheduling && { opacity: 0.7 }]}
-                onPress={handleConfirmReschedule}
-                disabled={isRescheduling}
-                activeOpacity={0.8}
-              >
-                {isRescheduling ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
-                    <Text style={styles.confirmRescheduleBtnText}>Confirm Reschedule</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
