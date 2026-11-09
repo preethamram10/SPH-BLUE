@@ -46,6 +46,34 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
   </svg>
 );
 
+const renderVisitBadge = (appt: any) => {
+  const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+  return (
+    <div className="inline-flex items-center gap-1">
+      {badge === "New" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+          NEW
+        </span>
+      )}
+      {badge === "In-Dur" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shadow-xs">
+          IN-DUR
+        </span>
+      )}
+      {badge === "Revisit" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shadow-xs">
+          REVISIT
+        </span>
+      )}
+      {appt.hasPackage && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-wide bg-amber-500 text-white shadow-xs">
+          PKG
+        </span>
+      )}
+    </div>
+  );
+};
+
 export default function ReceptionDashboardPage() {
   const router = useRouter();
   const [branchName, setBranchName] = useState("Spiritual Homeopathy Clinic");
@@ -927,12 +955,7 @@ export default function ReceptionDashboardPage() {
                                     {appt.patientName}
                                   </Link>
                                 )}
-                                {isRevisit && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                                    <RotateCcw className="w-2.5 h-2.5" />
-                                    REVISIT
-                                  </span>
-                                )}
+                                {renderVisitBadge(appt)}
                               </div>
                               <div className="text-slate-400 text-[10.5px] flex items-center gap-1.5 mt-0.5">
                                 <span>📞 {cleanPhone || "No Mobile"}</span>

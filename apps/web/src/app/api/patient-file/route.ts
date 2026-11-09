@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService } from "@spiritualhomeo/database";
+import { appointmentService, matchPatientProfile, packageService } from "@spiritualhomeo/database";
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,20 +27,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Patient record not found" }, { status: 404 });
     }
 
-    // Get previous visits for this patient
+    // Get previous visits for THIS specific patient profile only (isolated by registrationId/name, NOT shared by phone)
     const all = await appointmentService.getAppointments();
     const history = all.filter(
       (a) =>
         a.id !== appt.id &&
-        (a.phone === appt.phone || (a.registrationId && a.registrationId === appt.registrationId))
+        !a.isDeleted &&
+        matchPatientProfile(a, appt)
     );
+
+    const activePkg = await packageService.getPackageByProfile(appt.registrationId || appt.phone, appt.patientName);
 
     return NextResponse.json({
       success: true,
       patientFile: {
         ...appt,
+        followUpDate: appt.followUpDate || appt.activeFollowUpDate || "",
         totalVisits: history.length + 1,
         totalPaid: history.reduce((sum, h) => sum + (h.consultationFee || 0), 0) + (appt.consultationFee || 0),
+        activePackage: activePkg || null,
+        hasPackage: !!activePkg,
+        packageName: activePkg?.packageName || appt.packageName || "",
         history: history.map((h) => ({
           id: h.id,
           date: h.appointmentDate,

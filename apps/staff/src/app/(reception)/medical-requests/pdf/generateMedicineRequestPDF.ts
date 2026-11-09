@@ -112,11 +112,9 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         @page { size: A4 portrait; margin: 0; }
         * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; background: #ffffff; color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
-        .top-banner { background: #1d8ecd; height: 72px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 24px 0 0; }
-        .logo-container { background: #ffffff; height: 80px; padding: 8px 20px; display: flex; align-items: center; gap: 12px; box-shadow: 2px 3px 10px rgba(0,0,0,0.12); border-bottom-right-radius: 8px; }
-        .clinic-brand { font-weight: 800; font-size: 16px; color: #0284c7; line-height: 1.1; }
-        .clinic-sub { font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 2px; }
-        .top-info-box { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+        .top-banner { background: #ffffff; height: 72px; width: 100%; display: flex; align-items: stretch; justify-content: space-between; padding: 0; }
+        .logo-container { background: #ffffff; flex: 1; height: 100%; padding: 0 0 0 24px; display: flex; align-items: center; border: none; box-shadow: none; }
+        .top-info-box { background: #1d8ecd; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding: 0 24px 0 20px; gap: 4px; }
         .top-web-link { color: #ffffff; font-weight: 800; font-size: 12.5px; text-transform: uppercase; }
         .top-reception-phone { color: #ffffff; font-size: 11.5px; font-weight: 700; letter-spacing: 0.4px; }
         .cert-content { padding: 36px 44px; flex: 1; }
@@ -135,11 +133,7 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
     <body>
       <div class="top-banner">
         <div class="logo-container">
-          <img src="${CLINIC_LOGO_BASE64}" alt="Spiritual Homeopathy Logo" style="height: 52px; width: auto; object-fit: contain;" />
-          <div>
-            <div class="clinic-brand">Spiritual Homeopathy</div>
-            <div class="clinic-sub">Holistic Healing Clinics • ${branchDisplay}</div>
-          </div>
+          <img src="${CLINIC_LOGO_BASE64}" alt="Spiritual Homeopathy Logo" style="height: 50px; width: auto; object-fit: contain;" />
         </div>
         <div class="top-info-box">
           <div class="top-web-link">spiritualhomeoclinic.com</div>

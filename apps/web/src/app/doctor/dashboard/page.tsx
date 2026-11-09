@@ -17,6 +17,7 @@ import {
   Search,
   RotateCcw,
   FileText,
+  Sparkles,
 } from "lucide-react";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -24,6 +25,34 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
     <path d="M12.031 2C6.495 2 2 6.494 2 12.029c0 1.83.493 3.555 1.348 5.048L2 22l5.06-1.328a9.98 9.98 0 0 0 4.971 1.323h.004c5.534 0 10.029-4.494 10.029-10.028A9.99 9.99 0 0 0 12.031 2zM12.03 20.31h-.003a8.31 8.31 0 0 1-4.237-1.156l-.304-.18-3.146.825.84-3.067-.198-.315a8.297 8.297 0 0 1-1.272-4.388c0-4.587 3.732-8.319 8.32-8.319 2.222 0 4.312.866 5.883 2.438a8.28 8.28 0 0 1 2.435 5.88c0 4.588-3.732 8.32-8.318 8.32zm4.557-6.223c-.25-.125-1.477-.728-1.706-.81-.228-.083-.395-.125-.562.125-.166.25-.644.81-.79 1-.145.187-.291.208-.541.083-.25-.125-1.054-.388-2.008-1.238-.742-.662-1.243-1.48-1.389-1.73-.146-.25-.016-.385.109-.51.113-.112.25-.291.375-.437.125-.145.166-.25.25-.416.083-.167.041-.312-.021-.437-.063-.125-.563-1.354-.77-1.854-.203-.487-.41-.42-.563-.428l-.48-.009c-.166 0-.437.062-.666.312-.229.25-.875.854-.875 2.083 0 1.229.896 2.416 1.021 2.583.125.166 1.761 2.688 4.266 3.769.596.257 1.061.41 1.424.526.6.19 1.144.163 1.576.1.481-.072 1.477-.604 1.685-1.187.208-.583.208-1.083.146-1.187-.063-.105-.23-.167-.479-.292z" />
   </svg>
 );
+
+const renderVisitBadge = (appt: any) => {
+  const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+  return (
+    <div className="inline-flex items-center gap-1">
+      {badge === "New" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+          NEW
+        </span>
+      )}
+      {badge === "In-Dur" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shadow-xs">
+          IN-DUR
+        </span>
+      )}
+      {badge === "Revisit" && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shadow-xs">
+          REVISIT
+        </span>
+      )}
+      {appt.hasPackage && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-wide bg-amber-500 text-white shadow-xs">
+          PKG
+        </span>
+      )}
+    </div>
+  );
+};
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
@@ -320,12 +349,7 @@ export default function DoctorDashboardPage() {
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-bold text-slate-900 text-xs">{appt.patientName}</span>
-                                {isRevisit && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                                    <RotateCcw className="w-2.5 h-2.5" />
-                                    REVISIT
-                                  </span>
-                                )}
+                                {renderVisitBadge(appt)}
                               </div>
                               <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                                 <Phone className="w-2.5 h-2.5" />

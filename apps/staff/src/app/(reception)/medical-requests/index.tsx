@@ -791,21 +791,15 @@ export default function MedicalRequestsScreen() {
 
               {/* VISUAL PDF LETTERHEAD CERTIFICATE PREVIEW */}
               <View style={styles.certPreviewWrapper}>
-                {/* Top Blue Header */}
+                {/* Top Header: Left White with Logo, Right Blue Banner */}
                 <View style={styles.certPreviewTopBanner}>
                   <View style={styles.certBrandPill}>
                     <Image
                       source={{ uri: CLINIC_LOGO_BASE64 }}
-                      style={{ width: 22, height: 22, resizeMode: "contain", marginRight: 4 }}
+                      style={{ width: 85, height: 26, resizeMode: "contain" }}
                     />
-                    <View>
-                      <Text style={styles.certBrandPillText}>Spiritual Homeopathy</Text>
-                      <Text style={{ fontSize: 7.5, fontWeight: "700", color: "#64748b" }}>
-                        {sharePopupData?.branchName}
-                      </Text>
-                    </View>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
+                  <View style={styles.certBlueRightBox}>
                     <Text style={styles.certWebLink}>spiritualhomeoclinic.com</Text>
                     <Text style={{ fontSize: 8, fontWeight: "700", color: "#ffffff" }}>
                       📞 {getBranchPhone(sharePopupData?.branchName || "")}
@@ -963,86 +957,147 @@ export default function MedicalRequestsScreen() {
         </View>
       </Modal>
 
-      {/* DROPDOWN OPTIONS PICKER MODAL */}
+      {/* DROPDOWN OPTIONS CENTERED POPUP MODAL */}
       <Modal visible={pickerModal !== null} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.pickerBackdrop}
-          activeOpacity={1}
-          onPress={() => setPickerModal(null)}
-        >
-          <View style={styles.pickerSheet}>
-            <Text style={styles.pickerTitle}>
-              {pickerModal?.type === "gender" && "Select Salutation"}
-              {pickerModal?.type === "duration" && "Select Course Duration"}
-              {pickerModal?.type === "medType" && "Select Medicine Form"}
-              {pickerModal?.type === "timing" && "Select Dosage & Timing"}
-            </Text>
+        <View style={styles.pickerBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setPickerModal(null)}
+          />
 
-            <ScrollView>
+          <View style={styles.pickerPopupCard}>
+            {/* Header with Title & Close (X) */}
+            <View style={styles.pickerHeaderRow}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={styles.pickerIconCircle}>
+                  <Ionicons
+                    name={
+                      pickerModal?.type === "gender"
+                        ? "person-outline"
+                        : pickerModal?.type === "duration"
+                        ? "calendar-outline"
+                        : pickerModal?.type === "medType"
+                        ? "medkit-outline"
+                        : "time-outline"
+                    }
+                    size={15}
+                    color="#16a34a"
+                  />
+                </View>
+                <Text style={styles.pickerTitle}>
+                  {pickerModal?.type === "gender" && "Select Salutation"}
+                  {pickerModal?.type === "duration" && "Select Course Duration"}
+                  {pickerModal?.type === "medType" && "Select Medicine Form"}
+                  {pickerModal?.type === "timing" && "Select Dosage & Timing"}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setPickerModal(null)}
+                style={styles.pickerCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={17} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Options List */}
+            <ScrollView style={{ maxHeight: 290 }} showsVerticalScrollIndicator={false}>
               {pickerModal?.type === "gender" &&
-                ["Mr.", "Mrs.", "Ms.", "Master", "Dr."].map((opt) => (
-                  <TouchableOpacity
-                    key={opt}
-                    style={styles.pickerOptionRow}
-                    onPress={() => {
-                      setGender(opt);
-                      setPickerModal(null);
-                    }}
-                  >
-                    <Text style={styles.pickerOptionText}>{opt}</Text>
-                  </TouchableOpacity>
-                ))}
+                ["Mr.", "Mrs.", "Ms.", "Master", "Dr."].map((opt) => {
+                  const isSelected = gender === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.pickerOptionRow, isSelected && styles.pickerOptionRowActive]}
+                      onPress={() => {
+                        setGender(opt);
+                        setPickerModal(null);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                        {opt}
+                      </Text>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#16a34a" />}
+                    </TouchableOpacity>
+                  );
+                })}
 
               {pickerModal?.type === "duration" &&
-                DURATION_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt}
-                    style={styles.pickerOptionRow}
-                    onPress={() => {
-                      setDuration(opt);
-                      setPickerModal(null);
-                    }}
-                  >
-                    <Text style={styles.pickerOptionText}>{opt}</Text>
-                  </TouchableOpacity>
-                ))}
+                DURATION_OPTIONS.map((opt) => {
+                  const isSelected = duration === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.pickerOptionRow, isSelected && styles.pickerOptionRowActive]}
+                      onPress={() => {
+                        setDuration(opt);
+                        setPickerModal(null);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                        {opt}
+                      </Text>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#16a34a" />}
+                    </TouchableOpacity>
+                  );
+                })}
 
               {pickerModal?.type === "medType" &&
-                MEDICINE_TYPE_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt}
-                    style={styles.pickerOptionRow}
-                    onPress={() => {
-                      if (pickerModal.rowIndex !== undefined) {
-                        const m = medicines[pickerModal.rowIndex];
-                        handleUpdateMedicine(m.id, "type", opt);
-                      }
-                      setPickerModal(null);
-                    }}
-                  >
-                    <Text style={styles.pickerOptionText}>{opt}</Text>
-                  </TouchableOpacity>
-                ))}
+                MEDICINE_TYPE_OPTIONS.map((opt) => {
+                  const currentRow = pickerModal.rowIndex !== undefined ? medicines[pickerModal.rowIndex] : null;
+                  const isSelected = currentRow?.type === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.pickerOptionRow, isSelected && styles.pickerOptionRowActive]}
+                      onPress={() => {
+                        if (pickerModal.rowIndex !== undefined) {
+                          const m = medicines[pickerModal.rowIndex];
+                          handleUpdateMedicine(m.id, "type", opt);
+                        }
+                        setPickerModal(null);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                        {opt}
+                      </Text>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#16a34a" />}
+                    </TouchableOpacity>
+                  );
+                })}
 
               {pickerModal?.type === "timing" &&
-                DOSAGE_TIMING_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt}
-                    style={styles.pickerOptionRow}
-                    onPress={() => {
-                      if (pickerModal.rowIndex !== undefined) {
-                        const m = medicines[pickerModal.rowIndex];
-                        handleUpdateMedicine(m.id, "timing", opt);
-                      }
-                      setPickerModal(null);
-                    }}
-                  >
-                    <Text style={styles.pickerOptionText}>{opt}</Text>
-                  </TouchableOpacity>
-                ))}
+                DOSAGE_TIMING_OPTIONS.map((opt) => {
+                  const currentRow = pickerModal.rowIndex !== undefined ? medicines[pickerModal.rowIndex] : null;
+                  const isSelected = currentRow?.timing === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[styles.pickerOptionRow, isSelected && styles.pickerOptionRowActive]}
+                      onPress={() => {
+                        if (pickerModal.rowIndex !== undefined) {
+                          const m = medicines[pickerModal.rowIndex];
+                          handleUpdateMedicine(m.id, "timing", opt);
+                        }
+                        setPickerModal(null);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
+                        {opt}
+                      </Text>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#16a34a" />}
+                    </TouchableOpacity>
+                  );
+                })}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* 5. BOTTOM NAVIGATION */}
@@ -1591,34 +1646,78 @@ const styles = StyleSheet.create({
   },
   pickerBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
   },
-  pickerSheet: {
+  pickerPopupCard: {
     backgroundColor: "#ffffff",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    maxHeight: 360,
+    borderRadius: 20,
+    width: "100%",
+    maxWidth: 340,
+    padding: 18,
+    maxHeight: 400,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  pickerTitle: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: "#0f172a",
+  pickerHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
-    paddingBottom: 6,
+    paddingBottom: 8,
+  },
+  pickerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerTitle: {
+    fontSize: 13.5,
+    fontWeight: "900",
+    color: "#0f172a",
   },
   pickerOptionRow: {
-    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 4,
     borderBottomWidth: 1,
     borderBottomColor: "#f8fafc",
   },
+  pickerOptionRowActive: {
+    backgroundColor: "#f0fdf4",
+  },
   pickerOptionText: {
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: "700",
     color: "#334155",
+  },
+  pickerOptionTextActive: {
+    color: "#15803d",
+    fontWeight: "900",
   },
   shareModalBackdrop: {
     flex: 1,
@@ -1654,20 +1753,25 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   certPreviewTopBanner: {
-    backgroundColor: "#1d8ecd",
-    height: 46,
+    backgroundColor: "#ffffff",
+    height: 48,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
     justifyContent: "space-between",
-    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
   certBrandPill: {
     backgroundColor: "#ffffff",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-    flexDirection: "row",
-    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  certBlueRightBox: {
+    backgroundColor: "#1d8ecd",
+    paddingHorizontal: 10,
+    justifyContent: "center",
+    alignItems: "flex-end",
   },
   certBrandPillText: {
     fontSize: 10.5,

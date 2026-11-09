@@ -24,6 +24,10 @@ export async function POST(req: NextRequest) {
       discountStatus,
       totalPaid,
       invoiceId,
+      hasPackage,
+      packageInstallmentPaid,
+      isRegularBilling,
+      skipPackagePayment,
     } = body;
 
     if (!appointmentId) {
@@ -91,7 +95,11 @@ export async function POST(req: NextRequest) {
       discountStatus: discountStatus || (effectiveDiscount > 0 ? "APPROVED" : "NONE"),
       totalPaid: typeof totalPaid === "number" ? totalPaid : (typeof totalAmountDue === "number" ? totalAmountDue : parseFloat(totalAmountDue) || 0),
       invoiceId: invoiceId || `INV-${Date.now().toString().slice(-6)}`,
-    });
+      hasPackage,
+      packageInstallmentPaid,
+      isRegularBilling,
+      skipPackagePayment,
+    } as any);
 
     if (!updated) {
       return NextResponse.json(

@@ -84,6 +84,25 @@ export function AppointmentPaymentWebModal({
     },
   ]);
 
+  // Package member installment state
+  const isPackageMember = Boolean(
+    appointment?.hasPackage ||
+    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
+    appointment?.activePackage
+  );
+  const pkgTotal = appointment?.packageTotalAmount ?? appointment?.activePackage?.totalAmount ?? 0;
+  const pkgPaid = appointment?.packagePaidAmount ?? appointment?.activePackage?.paidAmount ?? 0;
+  const pkgPending = typeof appointment?.packagePendingAmount === "number"
+    ? appointment.packagePendingAmount
+    : (typeof appointment?.activePackage?.pendingAmount === "number"
+      ? appointment.activePackage.pendingAmount
+      : Math.max(0, pkgTotal - pkgPaid));
+  const pkgName = appointment?.packageName || appointment?.activePackage?.packageName || `${appointment?.packageDurationMonths || 3} Months Treatment Package`;
+  const pkgEndDate = appointment?.packageEndDate || appointment?.activePackage?.endDate || "N/A";
+
+  const [billingMode, setBillingMode] = useState<"package" | "regular">("package");
+  const [packageInstallmentAmount, setPackageInstallmentAmount] = useState<number>(0);
+
   // Discount
   const [discountStatus, setDiscountStatus] = useState<"NONE" | "PENDING" | "APPROVED" | "REJECTED">(
     appointment?.discountStatus || "NONE"
@@ -112,7 +131,21 @@ export function AppointmentPaymentWebModal({
       setIncludeConsult(true);
       setIncludeMedicine(false);
       setIncludeDiet(false);
-      setPaymentType("consultation");
+
+      if (isPackageMember) {
+        setBillingMode("package");
+        setPaymentType("package");
+        setIncludeConsult(false);
+        setConsultationFee(0);
+        setIncludeMedicine(false);
+        setMedicineFee(0);
+        setIncludeDiet(false);
+        setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+      } else {
+        setBillingMode("regular");
+        setPaymentType("consultation");
+      }
+
       setSelectedMethod(null);
       setDiscountStatus(appointment.discountStatus || "NONE");
       setDiscountApprovedAmount(appointment.discountApproved || 0);
@@ -159,10 +192,14 @@ export function AppointmentPaymentWebModal({
         },
       ]);
     } else if (type === "package") {
-      setIncludeConsult(true);
-      setConsultationFee(target);
+      setIncludeConsult(false);
+      setConsultationFee(0);
       setIncludeMedicine(false);
       setMedicineFee(0);
+      setIncludeDiet(false);
+      if (!packageInstallmentAmount) {
+        setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+      }
     }
   };
 
@@ -230,18 +267,21 @@ export function AppointmentPaymentWebModal({
     );
   };
 
+  const isPackageMode = isPackageMember ? billingMode === "package" : paymentType === "package";
   const totalMedicinesItemized = medicines.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
-  const isMedicineAmountMatched = !includeMedicine || totalMedicinesItemized === medicineFee;
+  const isMedicineAmountMatched = isPackageMode || !includeMedicine || totalMedicinesItemized === medicineFee;
 
   const subTotal =
     (includeConsult ? consultationFee : 0) +
     (includeMedicine ? medicineFee : 0) +
     (includeDiet ? dietFee : 0);
 
-  const totalAmountDue = Math.max(
-    0,
-    subTotal - (discountStatus === "APPROVED" ? discountApprovedAmount : 0)
-  );
+  const totalAmountDue = isPackageMode
+    ? Math.max(0, packageInstallmentAmount)
+    : Math.max(
+        0,
+        subTotal - (discountStatus === "APPROVED" ? discountApprovedAmount : 0)
+      );
 
   const handleRequestDiscount = async () => {
     const reqAmount = parseFloat(discountRequestedAmount);
@@ -291,7 +331,7 @@ export function AppointmentPaymentWebModal({
       return;
     }
 
-    if (includeMedicine && !isMedicineAmountMatched) {
+    if (!isPackageMode && includeMedicine && !isMedicineAmountMatched) {
       alert(
         `Medicine itemization mismatch: Allocated medicine fee is ₹${medicineFee}, but itemized total is ₹${totalMedicinesItemized}. Please adjust medicine amounts.`
       );
@@ -303,13 +343,18 @@ export function AppointmentPaymentWebModal({
       const payload = {
         appointmentId: appointment.id,
         targetAmount: parseFloat(targetAmount) || 0,
-        consultationFee: includeConsult ? consultationFee : 0,
-        medicineFee: includeMedicine ? medicineFee : 0,
-        dietPlanFee: includeDiet ? dietFee : 0,
+        consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
+        medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
+        dietPlanFee: isPackageMode ? 0 : (includeDiet ? dietFee : 0),
         totalAmountDue,
+        totalPaid: totalAmountDue,
+        hasPackage: isPackageMode,
+        packageInstallmentPaid: isPackageMode ? totalAmountDue : undefined,
+        isRegularBilling: isPackageMember && billingMode === "regular",
+        skipPackagePayment: isPackageMember && billingMode === "regular",
         paymentMethod: selectedMethod,
-        medicineDuration: includeMedicine ? medicineDuration : undefined,
-        medicinesList: includeMedicine ? medicines : [],
+        medicineDuration: (!isPackageMode && includeMedicine) ? medicineDuration : undefined,
+        medicinesList: (!isPackageMode && includeMedicine) ? medicines : [],
       };
 
       const res = await fetch("/api/reception/payment", {
@@ -374,21 +419,35 @@ export function AppointmentPaymentWebModal({
 
             <div className="bg-white rounded-lg p-3 border border-sky-100 flex items-center justify-between gap-3 shadow-2xs">
               <div className="flex-1">
-                <span className="font-extrabold text-slate-900 text-xs block">
-                  Target Amount (Consultation + Medicine):
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-slate-900 text-xs block">
+                    Target Amount (Consultation + Medicine):
+                  </span>
+                  {isPackageMode && (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[9.5px] font-black uppercase">
+                      Covered Under Package
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] text-slate-500 block">
-                  Split & presets calculate strictly within this target
+                  {isPackageMode
+                    ? "Consultation & medicines are bundled into package. Switch to Regular Visit below to edit."
+                    : "Split & presets calculate strictly within this target"}
                 </span>
               </div>
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-sky-500">
+              <div className={`flex items-center gap-1 border rounded-lg px-2.5 py-1.5 ${
+                isPackageMode ? "bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed" : "bg-slate-50 border-slate-300 focus-within:ring-2 focus-within:ring-sky-500"
+              }`}>
                 <span className="text-slate-600 font-bold text-xs">₹</span>
                 <input
                   type="number"
                   placeholder="0"
+                  disabled={isPackageMode}
                   value={targetAmount}
                   onChange={(e) => handleTargetAmountChange(e.target.value)}
-                  className="w-20 font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                  className={`w-20 font-black text-sm focus:outline-none bg-transparent ${
+                    isPackageMode ? "text-slate-400 cursor-not-allowed" : "text-slate-900"
+                  }`}
                 />
               </div>
             </div>
@@ -420,7 +479,123 @@ export function AppointmentPaymentWebModal({
             </div>
           </div>
 
-          {/* Consultation Fee Item */}
+          {/* PACKAGE MEMBER BANNER & MODE TOGGLE */}
+          {isPackageMember && (
+            <div className="rounded-xl border border-sky-300 p-4 bg-linear-to-r from-sky-50 to-blue-50/60 shadow-xs space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-md bg-[#0284c7] text-white text-[10px] font-black uppercase tracking-wider">
+                    PKG MEMBER
+                  </span>
+                  <span className="font-extrabold text-xs text-sky-950">
+                    {pkgName}
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold text-slate-500">
+                  Valid till: {pkgEndDate}
+                </span>
+              </div>
+
+              {/* Mode Toggle: Package Installment vs Regular Visit */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillingMode("package");
+                    setPaymentType("package");
+                    setIncludeConsult(false);
+                    setConsultationFee(0);
+                    setIncludeMedicine(false);
+                    setMedicineFee(0);
+                    setIncludeDiet(false);
+                    if (!packageInstallmentAmount) {
+                      setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+                    }
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
+                    billingMode === "package"
+                      ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                      : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                  }`}
+                >
+                  <span>✓</span>
+                  <span>Pay Package Installment</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillingMode("regular");
+                    setPaymentType("consultation");
+                    const docFee =
+                      typeof appointment.consultationFee === "number" && appointment.consultationFee > 0
+                        ? appointment.consultationFee
+                        : 500;
+                    setTargetAmount(docFee > 0 ? String(docFee) : "500");
+                    setIncludeConsult(true);
+                    setConsultationFee(docFee || 500);
+                    setIncludeMedicine(false);
+                    setMedicineFee(0);
+                  }}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
+                    billingMode === "regular"
+                      ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                      : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                  }`}
+                >
+                  <span>⚡</span>
+                  <span>Regular Visit / Extra Medicine</span>
+                </button>
+              </div>
+
+              {billingMode === "package" ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white/80 p-2 rounded-lg border border-sky-100">
+                      <div className="text-[9.5px] font-bold text-slate-500 uppercase">Total Package</div>
+                      <div className="text-xs font-black text-slate-800">₹{pkgTotal.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white/80 p-2 rounded-lg border border-emerald-100">
+                      <div className="text-[9.5px] font-bold text-emerald-600 uppercase">Paid So Far</div>
+                      <div className="text-xs font-black text-emerald-700">₹{pkgPaid.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white/80 p-2 rounded-lg border border-sky-100">
+                      <div className="text-[9.5px] font-bold text-sky-600 uppercase">Balance Pending</div>
+                      <div className="text-xs font-black text-sky-700">₹{pkgPending.toLocaleString()}</div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-sky-200">
+                    <label className="block text-xs font-black text-slate-800 mb-1">
+                      Pay Package Installment For This Visit (₹) <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={packageInstallmentAmount}
+                        onChange={(e) => setPackageInstallmentAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full pl-7 pr-3 py-2 rounded-lg border border-sky-300 bg-white font-extrabold text-sky-950 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                        placeholder="Enter installment amount to collect..."
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Doctor consultation & medicines are covered under package. Balance after this payment: ₹{Math.max(0, pkgPending - (Number(packageInstallmentAmount) || 0)).toLocaleString()}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-900 font-medium">
+                  ⚡ <strong>Package Installment Paused for This Visit:</strong> Target amount & regular consultation/medicines are enabled below. The patient's package remains active with balance ₹{pkgPending.toLocaleString()} and will not be deducted for this visit.
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isPackageMode && (
+            <>
+              {/* Consultation Fee Item */}
           <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <button
@@ -712,6 +887,8 @@ export function AppointmentPaymentWebModal({
               </div>
             )}
           </div>
+        </>
+      )}
 
           {/* Payment Method Selector */}
           <div className="space-y-2 pt-1">

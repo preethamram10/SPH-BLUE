@@ -61,6 +61,9 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
   const [rotation, setRotation] = useState(0); // 0, 90, 180, 270
   const [zoomScale, setZoomScale] = useState(1);
 
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+
   // Sync index on open
   useEffect(() => {
     if (visible) {
@@ -70,24 +73,26 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
     }
   }, [visible, initialIndex, images.length]);
 
-  if (!visible || images.length === 0) return null;
-
-  const currentImage = images[currentIndex] || images[0];
-
   const handleNext = () => {
-    if (currentIndex < images.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-      setRotation(0);
-      setZoomScale(1);
-    }
+    setCurrentIndex((prev) => {
+      if (prev < imagesRef.current.length - 1) {
+        setRotation(0);
+        setZoomScale(1);
+        return prev + 1;
+      }
+      return prev;
+    });
   };
 
   const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
-      setRotation(0);
-      setZoomScale(1);
-    }
+    setCurrentIndex((prev) => {
+      if (prev > 0) {
+        setRotation(0);
+        setZoomScale(1);
+        return prev - 1;
+      }
+      return prev;
+    });
   };
 
   // Swipe gesture support to flip images left/right
@@ -108,6 +113,10 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
       },
     })
   ).current;
+
+  if (!visible || images.length === 0) return null;
+
+  const currentImage = images[currentIndex] || images[0];
 
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360);

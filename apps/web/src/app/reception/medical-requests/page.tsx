@@ -880,16 +880,12 @@ function MedicalRequestsContent() {
                 {/* LEFT: CERTIFICATE PAPER SIMULATION (A4 Aspect Ratio) */}
                 <div className="lg:col-span-7 flex justify-center">
                   <div className="w-full max-w-[500px] bg-white shadow-md border border-slate-200 rounded-lg overflow-hidden text-slate-900 font-sans flex flex-col justify-between min-h-[580px]">
-                    {/* Top Blue Banner */}
-                    <div className="bg-[#1d8ecd] h-14 px-4 flex items-center justify-between text-white">
-                      <div className="bg-white text-sky-700 px-3 py-1 rounded shadow-xs flex items-center gap-2">
-                        <img src={CLINIC_LOGO_BASE64} alt="Spiritual Homeopathy Logo" className="h-6 w-auto object-contain" />
-                        <div>
-                          <span className="font-extrabold text-[11px] tracking-tight block leading-tight">Spiritual Homeopathy</span>
-                          <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider block">{sharePopupData.branchName}</span>
-                        </div>
+                    {/* Top Header: Left White with Logo, Right Blue Banner */}
+                    <div className="bg-white h-14 flex items-stretch justify-between border-b border-slate-100">
+                      <div className="flex-1 bg-white px-4 flex items-center">
+                        <img src={CLINIC_LOGO_BASE64} alt="Spiritual Homeopathy Logo" className="h-8 w-auto object-contain" />
                       </div>
-                      <div className="text-right">
+                      <div className="bg-[#1d8ecd] px-4 flex flex-col justify-center text-right text-white">
                         <span className="text-[10px] font-bold tracking-wider uppercase block">
                           spiritualhomeoclinic.com
                         </span>

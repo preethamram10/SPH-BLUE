@@ -263,6 +263,34 @@ export default function DoctorDashboard() {
     );
   };
 
+  const renderVisitBadge = (appt: any) => {
+    const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+        {badge === "New" && (
+          <View style={styles.badgeNew}>
+            <Text style={styles.badgeNewText}>NEW</Text>
+          </View>
+        )}
+        {badge === "In-Dur" && (
+          <View style={styles.badgeInDur}>
+            <Text style={styles.badgeInDurText}>IN-DUR</Text>
+          </View>
+        )}
+        {badge === "Revisit" && (
+          <View style={styles.badgeRevisit}>
+            <Text style={styles.badgeRevisitText}>REVISIT</Text>
+          </View>
+        )}
+        {!!appt.hasPackage && (
+          <View style={styles.badgePkg}>
+            <Text style={styles.badgePkgText}>PKG</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const filtered = appointments.filter((a) => {
     if (activeFilter === "ALL") return true;
     const st = (a.status || "WAITING").toUpperCase();
@@ -482,12 +510,7 @@ export default function DoctorDashboard() {
                           {appt.registrationId || appt.patientId || "ID: SPH-GEN"}
                         </Text>
                       </View>
-                      {isRevisit && (
-                        <View style={styles.revisitBadge}>
-                          <Ionicons name="refresh" size={9} color="#d97706" />
-                          <Text style={styles.revisitBadgeText}>REVISIT</Text>
-                        </View>
-                      )}
+                      {renderVisitBadge(appt)}
                     </View>
                     <Text style={styles.apptPhoneText}>{displayPhone}</Text>
                   </TouchableOpacity>
@@ -892,12 +915,77 @@ const styles = StyleSheet.create({
     borderColor: "#fde68a",
     paddingHorizontal: 5,
     paddingVertical: 1,
-    borderRadius: 4,
+    borderRadius: 6,
   },
   revisitBadgeText: {
     fontSize: 8.5,
     fontWeight: "800",
     color: "#d97706",
+    letterSpacing: 0.3,
+  },
+  badgeNew: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2.5,
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  badgeNewText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#16a34a",
+    letterSpacing: 0.3,
+  },
+  badgeInDur: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2.5,
+    backgroundColor: "#e0f2fe",
+    borderWidth: 1,
+    borderColor: "#7dd3fc",
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  badgeInDurText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#0284c7",
+    letterSpacing: 0.3,
+  },
+  badgeRevisit: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2.5,
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  badgeRevisitText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#d97706",
+    letterSpacing: 0.3,
+  },
+  badgePkg: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 5.5,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  badgePkgText: {
+    fontSize: 8.5,
+    fontWeight: "900",
+    color: "#ffffff",
     letterSpacing: 0.3,
   },
   apptPhoneText: {

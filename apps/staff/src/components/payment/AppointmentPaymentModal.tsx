@@ -85,6 +85,25 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     },
   ]);
 
+  // Package Member installment state
+  const isPackageMember = Boolean(
+    appointment?.hasPackage ||
+    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
+    appointment?.activePackage
+  );
+  const pkgTotal = appointment?.packageTotalAmount ?? appointment?.activePackage?.totalAmount ?? 0;
+  const pkgPaid = appointment?.packagePaidAmount ?? appointment?.activePackage?.paidAmount ?? 0;
+  const pkgPending = typeof appointment?.packagePendingAmount === "number"
+    ? appointment.packagePendingAmount
+    : (typeof appointment?.activePackage?.pendingAmount === "number"
+      ? appointment.activePackage.pendingAmount
+      : Math.max(0, pkgTotal - pkgPaid));
+  const pkgName = appointment?.packageName || appointment?.activePackage?.packageName || `${appointment?.packageDurationMonths || 3} Months Treatment Package`;
+  const pkgEndDate = appointment?.packageEndDate || appointment?.activePackage?.endDate || "N/A";
+
+  const [packageInstallmentAmount, setPackageInstallmentAmount] = useState<string>("");
+  const [billingMode, setBillingMode] = useState<"package" | "regular">("package");
+
   // Medicine Discount
   const [discountStatus, setDiscountStatus] = useState<"NONE" | "PENDING" | "APPROVED" | "REJECTED">(
     appointment?.discountStatus || "NONE"
@@ -126,16 +145,67 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       setIncludeConsult(docFee > 0 || !isPaid);
       setIncludeMedicine(Boolean(appointment.medicineFee && appointment.medicineFee > 0));
       setIncludeDiet(Boolean(appointment.dietPlanFee && appointment.dietPlanFee > 0));
-      setPaymentType("consultation");
+
+      if (isPackageMember) {
+        setBillingMode("package");
+        setPaymentType("package");
+        setIncludeConsult(false);
+        setConsultationFee(0);
+        setIncludeMedicine(false);
+        setMedicineFee(0);
+        setIncludeDiet(false);
+        setPackageInstallmentAmount(pkgPending > 0 ? String(pkgPending) : "");
+      } else {
+        setBillingMode("regular");
+        setPaymentType("consultation");
+      }
+
       setSelectedMethod(null);
       setDiscountStatus(appointment.discountStatus || "NONE");
       setDiscountApprovedAmount(appointment.discountApproved || 0);
     }
   }, [visible, appointment]);
 
+  const handleSelectBillingMode = (mode: "package" | "regular") => {
+    setBillingMode(mode);
+    if (mode === "package") {
+      setPaymentType("package");
+      setIncludeConsult(false);
+      setConsultationFee(0);
+      setIncludeMedicine(false);
+      setMedicineFee(0);
+      setIncludeDiet(false);
+      if (!packageInstallmentAmount) {
+        setPackageInstallmentAmount(pkgPending > 0 ? String(pkgPending) : "0");
+      }
+    } else {
+      setPaymentType("consult_and_med");
+      const target = parseFloat(targetAmount) || 0;
+      setIncludeConsult(true);
+      setIncludeMedicine(true);
+      const half = Math.round(target / 2);
+      setConsultationFee(half);
+      setMedicineFee(target - half);
+      setMedicines([
+        {
+          id: "med-1",
+          name: "",
+          type: "Pills",
+          timing: "M-A-N",
+          amount: target - half,
+        },
+      ]);
+    }
+  };
+
   // Adjust Fees Based on Payment Type
   const handlePaymentTypeChange = (type: "consultation" | "consult_and_med" | "split" | "package") => {
     setPaymentType(type);
+    if (type === "package") {
+      setBillingMode("package");
+    } else if (isPackageMember) {
+      setBillingMode("regular");
+    }
     const target = parseFloat(targetAmount) || 0;
 
     if (type === "consultation") {
@@ -174,10 +244,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         },
       ]);
     } else if (type === "package") {
-      setIncludeConsult(true);
+      setIncludeConsult(false);
       setConsultationFee(0);
       setIncludeMedicine(false);
       setMedicineFee(0);
+      setIncludeDiet(false);
+      if (!packageInstallmentAmount) {
+        setPackageInstallmentAmount(pkgPending > 0 ? String(pkgPending) : "0");
+      }
     }
   };
 
@@ -236,12 +310,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     setMedicines((prev) => prev.filter((m) => m.id !== id));
   };
 
+  const isPackageMode = isPackageMember && billingMode === "package";
   const itemizedTotal = medicines.reduce((sum, m) => sum + (m.amount || 0), 0);
-  const isMedicineTotalMatching = !includeMedicine || medicineFee === 0 || itemizedTotal === medicineFee;
+  const isMedicineTotalMatching = isPackageMode || !includeMedicine || medicineFee === 0 || itemizedTotal === medicineFee;
 
   // Total Due calculation with approved discount
   const baseTotal = (includeConsult ? consultationFee : 0) + (includeMedicine ? medicineFee : 0) + (includeDiet ? dietFee : 0);
-  const totalAmountDue = Math.max(0, baseTotal - (discountStatus === "APPROVED" ? discountApprovedAmount : 0));
+  const totalAmountDue = isPackageMode
+    ? Math.max(0, parseFloat(packageInstallmentAmount) || 0)
+    : Math.max(0, baseTotal - (discountStatus === "APPROVED" ? discountApprovedAmount : 0));
 
   // Request Discount to HR / Admin
   const handleRequestDiscountSubmit = async () => {
@@ -287,7 +364,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       return;
     }
 
-    if (includeMedicine && medicineFee > 0 && itemizedTotal !== medicineFee) {
+    if (!isPackageMode && includeMedicine && medicineFee > 0 && itemizedTotal !== medicineFee) {
       Alert.alert(
         "Medicine Amount Mismatch",
         `Allocated medicine amount is ₹${medicineFee}, but itemized medicines total ₹${itemizedTotal}.\nPlease balance the medicine amounts to match ₹${medicineFee}.`
@@ -312,10 +389,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     try {
       const payload = {
         appointmentId: appointment.id,
-        consultationFee: includeConsult ? consultationFee : 0,
-        medicineFee: includeMedicine ? medicineFee : 0,
-        dietPlanFee: includeDiet ? dietFee : 0,
+        consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
+        medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
+        dietPlanFee: isPackageMode ? 0 : (includeDiet ? dietFee : 0),
         totalAmountDue,
+        totalPaid: totalAmountDue,
+        hasPackage: isPackageMode,
+        isRegularBilling: !isPackageMode,
+        skipPackagePayment: !isPackageMode,
+        packageInstallmentPaid: isPackageMode ? totalAmountDue : undefined,
         paymentMethod:
           selectedMethod === "Cash"
             ? "CASH"
@@ -328,9 +410,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             : selectedMethod === "Split"
             ? "SPLIT"
             : "SEND_TO_APP",
-        medicinesList: includeMedicine ? medicines : [],
+        medicinesList: (!isPackageMode && includeMedicine) ? medicines : [],
         medicineDuration,
-        discountApproved: discountStatus === "APPROVED" ? discountApprovedAmount : 0,
+        discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
         discountNotes,
         discountStatus,
       };
@@ -621,6 +703,19 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                         <Text style={styles.breakdownHeadAmount}>AMOUNT (₹)</Text>
                       </View>
 
+                      {/* Package Installment */}
+                      {(isPackageMode || completedInvoice?.hasPackage) && (
+                        <View style={styles.breakdownRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.breakdownRowDesc}>Package Treatment Installment</Text>
+                            <Text style={{ fontSize: 9.5, color: "#64748b" }}>{pkgName || "Care Package"}</Text>
+                          </View>
+                          <Text style={[styles.breakdownRowAmount, { color: "#0284c7" }]}>
+                            ₹{Number(displayTotal).toFixed(2)}
+                          </Text>
+                        </View>
+                      )}
+
                       {/* Consultation Fee */}
                       {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
                         <View style={styles.breakdownRow}>
@@ -754,20 +849,32 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                 keyboardDismissMode="on-drag"
               >
           {/* 1. TARGET AMOUNT BOX (Matching Screenshot 2) */}
-          <View style={styles.targetCard}>
+          <View style={[styles.targetCard, isPackageMode && { opacity: 0.7, backgroundColor: "#f8fafc" }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.targetCardTitle}>Target Amount (Consultation + Medicine):</Text>
-              <Text style={styles.targetCardSub}>Split & presets calculate strictly within this target</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <Text style={styles.targetCardTitle}>Target Amount (Consultation + Medicine):</Text>
+                {isPackageMode && (
+                  <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 9, fontWeight: "800", color: "#0284c7" }}>Covered Under Package</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.targetCardSub}>
+                {isPackageMode
+                  ? "Disabled: Covered by package installment. Tap 'Regular Visit' below to activate target amount."
+                  : "Split & presets calculate strictly within this target"}
+              </Text>
             </View>
 
-            <View style={styles.targetInputWrapper}>
+            <View style={[styles.targetInputWrapper, isPackageMode && { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }]}>
               <Text style={styles.rupeeSymbol}>₹</Text>
               <TextInput
-                style={styles.targetTextInput}
+                style={[styles.targetTextInput, isPackageMode && { color: "#94a3b8" }]}
+                editable={!isPackageMode}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor="#94a3b8"
-                value={targetAmount}
+                value={isPackageMode ? "0" : targetAmount}
                 onChangeText={handleTargetAmountChange}
               />
             </View>
@@ -799,7 +906,103 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             })}
           </View>
 
-          {/* 3. CONSULTATION FEE CARD (Matching Screenshot) */}
+          {/* PACKAGE MEMBER BANNER & MODE TOGGLE */}
+          {isPackageMember && (
+            <View style={styles.packageBannerCard}>
+              <View style={styles.packageHeaderRow}>
+                <View style={styles.packageBadgeRow}>
+                  <View style={styles.packageBadgePill}>
+                    <Text style={styles.packageBadgeText}>PKG MEMBER</Text>
+                  </View>
+                  <Text style={styles.packageNameTitle} numberOfLines={1}>
+                    {pkgName}
+                  </Text>
+                </View>
+                <Text style={styles.packageValidityText}>
+                  Valid till: {pkgEndDate}
+                </Text>
+              </View>
+
+              {/* Billing Mode Switch Pills */}
+              <View style={styles.packageModeToggleRow}>
+                <TouchableOpacity
+                  style={[styles.packageModeBtn, billingMode === "package" && styles.packageModeBtnActive]}
+                  onPress={() => handleSelectBillingMode("package")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.packageModeBtnText, billingMode === "package" && styles.packageModeBtnTextActive]}>
+                    ✓ Pay Package Installment
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.packageModeBtn, billingMode === "regular" && styles.packageModeBtnActive]}
+                  onPress={() => handleSelectBillingMode("regular")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.packageModeBtnText, billingMode === "regular" && styles.packageModeBtnTextActive]}>
+                    ⚡ Regular Visit / Extra Medicine
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Mode Description & Inputs */}
+              {billingMode === "package" ? (
+                <>
+                  {/* 3 Stats Boxes */}
+                  <View style={styles.packageStatsRow}>
+                    <View style={styles.packageStatBox}>
+                      <Text style={styles.packageStatLabel}>TOTAL PACKAGE</Text>
+                      <Text style={styles.packageStatValue}>₹{pkgTotal.toLocaleString()}</Text>
+                    </View>
+                    <View style={[styles.packageStatBox, { borderColor: "#bbf7d0", backgroundColor: "#f0fdf4" }]}>
+                      <Text style={[styles.packageStatLabel, { color: "#16a34a" }]}>PAID SO FAR</Text>
+                      <Text style={[styles.packageStatValue, { color: "#15803d" }]}>₹{pkgPaid.toLocaleString()}</Text>
+                    </View>
+                    <View style={[styles.packageStatBox, { borderColor: "#bae6fd", backgroundColor: "#f0f9ff" }]}>
+                      <Text style={[styles.packageStatLabel, { color: "#0284c7" }]}>REMAINING</Text>
+                      <Text style={[styles.packageStatValue, { color: "#0369a1" }]}>₹{pkgPending.toLocaleString()}</Text>
+                    </View>
+                  </View>
+
+                  {/* Installment Amount Input */}
+                  <View style={styles.packageInstallmentBox}>
+                    <Text style={styles.packageInstallmentLabel}>
+                      Pay Package Installment For This Visit (₹) <Text style={{ color: "#ef4444" }}>*</Text>
+                    </Text>
+                    <View style={styles.packageAmountInputRow}>
+                      <Text style={styles.packageRupeeIcon}>₹</Text>
+                      <TextInput
+                        style={styles.packageAmountInput}
+                        keyboardType="numeric"
+                        placeholder="Enter installment amount..."
+                        placeholderTextColor="#94a3b8"
+                        value={packageInstallmentAmount}
+                        onChangeText={setPackageInstallmentAmount}
+                      />
+                    </View>
+                    <Text style={styles.packageInstallmentHint}>
+                      Doctor consultation & medicines are covered under package. Balance after this visit: ₹{Math.max(0, pkgPending - (parseFloat(packageInstallmentAmount) || 0)).toLocaleString()}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.packagePausedInfoBox}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <Ionicons name="information-circle" size={16} color="#0369a1" />
+                    <Text style={styles.packagePausedTitle}>Package Installment Paused for this Visit</Text>
+                  </View>
+                  <Text style={styles.packagePausedSub}>
+                    Patient package ({pkgName}) remains active. Target amount is now enabled above and regular consultation & medicine charges apply below.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {!isPackageMode && (
+            <>
+              {/* 3. CONSULTATION FEE CARD (Matching Screenshot) */}
           <View style={[styles.feeCard, includeConsult && styles.feeCardActive]}>
             <TouchableOpacity
               style={styles.checkboxTouch}
@@ -1112,6 +1315,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
               </TouchableOpacity>
             )}
           </View>
+        </>
+      )}
 
           {/* 7. MANDATORY PRESCRIPTION CHECK BANNER (Matching Screenshot 2) */}
           {!hasPrescription && (
@@ -2193,6 +2398,163 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#334155",
+  },
+  packageBannerCard: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#bae6fd",
+    padding: 12,
+    marginBottom: 12,
+  },
+  packageHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  packageBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  packageBadgePill: {
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  packageBadgeText: {
+    color: "#ffffff",
+    fontSize: 9.5,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  packageNameTitle: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#0c4a6e",
+    flex: 1,
+  },
+  packageValidityText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  packageStatsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 12,
+  },
+  packageStatBox: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+    borderRadius: 8,
+    padding: 8,
+    alignItems: "center",
+  },
+  packageStatLabel: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#64748b",
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  packageStatValue: {
+    fontSize: 12.5,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  packageInstallmentBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    padding: 10,
+  },
+  packageInstallmentLabel: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+  packageAmountInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#0284c7",
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    height: 42,
+  },
+  packageRupeeIcon: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#64748b",
+    marginRight: 6,
+  },
+  packageAmountInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  packageInstallmentHint: {
+    fontSize: 10,
+    color: "#64748b",
+    marginTop: 6,
+  },
+  packageModeToggleRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 10,
+  },
+  packageModeBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  packageModeBtnActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  packageModeBtnText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0369a1",
+  },
+  packageModeBtnTextActive: {
+    color: "#ffffff",
+    fontWeight: "900",
+  },
+  packagePausedInfoBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    padding: 10,
+  },
+  packagePausedTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0369a1",
+  },
+  packagePausedSub: {
+    fontSize: 10,
+    color: "#475569",
+    marginTop: 3,
   },
 });
 

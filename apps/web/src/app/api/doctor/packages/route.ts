@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { packageService } from "@spiritualhomeo/database";
 
 const DEFAULT_PACKAGES = [
   {
@@ -43,79 +44,78 @@ const DEFAULT_PACKAGES = [
   },
 ];
 
-const ENROLLED_MEMBERS = [
-  {
-    id: "MEM-101",
-    packageId: "PKG-01",
-    packageName: "Annual Family Chronic Care Plan",
-    patientName: "M. Rajeshwar Rao",
-    registrationId: "SPH-KPB-0012",
-    phone: "9848011223",
-    enrolledDate: "15-08-2026",
-    expiryDate: "15-08-2027",
-    visitsUsed: 3,
-    totalVisits: 12,
-    status: "Active",
-  },
-  {
-    id: "MEM-102",
-    packageId: "PKG-02",
-    packageName: "6-Month Skin & Allergy Remedy Plan",
-    patientName: "S. Swathi",
-    registrationId: "SPH-KPB-0034",
-    phone: "9700334455",
-    enrolledDate: "02-10-2026",
-    expiryDate: "02-04-2027",
-    visitsUsed: 2,
-    totalVisits: 6,
-    status: "Active",
-  },
-  {
-    id: "MEM-103",
-    packageId: "PKG-03",
-    packageName: "Hair Fall & Scalp Renewal Course",
-    patientName: "K. Hariprasad",
-    registrationId: "SPH-KPB-0056",
-    phone: "9911223344",
-    enrolledDate: "10-09-2026",
-    expiryDate: "10-12-2026",
-    visitsUsed: 3,
-    totalVisits: 4,
-    status: "Active",
-  },
-];
-
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    packages: DEFAULT_PACKAGES,
-    members: ENROLLED_MEMBERS,
-  });
-}
-
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { packageId, patientName, registrationId, phone } = body;
+    const { searchParams } = new URL(req.url);
+    const branch = searchParams.get("branch") || undefined;
+    const realMembers = await packageService.getAllPackageMembers(branch);
 
-    const pkg = DEFAULT_PACKAGES.find((p) => p.id === packageId) || DEFAULT_PACKAGES[0];
-    const newMember = {
-      id: `MEM-${Date.now().toString().slice(-4)}`,
-      packageId: pkg.id,
-      packageName: pkg.name,
-      patientName,
-      registrationId,
-      phone,
-      enrolledDate: new Date().toLocaleDateString("en-IN"),
-      expiryDate: "Valid for 6-12 Months",
-      visitsUsed: 1,
-      totalVisits: pkg.totalVisits,
-      status: "Active",
-    };
+    const formattedMembers = realMembers.map((m) => ({
+      id: m.id,
+      packageId: m.id,
+      packageName: m.packageName,
+      patientName: m.patientName,
+      registrationId: m.registrationId,
+      phone: m.phone,
+      branch: m.branch,
+      enrolledDate: m.startDate,
+      expiryDate: m.endDate,
+      durationMonths: m.durationMonths,
+      totalAmount: m.totalAmount,
+      paidAmount: m.paidAmount,
+      pendingAmount: m.pendingAmount,
+      payments: m.payments || [],
+      visitsUsed: (m.payments || []).length || 1,
+      totalVisits: m.durationMonths,
+      status: m.status === "ACTIVE" ? "Active" : "Completed",
+    }));
 
-    return NextResponse.json({ success: true, member: newMember });
+    return NextResponse.json({
+      success: true,
+      packages: DEFAULT_PACKAGES,
+      members: formattedMembers,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
 
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { packageId, patientName, registrationId, phone, branch, totalAmount, durationMonths } = body;
+
+    const pkg = DEFAULT_PACKAGES.find((p) => p.id === packageId);
+    const duration = durationMonths || (pkg ? parseInt(pkg.duration) || 6 : 6);
+    const total = totalAmount || (pkg ? pkg.price : 10000);
+
+    const created = await packageService.registerPackage({
+      registrationId: registrationId || "",
+      patientName,
+      phone,
+      branch: branch || "KPHB Branch",
+      durationMonths: duration,
+      totalAmount: total,
+    });
+
+    return NextResponse.json({
+      success: true,
+      member: {
+        id: created.id,
+        packageId: created.id,
+        packageName: created.packageName,
+        patientName: created.patientName,
+        registrationId: created.registrationId,
+        phone: created.phone,
+        enrolledDate: created.startDate,
+        expiryDate: created.endDate,
+        totalAmount: created.totalAmount,
+        paidAmount: created.paidAmount,
+        pendingAmount: created.pendingAmount,
+        status: created.status,
+      },
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}

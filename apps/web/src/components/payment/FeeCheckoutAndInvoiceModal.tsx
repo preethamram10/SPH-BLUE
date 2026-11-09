@@ -63,6 +63,15 @@ export interface PatientAppointment {
   paidAt?: string;
   prescriptionImages?: string[];
   status?: string;
+  hasPackage?: boolean;
+  packageId?: string;
+  packageName?: string;
+  packageTotalAmount?: number;
+  packagePaidAmount?: number;
+  packagePendingAmount?: number;
+  packageDurationMonths?: number;
+  packageEndDate?: string;
+  packageInstallmentPaid?: number;
 }
 
 export interface FeeCheckoutModalProps {
@@ -107,6 +116,26 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const [paymentMode, setPaymentMode] = useState<string>("Counter UPI");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Package member installment state
+  const isPackageMember = Boolean(
+    appointment?.hasPackage ||
+    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
+    (appointment as any)?.activePackage
+  );
+  const pkgTotal = appointment?.packageTotalAmount ?? (appointment as any)?.activePackage?.totalAmount ?? 0;
+  const pkgPaid = appointment?.packagePaidAmount ?? (appointment as any)?.activePackage?.paidAmount ?? 0;
+  const pkgPending = typeof appointment?.packagePendingAmount === "number"
+    ? appointment.packagePendingAmount
+    : (typeof (appointment as any)?.activePackage?.pendingAmount === "number"
+      ? (appointment as any).activePackage.pendingAmount
+      : Math.max(0, pkgTotal - pkgPaid));
+  const pkgName = appointment?.packageName || (appointment as any)?.activePackage?.packageName || `${appointment?.packageDurationMonths || 3} Months Treatment Package`;
+  const pkgEndDate = appointment?.packageEndDate || (appointment as any)?.activePackage?.endDate || "N/A";
+
+  const [billingMode, setBillingMode] = useState<"package" | "regular">("package");
+  const isPackageMode = isPackageMember && billingMode === "package";
+  const [packageInstallmentAmount, setPackageInstallmentAmount] = useState<number>(0);
+
   // Completed Invoice State for Receipt View
   const [completedInvoice, setCompletedInvoice] = useState<PatientAppointment | null>(appointment);
 
@@ -148,6 +177,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setDiscount(appointment.discount ?? 0);
       setDiscountReason(appointment.discountReason || "");
       setPaymentMode(appointment.paymentMode || appointment.paymentMethod || "Counter UPI");
+
+      if (isPackageMember) {
+        setBillingMode("package");
+        setIncludeConsultFee(false);
+        setConsultationFee(0);
+        setIncludeMedicineFee(false);
+        setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+      } else {
+        setBillingMode("regular");
+      }
     }
   }, [isOpen, appointment]);
 
@@ -169,8 +208,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   }, [includeConsultFee, consultationFee, totalMedicineAmount, dietFee, otherCharges]);
 
   const grandTotalDue = useMemo(() => {
+    if (isPackageMode) {
+      return Number(packageInstallmentAmount) || 0;
+    }
     return Math.max(0, subTotalAmount - (Number(discount) || 0));
-  }, [subTotalAmount, discount]);
+  }, [isPackageMode, packageInstallmentAmount, subTotalAmount, discount]);
 
   // --- MEDICINE ITEMS HANDLERS ---
   const handleAddMedicineRow = () => {
@@ -216,18 +258,22 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         branch: appointment.branch || "KPHB Branch",
         appointmentDate: appointment.appointmentDate || nowIso.split("T")[0],
         timeSlot: appointment.timeSlot || "02:30 PM",
-        consultationFee: includeConsultFee ? Number(consultationFee) || 0 : 0,
-        medicineFee: totalMedicineAmount,
-        medicineDuration: includeMedicineFee ? medicineDuration : undefined,
-        medicines: includeMedicineFee ? medicineItems : [],
-        medicinesList: includeMedicineFee ? medicineItems : [],
+        consultationFee: isPackageMode ? 0 : (includeConsultFee ? Number(consultationFee) || 0 : 0),
+        medicineFee: isPackageMode ? 0 : totalMedicineAmount,
+        medicineDuration: (!isPackageMode && includeMedicineFee) ? medicineDuration : undefined,
+        medicines: (!isPackageMode && includeMedicineFee) ? medicineItems : [],
+        medicinesList: (!isPackageMode && includeMedicineFee) ? medicineItems : [],
         dietFee: Number(dietFee) || 0,
         dietPlanFee: Number(dietFee) || 0,
         otherCharges: Number(otherCharges) || 0,
-        discount: Number(discount) || 0,
-        discountReason: discountReason || undefined,
+        discount: (!isPackageMode) ? (Number(discount) || 0) : 0,
+        discountReason: (!isPackageMode) ? (discountReason || undefined) : undefined,
         totalPaid: grandTotalDue,
         totalAmountDue: grandTotalDue,
+        hasPackage: isPackageMode,
+        isRegularBilling: !isPackageMode,
+        skipPackagePayment: !isPackageMode,
+        packageInstallmentPaid: isPackageMode ? grandTotalDue : undefined,
         paymentMode,
         paymentMethod: paymentMode,
         paidAt: nowIso,
@@ -422,27 +468,149 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           {currentStep === "collect_fee" && (
             <div className="p-6 space-y-5 max-h-[82vh] overflow-y-auto">
 
+              {/* PACKAGE MEMBER BANNER & INSTALLMENT INPUT */}
+              {isPackageMember && (
+                <div className="rounded-xl border border-sky-300 p-4 bg-linear-to-r from-sky-50 to-blue-50/60 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-sky-600 text-white text-[10px] font-black uppercase tracking-wider">
+                        PKG MEMBER
+                      </span>
+                      <span className="font-extrabold text-xs text-sky-950">
+                        {pkgName}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      Valid till: {pkgEndDate}
+                    </span>
+                  </div>
+
+                  {/* Mode Toggle */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillingMode("package");
+                        setIncludeConsultFee(false);
+                        setConsultationFee(0);
+                        setIncludeMedicineFee(false);
+                        if (!packageInstallmentAmount) {
+                          setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+                        }
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
+                        billingMode === "package"
+                          ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                          : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                      }`}
+                    >
+                      <span>✓</span>
+                      <span>Pay Package Installment</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillingMode("regular");
+                        setIncludeConsultFee(true);
+                        setConsultationFee(typeof appointment.consultationFee === "number" && appointment.consultationFee > 0 ? appointment.consultationFee : 500);
+                        setIncludeMedicineFee(true);
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
+                        billingMode === "regular"
+                          ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                          : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                      }`}
+                    >
+                      <span>⚡</span>
+                      <span>Regular Visit / Extra Medicine</span>
+                    </button>
+                  </div>
+
+                  {billingMode === "package" ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white/80 p-2 rounded-lg border border-sky-100">
+                          <div className="text-[9.5px] font-bold text-slate-500 uppercase">Total Package</div>
+                          <div className="text-xs font-black text-slate-800">₹{pkgTotal.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-white/80 p-2 rounded-lg border border-emerald-100">
+                          <div className="text-[9.5px] font-bold text-emerald-600 uppercase">Paid So Far</div>
+                          <div className="text-xs font-black text-emerald-700">₹{pkgPaid.toLocaleString()}</div>
+                        </div>
+                        <div className="bg-white/80 p-2 rounded-lg border border-sky-100">
+                          <div className="text-[9.5px] font-bold text-sky-600 uppercase">Balance Pending</div>
+                          <div className="text-xs font-black text-sky-700">₹{pkgPending.toLocaleString()}</div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3 rounded-xl border border-sky-200">
+                        <label className="block text-xs font-black text-slate-800 mb-1">
+                          Pay Package Installment For This Visit (₹) <span className="text-rose-500">*</span>
+                        </label>
+                        <p className="text-[11px] text-slate-500 mb-2">
+                          Normal consultation fee is waived. Enter the installment amount collected for this visit:
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={packageInstallmentAmount}
+                            onChange={(e) => setPackageInstallmentAmount(Math.max(0, Number(e.target.value)))}
+                            placeholder="e.g. 2000"
+                            className="w-full pl-7 pr-3 py-2 rounded-lg border border-sky-300 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 bg-sky-50/20"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] mt-2 text-slate-600 font-medium">
+                          <span>Remaining Balance After Payment:</span>
+                          <span className="font-bold text-sky-800">
+                            ₹{Math.max(0, pkgPending - (Number(packageInstallmentAmount) || 0)).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-3 bg-white rounded-xl border border-sky-200 text-xs text-sky-900">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <span>ℹ️</span>
+                        <span>Package Installment Paused for this Visit</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        Patient package (<strong>{pkgName}</strong>) remains active on their profile. You can charge regular consultation and prescribed medicines below.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 1. CONSULTATION FEE */}
-              <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50">
+              <div className={`rounded-xl border border-slate-200 p-4 transition-all ${isPackageMode ? "bg-slate-100/60 opacity-60" : "bg-slate-50/50"}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="incConsult"
-                      checked={includeConsultFee}
+                      disabled={isPackageMode}
+                      checked={!isPackageMode && includeConsultFee}
                       onChange={(e) => setIncludeConsultFee(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <label htmlFor="incConsult" className="text-xs font-black text-slate-800 cursor-pointer">
                       Include Consultation Fee
                     </label>
+                    {isPackageMode && (
+                      <span className="text-[10px] bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded">
+                        Covered under Package
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-xs font-bold text-slate-400">₹</span>
                     <input
                       type="number"
-                      disabled={!includeConsultFee}
-                      value={consultationFee}
+                      disabled={isPackageMode || !includeConsultFee}
+                      value={isPackageMode ? 0 : consultationFee}
                       onChange={(e) => setConsultationFee(Math.max(0, Number(e.target.value)))}
                       className="w-24 rounded-lg border border-slate-300 px-2.5 py-1 text-right text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 bg-white"
                     />
@@ -451,22 +619,28 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
               </div>
 
               {/* 2. MEDICINE FEE & DURATION */}
-              <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50">
+              <div className={`rounded-xl border border-slate-200 p-4 transition-all ${isPackageMode ? "bg-slate-100/60 opacity-60" : "bg-slate-50/50"}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="incMed"
-                      checked={includeMedicineFee}
+                      disabled={isPackageMode}
+                      checked={!isPackageMode && includeMedicineFee}
                       onChange={(e) => setIncludeMedicineFee(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <label htmlFor="incMed" className="text-xs font-black text-slate-800 cursor-pointer">
                       Prescribed Homeopathy Medicines
                     </label>
+                    {isPackageMode && (
+                      <span className="text-[10px] bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded">
+                        Covered under Package
+                      </span>
+                    )}
                   </div>
 
-                  {includeMedicineFee && (
+                  {!isPackageMode && includeMedicineFee && (
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-bold text-slate-500">Duration:</span>
                       <select
@@ -805,6 +979,21 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                        {/* Package installment if package member */}
+                        {activeInvoice.hasPackage && (
+                          <tr>
+                            <td className="py-2.5">
+                              <div>Package Treatment Installment</div>
+                              <div className="text-[10px] text-slate-500 font-medium">
+                                {activeInvoice.packageName || "Treatment Care Package"}
+                              </div>
+                            </td>
+                            <td className="py-2.5 text-right font-black text-slate-900">
+                              ₹{Number(activeInvoice.packageInstallmentPaid ?? activeInvoice.totalPaid ?? grandTotalDue).toFixed(2)}
+                            </td>
+                          </tr>
+                        )}
+
                         {/* Consultation fee if included */}
                         {Number(activeInvoice.consultationFee) > 0 && (
                           <tr>

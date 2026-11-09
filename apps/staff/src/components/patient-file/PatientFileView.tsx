@@ -12,6 +12,7 @@ import {
   BackHandler,
   Platform,
   KeyboardAvoidingView,
+  Modal,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,6 +22,7 @@ import { apiFetch } from "../../services/auth";
 import { Image as ExpoImage } from "expo-image";
 import { DrawingCanvasModal } from "./DrawingCanvasModal";
 import { PrescriptionViewerModal } from "./PrescriptionViewerModal";
+import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
 import { API_BASE_URL } from "../../config/api";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
@@ -77,6 +79,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     diseases: "Chronic Migraine & Acidity",
     hasPackage: false,
     packageName: "",
+    visitBadge: "New",
   });
 
   // Active Tab: clinical | diet | media | package
@@ -88,6 +91,17 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
+
+  // Package Registration Modal State
+  const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
+  const [packageDurationMonths, setPackageDurationMonths] = useState<number>(0);
+  const [isDurationDropdownOpen, setIsDurationDropdownOpen] = useState(false);
+  const [packageTotalAmount, setPackageTotalAmount] = useState<string>("");
+  const [isRegisteringPackage, setIsRegisteringPackage] = useState(false);
+
+  // Fee Collection Modal State (Immediate payment for Reception)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
 
   const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months">("No Follow-up");
   const [followUpDate, setFollowUpDate] = useState("");
@@ -118,7 +132,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   }, [router]);
 
   // Load Patient File data from API if ID is available
-  useEffect(() => {
+  const loadPatientFile = () => {
     if (!appointmentId) return;
     setIsLoading(true);
     apiFetch<any>(`/patient-file?id=${encodeURIComponent(appointmentId)}`)
@@ -134,10 +148,12 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             diseases: pf.diseases || pf.notes || "Consultation",
             hasPackage: !!pf.hasPackage,
             packageName: pf.packageName || "",
+            visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
+            activePackage: pf.activePackage || null,
           });
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
-          if (pf.followUpDate) setFollowUpDate(pf.followUpDate);
+          if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
           if (pf.dietPlan) setDietPlan(pf.dietPlan);
           if (pf.history) setPatientHistory(pf.history);
@@ -146,7 +162,75 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       })
       .catch((err) => console.error("Error loading patient file:", err))
       .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    loadPatientFile();
   }, [appointmentId]);
+
+  const isPackageActive = Boolean(
+    patientData.hasPackage &&
+    patientData.activePackage &&
+    patientData.activePackage.status === "ACTIVE" &&
+    (!patientData.activePackage.endDate || new Date(patientData.activePackage.endDate).getTime() >= new Date().setHours(0, 0, 0, 0))
+  );
+
+  // Register Package Handler
+  const handleRegisterPackage = async () => {
+    if (isPackageActive) {
+      Alert.alert(
+        "Active Package",
+        `Patient already has an active package (${patientData.activePackage.packageName}) valid till ${patientData.activePackage.endDate}. A new package cannot be added until the current package expires.`
+      );
+      return;
+    }
+    if (!patientData.patientName || !patientData.phone) return;
+    if (!packageDurationMonths || packageDurationMonths <= 0) {
+      Alert.alert("Required", "Please select a package duration (1 to 6 Months).");
+      return;
+    }
+    const total = parseFloat(packageTotalAmount) || 0;
+    if (total <= 0) {
+      Alert.alert("Required", "Please enter a valid total package amount.");
+      return;
+    }
+    setIsRegisteringPackage(true);
+    try {
+      const res = await apiFetch<any>("/package-members", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "register",
+          registrationId: patientData.registrationId,
+          patientName: patientData.patientName,
+          phone: patientData.phone,
+          branch: patientData.branch,
+          durationMonths: packageDurationMonths,
+          totalAmount: total,
+          initialPaidAmount: 0,
+          appointmentId,
+        }),
+      });
+      if (res.success && res.member) {
+        setPatientData((prev: any) => ({
+          ...prev,
+          hasPackage: true,
+          packageName: res.member.packageName,
+          activePackage: res.member,
+        }));
+        setIsPackageModalOpen(false);
+        setPackageTotalAmount("");
+        setPackageDurationMonths(0);
+        loadPatientFile();
+        Alert.alert("Success", res.message || "Package registered successfully!");
+      } else {
+        Alert.alert("Error", res.error || "Failed to register package");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", "Error registering package: " + err.message);
+    } finally {
+      setIsRegisteringPackage(false);
+    }
+  };
 
   // Follow-up Interval calculation (1 Month, 2 Months, 3 Months, 4 Months)
   const handleSelectInterval = (
@@ -309,16 +393,46 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       });
 
       if (res.success) {
-        Alert.alert(
-          "Sent to Reception",
-          `Consultation finished for ${patientData.patientName}!\nPrescription & fee (₹${consultationFee}) moved to COLLECT FEE for Reception.`,
-          [
-            {
-              text: "OK",
-              onPress: () => handleBack(),
-            },
-          ]
-        );
+        if (role === "RECEPTION") {
+          // Reception clicked Send to Reception / Save & Collect Fee:
+          // Immediately open the fee payment modal right in Patient File
+          setSelectedPaymentAppt({
+            id: targetId,
+            patientName: patientData.patientName,
+            phoneNumber: patientData.phone,
+            phone: patientData.phone,
+            registrationId: patientData.registrationId,
+            patientId: patientData.registrationId,
+            doctorName: patientData.doctorName || "Dr. Prashanth K Vaidya",
+            branch: patientData.branch,
+            appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
+            timeSlot: patientData.timeSlot || "02:30 PM",
+            consultationFee: parseFloat(consultationFee) || 0,
+            prescriptionImages: uploadedImages,
+            hasPackage: patientData.hasPackage,
+            packageName: patientData.packageName || patientData.activePackage?.packageName,
+            packageTotalAmount: patientData.activePackage?.totalAmount,
+            packagePaidAmount: patientData.activePackage?.paidAmount,
+            packagePendingAmount: patientData.activePackage?.pendingAmount,
+            packageDurationMonths: patientData.activePackage?.durationMonths,
+            packageEndDate: patientData.activePackage?.endDate,
+            status: "COLLECT_FEE",
+          });
+          setIsPaymentModalOpen(true);
+        } else {
+          // Doctor clicked Send to Reception:
+          // Prescription and notes auto-sent to Reception, doctor work is completely over
+          Alert.alert(
+            "Sent to Reception",
+            `Consultation finished for ${patientData.patientName}!\nPrescription & notes sent to Reception.`,
+            [
+              {
+                text: "OK",
+                onPress: () => handleBack(),
+              },
+            ]
+          );
+        }
       } else {
         Alert.alert("Error", res.error || "Failed to submit patient file.");
       }
@@ -375,8 +489,25 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             <View style={styles.profileCard}>
               <View style={styles.profileNameRow}>
                 <Text style={styles.profileNameText}>{patientData.patientName}</Text>
-                <View style={styles.durationPill}>
-                  <Text style={styles.durationPillText}>IN DURATION</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  {patientData.visitBadge === "In-Dur" ? (
+                    <View style={[styles.durationPill, { backgroundColor: "#e0f2fe", borderColor: "#7dd3fc" }]}>
+                      <Text style={[styles.durationPillText, { color: "#0284c7" }]}>IN-DUR</Text>
+                    </View>
+                  ) : patientData.visitBadge === "Revisit" ? (
+                    <View style={[styles.durationPill, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+                      <Text style={[styles.durationPillText, { color: "#d97706" }]}>REVISIT</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.durationPill, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
+                      <Text style={[styles.durationPillText, { color: "#16a34a" }]}>NEW</Text>
+                    </View>
+                  )}
+                  {patientData.hasPackage && (
+                    <View style={[styles.durationPill, { backgroundColor: "#f59e0b", borderColor: "#d97706" }]}>
+                      <Text style={[styles.durationPillText, { color: "#ffffff", fontWeight: "900" }]}>PKG</Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -411,18 +542,68 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
               </View>
 
               {/* Package Sub-Card */}
-              <View style={styles.packageSubBox}>
-                <Text style={styles.packageSubText}>
-                  {patientData.hasPackage ? `Active: ${patientData.packageName}` : "No active package."}
-                </Text>
-                <TouchableOpacity
-                  style={styles.registerPkgBtn}
-                  onPress={() => router.push(role === "DOCTOR" ? "/(doctor)/packages" : ("/(reception)/appointments" as any))}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.registerPkgBtnText}>+ Register Patient in Package</Text>
-                </TouchableOpacity>
-              </View>
+              {patientData.hasPackage && patientData.activePackage ? (
+                <View style={styles.packageActiveCard}>
+                  <View style={styles.packageActiveHeader}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View style={styles.packageActiveBadge}>
+                        <Text style={styles.packageActiveBadgeText}>PKG ACTIVE</Text>
+                      </View>
+                      <Text style={styles.packageActiveTitle}>
+                        {patientData.activePackage.packageName || `${patientData.activePackage.durationMonths || 3} Mos Package`}
+                      </Text>
+                    </View>
+                    <Text style={styles.packageActiveExpiry}>
+                      Till: {patientData.activePackage.endDate || "N/A"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.packageStatsRow}>
+                    <View style={styles.packageStatBox}>
+                      <Text style={styles.packageStatLabel}>TOTAL</Text>
+                      <Text style={styles.packageStatVal}>₹{(patientData.activePackage.totalAmount || 0).toLocaleString()}</Text>
+                    </View>
+                    <View style={[styles.packageStatBox, { borderColor: "#bbf7d0" }]}>
+                      <Text style={[styles.packageStatLabel, { color: "#16a34a" }]}>PAID</Text>
+                      <Text style={[styles.packageStatVal, { color: "#16a34a" }]}>₹{(patientData.activePackage.paidAmount || 0).toLocaleString()}</Text>
+                    </View>
+                    <View style={[styles.packageStatBox, { borderColor: "#fde68a" }]}>
+                      <Text style={[styles.packageStatLabel, { color: "#d97706" }]}>PENDING</Text>
+                      <Text style={[styles.packageStatVal, { color: "#d97706" }]}>₹{(patientData.activePackage.pendingAmount || 0).toLocaleString()}</Text>
+                    </View>
+                  </View>
+
+                  {patientData.activePackage.payments && patientData.activePackage.payments.length > 0 && (
+                    <View style={styles.packageHistoryBox}>
+                      <Text style={styles.packageHistoryTitle}>Payment Installments History:</Text>
+                      {patientData.activePackage.payments.map((p: any, idx: number) => {
+                        const d = new Date(p.paidAt);
+                        const dateStr = !isNaN(d.getTime()) ? d.toLocaleDateString("en-IN") : p.paidAt;
+                        const timeStr = !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+                        return (
+                          <View key={idx} style={styles.packageHistoryRow}>
+                            <Text style={styles.packageHistoryText}>
+                              {dateStr} {timeStr} • {p.paymentMethod || "CASH"}
+                            </Text>
+                            <Text style={styles.packageHistoryAmount}>+₹{(p.amount || 0).toLocaleString()}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.packageSubBox}>
+                  <Text style={styles.packageSubText}>No active package.</Text>
+                  <TouchableOpacity
+                    style={styles.registerPkgBtn}
+                    onPress={() => setIsPackageModalOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.registerPkgBtnText}>+ Register Patient in Package</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* 3. Tab Navigation Chips */}
@@ -457,15 +638,23 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.tabChip, activeTab === "package" && styles.tabChipActive]}
-                onPress={() => router.push(role === "DOCTOR" ? "/(doctor)/packages" : ("/(reception)/appointments" as any))}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tabChipText, activeTab === "package" && styles.tabChipTextActive]}>
-                  Register Package
-                </Text>
-              </TouchableOpacity>
+              {isPackageActive ? (
+                <View style={[styles.tabChip, { backgroundColor: "#f1f5f9", borderColor: "#e2e8f0" }]}>
+                  <Text style={[styles.tabChipText, { color: "#94a3b8" }]}>
+                    Package Active (Till {patientData.activePackage?.endDate || ""})
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.tabChip, activeTab === "package" && styles.tabChipActive]}
+                  onPress={() => setIsPackageModalOpen(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.tabChipText, activeTab === "package" && styles.tabChipTextActive]}>
+                    {patientData.hasPackage ? "Renew Expired Package" : "Register Package"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
 
             {/* TAB CONTENT: DIET PLAN */}
@@ -498,111 +687,96 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
               </View>
             )}
 
-            {/* 4. Digital Prescription Section Card (Matching User Specification) */}
+            {/* 4. Digital Prescription Section Card */}
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionCardTitle}>Digital Prescription</Text>
-
-              {/* Draw Prescription Full Popup Trigger (No Canvas Pad on the page) */}
-              <TouchableOpacity
-                style={styles.drawCanvasTriggerBtn}
-                onPress={() => setIsDrawingModalOpen(true)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.drawIconBadge}>
-                  <Ionicons name="pencil" size={17} color="#ffffff" />
-                </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.drawBtnTitle}>Draw Prescription (Full Popup Pad)</Text>
-                  <Text style={styles.drawBtnSubtitle}>Tap to open full drawing sheet • Solid white paper</Text>
-                </View>
-                <View style={styles.openPadPill}>
-                  <Text style={styles.openPadPillText}>Open Pad</Text>
-                  <Ionicons name="expand-outline" size={13} color="#0f172a" />
-                </View>
-              </TouchableOpacity>
-
-              {/* Physical Prescription Upload / Camera Buttons (Slightly Smaller & Compact) */}
-              <Text style={styles.fieldLabel}>Physical Prescription (Optional if Canvas Drawing is used)</Text>
-              <View style={styles.uploadButtonsRow}>
-                <TouchableOpacity style={styles.uploadWhiteBtn} onPress={handlePickImage} activeOpacity={0.7}>
-                  <Ionicons name="cloud-upload-outline" size={16} color="#0284c7" />
-                  <Text style={styles.uploadWhiteBtnText}>Upload</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.cameraBlueBtn} onPress={handleCameraCapture} activeOpacity={0.7}>
-                  <Ionicons name="camera" size={16} color="#ffffff" />
-                  <Text style={styles.cameraBlueBtnText}>Camera</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.fieldHelperText}>
-                Upload from device or take a photo with camera. Syncs live with AWS S3.
-              </Text>
-
-              {/* Uploaded Prescriptions & Canvas Sub-box */}
-              <View style={styles.uploadedBoxContainer}>
-                <View style={styles.uploadedBoxHeader}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1, minWidth: 0 }}>
-                    <Text style={{ fontSize: 13 }}>📤</Text>
-                    <Text style={styles.uploadedBoxTitle} numberOfLines={1}>Uploaded Prescriptions</Text>
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>{uploadedImages.length}</Text>
-                    </View>
-                    {isUploadingImage && (
-                      <ActivityIndicator size="small" color="#0284c7" style={{ marginLeft: 3 }} />
-                    )}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={styles.sectionCardTitle}>Digital Prescription</Text>
+                {uploadedImages.length > 0 && (
+                  <View style={[styles.countBadge, { backgroundColor: "#e0f2fe", marginLeft: "auto" }]}>
+                    <Text style={[styles.countBadgeText, { color: "#0284c7" }]}>{uploadedImages.length} attached</Text>
                   </View>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                    {uploadedImages.length > 0 && (
-                      <TouchableOpacity
-                        style={styles.enlargeSlideBtn}
-                        onPress={() => {
-                          setViewerInitialIndex(0);
-                          setIsViewerOpen(true);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="expand-outline" size={11} color="#0284c7" />
-                        <Text style={styles.enlargeSlideBtnText}>Preview</Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={styles.smallUploadBtn} onPress={handlePickImage} activeOpacity={0.7}>
-                      <Text style={styles.smallUploadBtnText}>+ Upload</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {uploadedImages.length === 0 ? (
-                  <View style={styles.dashedEmptyBox}>
-                    <Ionicons name="image-outline" size={30} color="#94a3b8" />
-                    <Text style={styles.dashedEmptyText}>No prescriptions or canvas drawings uploaded yet</Text>
-                    <Text style={styles.dashedEmptySub}>Draw on canvas or upload photos. Syncs live across Web & Mobile via AWS S3.</Text>
-                  </View>
-                ) : (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewGallery}>
-                    {uploadedImages.map((uri, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.thumbnailWrapper}
-                        onPress={() => {
-                          setViewerInitialIndex(idx);
-                          setIsViewerOpen(true);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <ExpoImage source={resolvePrescriptionImageUrl(uri)} style={styles.thumbnailImg} contentFit="cover" />
-                        <TouchableOpacity
-                          style={styles.removeImgBtn}
-                          onPress={() => handleRemoveImage(idx)}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Ionicons name="close" size={11} color="#ffffff" />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
                 )}
               </View>
+
+              {/* Radio selection & Open Pad Button */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: 10, backgroundColor: "#f8fafc", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {/* Radio 1: Digital Pad - ON means open pad */}
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+                    onPress={() => setIsDrawingModalOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#0284c7" }} />
+                    </View>
+                    <Ionicons name="pencil" size={13} color="#0284c7" />
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#0f172a" }}>Digital Pad</Text>
+                  </TouchableOpacity>
+
+                  {/* Radio 2: Upload Photo */}
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+                    onPress={handlePickImage}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "#94a3b8" }} />
+                    <Ionicons name="cloud-upload-outline" size={13} color="#64748b" />
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569" }}>Upload</Text>
+                  </TouchableOpacity>
+
+                  {/* Radio 3: Camera */}
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+                    onPress={handleCameraCapture}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: "#94a3b8" }} />
+                    <Ionicons name="camera-outline" size={13} color="#64748b" />
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: "#475569" }}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Open Pad Button */}
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#0284c7", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                  onPress={() => setIsDrawingModalOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="pencil" size={12} color="#ffffff" />
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>Open Pad</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Uploaded / Drawn Prescriptions Thumbnails */}
+              {uploadedImages.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.previewGallery, { marginTop: 8 }]}>
+                  {uploadedImages.map((uri, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.thumbnailWrapper}
+                      onPress={() => {
+                        setViewerInitialIndex(idx);
+                        setIsViewerOpen(true);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <ExpoImage source={resolvePrescriptionImageUrl(uri)} style={styles.thumbnailImg} contentFit="cover" />
+                      <TouchableOpacity
+                        style={styles.removeImgBtn}
+                        onPress={() => handleRemoveImage(idx)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Ionicons name="close" size={11} color="#ffffff" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <Text style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  No prescription attached yet. Tap &quot;Digital Pad&quot; or &quot;Open Pad&quot; to draw.
+                </Text>
+              )}
             </View>
 
             {/* 5. Follow-up Recommendation Section (Matching Screenshot) */}
@@ -671,8 +845,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 ) : (
                   <Text style={styles.sendToReceptionText}>
                     {role === "RECEPTION"
-                      ? "Complete Consultation & Move to Collect Fee"
-                      : "Send to Reception & Collect Fee"}
+                      ? "Save & Collect Fee"
+                      : "Send to Reception"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -834,6 +1008,197 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         onDeleteImage={handleRemoveImage}
       />
 
+      {/* PACKAGE REGISTRATION MODAL */}
+      <Modal
+        visible={isPackageModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsPackageModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "center", alignItems: "center", padding: 16 }}
+        >
+          <View style={{ backgroundColor: "#ffffff", borderRadius: 20, width: "100%", maxWidth: 440, padding: 20, maxHeight: "90%" }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "900", color: "#0284c7" }}>PKG</Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>Register Treatment Package</Text>
+                  <Text style={{ fontSize: 11, color: "#64748b" }}>Recurring constitutional care package</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setIsPackageModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Pre-filled Read-only details */}
+              <View style={{ backgroundColor: "#f8fafc", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 14 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#64748b", textTransform: "uppercase", marginBottom: 8, letterSpacing: 0.5 }}>
+                  Patient Identity (Read-Only)
+                </Text>
+
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 2 }}>Patient Name</Text>
+                  <TextInput
+                    value={patientData.patientName}
+                    editable={false}
+                    style={{ backgroundColor: "#e2e8f0", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: "700", color: "#334155" }}
+                  />
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 2 }}>Mobile Number</Text>
+                    <TextInput
+                      value={patientData.phone}
+                      editable={false}
+                      style={{ backgroundColor: "#e2e8f0", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: "700", color: "#334155" }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 2 }}>Reg ID</Text>
+                    <TextInput
+                      value={patientData.registrationId}
+                      editable={false}
+                      style={{ backgroundColor: "#e2e8f0", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, fontWeight: "700", color: "#334155" }}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Package Duration Dropdown Selector */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a", marginBottom: 6 }}>
+                  Package Duration *
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => setIsDurationDropdownOpen(!isDurationDropdownOpen)}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderWidth: 1,
+                    borderColor: packageDurationMonths > 0 ? "#0284c7" : "#cbd5e1",
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: "#ffffff",
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: packageDurationMonths > 0 ? "#0f172a" : "#94a3b8" }}>
+                    {packageDurationMonths > 0 ? `${packageDurationMonths} Month${packageDurationMonths > 1 ? "s" : ""} Course` : "-- Select Package Duration --"}
+                  </Text>
+                  <Ionicons name={isDurationDropdownOpen ? "chevron-up" : "chevron-down"} size={16} color="#64748b" />
+                </TouchableOpacity>
+
+                {isDurationDropdownOpen && (
+                  <View style={{ marginTop: 4, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8, backgroundColor: "#ffffff", overflow: "hidden", elevation: 3, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4 }}>
+                    {[1, 2, 3, 4, 5, 6].map((m) => {
+                      const isSelected = packageDurationMonths === m;
+                      return (
+                        <TouchableOpacity
+                          key={m}
+                          onPress={() => {
+                            setPackageDurationMonths(m);
+                            setIsDurationDropdownOpen(false);
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                            backgroundColor: isSelected ? "#e0f2fe" : "#ffffff",
+                            borderBottomWidth: m === 6 ? 0 : 1,
+                            borderBottomColor: "#f1f5f9",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: isSelected ? "800" : "600", color: isSelected ? "#0284c7" : "#334155" }}>
+                            {m} Month{m > 1 ? "s" : ""} Course
+                          </Text>
+                          {isSelected && <Ionicons name="checkmark" size={14} color="#0284c7" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+
+              {/* Total Package Amount */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a", marginBottom: 6 }}>
+                  Total Package Amount (₹) *
+                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, backgroundColor: "#ffffff" }}>
+                  <Text style={{ fontSize: 14, fontWeight: "bold", color: "#94a3b8", marginRight: 4 }}>₹</Text>
+                  <TextInput
+                    value={packageTotalAmount}
+                    onChangeText={setPackageTotalAmount}
+                    keyboardType="numeric"
+                    placeholder="Enter total package fee"
+                    placeholderTextColor="#94a3b8"
+                    style={{ flex: 1, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                  />
+                </View>
+              </View>
+
+              {/* Note about fee collection */}
+              <View style={{ backgroundColor: "#f0f9ff", padding: 10, borderRadius: 10, borderWidth: 1, borderColor: "#bae6fd", flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <Text style={{ fontSize: 11, color: "#0369a1" }}>Total Package Amount:</Text>
+                <Text style={{ fontSize: 13, fontWeight: "900", color: "#0284c7" }}>
+                  ₹{(parseFloat(packageTotalAmount) || 0).toLocaleString()}
+                </Text>
+              </View>
+
+              {/* Buttons */}
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setIsPackageModalOpen(false)}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#475569" }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleRegisterPackage}
+                  disabled={isRegisteringPackage}
+                  style={{ paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8, backgroundColor: "#0284c7", opacity: isRegisteringPackage ? 0.6 : 1 }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "900", color: "#ffffff" }}>
+                    {isRegisteringPackage ? "Registering..." : "Confirm & Register"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Appointment Payment Modal (Collect Fee) for Reception */}
+      {isPaymentModalOpen && selectedPaymentAppt && (
+        <AppointmentPaymentModal
+          visible={isPaymentModalOpen}
+          appointment={selectedPaymentAppt}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setSelectedPaymentAppt(null);
+            loadPatientFile();
+          }}
+          onPaymentSuccess={() => {
+            setIsPaymentModalOpen(false);
+            setSelectedPaymentAppt(null);
+            loadPatientFile();
+          }}
+        />
+      )}
+
       </KeyboardAvoidingView>
 
       {/* Bottom Bar */}
@@ -977,6 +1342,101 @@ const styles = StyleSheet.create({
   packageSubText: {
     fontSize: 11.5,
     color: "#64748b",
+  },
+  packageActiveCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    backgroundColor: "#fffbeb",
+  },
+  packageActiveHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  packageActiveBadge: {
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  packageActiveBadgeText: {
+    color: "#ffffff",
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  packageActiveTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#78350f",
+  },
+  packageActiveExpiry: {
+    fontSize: 10,
+    color: "#92400e",
+    fontWeight: "600",
+  },
+  packageStatsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 8,
+  },
+  packageStatBox: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    borderRadius: 8,
+    padding: 6,
+    alignItems: "center",
+  },
+  packageStatLabel: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#94a3b8",
+    marginBottom: 2,
+  },
+  packageStatVal: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  packageHistoryBox: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(253, 230, 138, 0.7)",
+    paddingTop: 6,
+  },
+  packageHistoryTitle: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#92400e",
+    textTransform: "uppercase",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  packageHistoryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "#fef3c7",
+  },
+  packageHistoryText: {
+    fontSize: 10,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  packageHistoryAmount: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: "#16a34a",
   },
   registerPkgBtn: {
     borderWidth: 1,

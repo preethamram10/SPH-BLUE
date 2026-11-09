@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import {
   ArrowLeft,
   Calendar,
@@ -82,6 +83,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
     diseases: "Chronic Migraine & Acidity",
     hasPackage: false,
     packageName: "",
+    visitBadge: "New",
   });
 
   // Active Tab
@@ -102,6 +104,8 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   // Drawing Canvas State (Web Full Popup)
   const [isCanvasModalOpen, setIsCanvasModalOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [penColor, setPenColor] = useState("#1e3a8a");
   const [penWidth, setPenWidth] = useState(3.5);
@@ -112,6 +116,16 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const [rotation, setRotation] = useState(0);
   const [zoomScale, setZoomScale] = useState(1);
   const touchStartX = useRef<number>(0);
+
+  // Package Registration Modal State
+  const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
+  const [packageDurationMonths, setPackageDurationMonths] = useState<number>(0);
+  const [packageTotalAmount, setPackageTotalAmount] = useState<string>("");
+  const [isRegisteringPackage, setIsRegisteringPackage] = useState(false);
+
+  // Fee Collection Modal State (Immediate payment for Reception)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
 
   // Keyboard navigation (< Left Arrow, > Right Arrow, Escape)
   useEffect(() => {
@@ -134,7 +148,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   }, [isViewerOpen, uploadedImages.length]);
 
   // Load from API
-  useEffect(() => {
+  const loadPatientFile = () => {
     if (!appointmentId) return;
     setIsLoading(true);
     fetch(`/api/patient-file?id=${encodeURIComponent(appointmentId)}`)
@@ -151,10 +165,12 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             diseases: pf.diseases || pf.notes || "General Consultation",
             hasPackage: !!pf.hasPackage,
             packageName: pf.packageName || "",
+            visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
+            activePackage: pf.activePackage || null,
           });
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
-          if (pf.followUpDate) setFollowUpDate(pf.followUpDate);
+          if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
           if (pf.dietPlan) setDietPlan(pf.dietPlan);
           if (pf.history) setPatientHistory(pf.history);
@@ -163,7 +179,74 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       })
       .catch((err) => console.error("Error loading patient file:", err))
       .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    loadPatientFile();
   }, [appointmentId]);
+
+  const isPackageActive = Boolean(
+    patientData.hasPackage &&
+    patientData.activePackage &&
+    patientData.activePackage.status === "ACTIVE" &&
+    (!patientData.activePackage.endDate || new Date(patientData.activePackage.endDate).getTime() >= new Date().setHours(0, 0, 0, 0))
+  );
+
+  const handleRegisterPackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isPackageActive) {
+      alert(`Patient already has an active package (${patientData.activePackage.packageName}) valid until ${patientData.activePackage.endDate}. A new package cannot be registered until this package expires.`);
+      return;
+    }
+    if (!patientData.patientName || !patientData.phone) return;
+    if (!packageDurationMonths || packageDurationMonths <= 0) {
+      alert("Please select a package duration (1 to 6 Months).");
+      return;
+    }
+    const total = parseFloat(packageTotalAmount) || 0;
+    if (total <= 0) {
+      alert("Please enter a valid total package amount.");
+      return;
+    }
+    setIsRegisteringPackage(true);
+    try {
+      const res = await fetch("/api/package-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          registrationId: patientData.registrationId,
+          patientName: patientData.patientName,
+          phone: patientData.phone,
+          branch: patientData.branch,
+          durationMonths: packageDurationMonths,
+          totalAmount: total,
+          initialPaidAmount: 0,
+          appointmentId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.member) {
+        setPatientData((prev: any) => ({
+          ...prev,
+          hasPackage: true,
+          packageName: data.member.packageName,
+          activePackage: data.member,
+        }));
+        setIsPackageModalOpen(false);
+        setPackageTotalAmount("");
+        setPackageDurationMonths(0);
+        loadPatientFile();
+        alert(data.message || "Package registered successfully!");
+      } else {
+        alert(data.error || "Failed to register package");
+      }
+    } catch (err: any) {
+      alert("Error registering package: " + err.message);
+    } finally {
+      setIsRegisteringPackage(false);
+    }
+  };
 
   const handleSelectInterval = (
     interval: "No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months"
@@ -231,6 +314,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const handleRemoveImage = (index: number) => {
@@ -339,13 +423,44 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       });
 
       const data = await res.json();
-      if (data.success) {
-        alert(
-          `Consultation finished for ${patientData.patientName}!\nPrescription & fee (₹${consultationFee}) moved to COLLECT FEE for Reception.`
-        );
-        router.push(role === "DOCTOR" ? "/doctor/dashboard" : "/reception/dashboard");
-      } else {
+      if (!data.success) {
         alert(data.error || "Failed to update patient file.");
+        return;
+      }
+
+      if (role === "RECEPTION") {
+        // Reception clicked Send to Reception / Save & Collect Fee:
+        // Immediately open the Fee Collection modal right here
+        setSelectedPaymentAppt({
+          id: appointmentId || "temp-id",
+          patientName: patientData.patientName,
+          phoneNumber: patientData.phone,
+          phone: patientData.phone,
+          registrationId: patientData.registrationId,
+          patientId: patientData.registrationId,
+          doctorName: patientData.doctorName || "Dr. Prashanth K Vaidya",
+          branch: patientData.branch,
+          appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
+          timeSlot: patientData.timeSlot || "02:30 PM",
+          consultationFee: parseFloat(consultationFee) || 0,
+          prescriptionImages: uploadedImages,
+          hasPackage: patientData.hasPackage,
+          packageName: patientData.packageName || patientData.activePackage?.packageName,
+          packageTotalAmount: patientData.activePackage?.totalAmount,
+          packagePaidAmount: patientData.activePackage?.paidAmount,
+          packagePendingAmount: patientData.activePackage?.pendingAmount,
+          packageDurationMonths: patientData.activePackage?.durationMonths,
+          packageEndDate: patientData.activePackage?.endDate,
+          status: "COLLECT_FEE",
+        });
+        setIsPaymentModalOpen(true);
+      } else {
+        // Doctor clicked Send to Reception:
+        // Prescription & notes auto-sent to Reception, doctor work is completely over
+        alert(
+          `Consultation finished for ${patientData.patientName}!\nPrescription & notes sent to Reception.`
+        );
+        router.push("/doctor/dashboard");
       }
     } catch (err: any) {
       alert("Error saving patient file.");
@@ -396,9 +511,26 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
               <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-base font-extrabold text-slate-900">{patientData.patientName}</h2>
-                  <span className="px-2.5 py-0.5 rounded-md bg-yellow-100 border border-yellow-300 text-yellow-800 font-extrabold text-[10px]">
-                    IN DURATION
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {patientData.visitBadge === "In-Dur" ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-700 font-extrabold text-[10px] shadow-xs">
+                        IN-DUR
+                      </span>
+                    ) : patientData.visitBadge === "Revisit" ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 font-extrabold text-[10px] shadow-xs">
+                        REVISIT
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 font-extrabold text-[10px] shadow-xs">
+                        NEW
+                      </span>
+                    )}
+                    {patientData.hasPackage && (
+                      <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] shadow-xs">
+                        PKG
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1.5 text-xs text-slate-600">
@@ -427,17 +559,74 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 </div>
 
                 {/* Package Sub-Card */}
-                <div className="mt-3.5 p-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-between">
-                  <span className="text-slate-600 text-[11.5px]">
-                    {patientData.hasPackage ? `Active: ${patientData.packageName}` : "No active package."}
-                  </span>
-                  <button
-                    onClick={() => router.push(role === "DOCTOR" ? "/doctor/packages" : "/reception/dashboard")}
-                    className="px-2.5 py-1 rounded-md border border-sky-600 text-sky-700 font-bold text-[11px] bg-white hover:bg-sky-50 transition-colors"
-                  >
-                    + Register Patient in Package
-                  </button>
-                </div>
+                {patientData.hasPackage && patientData.activePackage ? (
+                  <div className="mt-3.5 p-3.5 rounded-xl border border-amber-200 bg-linear-to-r from-amber-50/70 to-yellow-50/50 shadow-2xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white shadow-xs">
+                          PKG ACTIVE
+                        </span>
+                        <span className="font-extrabold text-xs text-amber-950">
+                          {patientData.activePackage.packageName || `${patientData.activePackage.durationMonths || 3} Months Treatment Package`}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-500">
+                        Valid till: {patientData.activePackage.endDate || "N/A"}
+                      </span>
+                    </div>
+
+                    {/* Financial Summary */}
+                    <div className="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-amber-200/60 text-center">
+                      <div className="bg-white/80 p-2 rounded-lg border border-amber-100">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase">Total Package</div>
+                        <div className="text-xs font-black text-slate-800">₹{(patientData.activePackage.totalAmount || 0).toLocaleString()}</div>
+                      </div>
+                      <div className="bg-white/80 p-2 rounded-lg border border-emerald-100">
+                        <div className="text-[10px] font-bold text-emerald-600 uppercase">Paid So Far</div>
+                        <div className="text-xs font-black text-emerald-700">₹{(patientData.activePackage.paidAmount || 0).toLocaleString()}</div>
+                      </div>
+                      <div className="bg-white/80 p-2 rounded-lg border border-amber-100">
+                        <div className="text-[10px] font-bold text-amber-600 uppercase">Remaining Pending</div>
+                        <div className="text-xs font-black text-amber-700">₹{(patientData.activePackage.pendingAmount || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+
+                    {/* Installments History */}
+                    {patientData.activePackage.payments && patientData.activePackage.payments.length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-amber-200/50">
+                        <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                          Payment Installments History:
+                        </div>
+                        <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                          {patientData.activePackage.payments.map((pay: any, idx: number) => {
+                            const d = new Date(pay.paidAt);
+                            const dateStr = !isNaN(d.getTime()) ? d.toLocaleDateString("en-IN") : pay.paidAt;
+                            const timeStr = !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+                            return (
+                              <div key={idx} className="flex items-center justify-between text-[11px] bg-white/80 px-2 py-1 rounded border border-amber-100">
+                                <span className="text-slate-600 font-medium">
+                                  {dateStr} {timeStr} • {pay.paymentMethod || "CASH"} {pay.notes ? `(${pay.notes})` : ""}
+                                </span>
+                                <span className="font-bold text-emerald-700">+₹{(pay.amount || 0).toLocaleString()}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-3.5 p-3 rounded-lg border border-dashed border-slate-300 bg-slate-50/50 flex items-center justify-between">
+                    <span className="text-slate-600 text-[11.5px]">No active package.</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPackageModalOpen(true)}
+                      className="px-2.5 py-1 rounded-md border border-sky-600 text-sky-700 font-bold text-[11px] bg-white hover:bg-sky-50 transition-colors"
+                    >
+                      + Register Patient in Package
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* 3. Tab Navigation Chips */}
@@ -469,12 +658,24 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 >
                   Share Media
                 </button>
-                <button
-                  onClick={() => router.push(role === "DOCTOR" ? "/doctor/packages" : "/reception/dashboard")}
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold transition-colors whitespace-nowrap"
-                >
-                  Register Package
-                </button>
+                {isPackageActive ? (
+                  <button
+                    type="button"
+                    disabled
+                    title={`Active package (${patientData.activePackage?.packageName}) valid till ${patientData.activePackage?.endDate}. A new package cannot be registered until it expires.`}
+                    className="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed whitespace-nowrap select-none opacity-80"
+                  >
+                    Package Active (Till {patientData.activePackage?.endDate || ""})
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsPackageModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 text-xs font-bold transition-colors whitespace-nowrap"
+                  >
+                    {patientData.hasPackage ? "Renew Expired Package" : "Register Package"}
+                  </button>
+                )}
               </div>
 
               {activeTab === "diet" && (
@@ -490,123 +691,138 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 </div>
               )}
 
-              {/* 4. Digital Prescription Section (Matching Requirements) */}
+              {/* 4. Digital Prescription Section */}
               <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
-                <h3 className="font-extrabold text-slate-900 text-sm">Digital Prescription</h3>
-
-                {/* Draw Prescription Full Popup Trigger (No Canvas Pad on the page) */}
-                <button
-                  type="button"
-                  onClick={() => setIsCanvasModalOpen(true)}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 transition-colors text-left shadow-2xs cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
-                      <PenTool className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-extrabold text-slate-900 text-xs">Draw Prescription (Full Popup Pad)</div>
-                      <div className="text-[10.5px] text-slate-500">Tap to open full drawing sheet • Solid white paper</div>
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 rounded-md border border-slate-300 bg-slate-50 text-slate-700 font-bold text-[11px] shadow-2xs">
-                    Open Full Pad ↗
-                  </span>
-                </button>
-
-                {/* Physical Prescription Upload Buttons (Compact & Sleeker) */}
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1.5 text-xs">
-                    Physical Prescription (Optional if Canvas Drawing is used)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer transition-colors text-[11px] shadow-2xs">
-                      <Upload className="w-3.5 h-3.5 text-sky-600" />
-                      <span>Upload</span>
-                      <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                    </label>
-
-                    <label className="flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 font-bold text-white cursor-pointer transition-colors text-[11px] shadow-2xs">
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>Camera</span>
-                      <input type="file" accept="image/*" capture="environment" onChange={handleFileUpload} className="hidden" />
-                    </label>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Upload from device or take photo with camera. Syncs live with AWS S3.</p>
-                </div>
-
-                {/* Uploaded Prescriptions & Canvas Gallery */}
-                <div className="border border-slate-200 rounded-lg p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs min-w-0">
-                      <span>📤</span>
-                      <span className="truncate">Uploaded Prescriptions & Canvas</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold shrink-0">
-                        {uploadedImages.length}
-                      </span>
-                      {isUploading && (
-                        <span className="text-[10px] text-sky-600 font-medium animate-pulse shrink-0">Uploading...</span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                      {uploadedImages.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setViewerIndex(0);
-                            setIsViewerOpen(true);
-                          }}
-                          className="px-2 py-1 rounded-md border border-sky-300 bg-sky-50 text-sky-700 font-bold text-[10.5px] hover:bg-sky-100 flex items-center gap-1 shrink-0 shadow-2xs"
-                        >
-                          <Maximize2 className="w-3 h-3" />
-                          <span>Preview</span>
-                        </button>
-                      )}
-
-                      <label className="px-2 py-1 rounded-md border border-sky-300 bg-sky-50 text-sky-700 font-bold text-[10.5px] cursor-pointer hover:bg-sky-100 flex items-center gap-1 shrink-0 shadow-2xs">
-                        <Upload className="w-3 h-3" />
-                        <span>+ Upload</span>
-                        <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                      </label>
-                    </div>
-                  </div>
-
-                  {uploadedImages.length === 0 ? (
-                    <div className="border border-dashed border-slate-300 rounded-lg p-4 text-center bg-slate-50/50">
-                      <ImageIcon className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                      <p className="font-semibold text-slate-600 text-xs">No prescriptions or canvas drawings uploaded yet</p>
-                      <p className="text-[10px] text-slate-400">Draw on canvas or upload photos. Syncs live across Web & Mobile via AWS S3.</p>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2.5 overflow-x-auto py-1">
-                      {uploadedImages.map((src, idx) => (
-                        <div
-                          key={idx}
-                          className="relative w-20 h-20 rounded-lg border border-slate-200 shrink-0 overflow-hidden cursor-pointer group hover:border-sky-400 transition-colors"
-                          onClick={() => {
-                            setViewerIndex(idx);
-                            setRotation(0);
-                            setZoomScale(1);
-                            setIsViewerOpen(true);
-                          }}
-                        >
-                          <img src={resolvePrescriptionImageUrl(src)} alt={`Rx ${idx + 1}`} className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveImage(idx);
-                            }}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-xs"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-extrabold text-slate-900 text-sm">Digital Prescription</h3>
+                  {uploadedImages.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-bold border border-sky-200">
+                      {uploadedImages.length} attached
+                    </span>
                   )}
                 </div>
+
+                {/* Hidden File and Camera Inputs */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={cameraInputRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+
+                {/* Radio selection & Open Pad Button */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="flex items-center gap-4">
+                    {/* Radio: Digital Pad - ON means open pad */}
+                    <div
+                      onClick={() => setIsCanvasModalOpen(true)}
+                      className="flex items-center gap-2 cursor-pointer select-none group"
+                    >
+                      <input
+                        type="radio"
+                        name="rxMode"
+                        checked={isCanvasModalOpen || uploadedImages.length > 0}
+                        onChange={() => setIsCanvasModalOpen(true)}
+                        className="w-4 h-4 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                      />
+                      <span className="text-xs font-bold text-slate-800 group-hover:text-sky-600 flex items-center gap-1.5 transition-colors">
+                        <PenTool className="w-3.5 h-3.5 text-sky-600" />
+                        Digital Prescription Pad
+                      </span>
+                    </div>
+
+                    {/* Radio: Upload File */}
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 cursor-pointer select-none group"
+                    >
+                      <input
+                        type="radio"
+                        name="rxMode"
+                        checked={false}
+                        onChange={() => fileInputRef.current?.click()}
+                        className="w-4 h-4 text-slate-400 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600 group-hover:text-sky-600 flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-600" />
+                        Upload File
+                      </span>
+                    </div>
+
+                    {/* Radio: Camera */}
+                    <div
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex items-center gap-2 cursor-pointer select-none group"
+                    >
+                      <input
+                        type="radio"
+                        name="rxMode"
+                        checked={false}
+                        onChange={() => cameraInputRef.current?.click()}
+                        className="w-4 h-4 text-slate-400 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600 group-hover:text-sky-600 flex items-center gap-1.5 transition-colors">
+                        <Camera className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-600" />
+                        Camera
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Open Pad Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCanvasModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                  >
+                    <PenTool className="w-3.5 h-3.5" />
+                    <span>Open Pad</span>
+                  </button>
+                </div>
+
+                {/* Uploaded / Drawn Prescriptions Thumbnails */}
+                {uploadedImages.length > 0 ? (
+                  <div className="flex items-center gap-2.5 overflow-x-auto py-1">
+                    {uploadedImages.map((src, idx) => (
+                      <div
+                        key={idx}
+                        className="relative w-20 h-20 rounded-lg border border-slate-200 shrink-0 overflow-hidden cursor-pointer group hover:border-sky-400 transition-colors shadow-2xs"
+                        onClick={() => {
+                          setViewerIndex(idx);
+                          setRotation(0);
+                          setZoomScale(1);
+                          setIsViewerOpen(true);
+                        }}
+                      >
+                        <img src={resolvePrescriptionImageUrl(src)} alt={`Rx ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveImage(idx);
+                          }}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-xs cursor-pointer"
+                          title="Remove"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400 py-1 flex items-center gap-1">
+                    <span>ℹ️</span>
+                    <span>No prescription attached yet. Click the radio button or &quot;Open Pad&quot; to draw.</span>
+                  </div>
+                )}
               </div>
 
               {/* 5. Follow-up Recommendation */}
@@ -672,8 +888,8 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                   {isSubmitting
                     ? "Submitting..."
                     : role === "RECEPTION"
-                      ? "Complete Consultation & Move to Collect Fee"
-                      : "Send to Reception & Collect Fee"}
+                      ? "Save & Collect Fee"
+                      : "Send to Reception"}
                 </button>
               </div>
 
@@ -1053,6 +1269,180 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             ))}
           </div>
         </div>
+      )}
+
+      {/* Package Registration Modal */}
+      {isPackageModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-blue-50/40">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs">
+                  PKG
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">Register Treatment Package</h3>
+                  <p className="text-[11px] text-slate-500">Assign a recurring long-term care package to this patient</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPackageModalOpen(false)}
+                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterPackage} className="p-5 space-y-4">
+              {/* 3 Read-only prefilled fields */}
+              <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                <div className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                  Patient Identity (Pre-filled &amp; Read-Only)
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Patient Name</label>
+                  <input
+                    type="text"
+                    value={patientData.patientName}
+                    readOnly
+                    disabled
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 text-xs font-semibold cursor-not-allowed select-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Number</label>
+                    <input
+                      type="text"
+                      value={patientData.phone}
+                      readOnly
+                      disabled
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 text-xs font-semibold cursor-not-allowed select-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Patient ID / Reg ID</label>
+                    <input
+                      type="text"
+                      value={patientData.registrationId}
+                      readOnly
+                      disabled
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 text-xs font-semibold cursor-not-allowed select-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Package Duration Dropdown Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Package Duration <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={packageDurationMonths || ""}
+                    onChange={(e) => setPackageDurationMonths(Number(e.target.value) || 0)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer"
+                  >
+                    <option value="" disabled>-- Select Package Duration --</option>
+                    <option value="1">1 Month Course</option>
+                    <option value="2">2 Months Course</option>
+                    <option value="3">3 Months Course</option>
+                    <option value="4">4 Months Course</option>
+                    <option value="5">5 Months Course</option>
+                    <option value="6">6 Months Course</option>
+                  </select>
+                </div>
+                {packageDurationMonths > 0 && (
+                  <p className="text-[11px] text-blue-700 font-semibold mt-1">
+                    Selected: {packageDurationMonths} Month{packageDurationMonths > 1 ? "s" : ""} treatment course
+                  </p>
+                )}
+              </div>
+
+              {/* Total Package Amount */}
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Total Package Amount (₹) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    required
+                    value={packageTotalAmount}
+                    onChange={(e) => setPackageTotalAmount(e.target.value)}
+                    placeholder="Enter total package fee"
+                    className="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                  />
+                </div>
+              </div>
+
+              {/* Note about fee collection */}
+              <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-600">Total Package Amount: </span>
+                  <span className="font-extrabold text-blue-900">
+                    ₹{(parseFloat(packageTotalAmount) || 0).toLocaleString()}
+                  </span>
+                </div>
+                <span className="text-[11px] text-blue-700 font-medium">
+                  Payment will be collected during visit checkout
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPackageModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRegisteringPackage}
+                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isRegisteringPackage ? "Registering..." : "Confirm & Register Package"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Official Payment & Invoice Modal (Collect Fee or View Receipt for Reception) */}
+      {isPaymentModalOpen && selectedPaymentAppt && (
+        <FeeCheckoutAndInvoiceModal
+          isOpen={isPaymentModalOpen}
+          appointment={selectedPaymentAppt}
+          onClose={() => {
+            setIsPaymentModalOpen(false);
+            setSelectedPaymentAppt(null);
+            loadPatientFile();
+          }}
+          onSubmitPayment={async (invoiceData) => {
+            const res = await fetch("/api/reception/payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(invoiceData),
+            });
+            const data = await res.json();
+            if (!data.success) {
+              throw new Error(data.error || "Payment failed");
+            }
+            loadPatientFile();
+            return data;
+          }}
+        />
       )}
     </div>
   );

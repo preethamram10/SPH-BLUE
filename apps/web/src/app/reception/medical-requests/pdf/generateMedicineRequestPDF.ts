@@ -133,50 +133,36 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
           justify-content: space-between;
         }
 
-        /* TOP BLUE CLINIC BANNER */
+        /* TOP HEADER: LEFT WHITE (LOGO), RIGHT BLUE BANNER (INFO) */
         .top-banner {
-          background: #1d8ecd;
-          height: 72px;
+          background: #ffffff;
+          height: 76px;
           width: 100%;
           display: flex;
-          align-items: center;
+          align-items: stretch;
           justify-content: space-between;
-          padding: 0 32px 0 0;
+          padding: 0;
           position: relative;
         }
 
         .logo-container {
           background: #ffffff;
-          height: 80px;
-          padding: 8px 24px 8px 20px;
+          flex: 1;
+          height: 100%;
+          padding: 0 0 0 36px;
           display: flex;
           align-items: center;
-          gap: 12px;
-          box-shadow: 2px 3px 10px rgba(0,0,0,0.12);
-          border-bottom-right-radius: 8px;
-        }
-
-        .clinic-brand {
-          font-weight: 800;
-          font-size: 16px;
-          color: #0284c7;
-          letter-spacing: -0.3px;
-          line-height: 1.1;
-        }
-
-        .clinic-sub {
-          font-size: 9.5px;
-          font-weight: 700;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-top: 2px;
+          border: none;
+          box-shadow: none;
         }
 
         .top-info-box {
+          background: #1d8ecd;
           display: flex;
           flex-direction: column;
           align-items: flex-end;
+          justify-content: center;
+          padding: 0 36px 0 28px;
           gap: 4px;
         }
 
@@ -334,11 +320,7 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
       <!-- TOP BLUE BANNER WITH LOGO BADGE, BRANCH & RECEPTION PHONE -->
       <div class="top-banner">
         <div class="logo-container">
-          <img src="${CLINIC_LOGO_BASE64}" alt="Spiritual Homeopathy Logo" style="height: 54px; width: auto; object-fit: contain;" />
-          <div>
-            <div class="clinic-brand">Spiritual Homeopathy</div>
-            <div class="clinic-sub">Holistic Healing Clinics • ${branchDisplay}</div>
-          </div>
+          <img src="${CLINIC_LOGO_BASE64}" alt="Spiritual Homeopathy Logo" style="height: 52px; width: auto; object-fit: contain;" />
         </div>
         <div class="top-info-box">
           <div class="top-web-link">
