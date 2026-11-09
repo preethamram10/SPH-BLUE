@@ -35,6 +35,10 @@ export const ReceptionBottomNav: React.FC<ReceptionBottomNavProps> = ({ activeTa
       return;
     }
     if (activeTab === tab) return;
+    if (tab === "dashboard") {
+      router.replace("/(reception)" as any);
+      return;
+    }
     router.push(route as any);
   };
 
@@ -71,7 +75,7 @@ export const ReceptionBottomNav: React.FC<ReceptionBottomNavProps> = ({ activeTa
       {/* Book Appt Tab */}
       <TouchableOpacity
         style={styles.tabItem}
-        onPress={() => handlePress("book-appt", "/(reception)/appointments/book")}
+        onPress={() => handlePress("book-appt", "/(reception)/appointments")}
         activeOpacity={0.7}
       >
         <Ionicons
@@ -110,10 +114,10 @@ export const ReceptionBottomNav: React.FC<ReceptionBottomNavProps> = ({ activeTa
         </Text>
       </TouchableOpacity>
 
-      {/* Med Req / Follow-up Tab */}
+      {/* Med Req Tab */}
       <TouchableOpacity
         style={styles.tabItem}
-        onPress={() => handlePress("med-req", "/(reception)/follow-ups")}
+        onPress={() => handlePress("med-req", "/(reception)/medical-requests")}
         activeOpacity={0.7}
       >
         <Ionicons

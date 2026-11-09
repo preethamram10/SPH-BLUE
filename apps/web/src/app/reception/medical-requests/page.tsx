@@ -9,21 +9,25 @@ import {
   Trash2,
   RotateCcw,
   Check,
-  Save,
   Building2,
   Phone,
-  Search,
   CheckCircle2,
-  Clock,
-  Send,
-  Eye,
-  X,
-  FileText,
   AlertCircle,
-  Truck,
+  FileText,
+  X,
+  Send,
+  Share2,
+  ArrowLeft,
+  Eye,
 } from "lucide-react";
+import {
+  generateMedicineRequestPDF,
+  MedicineRequestPDFPreviewModal,
+  getBranchPhone,
+} from "./pdf";
+import { CLINIC_LOGO_BASE64 } from "./pdf/logoBase64";
 
-// --- OPTIONS CONSTANTS (User Defined) ---
+// --- OPTIONS CONSTANTS ---
 export const DOSAGE_TIMING_OPTIONS = [
   { value: "", label: "Select Timing" },
   { value: "M - A - N", label: "M - A - N (Morning - Afternoon - Night)" },
@@ -91,12 +95,11 @@ export interface MedicineRequestPayload {
 function MedicalRequestsContent() {
   const [currentBranch, setCurrentBranch] = useState("KPHB Branch");
   const [viewMode, setViewMode] = useState<"list" | "form">("list");
+  const [activeTab, setActiveTab] = useState<"ALL" | "completed">("ALL");
 
-  // Requests List states
+  // Requests List
   const [requests, setRequests] = useState<MedicineRequestPayload[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "pending" | "completed" | "dispatched">("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
 
   // Form states
   const [patientName, setPatientName] = useState("");
@@ -110,8 +113,19 @@ function MedicalRequestsContent() {
     { id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 },
   ]);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // Share Popup State (WhatsApp & PDF)
+  const [sharePopupData, setSharePopupData] = useState<{
+    patientName: string;
+    gender: string;
+    phone: string;
+    age?: string;
+    branchName: string;
+    duration: string;
+    totalAmount: number;
+    medicines: MedicineItem[];
+  } | null>(null);
+  const [whatsappPhone, setWhatsappPhone] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Active print certificate state
   const [printCertificateData, setPrintCertificateData] = useState<{
@@ -130,12 +144,12 @@ function MedicalRequestsContent() {
   useEffect(() => {
     const saved = localStorage.getItem("branch_name");
     if (saved) {
-      setCurrentBranch(saved);
-      setBranchName(saved);
+      const formattedBranch = saved.includes("Branch") ? saved : `${saved} Branch`;
+      setCurrentBranch(formattedBranch);
+      setBranchName(formattedBranch);
     }
   }, []);
 
-  // Fetch Requests List
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
@@ -151,17 +165,25 @@ function MedicalRequestsContent() {
     }
   };
 
+  // Kept empty as requested until linked out later
   useEffect(() => {
-    fetchRequests();
+    // fetchRequests();
   }, []);
 
-  // Auto calculate sum of medicine rows if user enters individual prices
-  useEffect(() => {
-    const rowSum = medicines.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
-    if (rowSum > 0) {
-      setTotalAmount(rowSum);
-    }
-  }, [medicines]);
+  // Handle user changing Total Medicine Fee
+  const handleTotalAmountChange = (val: number) => {
+    setTotalAmount(val);
+    // If only 1 remedy row exists, auto-sync its individual price to match total fee
+    setMedicines((prev) => {
+      if (prev.length === 1) {
+        return [{ ...prev[0], amount: val }];
+      }
+      return prev;
+    });
+  };
+
+  const medicinesSum = medicines.reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+  const isFeeMatched = totalAmount > 0 ? medicinesSum === totalAmount : true;
 
   // --- MEDICINE ROWS HANDLERS ---
   const handleAddMedicineRow = () => {
@@ -193,62 +215,6 @@ function MedicalRequestsContent() {
     setMedicines([{ id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 }]);
   };
 
-  // --- SUBMIT REQUEST TO BACKEND ---
-  const handleSaveRequest = async () => {
-    if (!patientName.trim()) {
-      alert("Please enter patient name.");
-      return;
-    }
-    const cleanPhone = phone.replace(/\D/g, "");
-    if (!cleanPhone || cleanPhone.length < 10) {
-      alert("Please enter a valid 10-digit phone number.");
-      return;
-    }
-    const validMedicines = medicines.filter((m) => m.name.trim().length > 0);
-    if (validMedicines.length === 0) {
-      alert("Please enter at least one medicine remedy name.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const payload: MedicineRequestPayload = {
-        patientName: patientName.trim(),
-        phone: cleanPhone.slice(-10),
-        age: age.trim() || undefined,
-        gender,
-        branchName,
-        duration,
-        totalAmount: Number(totalAmount) || 0,
-        medicines: validMedicines,
-      };
-
-      const res = await fetch("/api/reception/medical-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || "Failed to save request");
-      }
-
-      setSaveSuccess(true);
-      fetchRequests();
-      setTimeout(() => {
-        setSaveSuccess(false);
-        handleClearForm();
-        setViewMode("list");
-      }, 1500);
-    } catch (err: any) {
-      console.error("Error saving medicine request:", err);
-      alert(err.message || "Failed to save medicine request. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- UPDATE STATUS ---
   const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched") => {
     try {
       const res = await fetch("/api/reception/medical-requests", {
@@ -267,76 +233,103 @@ function MedicalRequestsContent() {
     }
   };
 
-  // --- DELETE REQUEST ---
-  const handleDeleteRequest = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this medical request?")) return;
-    try {
-      const res = await fetch("/api/reception/medical-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "DELETE", id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchRequests();
-      }
-    } catch (err: any) {
-      alert(err.message || "Failed to delete request");
-    }
-  };
-
-  // --- PRINT OFFICIAL CLINIC CERTIFICATE SLIP ---
-  const handlePrintCurrentForm = () => {
+  // --- SHARE MEDICAL REQUEST HANDLER ---
+  const handleShareMedicalRequest = () => {
     if (!patientName.trim()) {
-      alert("Please enter Patient Name before printing certificate.");
+      alert("Please enter patient name.");
       return;
     }
-    setPrintCertificateData({
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (!cleanPhone || cleanPhone.length < 10) {
+      alert("Please enter a valid 10-digit phone number.");
+      return;
+    }
+    const validMedicines = medicines.filter((m) => m.name.trim().length > 0);
+    if (validMedicines.length === 0) {
+      alert("Please enter at least one medicine remedy name.");
+      return;
+    }
+
+    const finalTotal = Number(totalAmount) || 0;
+
+    // If only 1 remedy exists and amount wasn't typed, auto-sync to total fee
+    if (validMedicines.length === 1 && finalTotal > 0 && (!validMedicines[0].amount || Number(validMedicines[0].amount) === 0)) {
+      validMedicines[0].amount = finalTotal;
+    }
+
+    const currentRemediesSum = validMedicines.reduce((acc, m) => acc + (Number(m.amount) || 0), 0);
+
+    // Enforce that prescribed remedies sum must equal the Total Medicine Fee
+    if (finalTotal > 0 && currentRemediesSum !== finalTotal) {
+      alert(
+        `Total Medicine Fee (₹${finalTotal}) must be equal to the sum of prescribed remedies (₹${currentRemediesSum}).\nDifference: ₹${Math.abs(finalTotal - currentRemediesSum)}\n\nPlease match the amounts to proceed with sharing.`
+      );
+      return;
+    }
+
+    // Open Share Popup Modal immediately
+    setSharePopupData({
       patientName: patientName.trim(),
-      gender,
+      phone: cleanPhone.slice(-10),
       age: age.trim() || undefined,
-      phone: phone.replace(/\D/g, "").slice(-10),
+      gender,
       branchName,
       duration,
-      totalAmount: Number(totalAmount) || 0,
-      medicines: medicines.filter((m) => m.name.trim().length > 0),
-      dateStr: new Date().toLocaleDateString("en-GB"),
+      totalAmount: finalTotal,
+      medicines: validMedicines,
     });
-    setTimeout(() => {
-      window.print();
-    }, 150);
+    setWhatsappPhone(cleanPhone.slice(-10));
   };
 
-  const handlePrintExistingRequest = (item: MedicineRequestPayload) => {
-    setPrintCertificateData({
-      patientName: item.patientName,
-      gender: item.gender || "Mr.",
-      age: item.age,
-      phone: item.phone,
-      branchName: item.branchName || currentBranch,
-      duration: item.duration || "1 Month",
-      totalAmount: item.totalAmount || 0,
-      medicines: item.medicines || [],
-      dateStr: item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB"),
-    });
-    setTimeout(() => {
-      window.print();
-    }, 150);
+  // --- WHATSAPP SHARE HANDLER ---
+  const handleSendViaWhatsApp = () => {
+    if (!sharePopupData) return;
+    const cleanP = (whatsappPhone || sharePopupData.phone || "").replace(/\D/g, "").slice(-10);
+    if (!cleanP || cleanP.length < 10) {
+      alert("Please enter a valid 10-digit WhatsApp number.");
+      return;
+    }
+
+    const medsList = sharePopupData.medicines
+      .filter((m) => m.name.trim().length > 0)
+      .map((m, i) => `  ${i + 1}. *${m.name}* (${m.type || "Pills"})\n     Dosage: ${m.timing}`)
+      .join("\n\n");
+
+    const text = encodeURIComponent(
+      `*SPIRITUAL HOMEOPATHY CLINICS*\n` +
+      `*Official Medical Request & Remedy Slip*\n` +
+      `--------------------------------\n` +
+      `*Patient:* ${sharePopupData.gender} ${sharePopupData.patientName} ${sharePopupData.age ? `(${sharePopupData.age}y)` : ""}\n` +
+      `*Contact:* +91 ${cleanP}\n` +
+      `*Clinic Branch:* ${sharePopupData.branchName}\n` +
+      `*Course Duration:* ${sharePopupData.duration}\n` +
+      `*Total Medicine Fee:* ₹${Number(sharePopupData.totalAmount || 0).toFixed(2)}\n` +
+      `--------------------------------\n` +
+      `*Prescribed Remedies:*\n\n${medsList}\n\n` +
+      `--------------------------------\n` +
+      `Spiritual Homeopathy Clinics\nHelpline: 9030176176 | spiritualhomeoclinic.com`
+    );
+
+    window.open(`https://wa.me/91${cleanP}?text=${text}`, "_blank");
   };
 
-  // Filtered requests
+  // --- PRINT SLIP / CERTIFICATE ---
+  const handlePrintSlipFromModal = () => {
+    if (!sharePopupData) return;
+    generateMedicineRequestPDF({
+      patientName: sharePopupData.patientName,
+      gender: sharePopupData.gender,
+      age: sharePopupData.age,
+      phone: sharePopupData.phone,
+      branchName: sharePopupData.branchName,
+      duration: sharePopupData.duration,
+      totalAmount: sharePopupData.totalAmount,
+      medicines: sharePopupData.medicines,
+    });
+  };
+
   const filteredRequests = requests.filter((r) => {
-    if (activeFilter !== "ALL" && (r.status || "pending") !== activeFilter) {
-      return false;
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = r.patientName.toLowerCase().includes(q);
-      const matchPhone = r.phone.includes(q);
-      const matchReqId = (r.requestId || "").toLowerCase().includes(q);
-      const matchMed = (r.medicines || []).some((m) => m.name.toLowerCase().includes(q));
-      if (!matchName && !matchPhone && !matchReqId && !matchMed) return false;
-    }
+    if (activeTab === "completed") return r.status === "completed";
     return true;
   });
 
@@ -353,79 +346,105 @@ function MedicalRequestsContent() {
             </div>
             <div>
               <h1 className="text-sm font-black text-slate-900 leading-tight">
-                Medical Requests &amp; Prescription Certificates
+                Medical Requests &amp; Prescriptions
               </h1>
               <p className="text-[10px] text-slate-500 font-semibold flex items-center gap-1.5">
                 <Building2 className="w-3 h-3 text-slate-400" />
                 <span>{currentBranch}</span>
                 <span className="text-slate-300">•</span>
-                <span>Pharmacy Requests &amp; Official Letterhead Slips</span>
+                <span>Pharmacy Requests &amp; Instant Remedy Sharing</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {viewMode === "list" ? (
               <button
                 type="button"
                 onClick={() => setViewMode("form")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black text-white bg-lime-600 hover:bg-lime-700 shadow-sm transition-all cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-black text-white bg-lime-600 hover:bg-lime-700 shadow-sm transition-all cursor-pointer active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ New Medical Request</span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>View All Requests ({requests.length})</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Requests</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleClearForm}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Clear</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareMedicalRequest}
+                  disabled={!isFeeMatched}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-black text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-50 shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share Medical Request</span>
+                </button>
+              </div>
             )}
           </div>
         </header>
 
         {/* ========================================================
-            VIEW 1: REQUESTS LIST
+            VIEW 1: REQUESTS LIST (ALL & COMPLETED TABS)
            ======================================================== */}
         {viewMode === "list" && (
           <div className="flex-1 flex flex-col min-h-0 print:hidden">
-            {/* Filter Tabs & Search Bar */}
-            <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-                {(["ALL", "pending", "completed", "dispatched"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveFilter(tab)}
-                    className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer capitalize ${
-                      activeFilter === tab
-                        ? "bg-white text-lime-800 shadow-xs"
-                        : "text-slate-500 hover:text-slate-900"
-                    }`}
-                  >
-                    {tab === "ALL" ? `All (${requests.length})` : tab}
-                  </button>
-                ))}
+            {/* Filter Tabs Bar */}
+            <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ALL")}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "ALL"
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All Requests ({requests.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("completed")}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "completed"
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Completed ({requests.filter((r) => r.status === "completed").length})
+                </button>
               </div>
 
-              <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search patient, phone, remedy..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:border-lime-500 font-medium transition-all"
-                />
-              </div>
+              <span className="text-xs text-slate-400 font-medium">
+                {filteredRequests.length} request{filteredRequests.length === 1 ? "" : "s"} shown
+              </span>
             </div>
 
-            {/* List Table / Cards */}
+            {/* List Table */}
             <div className="flex-1 p-6 overflow-y-auto">
-              {filteredRequests.length === 0 ? (
+              {isLoading ? (
+                <div className="flex items-center justify-center h-48 text-xs text-slate-500 font-semibold">
+                  Loading medical requests...
+                </div>
+              ) : filteredRequests.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-72 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-center max-w-md mx-auto mt-6">
                   <div className="w-12 h-12 rounded-2xl bg-lime-50 border border-lime-200 flex items-center justify-center text-lime-700 mb-3">
                     <Pill className="w-6 h-6" />
@@ -434,7 +453,7 @@ function MedicalRequestsContent() {
                     No Medical Requests Found
                   </h3>
                   <p className="text-xs text-slate-500 font-medium mb-4">
-                    Create a new request to prescribe homeopathic remedies and print official certificates.
+                    Create a new request to prescribe remedies and share instantly via WhatsApp or PDF.
                   </p>
                   <button
                     type="button"
@@ -456,18 +475,12 @@ function MedicalRequestsContent() {
                         <th className="py-3 px-4">Prescribed Medicines</th>
                         <th className="py-3 px-4 text-right">Fee (₹)</th>
                         <th className="py-3 px-4 text-center">Status</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
+                        <th className="py-3 px-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredRequests.map((r) => {
-                        const statusColor =
-                          r.status === "completed"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : r.status === "dispatched"
-                            ? "bg-sky-50 text-sky-700 border-sky-200"
-                            : "bg-amber-50 text-amber-700 border-amber-200";
-
+                        const isCompleted = r.status === "completed";
                         return (
                           <tr key={r.id || r.requestId} className="hover:bg-slate-50/70 transition">
                             <td className="py-3 px-4">
@@ -514,58 +527,32 @@ function MedicalRequestsContent() {
 
                             <td className="py-3 px-4 text-center">
                               <span
-                                className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${statusColor}`}
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
+                                  isCompleted
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border-amber-200"
+                                }`}
                               >
-                                {r.status || "pending"}
+                                {isCompleted ? "COMPLETED" : "PENDING"}
                               </span>
                             </td>
 
                             <td className="py-3 px-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {/* Print Certificate */}
+                              {isCompleted ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Completed</span>
+                                </span>
+                              ) : (
                                 <button
                                   type="button"
-                                  onClick={() => handlePrintExistingRequest(r)}
-                                  className="p-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer"
-                                  title="Print Official Certificate Slip"
+                                  onClick={() => handleUpdateStatus(r.id || r.requestId!, "completed")}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition cursor-pointer"
                                 >
-                                  <Printer className="w-3.5 h-3.5" />
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Mark Completed</span>
                                 </button>
-
-                                {/* Mark as Completed */}
-                                {r.status !== "completed" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(r.id || r.requestId!, "completed")}
-                                    className="p-1.5 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition cursor-pointer"
-                                    title="Mark Completed"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-
-                                {/* Mark as Dispatched */}
-                                {r.status !== "dispatched" && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(r.id || r.requestId!, "dispatched")}
-                                    className="p-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50 transition cursor-pointer"
-                                    title="Mark Dispatched / Couriered"
-                                  >
-                                    <Truck className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-
-                                {/* Delete */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRequest(r.id || r.requestId!)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 transition cursor-pointer"
-                                  title="Delete Request"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              )}
                             </td>
                           </tr>
                         );
@@ -579,57 +566,25 @@ function MedicalRequestsContent() {
         )}
 
         {/* ========================================================
-            VIEW 2: FORM CARD (Exact user design & code)
+            VIEW 2: FORM VIEW (Spacious & Clean, Locked Branch)
            ======================================================== */}
         {viewMode === "form" && (
           <div className="flex-1 p-6 overflow-y-auto max-w-5xl mx-auto w-full print:hidden">
-            {/* Top Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 border-b border-slate-200 pb-4">
-              <div className="flex items-center gap-3.5">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lime-100 text-lime-800 border border-lime-200 shadow-xs">
-                  <Pill size={24} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 tracking-tight">
-                    New Medicine Request &amp; Certificate
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Prescribe remedies, manage pharmacy requests &amp; print official clinic letterhead slips
-                  </p>
-                </div>
+            {/* Header info banner */}
+            <div className="flex items-center justify-between mb-6 pb-2 border-b border-slate-200">
+              <div>
+                <h2 className="text-base font-black text-slate-900 tracking-tight">
+                  New Medical Request &amp; Remedy Slip
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Enter patient details, match remedies sum with total fee, and share directly via WhatsApp &amp; PDF.
+                </p>
               </div>
-
-              <div className="flex items-center gap-2.5">
-                {saveSuccess && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                    <Check size={14} /> Saved Successfully
-                  </span>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleClearForm}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-xs cursor-pointer"
-                >
-                  <RotateCcw size={14} /> Clear
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handlePrintCurrentForm}
-                  className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition shadow-xs cursor-pointer"
-                >
-                  <Printer size={14} /> Print Certificate
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveRequest}
-                  disabled={isSaving}
-                  className="flex items-center gap-1.5 rounded-xl bg-sky-600 px-5 py-2 text-xs font-extrabold text-white hover:bg-sky-700 transition shadow-md shadow-sky-600/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <Save size={14} /> {isSaving ? "Saving..." : "Save Request"}
-                </button>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-sky-50 text-sky-800 border border-sky-200 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                  {branchName}
+                </span>
               </div>
             </div>
 
@@ -706,19 +661,18 @@ function MedicalRequestsContent() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Clinic Branch *
+                    Clinic Branch (Locked)
                   </label>
-                  <select
-                    value={branchName}
-                    onChange={(e) => setBranchName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 focus:border-sky-500 focus:outline-none"
-                  >
-                    {BRANCH_OPTIONS.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={branchName}
+                      disabled
+                      readOnly
+                      className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600 cursor-not-allowed pl-8"
+                    />
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
                 </div>
 
                 <div>
@@ -740,13 +694,13 @@ function MedicalRequestsContent() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Total Fee / Price (₹)
+                    Total Medicine Fee (₹) *
                   </label>
                   <input
                     type="number"
-                    placeholder="0.00"
+                    placeholder="e.g. 500"
                     value={totalAmount || ""}
-                    onChange={(e) => setTotalAmount(Math.max(0, Number(e.target.value)))}
+                    onChange={(e) => handleTotalAmountChange(Math.max(0, Number(e.target.value)))}
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-emerald-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none"
                   />
                 </div>
@@ -773,6 +727,28 @@ function MedicalRequestsContent() {
                   <Plus size={14} /> Add Medicine
                 </button>
               </div>
+
+              {/* Real-time Fee Match Indicator */}
+              {totalAmount > 0 && (
+                <div
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-4 text-xs font-bold border transition ${
+                    medicinesSum === totalAmount
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                      : "bg-amber-50 border-amber-200 text-amber-800"
+                  }`}
+                >
+                  {medicinesSum === totalAmount ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                  <span>
+                    {medicinesSum === totalAmount
+                      ? `Remedies Total: ₹${medicinesSum} (Equals Total Medicine Fee ₹${totalAmount} ✓)`
+                      : `Remedies Total: ₹${medicinesSum} / ₹${totalAmount} (Must equal Total Fee ₹${totalAmount} • Diff: ₹${Math.abs(totalAmount - medicinesSum)})`}
+                  </span>
+                </div>
+              )}
 
               {/* Medicines Table */}
               <div className="overflow-x-auto">
@@ -861,6 +837,237 @@ function MedicalRequestsContent() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================
+            SHARE & PDF PREVIEW POPUP MODAL (DIRECT PREVIEW)
+           ======================================================== */}
+        {sharePopupData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 print:hidden animate-in fade-in duration-150 overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="px-6 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white leading-tight">
+                      Medical Request Ready • PDF Preview &amp; Share
+                    </h3>
+                    <p className="text-[11px] text-slate-400 font-medium">
+                      Official Clinic Letterhead Certificate &amp; Instant WhatsApp Dispatch
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSharePopupData(null);
+                    setViewMode("list");
+                  }}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body: Left: Full Letterhead PDF Preview, Right: Instant Sharing Controls */}
+              <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-100/70">
+                {/* LEFT: CERTIFICATE PAPER SIMULATION (A4 Aspect Ratio) */}
+                <div className="lg:col-span-7 flex justify-center">
+                  <div className="w-full max-w-[500px] bg-white shadow-md border border-slate-200 rounded-lg overflow-hidden text-slate-900 font-sans flex flex-col justify-between min-h-[580px]">
+                    {/* Top Blue Banner */}
+                    <div className="bg-[#1d8ecd] h-14 px-4 flex items-center justify-between text-white">
+                      <div className="bg-white text-sky-700 px-3 py-1 rounded shadow-xs flex items-center gap-2">
+                        <img src={CLINIC_LOGO_BASE64} alt="Spiritual Homeopathy Logo" className="h-6 w-auto object-contain" />
+                        <div>
+                          <span className="font-extrabold text-[11px] tracking-tight block leading-tight">Spiritual Homeopathy</span>
+                          <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider block">{sharePopupData.branchName}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold tracking-wider uppercase block">
+                          spiritualhomeoclinic.com
+                        </span>
+                        <span className="text-[9.5px] font-semibold text-sky-100 block">
+                          📞 {getBranchPhone(sharePopupData.branchName)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Certificate Body */}
+                    <div className="p-6 flex-1 text-[11px] leading-relaxed space-y-3">
+                      <div className="flex justify-between items-center font-bold text-slate-800 text-[10.5px]">
+                        <span>CLINIC BRANCH: <strong>{(sharePopupData.branchName || "KPHB Branch").toUpperCase()}</strong></span>
+                        <span>DATE: <strong>{new Date().toLocaleDateString("en-GB")}</strong></span>
+                      </div>
+
+                      <div className="text-center font-extrabold text-xs tracking-wider uppercase underline underline-offset-4 text-slate-900 py-1">
+                        TO WHOM SO EVER IT MAY CONCERN
+                      </div>
+
+                      <p className="text-slate-700 leading-5 text-justify">
+                        THIS IS TO CERTIFY THAT{" "}
+                        <strong className="text-slate-900 uppercase">
+                          {sharePopupData.gender || "MR."} {sharePopupData.patientName}
+                        </strong>
+                        {sharePopupData.age ? (
+                          <span>
+                            {" "}
+                            AGED ABOUT <strong className="text-slate-900">{sharePopupData.age} YEARS</strong>,
+                          </span>
+                        ) : null}{" "}
+                        HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY.
+                      </p>
+
+                      <p className="text-slate-700 leading-5 text-justify">
+                        {sharePopupData.duration && (
+                          <span>
+                            THE PATIENT NEEDED TO TAKE HOMEOPATHY MEDICINE FOR{" "}
+                            <strong className="text-slate-900 uppercase">{sharePopupData.duration}</strong>.{" "}
+                          </span>
+                        )}
+                        WE RECOMMENDED THAT{" "}
+                        <strong className="text-slate-900 uppercase">
+                          {sharePopupData.gender || "MR."} {sharePopupData.patientName}
+                        </strong>{" "}
+                        CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
+                      </p>
+
+                      {/* Prescribed Remedies Table */}
+                      <div className="pt-2">
+                        <div className="flex items-center justify-between border-b-2 border-slate-200 pb-1 mb-1.5">
+                          <span className="font-extrabold text-[#1d8ecd] uppercase tracking-wide text-[10.5px]">
+                            Prescribed Medicines
+                          </span>
+                          {Number(sharePopupData.totalAmount) > 0 && (
+                            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] border border-emerald-200">
+                              Fee: ₹{Number(sharePopupData.totalAmount).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-[9.5px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                              <th className="py-1 px-1.5 text-center w-6">#</th>
+                              <th className="py-1 px-2">Remedy Name</th>
+                              <th className="py-1 px-2 text-center">Type</th>
+                              <th className="py-1 px-2">Dosage &amp; Timing</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-[10px]">
+                            {(sharePopupData.medicines || []).map((m, idx) => (
+                              <tr key={idx}>
+                                <td className="py-1.5 px-1 text-center text-slate-400 font-bold">{idx + 1}</td>
+                                <td className="py-1.5 px-2 font-bold text-slate-800">{m.name}</td>
+                                <td className="py-1.5 px-2 text-center">
+                                  <span className="bg-sky-50 text-sky-700 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border border-sky-200">
+                                    {m.type || "Pills"}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2 text-slate-600 font-medium">{m.timing}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="pt-4 text-center text-[9px] text-slate-400 italic border-t border-dashed border-slate-200">
+                        This is a computer-generated document. No physical signature required.
+                      </div>
+                    </div>
+
+                    {/* Bottom Green Footer */}
+                    <div className="bg-[#a3cf3b] h-9 px-3 flex items-center justify-around text-white text-[9.5px] font-bold tracking-wide uppercase">
+                      <span>📞 Reception: {getBranchPhone(sharePopupData.branchName)}</span>
+                      <span>•</span>
+                      <span>✉️ support@spiritualhomeoclinic.com</span>
+                      <span>•</span>
+                      <span>📍 Branch: {(sharePopupData.branchName || "KPHB Branch").toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT: SHARING & PRINT ACTIONS */}
+                <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                      <div className="font-extrabold text-slate-800 text-sm">
+                        {sharePopupData.gender} {sharePopupData.patientName} {sharePopupData.age ? `(${sharePopupData.age}y)` : ""}
+                      </div>
+                      <div className="text-slate-500 font-medium">
+                        {sharePopupData.branchName} • Course: {sharePopupData.duration}
+                      </div>
+                      <div className="font-bold text-emerald-700 pt-1">
+                        Total Fee: ₹{Number(sharePopupData.totalAmount || 0).toFixed(2)} ({sharePopupData.medicines.length} remedies)
+                      </div>
+                    </div>
+
+                    {/* WhatsApp Action */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wide">
+                        1. Share via WhatsApp Direct:
+                      </label>
+                      <div className="flex gap-2">
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 rounded-xl border border-slate-300 text-xs font-bold text-slate-700">
+                          <span>🇮🇳</span>
+                          <span>+91</span>
+                        </div>
+                        <input
+                          type="tel"
+                          maxLength={10}
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value.replace(/\D/g, ""))}
+                          placeholder="10-digit WhatsApp number"
+                          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendViaWhatsApp}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 transition cursor-pointer active:scale-98"
+                      >
+                        <Send size={14} />
+                        <span>Send Slip via WhatsApp</span>
+                      </button>
+                    </div>
+
+                    {/* Print PDF Action */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wide">
+                        2. Print Official PDF Letterhead:
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handlePrintSlipFromModal}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-sm transition cursor-pointer active:scale-98"
+                      >
+                        <Printer size={14} />
+                        <span>Print / Save PDF Slip</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Done / Close Button */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClearForm();
+                        setSharePopupData(null);
+                        setViewMode("list");
+                      }}
+                      className="w-full py-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs transition cursor-pointer"
+                    >
+                      Done / Close
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

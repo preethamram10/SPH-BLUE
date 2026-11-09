@@ -2328,7 +2328,7 @@ export default function ReceptionBookAppointmentScreen() {
 
           <TouchableOpacity
             style={styles.tabItem}
-            onPress={() => router.push("/(reception)/follow-ups" as any)}
+            onPress={() => router.push("/(reception)/medical-requests" as any)}
             activeOpacity={0.8}
           >
             <Ionicons name="medkit-outline" size={22} color="#64748b" />

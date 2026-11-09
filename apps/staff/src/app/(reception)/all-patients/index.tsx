@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
+import { ReceptionBottomNav } from "../../../components/reception/ReceptionBottomNav";
 
 const PAGE_SIZE = 25;
 
@@ -288,7 +289,7 @@ export default function ReceptionAllPatientsScreen() {
   const branchName = activeBranch?.name || activeBranch?.branch || "Branch";
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.7}>
@@ -390,6 +391,9 @@ export default function ReceptionAllPatientsScreen() {
           }
         />
       )}
+
+      {/* Fixed Bottom Navigation Bar */}
+      <ReceptionBottomNav activeTab="patient-list" />
     </SafeAreaView>
   );
 }
@@ -459,7 +463,7 @@ const styles = StyleSheet.create({
   tabBtnTextActive: { color: COLORS.white },
   loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40 },
   loadingText: { marginTop: 10, fontSize: 12, color: COLORS.textMuted },
-  listContent: { padding: 14, paddingBottom: 30 },
+  listContent: { padding: 14, paddingBottom: 85 },
   emptyContainer: {
     backgroundColor: COLORS.white,
     borderRadius: 16,

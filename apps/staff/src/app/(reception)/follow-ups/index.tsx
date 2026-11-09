@@ -339,7 +339,7 @@ export default function ReceptionFollowUpsScreen() {
       </ScrollView>
 
       {/* 5. Fixed Bottom Navigation Bar */}
-      <ReceptionBottomNav activeTab="med-req" />
+      <ReceptionBottomNav />
     </SafeAreaView>
   );
 }

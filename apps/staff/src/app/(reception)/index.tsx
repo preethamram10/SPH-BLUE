@@ -1732,10 +1732,10 @@ export default function ReceptionDashboard() {
           <Text style={styles.tabLabel}>Patient List</Text>
         </TouchableOpacity>
 
-        {/* Med Req / Follow-up Tab */}
+        {/* Med Req Tab */}
         <TouchableOpacity
           style={styles.tabItem}
-          onPress={() => router.push("/(reception)/follow-ups" as any)}
+          onPress={() => router.push("/(reception)/medical-requests" as any)}
           activeOpacity={0.8}
         >
           <Ionicons name="medkit-outline" size={22} color={COLORS.textMuted} />

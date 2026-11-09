@@ -8,7 +8,7 @@
  * EXPO_PUBLIC_API_URL=http://<YOUR_IP>:3000/api
  */
 const configuredUrl =
-  process.env.EXPO_PUBLIC_API_URL || "http://129.121.170.129/api";
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.0.5:3000/api";
 
 export const API_BASE_URL = configuredUrl.replace(/\/+$/, "");
 
