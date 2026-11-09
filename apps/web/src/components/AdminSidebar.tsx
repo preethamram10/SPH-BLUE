@@ -132,25 +132,26 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
           } shrink-0`}
         >
           {!isCollapsed ? (
-            <div className="flex items-center gap-2 overflow-hidden">
-              <div className="w-7 h-7 rounded-lg bg-[#268ec8] flex items-center justify-center text-white font-bold shadow-xs shrink-0">
-                <Shield className="w-4 h-4" />
-              </div>
-              <div className="overflow-hidden">
-                <h1 className="font-bold text-slate-900 text-xs leading-tight truncate">
-                  Spiritual Homeopathy
-                </h1>
-                <span className="text-[9px] font-extrabold text-[#a8ce3a] uppercase tracking-wider block">
-                  Admin Portal
-                </span>
-              </div>
+            <div className="flex items-center gap-2 overflow-hidden min-w-0">
+              <img
+                src="/assets/SH logo.png"
+                alt="Spiritual Homeopathy"
+                className="h-7 w-auto max-w-[130px] object-contain shrink-0"
+              />
+              <span className="text-[8.5px] font-black text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                Admin
+              </span>
             </div>
           ) : (
             <div
-              className="w-7 h-7 rounded-lg bg-[#268ec8] flex items-center justify-center text-white font-bold shadow-xs shrink-0"
+              className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0 bg-white"
               title="Spiritual Homeopathy Admin"
             >
-              <Shield className="w-4 h-4" />
+              <img
+                src="/assets/SH logo.png"
+                alt="SH Logo"
+                className="h-6 w-auto max-w-none object-contain"
+              />
             </div>
           )}
 

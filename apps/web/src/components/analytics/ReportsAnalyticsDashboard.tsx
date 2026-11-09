@@ -439,9 +439,8 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
       pathD += ` C ${mx} ${curr.y}, ${mx} ${next.y}, ${next.x} ${next.y}`;
     }
 
-    const areaD = `${pathD} L ${coords[coords.length - 1].x} ${h - padB} L ${coords[0].x} ${
-      h - padB
-    } Z`;
+    const areaD = `${pathD} L ${coords[coords.length - 1].x} ${h - padB} L ${coords[0].x} ${h - padB
+      } Z`;
 
     return { coords, pathD, areaD, maxVal, maxDataVal, w, h, padL, padB, padT, plotH };
   }, [last6Months, monthlyData, graphMode]);
@@ -758,11 +757,10 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
             <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
               <span>This Month Revenue</span>
               <div
-                className={`flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
-                  momGrowth >= 0
+                className={`flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${momGrowth >= 0
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                     : "bg-rose-50 text-rose-700 border border-rose-200"
-                }`}
+                  }`}
               >
                 {momGrowth >= 0 ? (
                   <TrendingUp className="w-3 h-3" />
@@ -869,21 +867,19 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
                 <button
                   onClick={() => setGraphMode("revenue")}
-                  className={`px-2.5 py-1 rounded-md font-bold transition ${
-                    graphMode === "revenue"
+                  className={`px-2.5 py-1 rounded-md font-bold transition ${graphMode === "revenue"
                       ? "bg-white text-slate-900 shadow-2xs"
                       : "text-slate-500 hover:text-slate-900"
-                  }`}
+                    }`}
                 >
                   💰 Revenue (₹)
                 </button>
                 <button
                   onClick={() => setGraphMode("patients")}
-                  className={`px-2.5 py-1 rounded-md font-bold transition ${
-                    graphMode === "patients"
+                  className={`px-2.5 py-1 rounded-md font-bold transition ${graphMode === "patients"
                       ? "bg-white text-slate-900 shadow-2xs"
                       : "text-slate-500 hover:text-slate-900"
-                  }`}
+                    }`}
                 >
                   👥 Patients
                 </button>
@@ -1034,8 +1030,8 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
                         ? pt.val >= 100000
                           ? `₹${(pt.val / 100000).toFixed(1)}L`
                           : pt.val > 0
-                          ? `₹${(pt.val / 1000).toFixed(0)}k`
-                          : "₹0"
+                            ? `₹${(pt.val / 1000).toFixed(0)}k`
+                            : "₹0"
                         : `${pt.val} pts`}
                     </text>
 
@@ -1163,50 +1159,50 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
       {/* ========================================================================= */}
       {/* Branch Performance (Last 3 Months) - Multi-Bar Benchmark                   */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 sm:p-6 space-y-5">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
               Branch Performance (Last 3 Months)
             </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               Quarterly trajectory across each of the 4 clinical branches
             </p>
           </div>
-          <span className="self-start sm:self-auto px-2.5 py-0.5 rounded-md bg-sky-50 text-sky-600 text-[11px] font-bold border border-sky-100">
+          <span className="self-start sm:self-auto px-3 py-1 rounded-md bg-[#e0f2fe] text-[#0284c7] text-xs font-bold">
             Multi-Bar Benchmark
           </span>
         </div>
 
-        {/* 4 Stacked Branch Rows (Compact Reduced Box Size) */}
-        <div className="space-y-3.5">
+        {/* 4 Stacked Branch Rows */}
+        <div className="space-y-5">
           {branchBenchmarks.map((b) => (
-            <div key={b.id} className="space-y-1.5">
+            <div key={b.id} className="space-y-2">
               {/* Branch Row Header */}
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-900">{b.name}</span>
-                <span className="text-[11px] text-slate-500">
+                <span className="font-bold text-slate-900 text-sm">{b.name}</span>
+                <span className="text-xs text-slate-500">
                   This Month:{" "}
-                  <strong className="font-bold text-slate-900 text-xs ml-0.5">
+                  <strong className="font-bold text-slate-900 text-sm ml-1">
                     ₹{b.thisMonthFormatted}
                   </strong>
                 </span>
               </div>
 
-              {/* 3 Horizontal Mini-Bar Boxes (Reduced Size) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {/* 3 Horizontal Mini-Bar Boxes */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {b.months.map((m, idx) => (
                   <div
                     key={idx}
-                    className="bg-slate-50/70 border border-slate-100/90 rounded-md px-2.5 py-1.5 transition hover:bg-slate-50"
+                    className="bg-[#f8fafc] border border-slate-100 rounded-lg p-2.5 sm:px-3 sm:py-2.5 transition hover:bg-slate-50"
                   >
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="text-slate-400 font-medium">{m.label}</span>
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-slate-500 font-medium">{m.label}</span>
                       <span className="font-bold text-slate-900">{m.display}</span>
                     </div>
                     {/* Horizontal Progress Bar */}
-                    <div className="w-full bg-slate-200/60 rounded-full h-1 overflow-hidden">
+                    <div className="w-full bg-[#e2e8f0] rounded-full h-1.5 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -1261,11 +1257,10 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
               <button
                 key={id}
                 onClick={() => setDocTimeFilter(id)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                  docTimeFilter === id
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${docTimeFilter === id
                     ? "bg-white text-slate-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -1318,21 +1313,19 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs self-start sm:self-auto">
             <button
               onClick={() => setDocMatrixViewMode("revenue")}
-              className={`px-3 py-1 rounded-md font-bold transition ${
-                docMatrixViewMode === "revenue"
+              className={`px-3 py-1 rounded-md font-bold transition ${docMatrixViewMode === "revenue"
                   ? "bg-white text-slate-900 shadow-2xs"
                   : "text-slate-500 hover:text-slate-900"
-              }`}
+                }`}
             >
               💰 Revenue (₹)
             </button>
             <button
               onClick={() => setDocMatrixViewMode("consultations")}
-              className={`px-3 py-1 rounded-md font-bold transition ${
-                docMatrixViewMode === "consultations"
+              className={`px-3 py-1 rounded-md font-bold transition ${docMatrixViewMode === "consultations"
                   ? "bg-white text-slate-900 shadow-2xs"
                   : "text-slate-500 hover:text-slate-900"
-              }`}
+                }`}
             >
               👥 Consultations
             </button>
@@ -1618,11 +1611,10 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
               <button
                 key={id}
                 onClick={() => setTimeFilter(id)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
-                  timeFilter === id
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition ${timeFilter === id
                     ? "bg-white text-slate-900 shadow-xs"
                     : "text-slate-500 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -1749,21 +1741,19 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs self-start sm:self-auto">
               <button
                 onClick={() => setMatrixViewMode("patients")}
-                className={`px-2.5 py-1 rounded-md font-bold transition ${
-                  matrixViewMode === "patients"
+                className={`px-2.5 py-1 rounded-md font-bold transition ${matrixViewMode === "patients"
                     ? "bg-white text-slate-900 shadow-2xs"
                     : "text-slate-500 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 👥 Patients Count
               </button>
               <button
                 onClick={() => setMatrixViewMode("revenue")}
-                className={`px-2.5 py-1 rounded-md font-bold transition ${
-                  matrixViewMode === "revenue"
+                className={`px-2.5 py-1 rounded-md font-bold transition ${matrixViewMode === "revenue"
                     ? "bg-white text-slate-900 shadow-2xs"
                     : "text-slate-500 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 💰 Revenue (₹)
               </button>

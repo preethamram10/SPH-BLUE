@@ -95,18 +95,15 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
     <aside className="w-52 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-xs h-full z-20">
       <div>
         {/* Brand Header */}
-        <div className="p-3.5 border-b border-slate-100 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#268ec8] flex items-center justify-center text-white font-bold shadow-xs shrink-0">
-            <Building2 className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="font-bold text-slate-900 text-xs leading-tight truncate">
-              Spiritual Homeopathy
-            </h1>
-            <span className="text-[9.5px] font-bold text-[#a8ce3a] uppercase tracking-wider block">
-              Reception Desk
-            </span>
-          </div>
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between gap-1.5">
+          <img
+            src="/assets/SH logo.png"
+            alt="Spiritual Homeopathy"
+            className="h-7 w-auto max-w-[130px] object-contain shrink-0"
+          />
+          <span className="text-[8.5px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 uppercase tracking-wider shrink-0">
+            Reception
+          </span>
         </div>
 
         {/* Active Branch Pill */}

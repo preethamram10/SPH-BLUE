@@ -58,7 +58,7 @@ const resolvePrescriptionImageUrl = (url: string) => {
 };
 
 interface PatientHistoryWebViewProps {
-  role: "RECEPTION" | "DOCTOR";
+  role: "RECEPTION" | "DOCTOR" | "ADMIN";
   sidebar: React.ReactNode;
 }
 
