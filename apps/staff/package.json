@@ -43,7 +43,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:apk": "cd android && gradlew.bat assembleRelease",
+    "build:apk:release": "cd android && gradlew.bat assembleRelease",
+    "build:apk:debug": "cd android && gradlew.bat assembleDebug",
+    "clean:android": "cd android && gradlew.bat clean"
   },
   "private": true
 }

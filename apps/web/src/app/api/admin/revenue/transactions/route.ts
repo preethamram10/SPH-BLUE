@@ -13,6 +13,7 @@ export interface TransactionRecord {
   consultationFee: number;
   medicineFee: number;
   packageFee: number;
+  dietFee: number;
   totalAmount: number;
   paymentMethod: "cash" | "upi" | "card" | "split";
   displayPaymentMethod?: string;
@@ -66,15 +67,28 @@ export async function GET(req: Request) {
     const realTransactions: TransactionRecord[] = paidAppointments.map((a) => {
       const cFee = Number(a.consultationFee) || 0;
       const mFee = Number(a.medicineFee) || 0;
-      const dFee = Number(a.dietPlanFee) || 0;
+      const dFee = Number(a.dietPlanFee || (a as any).dietFee) || 0;
       const oFee = Number(a.otherCharges) || 0;
       const disc = Number(a.discountApproved || a.discount) || 0;
+
+      const isPkg = Boolean(
+        a.hasPackage ||
+        (a as any).activePackage ||
+        (a as any).packageTotalAmount ||
+        (a as any).packageName ||
+        (a as any).packageInstallmentPaid ||
+        (a as any).billingMode === "package" ||
+        (a as any).paymentType === "package"
+      );
+      const pkgAmount = Number((a as any).packageInstallmentPaid || (a as any).packageTotalAmount || 0);
 
       let total = 0;
       if (typeof a.totalPaid === "number" && a.totalPaid > 0) {
         total = a.totalPaid;
       } else if (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0) {
         total = a.totalAmountDue;
+      } else if (isPkg && pkgAmount > 0) {
+        total = pkgAmount;
       } else {
         total = Math.max(0, cFee + mFee + dFee + oFee - disc);
       }
@@ -84,11 +98,19 @@ export async function GET(req: Request) {
       }
 
       let split = "Consultation";
-      if (dFee > 0) split = "Diet Plan";
-      else if (mFee > 0 && cFee > 0) split = "Consultation & Medicine Fee";
-      else if (mFee > 0) split = "Medicine Fee";
-      else if (total >= 5000) split = "Package";
-      else if (a.notes && a.notes.toLowerCase().includes("package")) split = "Package";
+      if (isPkg || total >= 5000 || (a.notes && a.notes.toLowerCase().includes("package"))) {
+        split = "Package";
+      } else if (dFee > 0 && cFee === 0 && mFee === 0) {
+        split = "Diet Plan";
+      } else if (mFee > 0 && cFee > 0) {
+        split = "Consultation & Medicine";
+      } else if (mFee > 0) {
+        split = "Consultation & Medicine";
+      } else if (dFee > 0) {
+        split = "Diet Plan";
+      } else {
+        split = "Consultation";
+      }
 
       let method: "cash" | "upi" | "card" | "split" = "upi";
       const rawMethod = (a.paymentMethod || (a as any).paymentMode || "").toUpperCase();
@@ -162,9 +184,10 @@ export async function GET(req: Request) {
         doctorName: a.doctorName || "Dr. Prashanth K Vaidya",
         revenueSplit: split,
         source: a.marketingSource || "Walk-in",
-        consultationFee: cFee,
-        medicineFee: mFee,
-        packageFee: dFee,
+        consultationFee: isPkg ? 0 : cFee,
+        medicineFee: isPkg ? 0 : mFee,
+        packageFee: isPkg ? total : (total >= 5000 ? total : 0),
+        dietFee: dFee,
         totalAmount: total,
         paymentMethod: method,
         displayPaymentMethod: displayMethod,

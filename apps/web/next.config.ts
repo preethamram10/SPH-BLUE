@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: "standalone",
   transpilePackages: ["@spiritualhomeo/database"],
   cacheComponents: true,
   partialPrefetching: true,

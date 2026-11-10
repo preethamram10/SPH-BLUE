@@ -32,6 +32,7 @@ export interface TransactionRecord {
   consultationFee: number;
   medicineFee: number;
   packageFee: number;
+  dietFee?: number;
   totalAmount: number;
   paymentMethod: "cash" | "upi" | "card" | "split";
   displayPaymentMethod?: string;
@@ -271,9 +272,21 @@ export default function AdminTotalRevenuePage() {
           }
         }
 
-        // Revenue Split
+        // Revenue Split Filter
         if (revenueSplitType !== "all") {
-          if (!t.revenueSplit.toLowerCase().includes(revenueSplitType.toLowerCase())) return false;
+          const sLower = (t.revenueSplit || "").toLowerCase();
+          const qLower = revenueSplitType.toLowerCase();
+          if (qLower.includes("diet")) {
+            if (!sLower.includes("diet") && (!t.dietFee || t.dietFee <= 0)) return false;
+          } else if (qLower.includes("medicine")) {
+            if (!sLower.includes("medicine") && (!t.medicineFee || t.medicineFee <= 0)) return false;
+          } else if (qLower.includes("package")) {
+            if (!sLower.includes("package") && (!t.packageFee || t.packageFee <= 0)) return false;
+          } else if (qLower.includes("consultation")) {
+            if (!sLower.includes("consultation") && (!t.consultationFee || t.consultationFee <= 0)) return false;
+          } else if (!sLower.includes(qLower)) {
+            return false;
+          }
         }
 
         // Amount Range
@@ -363,11 +376,40 @@ export default function AdminTotalRevenuePage() {
       }
 
       // Split Breakdown
-      const sLower = t.revenueSplit.toLowerCase();
-      if (sLower.includes("package")) splitCarePackage += t.totalAmount;
-      else if (sLower.includes("diet")) splitDietPlan += t.totalAmount;
-      else if (sLower.includes("medicine")) splitConsultationMed += t.totalAmount;
-      else splitConsultation += t.totalAmount;
+      const sLower = (t.revenueSplit || "").toLowerCase();
+      const pkgAmount = (t.packageFee && t.packageFee > 0) ? t.packageFee : 0;
+      const dietAmount = (t.dietFee && t.dietFee > 0) ? t.dietFee : 0;
+      const medAmount = (t.medicineFee && t.medicineFee > 0) ? t.medicineFee : 0;
+      const consultAmount = (t.consultationFee && t.consultationFee > 0) ? t.consultationFee : 0;
+
+      if (pkgAmount > 0 || sLower.includes("package")) {
+        // Full Package payment or package installment
+        splitCarePackage += t.totalAmount;
+      } else {
+        // Check if individual fee items are recorded
+        const hasSpecificFee = (dietAmount > 0 || medAmount > 0 || consultAmount > 0);
+
+        if (hasSpecificFee) {
+          if (dietAmount > 0) {
+            splitDietPlan += dietAmount;
+          }
+          if (medAmount > 0) {
+            // Consult + Med visit
+            splitConsultationMed += (medAmount + consultAmount);
+          } else if (consultAmount > 0) {
+            splitConsultation += consultAmount;
+          }
+        } else {
+          // Fallback based on split label
+          if (sLower.includes("diet")) {
+            splitDietPlan += t.totalAmount;
+          } else if (sLower.includes("medicine")) {
+            splitConsultationMed += t.totalAmount;
+          } else {
+            splitConsultation += t.totalAmount;
+          }
+        }
+      }
 
       // Source Breakdown
       const src = t.source || "Walk-in";
@@ -989,7 +1031,17 @@ export default function AdminTotalRevenuePage() {
                         <td className="py-2 px-3 font-semibold text-slate-700">{t.branchName}</td>
                         <td className="py-2 px-3 text-slate-800">{t.doctorName}</td>
                         <td className="py-2 px-3">
-                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-medium text-[10.5px]">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                              t.revenueSplit.toLowerCase().includes("package")
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : t.revenueSplit.toLowerCase().includes("diet")
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : t.revenueSplit.toLowerCase().includes("medicine")
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-sky-50 text-sky-700 border-sky-200"
+                            }`}
+                          >
                             {t.revenueSplit}
                           </span>
                         </td>
