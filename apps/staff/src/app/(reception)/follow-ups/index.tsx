@@ -10,6 +10,7 @@ import {
   BackHandler,
   ActivityIndicator,
   Modal,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,8 +25,8 @@ interface FollowUpItem {
   mrn: string;
   phone: string;
   doctorName: string;
+  doctorId?: string;
   branch: string;
-  condition?: string;
   dueDate: string;
   dueTime?: number;
   dueMonth?: number;
@@ -35,23 +36,67 @@ interface FollowUpItem {
   isThisMonth?: boolean;
   isNextMonth?: boolean;
   followUpInterval: string;
-  consultationFee: number;
+  consultationFee?: number;
   notes?: string;
   prescriptionImages?: string[];
   status: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed" | string;
 }
 
+const STANDARD_TIME_SLOTS = [
+  "10:00 AM",
+  "10:30 AM",
+  "11:00 AM",
+  "11:30 AM",
+  "12:00 PM",
+  "12:30 PM",
+  "04:00 PM",
+  "04:30 PM",
+  "05:00 PM",
+  "05:30 PM",
+  "06:00 PM",
+  "06:30 PM",
+  "07:00 PM",
+  "07:30 PM",
+  "08:00 PM",
+];
+
+const DOCTOR_OPTIONS = [
+  { id: "1793864791241", name: "Dr. Prashanth K Vaidya" },
+  { id: "doc-padma", name: "Dr. Padma Priya" },
+  { id: "doc-jobeadh", name: "Dr. Jobeadh Parveej" },
+  { id: "doc-ramakrishna", name: "Dr. Ramakrishna Chanduri" },
+];
+
+const BRANCH_OPTIONS = [
+  "KPHB Branch",
+  "Chandanagar Branch",
+  "Nallagandla Branch",
+  "Dilshuknagar Branch",
+];
+
+const INTERVAL_OPTIONS = [
+  "1 Week",
+  "2 Weeks",
+  "3 Weeks",
+  "1 Month",
+  "45 Days",
+  "2 Months",
+  "3 Months",
+  "6 Months",
+];
+
 export default function ReceptionFollowUpsScreen() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeBranch, setActiveBranch] = useState<any>(null);
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
   const [isLoading, setIsLoading] = useState(false);
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
 
-  // Period / Month Filters matching Web portal exactly
+  // Period Filters matching Web portal exactly (Default to 'all' so all follow-ups load right away)
   const [periodFilter, setPeriodFilter] = useState<
     "this_month" | "next_month" | "due_today" | "overdue" | "all" | "month" | "range"
-  >("this_month");
+  >("all");
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -75,9 +120,28 @@ export default function ReceptionFollowUpsScreen() {
   const [showMonthModal, setShowMonthModal] = useState(false);
   const [showRangeModal, setShowRangeModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [calTarget, setCalTarget] = useState<"from" | "to">("from");
+  const [calTarget, setCalTarget] = useState<"from" | "to" | "reschedule" | "booking">("from");
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+
+  // Reschedule Modal State
+  const [rescheduleItem, setRescheduleItem] = useState<FollowUpItem | null>(null);
+  const [newDueDate, setNewDueDate] = useState("");
+  const [newInterval, setNewInterval] = useState("1 Month");
+  const [rescheduleNotes, setRescheduleNotes] = useState("");
+  const [savingReschedule, setSavingReschedule] = useState(false);
+
+  // Book Appointment Modal State
+  const [bookingItem, setBookingItem] = useState<FollowUpItem | null>(null);
+  const [bookBranch, setBookBranch] = useState("KPHB Branch");
+  const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
+  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [bookDate, setBookDate] = useState("");
+  const [bookTimeSlot, setBookTimeSlot] = useState("11:00 AM");
+  const [bookMode, setBookMode] = useState<"In-Clinic" | "Video Call">("In-Clinic");
+  const [bookReason, setBookReason] = useState("");
+  const [bookNotes, setBookNotes] = useState("");
+  const [savingBooking, setSavingBooking] = useState(false);
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -95,10 +159,9 @@ export default function ReceptionFollowUpsScreen() {
   const loadFollowUps = async () => {
     setIsLoading(true);
     try {
-      const cleanBranch = (activeBranch?.name || "").replace(/Spiritual Homeopathy/gi, "").trim();
       let url = `/reception/follow-ups?period=${periodFilter}`;
-      if (cleanBranch && cleanBranch !== "All Branches") {
-        url += `&branch=${encodeURIComponent(cleanBranch)}`;
+      if (selectedBranch && selectedBranch !== "All Branches") {
+        url += `&branch=${encodeURIComponent(selectedBranch)}`;
       }
       if (periodFilter === "month" && selectedMonth) {
         url += `&selectedMonth=${encodeURIComponent(selectedMonth)}`;
@@ -129,9 +192,9 @@ export default function ReceptionFollowUpsScreen() {
 
   useEffect(() => {
     loadFollowUps();
-  }, [periodFilter, selectedMonth, startDate, endDate, activeBranch]);
+  }, [periodFilter, selectedMonth, startDate, endDate, selectedBranch]);
 
-  // Handle Search Input Debounce / Filter
+  // Handle Search Input Debounce
   useEffect(() => {
     const timer = setTimeout(() => {
       loadFollowUps();
@@ -152,6 +215,95 @@ export default function ReceptionFollowUpsScreen() {
       `Hello ${patientName},\nThis is Spiritual Homeopathy Clinic. Your follow-up consultation with ${doctorName} is scheduled on ${dueDate}.\nPlease let us know if you would like to confirm your appointment.`
     );
     Linking.openURL(`whatsapp://send?phone=+91${clean}&text=${text}`);
+  };
+
+  // Open Reschedule Modal
+  const openRescheduleModal = (item: FollowUpItem) => {
+    setRescheduleItem(item);
+    setNewDueDate(item.dueDate || todayStr);
+    setNewInterval(item.followUpInterval || "1 Month");
+    setRescheduleNotes(item.notes || "");
+  };
+
+  // Submit Reschedule (calls PATCH /reception/follow-ups)
+  const handleSaveReschedule = async () => {
+    if (!rescheduleItem || !newDueDate) return;
+    setSavingReschedule(true);
+    try {
+      const res = await apiFetch<any>("/reception/follow-ups", {
+        method: "PATCH",
+        body: JSON.stringify({
+          appointmentId: rescheduleItem.appointmentId || rescheduleItem.id,
+          newFollowUpDate: newDueDate,
+          newInterval,
+          notes: rescheduleNotes,
+        }),
+      });
+
+      if (res && res.success) {
+        Alert.alert("Success", `Follow-up for ${rescheduleItem.patientName} rescheduled to ${newDueDate}!`);
+        setRescheduleItem(null);
+        loadFollowUps();
+      } else {
+        Alert.alert("Error", res?.error || "Failed to reschedule follow-up");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to reschedule follow-up");
+    } finally {
+      setSavingReschedule(false);
+    }
+  };
+
+  // Open Booking Modal
+  const openBookingModal = (item: FollowUpItem) => {
+    setBookingItem(item);
+    setBookBranch(item.branch || "KPHB Branch");
+    setBookDoctorId(item.doctorId || "1793864791241");
+    setBookDoctorName(item.doctorName || "Dr. Prashanth K Vaidya");
+    setBookDate(item.dueDate || todayStr);
+    setBookTimeSlot("11:00 AM");
+    setBookMode("In-Clinic");
+    setBookReason(`Follow-up review for ${item.patientName}`);
+    setBookNotes(item.notes || "Booked from mobile reception follow-up queue");
+  };
+
+  // Submit Booking (calls POST /reception/follow-ups)
+  const handleConfirmBooking = async () => {
+    if (!bookingItem || !bookDate || !bookTimeSlot) return;
+    setSavingBooking(true);
+    try {
+      const res = await apiFetch<any>("/reception/follow-ups", {
+        method: "POST",
+        body: JSON.stringify({
+          registrationId: bookingItem.mrn,
+          patientName: bookingItem.patientName,
+          phoneNumber: bookingItem.phone,
+          branch: bookBranch,
+          doctorId: bookDoctorId,
+          doctorName: bookDoctorName,
+          appointmentDate: bookDate,
+          selectedTimeSlot: bookTimeSlot,
+          consultationMode: bookMode,
+          diseases: bookReason,
+          notes: bookNotes,
+        }),
+      });
+
+      if (res && res.success) {
+        Alert.alert(
+          "Success",
+          `Appointment successfully booked for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})!`
+        );
+        setBookingItem(null);
+        loadFollowUps();
+      } else {
+        Alert.alert("Error", res?.error || "Failed to book appointment");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to book appointment");
+    } finally {
+      setSavingBooking(false);
+    }
   };
 
   const handleBack = () => {
@@ -181,7 +333,7 @@ export default function ReceptionFollowUpsScreen() {
       {/* 1. Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={20} color="#0f172a" />
+          <Ionicons name="arrow-back" size={18} color="#0f172a" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 8 }}>
           <Text style={styles.headerTitle}>Patient Follow-Ups</Text>
@@ -190,13 +342,13 @@ export default function ReceptionFollowUpsScreen() {
           </Text>
         </View>
         <TouchableOpacity style={styles.refreshBtn} onPress={loadFollowUps} activeOpacity={0.7}>
-          <Ionicons name="refresh" size={17} color="#0284c7" />
+          <Ionicons name="refresh" size={15} color="#0284c7" />
         </TouchableOpacity>
       </View>
 
       {/* 2. Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={17} color="#94a3b8" />
+        <Ionicons name="search-outline" size={15} color="#94a3b8" />
         <TextInput
           style={styles.searchInput}
           placeholder="Search patient, phone, or MRN..."
@@ -206,19 +358,55 @@ export default function ReceptionFollowUpsScreen() {
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => setSearch("")}>
-            <Ionicons name="close-circle" size={17} color="#94a3b8" />
+            <Ionicons name="close-circle" size={16} color="#94a3b8" />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* 3. Modern Period Filter Bar (Synced exactly with Web UI) */}
+      {/* 3. Period Filter Bar (Synced with Web) */}
       <View style={styles.periodBarContainer}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.periodScrollContent}
         >
-          {/* This Month (Default) */}
+          {/* All Follow-Ups */}
+          <TouchableOpacity
+            style={[styles.periodChip, periodFilter === "all" && styles.periodChipActiveDark]}
+            onPress={() => setPeriodFilter("all")}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="list"
+              size={12}
+              color={periodFilter === "all" ? "#ffffff" : "#475569"}
+            />
+            <Text
+              style={[
+                styles.periodChipText,
+                periodFilter === "all" && styles.periodChipTextActive,
+              ]}
+            >
+              All Follow-Ups
+            </Text>
+            <View
+              style={[
+                styles.countBadge,
+                periodFilter === "all" ? styles.countBadgeActiveWhite : styles.countBadgeSlate,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.countBadgeText,
+                  periodFilter === "all" ? styles.countBadgeTextDark : styles.countBadgeTextSlateDark,
+                ]}
+              >
+                {stats.total}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* This Month */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
             onPress={() => setPeriodFilter("this_month")}
@@ -226,7 +414,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="calendar"
-              size={13}
+              size={12}
               color={periodFilter === "this_month" ? "#ffffff" : "#0284c7"}
             />
             <Text
@@ -262,7 +450,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="calendar-outline"
-              size={13}
+              size={12}
               color={periodFilter === "next_month" ? "#ffffff" : "#4f46e5"}
             />
             <Text
@@ -298,7 +486,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="time"
-              size={13}
+              size={12}
               color={periodFilter === "due_today" ? "#ffffff" : "#d97706"}
             />
             <Text
@@ -326,7 +514,7 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Overdue (Date Passed) */}
+          {/* Overdue */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "overdue" && styles.periodChipActiveRose]}
             onPress={() => setPeriodFilter("overdue")}
@@ -334,7 +522,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="alert-circle"
-              size={13}
+              size={12}
               color={periodFilter === "overdue" ? "#ffffff" : "#e11d48"}
             />
             <Text
@@ -362,42 +550,6 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* All Follow-Ups */}
-          <TouchableOpacity
-            style={[styles.periodChip, periodFilter === "all" && styles.periodChipActiveDark]}
-            onPress={() => setPeriodFilter("all")}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name="list"
-              size={13}
-              color={periodFilter === "all" ? "#ffffff" : "#475569"}
-            />
-            <Text
-              style={[
-                styles.periodChipText,
-                periodFilter === "all" && styles.periodChipTextActive,
-              ]}
-            >
-              All Follow-Ups
-            </Text>
-            <View
-              style={[
-                styles.countBadge,
-                periodFilter === "all" ? styles.countBadgeActiveWhite : styles.countBadgeSlate,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.countBadgeText,
-                  periodFilter === "all" ? styles.countBadgeTextDark : styles.countBadgeTextSlateDark,
-                ]}
-              >
-                {stats.total}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
           {/* Choose Month Picker Button */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "month" && styles.periodChipActiveSky]}
@@ -406,7 +558,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="calendar-outline"
-              size={13}
+              size={12}
               color={periodFilter === "month" ? "#ffffff" : "#0284c7"}
             />
             <Text
@@ -419,7 +571,7 @@ export default function ReceptionFollowUpsScreen() {
             </Text>
             <Ionicons
               name="chevron-down"
-              size={12}
+              size={11}
               color={periodFilter === "month" ? "#ffffff" : "#64748b"}
             />
           </TouchableOpacity>
@@ -432,7 +584,7 @@ export default function ReceptionFollowUpsScreen() {
           >
             <Ionicons
               name="git-compare-outline"
-              size={13}
+              size={12}
               color={periodFilter === "range" ? "#ffffff" : "#0284c7"}
             />
             <Text
@@ -447,7 +599,7 @@ export default function ReceptionFollowUpsScreen() {
             </Text>
             <Ionicons
               name="chevron-down"
-              size={12}
+              size={11}
               color={periodFilter === "range" ? "#ffffff" : "#64748b"}
             />
           </TouchableOpacity>
@@ -463,15 +615,15 @@ export default function ReceptionFollowUpsScreen() {
       >
         {isLoading ? (
           <View style={styles.emptyStateContainer}>
-            <ActivityIndicator size="large" color="#0284c7" />
-            <Text style={styles.emptySubText}>Loading scheduled follow-ups...</Text>
+            <ActivityIndicator size="small" color="#0284c7" />
+            <Text style={styles.emptySubText}>Loading follow-ups...</Text>
           </View>
         ) : followUps.length === 0 ? (
           <View style={styles.emptyStateContainer}>
-            <Ionicons name="checkmark-done-circle-outline" size={48} color="#16a34a" />
-            <Text style={styles.emptyTitleText}>No Follow-ups in This Filter</Text>
+            <Ionicons name="checkmark-done-circle-outline" size={42} color="#16a34a" />
+            <Text style={styles.emptyTitleText}>No Follow-ups Found</Text>
             <Text style={styles.emptySubText}>
-              All patients are up to date! Try selecting "This Month" or "All Follow-Ups".
+              Try switching to "All Follow-Ups" or another month.
             </Text>
             <TouchableOpacity
               style={styles.showAllBtn}
@@ -482,7 +634,7 @@ export default function ReceptionFollowUpsScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
+          <View style={{ gap: 7 }}>
             {followUps.map((item, index) => {
               const cleanPhone = (item.phone || "").replace(/\D/g, "").slice(-10);
               const isToday = item.dueDate === todayStr || item.isDueToday;
@@ -490,16 +642,18 @@ export default function ReceptionFollowUpsScreen() {
 
               return (
                 <View key={item.id || index} style={styles.followUpCard}>
-                  {/* Top Row: Name, MRN, Due Date Pill */}
+                  {/* Top Row: Patient Name, MRN, Phone & Due Date Status */}
                   <View style={styles.cardHeaderRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.patientName}>{item.patientName}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                    <View style={{ flex: 1, marginRight: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <Text style={styles.patientName} numberOfLines={1}>
+                          {item.patientName}
+                        </Text>
                         <View style={styles.mrnBadge}>
                           <Text style={styles.mrnBadgeText}>{item.mrn}</Text>
                         </View>
-                        <Text style={styles.phoneText}>{cleanPhone || "No Mobile"}</Text>
                       </View>
+                      <Text style={styles.phoneText}>📞 {cleanPhone || "—"}</Text>
                     </View>
 
                     <View
@@ -514,7 +668,7 @@ export default function ReceptionFollowUpsScreen() {
                     >
                       <Ionicons
                         name={isOverdue ? "alert-circle" : isToday ? "time" : "calendar-outline"}
-                        size={11}
+                        size={10}
                         color={isOverdue ? "#e11d48" : isToday ? "#b45309" : "#0369a1"}
                       />
                       <Text
@@ -532,82 +686,61 @@ export default function ReceptionFollowUpsScreen() {
                     </View>
                   </View>
 
-                  {/* Middle Row: Doctor & Interval Chip */}
-                  <View style={styles.cardInfoRow}>
-                    <View style={styles.infoCol}>
-                      <Text style={styles.infoLabel}>Doctor</Text>
-                      <Text style={styles.infoValue} numberOfLines={1}>
+                  {/* Middle Meta Row: Doctor, Interval, Branch */}
+                  <View style={styles.cardMetaRow}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3, flex: 1 }}>
+                      <Ionicons name="medkit-outline" size={11} color="#64748b" />
+                      <Text style={styles.metaDoctorText} numberOfLines={1}>
                         {item.doctorName?.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName || "Consultant"}`}
                       </Text>
                     </View>
 
-                    <View style={styles.infoCol}>
-                      <Text style={styles.infoLabel}>Interval</Text>
-                      <View style={styles.intervalChipSmall}>
-                        <Text style={styles.intervalChipSmallText}>{item.followUpInterval || "1 Month"}</Text>
-                      </View>
+                    <View style={styles.intervalChipSmall}>
+                      <Text style={styles.intervalChipSmallText}>{item.followUpInterval || "1 Month"}</Text>
                     </View>
 
-                    <View style={styles.infoCol}>
-                      <Text style={styles.infoLabel}>Branch</Text>
-                      <Text style={styles.infoValue} numberOfLines={1}>
-                        {item.branch || "KPHB"}
-                      </Text>
-                    </View>
+                    <Text style={styles.metaBranchText} numberOfLines={1}>
+                      📍 {item.branch || "KPHB"}
+                    </Text>
                   </View>
 
-                  {/* Diagnosis / Notes if present */}
-                  {item.notes ? (
-                    <View style={styles.notesBox}>
-                      <Text style={styles.notesText} numberOfLines={2}>
-                        📝 {item.notes}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {/* Actions Row: Call, WhatsApp, Open Patient File */}
+                  {/* Actions Row: Reschedule, Book Appointment, Call, WhatsApp */}
                   <View style={styles.cardActionsRow}>
                     <TouchableOpacity
-                      style={styles.patientFileLinkBtn}
+                      style={styles.rescheduleBtn}
+                      onPress={() => openRescheduleModal(item)}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons name="refresh" size={11} color="#ffffff" />
+                      <Text style={styles.rescheduleBtnText}>Reschedule</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.bookAppointmentBtn}
+                      onPress={() => openBookingModal(item)}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons name="calendar" size={11} color="#ffffff" />
+                      <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.callIconBtn}
+                      onPress={() => handleCall(item.phone)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="call" size={12} color="#0284c7" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.whatsAppIconBtn}
                       onPress={() =>
-                        router.push({
-                          pathname: "/(reception)/patient-file" as any,
-                          params: {
-                            id: item.appointmentId || item.id,
-                            name: item.patientName,
-                            phone: item.phone,
-                            registrationId: item.mrn,
-                            branch: item.branch,
-                          },
-                        })
+                        handleWhatsApp(item.phone, item.patientName, item.doctorName, item.dueDate)
                       }
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="document-text-outline" size={13} color="#0284c7" />
-                      <Text style={styles.patientFileLinkText}>Patient File</Text>
+                      <Ionicons name="logo-whatsapp" size={13} color="#16a34a" />
                     </TouchableOpacity>
-
-                    <View style={styles.contactActionsRow}>
-                      <TouchableOpacity
-                        style={styles.callIconBtn}
-                        onPress={() => handleCall(item.phone)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="call" size={14} color="#ffffff" />
-                        <Text style={styles.callBtnText}>Call</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.whatsAppIconBtn}
-                        onPress={() =>
-                          handleWhatsApp(item.phone, item.patientName, item.doctorName, item.dueDate)
-                        }
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
-                        <Text style={styles.whatsAppBtnText}>WhatsApp</Text>
-                      </TouchableOpacity>
-                    </View>
                   </View>
                 </View>
               );
@@ -616,7 +749,313 @@ export default function ReceptionFollowUpsScreen() {
         )}
       </ScrollView>
 
-      {/* 5. CHOOSE MONTH MODAL */}
+      {/* 5. RESCHEDULE MODAL */}
+      {rescheduleItem && (
+        <Modal
+          visible={!!rescheduleItem}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setRescheduleItem(null)}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setRescheduleItem(null)}
+          >
+            <View style={styles.actionModalCard} onStartShouldSetResponder={() => true}>
+              <View style={styles.rescheduleModalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="refresh" size={16} color="#ffffff" />
+                  <Text style={styles.actionModalTitle}>Reschedule Follow-Up</Text>
+                </View>
+                <TouchableOpacity onPress={() => setRescheduleItem(null)}>
+                  <Ionicons name="close" size={18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                <View style={styles.patientInfoPill}>
+                  <Text style={styles.patientInfoName}>{rescheduleItem.patientName}</Text>
+                  <Text style={styles.patientInfoMrn}>{rescheduleItem.mrn}</Text>
+                </View>
+
+                {/* Current Due Date */}
+                <View style={styles.currentDueBox}>
+                  <Text style={styles.currentDueLabel}>Current Due Date:</Text>
+                  <Text style={styles.currentDueValue}>{rescheduleItem.dueDate}</Text>
+                </View>
+
+                {/* New Due Date Picker */}
+                <Text style={styles.inputFieldLabel}>NEW FOLLOW-UP DATE *</Text>
+                <TouchableOpacity
+                  style={styles.datePickerTriggerBtn}
+                  onPress={() => {
+                    setCalTarget("reschedule");
+                    setShowCalendarModal(true);
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={14} color="#d97706" />
+                  <Text style={styles.datePickerTriggerText}>{newDueDate || "Select Date"}</Text>
+                  <Ionicons name="chevron-forward" size={13} color="#94a3b8" />
+                </TouchableOpacity>
+
+                {/* Follow-up Interval Chips */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>FOLLOW-UP INTERVAL</Text>
+                <View style={styles.chipsContainer}>
+                  {INTERVAL_OPTIONS.map((intv) => (
+                    <TouchableOpacity
+                      key={intv}
+                      style={[styles.chipItem, newInterval === intv && styles.chipItemActiveAmber]}
+                      onPress={() => setNewInterval(intv)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipItemText,
+                          newInterval === intv && styles.chipItemTextActive,
+                        ]}
+                      >
+                        {intv}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Reschedule Notes */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>REASON / REMARKS</Text>
+                <TextInput
+                  style={styles.modalTextInput}
+                  placeholder="Patient requested postponement, traveling, etc."
+                  placeholderTextColor="#94a3b8"
+                  value={rescheduleNotes}
+                  onChangeText={setRescheduleNotes}
+                  multiline
+                  numberOfLines={2}
+                />
+              </ScrollView>
+
+              <View style={styles.modalActionsRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setRescheduleItem(null)}
+                >
+                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalConfirmAmberBtn}
+                  onPress={handleSaveReschedule}
+                  disabled={savingReschedule || !newDueDate}
+                >
+                  {savingReschedule ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.modalConfirmBtnText}>Save Reschedule</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* 6. BOOK APPOINTMENT MODAL */}
+      {bookingItem && (
+        <Modal
+          visible={!!bookingItem}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setBookingItem(null)}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setBookingItem(null)}
+          >
+            <View style={styles.actionModalCard} onStartShouldSetResponder={() => true}>
+              <View style={styles.bookingModalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="calendar" size={16} color="#ffffff" />
+                  <Text style={styles.actionModalTitle}>Book Follow-Up Appointment</Text>
+                </View>
+                <TouchableOpacity onPress={() => setBookingItem(null)}>
+                  <Ionicons name="close" size={18} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                <View style={styles.patientInfoPillSky}>
+                  <View>
+                    <Text style={styles.patientInfoName}>{bookingItem.patientName}</Text>
+                    <Text style={styles.patientInfoPhone}>📞 {bookingItem.phone || "No Phone"}</Text>
+                  </View>
+                  <Text style={styles.patientInfoMrnSky}>{bookingItem.mrn}</Text>
+                </View>
+
+                {/* Branch Selection */}
+                <Text style={styles.inputFieldLabel}>SELECT CLINIC BRANCH *</Text>
+                <View style={styles.chipsContainer}>
+                  {BRANCH_OPTIONS.map((br) => (
+                    <TouchableOpacity
+                      key={br}
+                      style={[styles.chipItem, bookBranch === br && styles.chipItemActiveSky]}
+                      onPress={() => setBookBranch(br)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipItemText,
+                          bookBranch === br && styles.chipItemTextActive,
+                        ]}
+                      >
+                        {br.replace(" Branch", "")}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Doctor Selection */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>CONSULTANT DOCTOR *</Text>
+                <View style={styles.chipsContainer}>
+                  {DOCTOR_OPTIONS.map((doc) => (
+                    <TouchableOpacity
+                      key={doc.id}
+                      style={[styles.chipItem, bookDoctorId === doc.id && styles.chipItemActiveSky]}
+                      onPress={() => {
+                        setBookDoctorId(doc.id);
+                        setBookDoctorName(doc.name);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.chipItemText,
+                          bookDoctorId === doc.id && styles.chipItemTextActive,
+                        ]}
+                      >
+                        {doc.name.replace("Dr. ", "")}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Date Selection */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>APPOINTMENT DATE *</Text>
+                <TouchableOpacity
+                  style={styles.datePickerTriggerBtn}
+                  onPress={() => {
+                    setCalTarget("booking");
+                    setShowCalendarModal(true);
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={14} color="#0284c7" />
+                  <Text style={styles.datePickerTriggerText}>{bookDate || "Select Date"}</Text>
+                  <Ionicons name="chevron-forward" size={13} color="#94a3b8" />
+                </TouchableOpacity>
+
+                {/* Time Slot Selection */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>TIME SLOT *</Text>
+                <View style={styles.chipsContainer}>
+                  {STANDARD_TIME_SLOTS.map((slot) => (
+                    <TouchableOpacity
+                      key={slot}
+                      style={[styles.chipItemSlot, bookTimeSlot === slot && styles.chipItemActiveSky]}
+                      onPress={() => setBookTimeSlot(slot)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipItemText,
+                          bookTimeSlot === slot && styles.chipItemTextActive,
+                        ]}
+                      >
+                        {slot}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Consultation Mode */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>CONSULTATION MODE</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modeBtn,
+                      bookMode === "In-Clinic" && styles.modeBtnActive,
+                    ]}
+                    onPress={() => setBookMode("In-Clinic")}
+                  >
+                    <Ionicons
+                      name="business"
+                      size={13}
+                      color={bookMode === "In-Clinic" ? "#0284c7" : "#64748b"}
+                    />
+                    <Text
+                      style={[
+                        styles.modeBtnText,
+                        bookMode === "In-Clinic" && styles.modeBtnTextActive,
+                      ]}
+                    >
+                      In-Clinic Visit
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modeBtn,
+                      bookMode === "Video Call" && styles.modeBtnActive,
+                    ]}
+                    onPress={() => setBookMode("Video Call")}
+                  >
+                    <Ionicons
+                      name="videocam"
+                      size={13}
+                      color={bookMode === "Video Call" ? "#0284c7" : "#64748b"}
+                    />
+                    <Text
+                      style={[
+                        styles.modeBtnText,
+                        bookMode === "Video Call" && styles.modeBtnTextActive,
+                      ]}
+                    >
+                      Video Consultation
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Reason */}
+                <Text style={[styles.inputFieldLabel, { marginTop: 10 }]}>REASON FOR VISIT</Text>
+                <TextInput
+                  style={styles.modalTextInput}
+                  placeholder="Follow-up consultation, symptom review"
+                  placeholderTextColor="#94a3b8"
+                  value={bookReason}
+                  onChangeText={setBookReason}
+                />
+              </ScrollView>
+
+              <View style={styles.modalActionsRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setBookingItem(null)}
+                >
+                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalConfirmSkyBtn}
+                  onPress={handleConfirmBooking}
+                  disabled={savingBooking || !bookDate || !bookTimeSlot}
+                >
+                  {savingBooking ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.modalConfirmBtnText}>Confirm Booking</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* 7. CHOOSE MONTH MODAL */}
       <Modal
         visible={showMonthModal}
         transparent={true}
@@ -632,7 +1071,7 @@ export default function ReceptionFollowUpsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Choose Follow-Up Month ({calYear})</Text>
               <TouchableOpacity onPress={() => setShowMonthModal(false)}>
-                <Ionicons name="close" size={20} color="#0f172a" />
+                <Ionicons name="close" size={18} color="#0f172a" />
               </TouchableOpacity>
             </View>
 
@@ -650,7 +1089,9 @@ export default function ReceptionFollowUpsScreen() {
                       setShowMonthModal(false);
                     }}
                   >
-                    <Text style={[styles.monthCellText, isSelected && styles.monthCellTextActive]}>
+                    <Text
+                      style={[styles.monthCellText, isSelected && styles.monthCellTextActive]}
+                    >
                       {name.slice(0, 3)}
                     </Text>
                   </TouchableOpacity>
@@ -661,7 +1102,7 @@ export default function ReceptionFollowUpsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* 6. DATE RANGE MODAL */}
+      {/* 8. DATE RANGE MODAL */}
       <Modal
         visible={showRangeModal}
         transparent={true}
@@ -677,13 +1118,13 @@ export default function ReceptionFollowUpsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Custom Date Range</Text>
               <TouchableOpacity onPress={() => setShowRangeModal(false)}>
-                <Ionicons name="close" size={20} color="#0f172a" />
+                <Ionicons name="close" size={18} color="#0f172a" />
               </TouchableOpacity>
             </View>
 
-            <View style={{ gap: 12, paddingVertical: 10 }}>
+            <View style={{ gap: 10, paddingVertical: 8 }}>
               <View>
-                <Text style={styles.rangeInputLabel}>From Date</Text>
+                <Text style={styles.rangeInputLabel}>FROM DATE</Text>
                 <TouchableOpacity
                   style={styles.rangeDateBtn}
                   onPress={() => {
@@ -691,13 +1132,13 @@ export default function ReceptionFollowUpsScreen() {
                     setShowCalendarModal(true);
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={16} color="#0284c7" />
-                  <Text style={styles.rangeDateBtnText}>{startDate || "Pick From Date"}</Text>
+                  <Ionicons name="calendar-outline" size={14} color="#0284c7" />
+                  <Text style={styles.rangeDateBtnText}>{startDate || "Choose From Date"}</Text>
                 </TouchableOpacity>
               </View>
 
               <View>
-                <Text style={styles.rangeInputLabel}>To Date</Text>
+                <Text style={styles.rangeInputLabel}>TO DATE</Text>
                 <TouchableOpacity
                   style={styles.rangeDateBtn}
                   onPress={() => {
@@ -705,19 +1146,17 @@ export default function ReceptionFollowUpsScreen() {
                     setShowCalendarModal(true);
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={16} color="#0284c7" />
-                  <Text style={styles.rangeDateBtnText}>{endDate || "Pick To Date"}</Text>
+                  <Ionicons name="calendar-outline" size={14} color="#0284c7" />
+                  <Text style={styles.rangeDateBtnText}>{endDate || "Choose To Date"}</Text>
                 </TouchableOpacity>
               </View>
 
               <TouchableOpacity
                 style={styles.applyRangeBtn}
                 onPress={() => {
-                  if (!startDate || !endDate) {
-                    alert("Please select both From and To dates.");
-                    return;
+                  if (startDate && endDate) {
+                    setPeriodFilter("range");
                   }
-                  setPeriodFilter("range");
                   setShowRangeModal(false);
                 }}
               >
@@ -728,7 +1167,7 @@ export default function ReceptionFollowUpsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* 7. CALENDAR DATE SELECTOR MODAL */}
+      {/* 9. INTERACTIVE CALENDAR MODAL */}
       <Modal
         visible={showCalendarModal}
         transparent={true}
@@ -740,55 +1179,69 @@ export default function ReceptionFollowUpsScreen() {
           activeOpacity={1}
           onPress={() => setShowCalendarModal(false)}
         >
-          <View style={styles.calModalCard}>
+          <View style={styles.calModalCard} onStartShouldSetResponder={() => true}>
             <View style={styles.calHeaderRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 0) {
+                    setCalMonth(11);
+                    setCalYear((y) => y - 1);
+                  } else {
+                    setCalMonth((m) => m - 1);
+                  }
+                }}
+                style={styles.calNavBtn}
+              >
+                <Ionicons name="chevron-back" size={16} color="#0284c7" />
+              </TouchableOpacity>
+
               <Text style={styles.calMonthTitle}>
                 {monthNames[calMonth]} {calYear}
               </Text>
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (calMonth === 0) {
-                      setCalMonth(11);
-                      setCalYear((y) => y - 1);
-                    } else {
-                      setCalMonth((m) => m - 1);
-                    }
-                  }}
-                  style={styles.calNavBtn}
-                >
-                  <Ionicons name="chevron-back" size={18} color="#0284c7" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (calMonth === 11) {
-                      setCalMonth(0);
-                      setCalYear((y) => y + 1);
-                    } else {
-                      setCalMonth((m) => m + 1);
-                    }
-                  }}
-                  style={styles.calNavBtn}
-                >
-                  <Ionicons name="chevron-forward" size={18} color="#0284c7" />
-                </TouchableOpacity>
-              </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 11) {
+                    setCalMonth(0);
+                    setCalYear((y) => y + 1);
+                  } else {
+                    setCalMonth((m) => m + 1);
+                  }
+                }}
+                style={styles.calNavBtn}
+              >
+                <Ionicons name="chevron-forward" size={16} color="#0284c7" />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.calWeekdaysRow}>
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-                <Text key={d} style={styles.calWeekdayText}>{d}</Text>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((w) => (
+                <Text key={w} style={styles.calWeekdayText}>
+                  {w}
+                </Text>
               ))}
             </View>
 
             <View style={styles.calDaysGrid}>
-              {Array.from({ length: new Date(calYear, calMonth, 1).getDay() }).map((_, i) => (
-                <View key={`empty-${i}`} style={styles.calDayCell} />
+              {Array.from({
+                length: new Date(calYear, calMonth, 1).getDay(),
+              }).map((_, i) => (
+                <View key={`pad-${i}`} style={styles.calDayCell} />
               ))}
-              {Array.from({ length: new Date(calYear, calMonth + 1, 0).getDate() }).map((_, i) => {
-                const day = i + 1;
+
+              {Array.from({
+                length: new Date(calYear, calMonth + 1, 0).getDate(),
+              }).map((_, idx) => {
+                const day = idx + 1;
                 const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
-                const isSelected = (calTarget === "from" ? startDate : endDate) === formatted;
+                const isSelected =
+                  calTarget === "from"
+                    ? startDate === formatted
+                    : calTarget === "to"
+                    ? endDate === formatted
+                    : calTarget === "reschedule"
+                    ? newDueDate === formatted
+                    : bookDate === formatted;
 
                 return (
                   <TouchableOpacity
@@ -796,8 +1249,12 @@ export default function ReceptionFollowUpsScreen() {
                     onPress={() => {
                       if (calTarget === "from") {
                         setStartDate(formatted);
-                      } else {
+                      } else if (calTarget === "to") {
                         setEndDate(formatted);
+                      } else if (calTarget === "reschedule") {
+                        setNewDueDate(formatted);
+                      } else if (calTarget === "booking") {
+                        setBookDate(formatted);
                       }
                       setShowCalendarModal(false);
                     }}
@@ -814,7 +1271,7 @@ export default function ReceptionFollowUpsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* 8. Fixed Bottom Navigation Bar */}
+      {/* 10. Fixed Bottom Navigation Bar */}
       <ReceptionBottomNav />
     </SafeAreaView>
   );
@@ -828,30 +1285,30 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
     backgroundColor: "#ffffff",
   },
   backBtn: {
-    padding: 6,
-    borderRadius: 8,
+    padding: 5,
+    borderRadius: 7,
     backgroundColor: "#f8fafc",
   },
   headerTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
   },
   headerSub: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: "#64748b",
   },
   refreshBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "#f0f9ff",
     borderWidth: 1,
     borderColor: "#bae6fd",
@@ -861,40 +1318,40 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 12,
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    marginHorizontal: 10,
+    marginTop: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderRadius: 10,
-    gap: 8,
+    borderRadius: 9,
+    gap: 7,
   },
   searchInput: {
     flex: 1,
-    fontSize: 12.5,
+    fontSize: 11.5,
     color: "#0f172a",
     padding: 0,
   },
   periodBarContainer: {
-    marginTop: 10,
-    paddingBottom: 8,
+    marginTop: 8,
+    paddingBottom: 7,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
   },
   periodScrollContent: {
-    paddingHorizontal: 12,
-    gap: 8,
+    paddingHorizontal: 10,
+    gap: 6,
     alignItems: "center",
   },
   periodChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
@@ -920,7 +1377,7 @@ const styles = StyleSheet.create({
     borderColor: "#0f172a",
   },
   periodChipText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "700",
     color: "#334155",
   },
@@ -929,10 +1386,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   countBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    minWidth: 18,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 8,
+    minWidth: 16,
     alignItems: "center",
   },
   countBadgeActiveWhite: {
@@ -954,7 +1411,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f1f5f9",
   },
   countBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "900",
   },
   countBadgeTextSky: {
@@ -991,84 +1448,88 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 12,
-    paddingBottom: 80,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 75,
   },
   emptyStateContainer: {
-    padding: 40,
+    padding: 30,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 20,
   },
   emptyTitleText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0f172a",
-    marginTop: 12,
+    marginTop: 10,
   },
   emptySubText: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: "#64748b",
     textAlign: "center",
-    marginTop: 4,
-    lineHeight: 18,
+    marginTop: 3,
+    lineHeight: 16,
   },
   showAllBtn: {
-    marginTop: 16,
+    marginTop: 12,
     backgroundColor: "#0284c7",
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
   },
   showAllBtnText: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: "800",
   },
+  // Compact Follow-Up Card Styles
   followUpCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    padding: 13,
+    padding: 9,
     shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
     elevation: 1,
   },
   cardHeaderRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
   },
   patientName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
     color: "#0f172a",
+    maxWidth: 160,
   },
   mrnBadge: {
     backgroundColor: "#f1f5f9",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
   },
   mrnBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "800",
     color: "#475569",
   },
   phoneText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: "#64748b",
     fontWeight: "600",
+    marginTop: 2,
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 6,
   },
   statusToday: {
     backgroundColor: "#fef3c7",
@@ -1086,7 +1547,7 @@ const styles = StyleSheet.create({
     borderColor: "#bae6fd",
   },
   statusText: {
-    fontSize: 10.5,
+    fontSize: 9.5,
     fontWeight: "800",
   },
   statusTextToday: {
@@ -1098,129 +1559,358 @@ const styles = StyleSheet.create({
   statusTextUpcoming: {
     color: "#0369a1",
   },
-  cardInfoRow: {
+  cardMetaRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#f8fafc",
-    padding: 9,
-    borderRadius: 10,
-    marginTop: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
   },
-  infoCol: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 9.5,
-    fontWeight: "700",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-  },
-  infoValue: {
-    fontSize: 11.5,
+  metaDoctorText: {
+    fontSize: 10.5,
     fontWeight: "700",
     color: "#1e293b",
-    marginTop: 1,
   },
   intervalChipSmall: {
-    alignSelf: "flex-start",
     backgroundColor: "#e0f2fe",
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
-    marginTop: 2,
+    marginHorizontal: 4,
   },
   intervalChipSmallText: {
     fontSize: 9.5,
     fontWeight: "800",
     color: "#0284c7",
   },
-  notesBox: {
-    marginTop: 8,
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  notesText: {
-    fontSize: 11,
-    color: "#475569",
-    fontStyle: "italic",
+  metaBranchText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748b",
   },
   cardActionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 11,
-    paddingTop: 10,
+    gap: 6,
+    marginTop: 7,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: "#f1f5f9",
   },
-  patientFileLinkBtn: {
+  rescheduleBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#f0f9ff",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#bae6fd",
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 6,
   },
-  patientFileLinkText: {
-    fontSize: 11,
+  rescheduleBtnText: {
+    color: "#ffffff",
+    fontSize: 10.5,
     fontWeight: "800",
-    color: "#0284c7",
   },
-  contactActionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  callIconBtn: {
+  bookAppointmentBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: "#0284c7",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 6,
   },
-  callBtnText: {
+  bookAppointmentBtnText: {
     color: "#ffffff",
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "800",
+  },
+  callIconBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "auto",
   },
   whatsAppIconBtn: {
-    flexDirection: "row",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "#16a34a",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    justifyContent: "center",
   },
-  whatsAppBtnText: {
-    color: "#ffffff",
-    fontSize: 11,
-    fontWeight: "800",
-  },
+  // Modal Base Styles
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 16,
   },
   modalCard: {
     width: "100%",
-    maxWidth: 340,
+    maxWidth: 330,
     backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 18,
+    padding: 16,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 8,
+  },
+  actionModalCard: {
+    width: "100%",
+    maxWidth: 345,
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 10,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+  },
+  rescheduleModalHeader: {
+    backgroundColor: "#f59e0b",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: -14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  bookingModalHeader: {
+    backgroundColor: "#0284c7",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: -14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  actionModalTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#ffffff",
+  },
+  patientInfoPill: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    marginBottom: 8,
+  },
+  patientInfoPillSky: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    marginBottom: 8,
+  },
+  patientInfoName: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  patientInfoMrn: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#b45309",
+    fontFamily: "monospace",
+  },
+  patientInfoMrnSky: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#0369a1",
+    fontFamily: "monospace",
+  },
+  patientInfoPhone: {
+    fontSize: 10,
+    color: "#64748b",
+    fontWeight: "600",
+    marginTop: 1,
+  },
+  currentDueBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    backgroundColor: "#f8fafc",
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginBottom: 8,
+  },
+  currentDueLabel: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  currentDueValue: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  inputFieldLabel: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#475569",
+    textTransform: "uppercase",
+    marginBottom: 4,
+    letterSpacing: 0.3,
+  },
+  datePickerTriggerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  datePickerTriggerText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#0f172a",
+    flex: 1,
+    marginLeft: 6,
+  },
+  chipsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+  },
+  chipItem: {
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderRadius: 6,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  chipItemSlot: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  chipItemActiveAmber: {
+    backgroundColor: "#f59e0b",
+    borderColor: "#f59e0b",
+  },
+  chipItemActiveSky: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  chipItemText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  chipItemTextActive: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  modeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#ffffff",
+  },
+  modeBtnActive: {
+    backgroundColor: "#f0f9ff",
+    borderColor: "#0284c7",
+  },
+  modeBtnText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  modeBtnTextActive: {
+    color: "#0284c7",
+    fontWeight: "800",
+  },
+  modalTextInput: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    fontSize: 11,
+    color: "#0f172a",
+  },
+  modalActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  modalCancelBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  modalConfirmAmberBtn: {
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  modalConfirmSkyBtn: {
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  modalConfirmBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#ffffff",
   },
   modalHeader: {
     flexDirection: "row",
@@ -1228,28 +1918,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
-    paddingBottom: 10,
-    marginBottom: 10,
+    paddingBottom: 8,
+    marginBottom: 8,
   },
   modalTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
     color: "#0f172a",
   },
   monthsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
     justifyContent: "space-between",
-    paddingVertical: 10,
+    paddingVertical: 6,
   },
   monthCell: {
     width: "30%",
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#f8fafc",
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
@@ -1258,7 +1948,7 @@ const styles = StyleSheet.create({
     borderColor: "#0284c7",
   },
   monthCellText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: "#334155",
   },
@@ -1267,44 +1957,44 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   rangeInputLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     color: "#475569",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   rangeDateBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   rangeDateBtnText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: "#0f172a",
   },
   applyRangeBtn: {
     backgroundColor: "#0284c7",
-    paddingVertical: 11,
-    borderRadius: 10,
+    paddingVertical: 9,
+    borderRadius: 8,
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 4,
   },
   applyRangeBtnText: {
     color: "#ffffff",
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: "800",
   },
   calModalCard: {
-    width: "88%",
+    width: "86%",
     backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 18,
+    padding: 14,
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -1314,17 +2004,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   calMonthTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
     color: "#0f172a",
   },
   calNavBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 7,
     backgroundColor: "#e0f2fe",
     alignItems: "center",
     justifyContent: "center",
@@ -1334,14 +2024,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
-    paddingBottom: 8,
-    marginBottom: 8,
+    paddingBottom: 6,
+    marginBottom: 6,
   },
   calWeekdayText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     color: "#64748b",
-    width: 36,
+    width: 32,
     textAlign: "center",
   },
   calDaysGrid: {
@@ -1350,18 +2040,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
   },
   calDayCell: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
-    marginVertical: 3,
-    borderRadius: 18,
+    marginVertical: 2,
+    borderRadius: 16,
   },
   calDayCellSelected: {
     backgroundColor: "#0284c7",
   },
   calDayText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: "#0f172a",
   },
