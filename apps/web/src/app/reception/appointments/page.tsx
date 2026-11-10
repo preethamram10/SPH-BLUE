@@ -30,6 +30,7 @@ import {
   History,
 } from "lucide-react";
 import { generateRegistrationId } from "@/utils/idGenerator";
+import AnalogClockPicker from "@/components/AnalogClockPicker";
 
 export interface DoctorOption {
   id: string;
@@ -221,9 +222,32 @@ export default function ReceptionAppointmentsPage() {
   };
 
   // Fetch doctors and active no-shows for this branch and date
-  const fetchDoctorsAndNoShows = async (bName: string, dt: string) => {
+  const fetchDoctorsAndNoShows = async (bName: string, dt: string, modeOverride?: string) => {
     try {
       setLoadingDoctors(true);
+      const isOnline = (modeOverride !== undefined ? modeOverride : consultationMode) === "Online";
+
+      if (isOnline) {
+        // Online Mode: Fetch ALL doctors across the clinic system
+        const res = await fetch("/api/admin/employees?category=DOCTOR");
+        if (res.ok) {
+          const data = await res.json();
+          const docList = Array.isArray(data.employees) ? data.employees : [];
+          const mapped: DoctorOption[] = docList.map((d: any, idx: number) => ({
+            id: d.id,
+            doctorId: d.id,
+            name: d.name,
+            specialty: d.designation || d.specialty || "Homeopathic Consultant",
+            phone: d.phone,
+            color: DOCTOR_COLORS[idx % DOCTOR_COLORS.length],
+            slots: [],
+          }));
+          setAvailableDoctors(mapped);
+          setActiveNoShows([]);
+          return;
+        }
+      }
+
       const day = getDayOfWeekAbbr(dt);
       const cleanBranch = bName.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
 
@@ -331,9 +355,9 @@ export default function ReceptionAppointmentsPage() {
 
   useEffect(() => {
     if (branchName) {
-      fetchDoctorsAndNoShows(branchName, appointmentDate);
+      fetchDoctorsAndNoShows(branchName, appointmentDate, consultationMode);
     }
-  }, [appointmentDate, branchName]);
+  }, [appointmentDate, branchName, consultationMode]);
 
   // Fetch temporary slots and existing booked appointments for this branch, doctor, and date
   useEffect(() => {
@@ -398,6 +422,9 @@ export default function ReceptionAppointmentsPage() {
 
   // Filter for AVAILABLE ONLY doctors (Exclude doctors with FULL_DAY no-show on this date)
   const availableOnlyDoctors = useMemo(() => {
+    if (consultationMode === "Online") {
+      return availableDoctors;
+    }
     return availableDoctors.filter((doc) => {
       const isFullDayOff = activeNoShows.some(
         (ns) =>
@@ -406,7 +433,7 @@ export default function ReceptionAppointmentsPage() {
       );
       return !isFullDayOff;
     });
-  }, [availableDoctors, activeNoShows]);
+  }, [availableDoctors, activeNoShows, consultationMode]);
 
   // Keep selected doctor in sync with available-only doctors list (refresh slots if date changed)
   useEffect(() => {
@@ -908,7 +935,7 @@ export default function ReceptionAppointmentsPage() {
       return;
     }
     if (!selectedSlot) {
-      alert("Please select a 15-minute consultation time slot.");
+      alert(consultationMode === "Online" ? "Please select a consultation time on the analog clock." : "Please select a 15-minute consultation time slot.");
       return;
     }
 
@@ -1187,7 +1214,10 @@ export default function ReceptionAppointmentsPage() {
                             key={mode.id}
                             onClick={() => {
                               setConsultationMode(mode.id);
+                              setSelectedDoctor(null);
+                              setSelectedSlot("");
                               setIsModeOpen(false);
+                              fetchDoctorsAndNoShows(branchName, appointmentDate, mode.id);
                             }}
                             className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
                               isSelected
@@ -1320,12 +1350,12 @@ export default function ReceptionAppointmentsPage() {
                 <div className="relative" ref={doctorDropdownRef}>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      Consulting Doctor ({getDayOfWeekAbbr(appointmentDate)}) *
+                      Consulting Doctor {consultationMode === "Online" ? "(All Clinic Doctors)" : `(${getDayOfWeekAbbr(appointmentDate)})`} *
                     </label>
                     {availableOnlyDoctors.length > 0 && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        {availableOnlyDoctors.length} Available
+                        {availableOnlyDoctors.length} {consultationMode === "Online" ? "Doctors" : "Available"}
                       </span>
                     )}
                   </div>
@@ -1418,11 +1448,20 @@ export default function ReceptionAppointmentsPage() {
                 </div>
               </div>
 
-              {/* 15-MINUTE TIME SLOTS GRID */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Select Time Slot (15-min intervals) *
-                </label>
+              {/* TIME SELECTION: ANALOG CLOCK FOR ONLINE, 15-MIN GRID FOR IN-CLINIC */}
+              {consultationMode === "Online" ? (
+                <div>
+                  <AnalogClockPicker
+                    value={selectedSlot}
+                    onChange={setSelectedSlot}
+                    doctorName={selectedDoctor?.name}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Select Time Slot (15-min intervals) *
+                  </label>
 
                 {generatedSlots.length === 0 ? (
                   <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500 font-medium">
@@ -1571,7 +1610,8 @@ export default function ReceptionAppointmentsPage() {
                   </div>
                 )}
               </div>
-            </div>
+            )}
+          </div>
 
             {/* CONFIRM APPOINTMENT SUBMIT BUTTON */}
             <div className="pt-2">

@@ -23,6 +23,7 @@ import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { removeAuthToken, getActiveBranch, removeActiveBranch, saveActiveBranch } from "../../../services/auth";
 import { API_BASE_URL } from "../../../config/api";
 import { generateRegistrationId } from "../../../utils/idGenerator";
+import AnalogClockPicker from "../../../components/AnalogClockPicker";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -212,9 +213,33 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   // Fetch real doctors and no-shows from API for this branch and date
-  const fetchDoctorsAndNoShows = async (bName: string, dt: string) => {
+  const fetchDoctorsAndNoShows = async (bName: string, dt: string, modeOverride?: string) => {
     try {
       setLoadingDoctors(true);
+      const isOnline = (modeOverride !== undefined ? modeOverride : consultationMode) === "Online";
+
+      if (isOnline) {
+        // Online Mode: Fetch ALL clinic doctors across all branches
+        const res = await fetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.employees)) {
+            const mapped: DoctorOption[] = data.employees.map((d: any, idx: number) => ({
+              id: d.id,
+              doctorId: d.id,
+              name: d.name,
+              specialty: d.designation || d.specialty || "Homeopathic Consultant",
+              phone: d.phone,
+              color: DOCTOR_COLORS[idx % DOCTOR_COLORS.length],
+              slots: [],
+            }));
+            setAvailableDoctors(mapped);
+            setActiveNoShows([]);
+            return;
+          }
+        }
+      }
+
       const day = getDayOfWeekAbbr(dt);
       const cleanBranch = bName.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
 
@@ -286,13 +311,10 @@ export default function ReceptionBookAppointmentScreen() {
   }, []);
 
   useEffect(() => {
-    if (activeBranch?.name) {
-      fetchDoctorsAndNoShows(activeBranch.name, appointmentDate);
-    } else {
-      fetchDoctorsAndNoShows("KPHB Branch", appointmentDate);
-    }
+    const bName = activeBranch?.name || "KPHB Branch";
+    fetchDoctorsAndNoShows(bName, appointmentDate, consultationMode);
     setSelectedSlot("");
-  }, [appointmentDate, activeBranch]);
+  }, [appointmentDate, activeBranch, consultationMode]);
 
   // Fetch temporary slots and existing appointments count for this branch, doctor, and date
   useEffect(() => {
@@ -332,6 +354,9 @@ export default function ReceptionBookAppointmentScreen() {
 
   // Filter for available-only doctors (exclude full-day no-shows / leaves)
   const availableOnlyDoctors = useMemo(() => {
+    if (consultationMode === "Online") {
+      return availableDoctors;
+    }
     return availableDoctors.filter((doc) => {
       const isFullDayOff = activeNoShows.some(
         (ns) =>
@@ -340,7 +365,7 @@ export default function ReceptionBookAppointmentScreen() {
       );
       return !isFullDayOff;
     });
-  }, [availableDoctors, activeNoShows]);
+  }, [availableDoctors, activeNoShows, consultationMode]);
 
   // Keep selected doctor in sync with available-only doctors list (refresh slots if date changed)
   useEffect(() => {
@@ -863,7 +888,12 @@ export default function ReceptionBookAppointmentScreen() {
       return;
     }
     if (!selectedSlot) {
-      Alert.alert("Time Slot Required", "Please select an available consultation slot.");
+      Alert.alert(
+        "Time Required",
+        consultationMode === "Online"
+          ? "Please select a consultation time on the clock."
+          : "Please select an available consultation slot."
+      );
       return;
     }
 
@@ -1212,7 +1242,11 @@ export default function ReceptionBookAppointmentScreen() {
                           style={[styles.inlineDropdownItem, selected && styles.inlineDropdownItemSelected]}
                           onPress={() => {
                             setConsultationMode(mode.id);
+                            setSelectedDoctor(null);
+                            setSelectedSlot("");
                             setIsModeOpen(false);
+                            const bName = activeBranch?.name || "KPHB Branch";
+                            fetchDoctorsAndNoShows(bName, appointmentDate, mode.id);
                           }}
                           activeOpacity={0.7}
                         >
@@ -1353,13 +1387,13 @@ export default function ReceptionBookAppointmentScreen() {
             <View style={{ marginTop: 14, marginBottom: 14, position: "relative", zIndex: isDoctorOpen ? 50 : 5 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <Text style={styles.label}>
-                  Consulting Doctor ({getDayOfWeekAbbr(appointmentDate)}) *
+                  Consulting Doctor {consultationMode === "Online" ? "(All Clinic Doctors)" : `(${getDayOfWeekAbbr(appointmentDate)})`} *
                 </Text>
                 {availableOnlyDoctors.length > 0 && (
                   <View style={styles.availableBadge}>
                     <View style={styles.availableDot} />
                     <Text style={styles.availableBadgeText}>
-                      {availableOnlyDoctors.length} Available
+                      {availableOnlyDoctors.length} {consultationMode === "Online" ? "Doctors" : "Available"}
                     </Text>
                   </View>
                 )}
@@ -1455,8 +1489,18 @@ export default function ReceptionBookAppointmentScreen() {
               )}
             </View>
 
-            {/* TIME SLOT SELECTION (STRICTLY 4 COLUMNS IN MOBILE) */}
-            <Text style={styles.label}>Select Time Slot (15-min intervals) *</Text>
+            {/* TIME SELECTION: ANALOG CLOCK FOR ONLINE, 15-MIN GRID FOR IN-CLINIC */}
+            {consultationMode === "Online" ? (
+              <View style={{ marginBottom: 14 }}>
+                <AnalogClockPicker
+                  value={selectedSlot}
+                  onChange={setSelectedSlot}
+                  doctorName={selectedDoctor?.name}
+                />
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.label}>Select Time Slot (15-min intervals) *</Text>
             {generatedSlots.length === 0 ? (
               <View style={styles.emptyDoctorBox}>
                 <Text style={styles.emptyDoctorText}>
@@ -1661,6 +1705,8 @@ export default function ReceptionBookAppointmentScreen() {
                     </View>
                   );
                 })}
+              </View>
+            )}
               </View>
             )}
           </View>

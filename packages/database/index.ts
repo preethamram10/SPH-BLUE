@@ -1793,17 +1793,21 @@ export const appointmentService = {
       throw new Error("Appointment date and time slot are required.");
     }
 
-    // Anti-overbooking guardrail: Check capacity before creating appointment
-    const currentBookedCount = await this.getSlotBookedCount(
-      cleanBranch,
-      cleanDate,
-      cleanDoctorId,
-      cleanTimeSlot
-    );
-    if (currentBookedCount >= 3) {
-      throw new Error(
-        `Slot "${cleanTimeSlot}" is already fully booked (${currentBookedCount}/3 capacity). Please choose another time slot.`
+    const isOnline = data.consultationMode?.trim().toLowerCase() === "online";
+
+    // Anti-overbooking guardrail: Check capacity before creating in-clinic appointment
+    if (!isOnline) {
+      const currentBookedCount = await this.getSlotBookedCount(
+        cleanBranch,
+        cleanDate,
+        cleanDoctorId,
+        cleanTimeSlot
       );
+      if (currentBookedCount >= 3) {
+        throw new Error(
+          `Slot "${cleanTimeSlot}" is already fully booked (${currentBookedCount}/3 capacity). Please choose another time slot.`
+        );
+      }
     }
 
     const store = getAppointmentsStore();
@@ -1846,7 +1850,10 @@ export const appointmentService = {
     const appointments = await this.getAppointments(branch, date, doctorId);
     const cleanSlot = timeSlot.trim().toUpperCase();
     return appointments.filter(
-      (a) => a.timeSlot.trim().toUpperCase() === cleanSlot && a.status !== "CANCELLED" && !a.isDeleted
+      (a) => a.timeSlot.trim().toUpperCase() === cleanSlot &&
+             a.status !== "CANCELLED" &&
+             !a.isDeleted &&
+             a.consultationMode?.trim().toLowerCase() !== "online"
     ).length;
   },
 
