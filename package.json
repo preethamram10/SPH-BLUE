@@ -7,6 +7,8 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm run build --workspace=apps/web",
+    "build:web": "npm run build --workspace=apps/web",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:staff": "npm run start --workspace=apps/staff",
     "db:generate": "npm run db:generate --workspace=@spiritualhomeo/database",

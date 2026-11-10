@@ -23,6 +23,8 @@ declare global {
   var __sphBranchTargetsStore: any[] | undefined;
   // eslint-disable-next-line no-var
   var __sphCleaningTasksStore: any[] | undefined;
+  // eslint-disable-next-line no-var
+  var __sphPackageMembersStore: any[] | undefined;
 }
 
 export const prisma =
@@ -991,11 +993,36 @@ function getDoctorNoShowsStore(): DoctorNoShowRecord[] {
 
 function normalizeDateStr(dt: string): string {
   if (!dt) return "";
-  const parts = dt.trim().split("-");
+  const cleaned = dt.trim().split("T")[0].replace(/\//g, "-");
+  const parts = cleaned.split("-");
   if (parts.length === 3 && parts[0].length === 2 && parts[2].length === 4) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
   }
-  return dt.trim();
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+  }
+  return cleaned;
+}
+
+export function matchPatientProfile(
+  appt: { registrationId?: string; regId?: string; patientId?: string; phone?: string; phoneNumber?: string; patientName?: string; name?: string },
+  patient: { regId?: string; registrationId?: string; patientId?: string; phone?: string; phoneNumber?: string; name?: string; patientName?: string }
+): boolean {
+  const apptReg = (appt.registrationId || (appt as any).regId || (appt as any).patientId || "").trim().toUpperCase();
+  const patReg = (patient.regId || patient.registrationId || (patient as any).patientId || "").trim().toUpperCase();
+  if (apptReg && patReg && apptReg.length >= 3 && patReg.length >= 3) {
+    if (apptReg === patReg) return true;
+  }
+  const apptPhone = normalizePhone(appt.phone || (appt as any).phoneNumber || "");
+  const patPhone = normalizePhone(patient.phone || (patient as any).phoneNumber || "");
+  const apptName = (appt.patientName || (appt as any).name || "").trim().toLowerCase();
+  const patName = (patient.name || patient.patientName || "").trim().toLowerCase();
+  if (apptPhone && patPhone && apptPhone.length >= 10 && apptPhone === patPhone) {
+    if (!apptName || !patName || apptName === patName || apptName.includes(patName) || patName.includes(apptName)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export const doctorNoShowService = {
@@ -1088,6 +1115,97 @@ export interface PatientRecord {
   retentionUntil?: string; // 30-day retention window
   mergedInto?: string;
   mergedAt?: string;
+  activeFollowUpDate?: string;
+  completedVisitsCount?: number;
+  hasPackage?: boolean;
+  activePackageId?: string;
+  activePackageName?: string;
+}
+
+export interface PackagePaymentRecord {
+  id: string;
+  amount: number;
+  paidAt: string;
+  paymentMethod: string;
+  invoiceId?: string;
+  appointmentId?: string;
+  notes?: string;
+}
+
+export interface PackageMemberRecord {
+  id: string;
+  registrationId: string;
+  patientName: string;
+  phone: string;
+  branch: string;
+  packageName: string;
+  durationMonths: number;
+  startDate: string;
+  endDate: string;
+  totalAmount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  status: "ACTIVE" | "COMPLETED" | "EXPIRED";
+  payments: PackagePaymentRecord[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type PatientVisitBadge = "New" | "In-Dur" | "Revisit" | "Pkg" | "App";
+
+export interface VisitBadgeInfo {
+  badge: PatientVisitBadge;
+  label: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  allowZeroFee: boolean;
+}
+
+export function computePatientVisitBadge(
+  completedVisitsCount: number,
+  activeFollowUpDate?: string | null
+): VisitBadgeInfo {
+  // 1. If 0 completed visits, patient is brand new
+  if (!completedVisitsCount || completedVisitsCount <= 0) {
+    return {
+      badge: "New",
+      label: "New",
+      color: "#16a34a",
+      bgColor: "#dcfce7",
+      borderColor: "#86efac",
+      allowZeroFee: false,
+    };
+  }
+
+  // 2. If patient has an active follow-up date, check if today is within duration
+  if (activeFollowUpDate && typeof activeFollowUpDate === "string" && activeFollowUpDate.trim().length > 0) {
+    const now = new Date();
+    const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const normFollowUp = normalizeDateStr(activeFollowUpDate);
+
+    // If today is on or before follow-up date, they are in treatment duration!
+    if (normFollowUp && todayYmd <= normFollowUp) {
+      return {
+        badge: "In-Dur",
+        label: "In-Dur",
+        color: "#0284c7",
+        bgColor: "#e0f2fe",
+        borderColor: "#7dd3fc",
+        allowZeroFee: true, // ₹0 consultation fee permitted
+      };
+    }
+  }
+
+  // 3. Otherwise: Expired follow-up date or past completed visit with no active duration -> REVISIT
+  return {
+    badge: "Revisit",
+    label: "Revisit",
+    color: "#d97706",
+    bgColor: "#fef3c7",
+    borderColor: "#fde68a",
+    allowZeroFee: false,
+  };
 }
 
 export interface AppointmentRecord {
@@ -1126,7 +1244,13 @@ export interface AppointmentRecord {
   medicineFee?: number;
   dietPlanFee?: number;
   totalAmountDue?: number;
-  paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP";
+  paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP" | string;
+  splitDetails?: {
+    cash?: number;
+    upi?: number;
+    card?: number;
+    counterUpi?: number;
+  };
   medicinesList?: Array<{
     name: string;
     type: string;
@@ -1144,6 +1268,16 @@ export interface AppointmentRecord {
   discountReason?: string;
   totalPaid?: number;
   invoiceId?: string;
+  visitBadge?: PatientVisitBadge;
+  activeFollowUpDate?: string;
+  hasPackage?: boolean;
+  packageId?: string;
+  packageName?: string;
+  packageTotalAmount?: number;
+  packagePaidAmount?: number;
+  packagePendingAmount?: number;
+  packageDurationMonths?: number;
+  packageEndDate?: string;
 }
 
 function getPatientsCachePath(): string {
@@ -1264,6 +1398,8 @@ export const patientService = {
       const updated: PatientRecord = {
         ...store[existingIdx],
         ...data,
+        activeFollowUpDate: data.activeFollowUpDate !== undefined ? data.activeFollowUpDate : store[existingIdx].activeFollowUpDate,
+        completedVisitsCount: data.completedVisitsCount !== undefined ? data.completedVisitsCount : store[existingIdx].completedVisitsCount,
         regId: cleanReg,
         phone: cleanPhone || store[existingIdx].phone,
         updatedAt: new Date().toISOString(),
@@ -1284,6 +1420,8 @@ export const patientService = {
       branch: data.branch,
       isDeleted: false,
       createdAt: data.createdAt || new Date().toISOString(),
+      activeFollowUpDate: data.activeFollowUpDate || undefined,
+      completedVisitsCount: data.completedVisitsCount !== undefined ? data.completedVisitsCount : 0,
     };
     store.unshift(newRecord);
     global.__sphPatientsStore = store;
@@ -1573,7 +1711,58 @@ export const appointmentService = {
         return dId === cleanDoc || dName.includes(cleanDoc) || cleanDoc.includes(dName);
       });
     }
-    return list;
+
+    const allStore = getAppointmentsStore();
+    const patients = getPatientsStore();
+
+    return list.map((a) => {
+      const pat = patients.find((p) => matchPatientProfile(a, p));
+
+      // Calculate prior completed visits for this profile
+      const priorCompleted = allStore.filter(
+        (past) =>
+          past.id !== a.id &&
+          !past.isDeleted &&
+          past.status === "COMPLETED" &&
+          matchPatientProfile(a, past)
+      );
+
+      let completedCount = priorCompleted.length;
+      if (completedCount === 0 && pat?.completedVisitsCount !== undefined) {
+        if (a.status !== "COMPLETED") {
+          completedCount = pat.completedVisitsCount;
+        }
+      }
+
+      // Latest set follow-up date wins
+      let activeFollowUp = pat?.activeFollowUpDate;
+      if (!activeFollowUp) {
+        const pastWithFollowUp = [...priorCompleted]
+          .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
+          .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
+        if (pastWithFollowUp.length > 0) {
+          activeFollowUp = pastWithFollowUp[0].followUpDate;
+        }
+      }
+
+      const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp);
+      const pkgStore = getPackageMembersStore();
+      const activePkg = pkgStore.find((p) => p.status === "ACTIVE" && matchPatientProfile(a, p));
+
+      return {
+        ...a,
+        visitBadge: badgeInfo.badge,
+        activeFollowUpDate: activeFollowUp,
+        hasPackage: !!activePkg,
+        packageId: activePkg?.id,
+        packageName: activePkg?.packageName,
+        packageTotalAmount: activePkg?.totalAmount,
+        packagePaidAmount: activePkg?.paidAmount,
+        packagePendingAmount: activePkg?.pendingAmount,
+        packageDurationMonths: activePkg?.durationMonths,
+        packageEndDate: activePkg?.endDate,
+      };
+    });
   },
 
   async createAppointment(data: Omit<AppointmentRecord, "id" | "token" | "createdAt" | "status"> & {
@@ -1712,7 +1901,50 @@ export const appointmentService = {
   async getAppointmentById(id: string): Promise<AppointmentRecord | null> {
     const store = getAppointmentsStore();
     const appt = store.find((a) => a.id === id || a.token === id);
-    return appt || null;
+    if (!appt) return null;
+
+    const patients = getPatientsStore();
+    const pat = patients.find((p) => matchPatientProfile(appt, p));
+    const priorCompleted = store.filter(
+      (past) =>
+        past.id !== appt.id &&
+        !past.isDeleted &&
+        past.status === "COMPLETED" &&
+        matchPatientProfile(appt, past)
+    );
+
+    let completedCount = priorCompleted.length;
+    if (completedCount === 0 && pat?.completedVisitsCount !== undefined && appt.status !== "COMPLETED") {
+      completedCount = pat.completedVisitsCount;
+    }
+
+    let activeFollowUp = pat?.activeFollowUpDate;
+    if (!activeFollowUp) {
+      const pastWithFollowUp = [...priorCompleted]
+        .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
+        .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
+      if (pastWithFollowUp.length > 0) {
+        activeFollowUp = pastWithFollowUp[0].followUpDate;
+      }
+    }
+
+    const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp);
+    const pkgStore = getPackageMembersStore();
+    const activePkg = pkgStore.find((p) => p.status === "ACTIVE" && matchPatientProfile(appt, p));
+
+    return {
+      ...appt,
+      visitBadge: badgeInfo.badge,
+      activeFollowUpDate: activeFollowUp,
+      hasPackage: !!activePkg,
+      packageId: activePkg?.id,
+      packageName: activePkg?.packageName,
+      packageTotalAmount: activePkg?.totalAmount,
+      packagePaidAmount: activePkg?.paidAmount,
+      packagePendingAmount: activePkg?.pendingAmount,
+      packageDurationMonths: activePkg?.durationMonths,
+      packageEndDate: activePkg?.endDate,
+    };
   },
 
   /**
@@ -1725,6 +1957,23 @@ export const appointmentService = {
     appt.status = status;
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
+
+    if (status === "COMPLETED") {
+      const patients = getPatientsStore();
+      const patIdx = patients.findIndex((p) => matchPatientProfile(appt, p));
+      if (patIdx !== -1) {
+        const completedCount = store.filter(
+          (a) => !a.isDeleted && a.status === "COMPLETED" && matchPatientProfile(a, patients[patIdx])
+        ).length;
+        patients[patIdx].completedVisitsCount = completedCount;
+        if (appt.followUpDate && appt.followUpDate.trim().length > 0) {
+          patients[patIdx].activeFollowUpDate = appt.followUpDate.trim();
+        }
+        global.__sphPatientsStore = patients;
+        savePatientsToDisk(patients);
+      }
+    }
+
     return appt;
   },
 
@@ -1738,7 +1987,13 @@ export const appointmentService = {
       medicineFee?: number;
       dietPlanFee?: number;
       totalAmountDue?: number;
-      paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP";
+      paymentMethod?: "CASH" | "COUNTER_UPI" | "ONLINE_UPI" | "CARD" | "SPLIT" | "SEND_TO_APP" | string;
+  splitDetails?: {
+    cash?: number;
+    upi?: number;
+    card?: number;
+    counterUpi?: number;
+  };
       medicinesList?: Array<{
         name: string;
         type: string;
@@ -1763,9 +2018,22 @@ export const appointmentService = {
 
     if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
     if (data.medicineFee !== undefined) appt.medicineFee = data.medicineFee;
-    if (data.dietPlanFee !== undefined) appt.dietPlanFee = data.dietPlanFee;
+    if (data.dietPlanFee !== undefined) {
+      appt.dietPlanFee = data.dietPlanFee;
+      (appt as any).dietFee = data.dietPlanFee;
+    } else if ((data as any).dietFee !== undefined) {
+      appt.dietPlanFee = (data as any).dietFee;
+      (appt as any).dietFee = (data as any).dietFee;
+    }
+    if ((data as any).hasPackage !== undefined) (appt as any).hasPackage = (data as any).hasPackage;
+    if ((data as any).packageInstallmentPaid !== undefined) (appt as any).packageInstallmentPaid = (data as any).packageInstallmentPaid;
+    if ((data as any).isRegularBilling !== undefined) (appt as any).isRegularBilling = (data as any).isRegularBilling;
+    if ((data as any).billingMode !== undefined) (appt as any).billingMode = (data as any).billingMode;
+    if ((data as any).paymentType !== undefined) (appt as any).paymentType = (data as any).paymentType;
+    if ((data as any).paymentMode !== undefined) (appt as any).paymentMode = (data as any).paymentMode;
     if (data.totalAmountDue !== undefined) appt.totalAmountDue = data.totalAmountDue;
     if (data.paymentMethod !== undefined) appt.paymentMethod = data.paymentMethod;
+    if ((data as any).splitDetails !== undefined) appt.splitDetails = (data as any).splitDetails;
     if (data.medicinesList !== undefined) appt.medicinesList = data.medicinesList;
     if (data.medicineDuration !== undefined) appt.medicineDuration = data.medicineDuration;
     if (data.discountRequested !== undefined) appt.discountRequested = data.discountRequested;
@@ -1788,6 +2056,41 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
+
+    // Update patient profile completed visits and active follow-up
+    const patients = getPatientsStore();
+    const patIdx = patients.findIndex((p) => matchPatientProfile(appt, p));
+    if (patIdx !== -1) {
+      const completedCount = store.filter(
+        (a) => !a.isDeleted && (a.status === "COMPLETED" || a.id === appt.id) && matchPatientProfile(a, patients[patIdx])
+      ).length;
+      patients[patIdx].completedVisitsCount = completedCount;
+      if (appt.followUpDate && appt.followUpDate.trim().length > 0) {
+        patients[patIdx].activeFollowUpDate = appt.followUpDate.trim();
+      }
+      global.__sphPatientsStore = patients;
+      savePatientsToDisk(patients);
+    }
+
+    // Auto-update package installment if patient has active package and this visit is marked for package installment
+    const shouldRecordPackagePayment =
+      (data as any).hasPackage !== false &&
+      !(data as any).skipPackagePayment &&
+      !(data as any).isRegularBilling;
+
+    if (shouldRecordPackagePayment) {
+      const activePkg = await packageService.getPackageByProfile(appt.registrationId || appt.phone, appt.patientName);
+      if (activePkg && activePkg.status === "ACTIVE" && (data.totalPaid || 0) > 0) {
+        await packageService.recordPackagePayment(activePkg.id, {
+          amount: (data as any).packageInstallmentPaid !== undefined ? (data as any).packageInstallmentPaid : (data.totalPaid || 0),
+          paymentMethod: data.paymentMethod || "CASH",
+          appointmentId: appt.id,
+          invoiceId: appt.invoiceId,
+          notes: `Visit payment on ${appt.appointmentDate}`,
+        });
+      }
+    }
+
     return appt;
   },
 
@@ -1869,11 +2172,42 @@ export const appointmentService = {
     if (data.diagnosisNotes !== undefined) appt.diagnosisNotes = data.diagnosisNotes;
     if (data.prescriptionImages !== undefined) appt.prescriptionImages = data.prescriptionImages;
     if (data.followUpInterval !== undefined) appt.followUpInterval = data.followUpInterval;
-    if (data.followUpDate !== undefined) appt.followUpDate = data.followUpDate;
     if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
     if (data.dietPlan !== undefined) appt.dietPlan = data.dietPlan;
     if (data.isSentToReception !== undefined) appt.isSentToReception = data.isSentToReception;
     if (data.status !== undefined) appt.status = data.status;
+
+    // Follow-up Date continuity:
+    // If doctor/reception sets a new follow-up date, it updates both the appointment and activeFollowUpDate on patient profile.
+    // If not set, existing activeFollowUpDate continues!
+    const patients = getPatientsStore();
+    const patIdx = patients.findIndex((p) => matchPatientProfile(appt, p));
+
+    if (data.followUpDate !== undefined && data.followUpDate.trim().length > 0) {
+      appt.followUpDate = data.followUpDate.trim();
+      if (patIdx !== -1) {
+        patients[patIdx].activeFollowUpDate = data.followUpDate.trim();
+        global.__sphPatientsStore = patients;
+        savePatientsToDisk(patients);
+      }
+    } else if (!appt.followUpDate && patIdx !== -1 && patients[patIdx].activeFollowUpDate) {
+      // Retain existing active follow-up date
+      appt.followUpDate = patients[patIdx].activeFollowUpDate;
+    }
+
+    // Attach active package to appointment if patient is a package member
+    const pkgStore = getPackageMembersStore();
+    const activePkg = pkgStore.find((p) => p.status === "ACTIVE" && matchPatientProfile(appt, p));
+    if (activePkg) {
+      appt.hasPackage = true;
+      appt.packageId = activePkg.id;
+      appt.packageName = activePkg.packageName;
+      appt.packageTotalAmount = activePkg.totalAmount;
+      appt.packagePaidAmount = activePkg.paidAmount;
+      appt.packagePendingAmount = activePkg.pendingAmount;
+      appt.packageDurationMonths = activePkg.durationMonths;
+      appt.packageEndDate = activePkg.endDate;
+    }
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
@@ -3755,6 +4089,320 @@ export const payrollSettingsService = {
     global.__sphLatePenaltyConfig = updated;
     saveLateConfigToDisk(updated);
     return updated;
+  },
+};
+
+// ============================================================================
+// PACKAGE MEMBERS SERVICE
+// ============================================================================
+
+function getPackageMembersCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "package_members_store.json"))) {
+    return path.join(webCache, "package_members_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "package_members_store.json"))) {
+    return path.join(rootCache, "package_members_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "package_members_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".package_members_store.json");
+    }
+  }
+  return path.join(rootCache, "package_members_store.json");
+}
+
+function loadPackageMembersFromDisk(): PackageMemberRecord[] {
+  try {
+    const file = getPackageMembersCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to load package members from cache:", err);
+  }
+  return [];
+}
+
+function savePackageMembersToDisk(data: PackageMemberRecord[]): void {
+  const file = getPackageMembersCachePath();
+  safeAtomicWrite(file, data);
+}
+
+function getPackageMembersStore(): PackageMemberRecord[] {
+  if (!global.__sphPackageMembersStore) {
+    global.__sphPackageMembersStore = loadPackageMembersFromDisk();
+  }
+  return global.__sphPackageMembersStore;
+}
+
+export const packageService = {
+  async getAllPackageMembers(branch?: string): Promise<PackageMemberRecord[]> {
+    let list = getPackageMembersStore();
+    if (branch) {
+      const cleanTarget = normalizeBranchName(branch);
+      if (cleanTarget && cleanTarget !== "all branches" && cleanTarget !== "all") {
+        list = list.filter((p) => {
+          const pb = normalizeBranchName(p.branch);
+          return pb === cleanTarget || pb.includes(cleanTarget) || cleanTarget.includes(pb);
+        });
+      }
+    }
+    return list;
+  },
+
+  async getPackageByProfile(regIdOrPhone: string, patientName?: string): Promise<PackageMemberRecord | null> {
+    const store = getPackageMembersStore();
+    const cleanReg = (regIdOrPhone || "").trim().toUpperCase();
+    const cleanPhone = normalizePhone(regIdOrPhone);
+    const cleanName = (patientName || "").trim().toLowerCase();
+
+    if (cleanReg && cleanReg.length >= 3) {
+      const found = store.find((p) => (p.registrationId || "").trim().toUpperCase() === cleanReg);
+      if (found) return found;
+    }
+
+    if (cleanPhone && cleanPhone.length >= 10 && cleanName) {
+      const found = store.find(
+        (p) => normalizePhone(p.phone) === cleanPhone && (p.patientName || "").trim().toLowerCase() === cleanName
+      );
+      if (found) return found;
+    }
+
+    // Comprehensive fallback matching by profile
+    const foundByProfile = store.find((p) =>
+      matchPatientProfile({ registrationId: cleanReg, phone: cleanPhone, patientName: cleanName }, p)
+    );
+    if (foundByProfile) return foundByProfile;
+
+    return null;
+  },
+
+  async registerPackage(data: {
+    registrationId: string;
+    patientName: string;
+    phone: string;
+    branch: string;
+    durationMonths: number;
+    totalAmount: number;
+    initialPaidAmount?: number;
+    paymentMethod?: string;
+    appointmentId?: string;
+    notes?: string;
+  }): Promise<PackageMemberRecord> {
+    const store = getPackageMembersStore();
+    const cleanReg = (data.registrationId || "").trim().toUpperCase();
+    const cleanPhone = normalizePhone(data.phone);
+    const cleanName = data.patientName.trim();
+    const cleanBranch = data.branch.trim();
+    const duration = Math.max(1, Math.min(7, data.durationMonths || 1));
+    const total = Math.max(0, data.totalAmount || 0);
+    const initialPaid = Math.max(0, data.initialPaidAmount || 0);
+    const pending = Math.max(0, total - initialPaid);
+
+    const now = new Date();
+    const startYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    const endDateObj = new Date(now.getFullYear(), now.getMonth() + duration, now.getDate());
+    const endYmd = `${endDateObj.getFullYear()}-${String(endDateObj.getMonth() + 1).padStart(2, "0")}-${String(endDateObj.getDate()).padStart(2, "0")}`;
+
+    const payments: PackagePaymentRecord[] = [];
+    if (initialPaid > 0) {
+      payments.push({
+        id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        amount: initialPaid,
+        paidAt: new Date().toISOString(),
+        paymentMethod: data.paymentMethod || "CASH",
+        appointmentId: data.appointmentId,
+        notes: data.notes || "Initial Package Down Payment",
+      });
+    }
+
+    const packageName = `${duration} Month${duration > 1 ? "s" : ""} Treatment Package`;
+
+    const existingIdx = store.findIndex((p) => matchPatientProfile(data, p));
+    if (existingIdx !== -1) {
+      const existing = store[existingIdx];
+      const isStillActive = existing.status === "ACTIVE" && (!existing.endDate || existing.endDate >= startYmd);
+      if (isStillActive) {
+        throw new Error(
+          `Patient ${data.patientName} already has an active package (${existing.packageName}) valid till ${existing.endDate}. Another package cannot be registered until the current package expires.`
+        );
+      }
+
+      const updated: PackageMemberRecord = {
+        ...store[existingIdx],
+        packageName,
+        durationMonths: duration,
+        startDate: startYmd,
+        endDate: endYmd,
+        totalAmount: total,
+        paidAmount: initialPaid,
+        pendingAmount: pending,
+        status: "ACTIVE",
+        payments: payments.length > 0 ? payments : store[existingIdx].payments,
+        updatedAt: new Date().toISOString(),
+      };
+      store[existingIdx] = updated;
+      global.__sphPackageMembersStore = store;
+      savePackageMembersToDisk(store);
+
+      const patients = getPatientsStore();
+      const pIdx = patients.findIndex((p) => matchPatientProfile(data, p));
+      if (pIdx !== -1) {
+        patients[pIdx].hasPackage = true;
+        patients[pIdx].activePackageId = updated.id;
+        patients[pIdx].activePackageName = updated.packageName;
+        global.__sphPatientsStore = patients;
+        savePatientsToDisk(patients);
+      }
+
+      // Sync active package to existing appointments for this patient
+      const appts = getAppointmentsStore();
+      let apptsModified = false;
+      for (const a of appts) {
+        if ((data.appointmentId && (a.id === data.appointmentId || a.token === data.appointmentId)) || matchPatientProfile(a, updated)) {
+          a.hasPackage = true;
+          a.packageId = updated.id;
+          a.packageName = updated.packageName;
+          a.packageTotalAmount = updated.totalAmount;
+          a.packagePaidAmount = updated.paidAmount;
+          a.packagePendingAmount = updated.pendingAmount;
+          a.packageDurationMonths = updated.durationMonths;
+          a.packageEndDate = updated.endDate;
+          apptsModified = true;
+        }
+      }
+      if (apptsModified) {
+        global.__sphAppointmentsStore = appts;
+        saveAppointmentsToDisk(appts);
+      }
+
+      return updated;
+    }
+
+    const newPkg: PackageMemberRecord = {
+      id: `pkg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      registrationId: cleanReg,
+      patientName: cleanName,
+      phone: cleanPhone,
+      branch: cleanBranch,
+      packageName,
+      durationMonths: duration,
+      startDate: startYmd,
+      endDate: endYmd,
+      totalAmount: total,
+      paidAmount: initialPaid,
+      pendingAmount: pending,
+      status: "ACTIVE",
+      payments,
+      createdAt: new Date().toISOString(),
+    };
+
+    store.unshift(newPkg);
+    global.__sphPackageMembersStore = store;
+    savePackageMembersToDisk(store);
+
+    const patients = getPatientsStore();
+    const pIdx = patients.findIndex((p) => matchPatientProfile(data, p));
+    if (pIdx !== -1) {
+      patients[pIdx].hasPackage = true;
+      patients[pIdx].activePackageId = newPkg.id;
+      patients[pIdx].activePackageName = newPkg.packageName;
+      global.__sphPatientsStore = patients;
+      savePatientsToDisk(patients);
+    }
+
+    // Sync active package to existing appointments for this patient
+    const appts = getAppointmentsStore();
+    let apptsModified = false;
+    for (const a of appts) {
+      if ((data.appointmentId && (a.id === data.appointmentId || a.token === data.appointmentId)) || matchPatientProfile(a, newPkg)) {
+        a.hasPackage = true;
+        a.packageId = newPkg.id;
+        a.packageName = newPkg.packageName;
+        a.packageTotalAmount = newPkg.totalAmount;
+        a.packagePaidAmount = newPkg.paidAmount;
+        a.packagePendingAmount = newPkg.pendingAmount;
+        a.packageDurationMonths = newPkg.durationMonths;
+        a.packageEndDate = newPkg.endDate;
+        apptsModified = true;
+      }
+    }
+    if (apptsModified) {
+      global.__sphAppointmentsStore = appts;
+      saveAppointmentsToDisk(appts);
+    }
+
+    return newPkg;
+  },
+
+  async recordPackagePayment(
+    packageIdOrRegId: string,
+    data: {
+      amount: number;
+      paymentMethod: string;
+      appointmentId?: string;
+      invoiceId?: string;
+      notes?: string;
+    }
+  ): Promise<PackageMemberRecord | null> {
+    const store = getPackageMembersStore();
+    const cleanId = packageIdOrRegId.trim().toUpperCase();
+    const idx = store.findIndex(
+      (p) => p.id === packageIdOrRegId || (p.registrationId || "").trim().toUpperCase() === cleanId
+    );
+    if (idx === -1) return null;
+
+    const pkg = store[idx];
+    const newPayment: PackagePaymentRecord = {
+      id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      amount: Math.max(0, data.amount),
+      paidAt: new Date().toISOString(),
+      paymentMethod: data.paymentMethod || "CASH",
+      appointmentId: data.appointmentId,
+      invoiceId: data.invoiceId,
+      notes: data.notes,
+    };
+
+    const newPaid = pkg.paidAmount + newPayment.amount;
+    const newPending = Math.max(0, pkg.totalAmount - newPaid);
+
+    pkg.paidAmount = newPaid;
+    pkg.pendingAmount = newPending;
+    pkg.payments = [newPayment, ...(pkg.payments || [])];
+    pkg.updatedAt = new Date().toISOString();
+    if (newPending === 0) {
+      pkg.status = "COMPLETED";
+    }
+
+    store[idx] = pkg;
+    global.__sphPackageMembersStore = store;
+    savePackageMembersToDisk(store);
+
+    // Sync updated paid/pending amounts to appointments store
+    const appts = getAppointmentsStore();
+    let apptsModified = false;
+    for (const a of appts) {
+      if (matchPatientProfile(a, pkg)) {
+        a.packagePaidAmount = pkg.paidAmount;
+        a.packagePendingAmount = pkg.pendingAmount;
+        apptsModified = true;
+      }
+    }
+    if (apptsModified) {
+      global.__sphAppointmentsStore = appts;
+      saveAppointmentsToDisk(appts);
+    }
+
+    return pkg;
   },
 };
 
