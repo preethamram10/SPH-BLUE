@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const noShows = await doctorNoShowService.getAllNoShows(branch, date);
 
     // If branch is provided, fetch doctors configured specifically for this branch
-    let doctors: { doctorId: string; doctorName: string; phone: string }[] = [];
+    let doctors: any[] = [];
     if (branch) {
       doctors = await doctorNoShowService.getDoctorsAvailableForBranch(branch);
       // Fallback: If no doctors are mapped yet in master doctor timings, load all doctor employees
@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
           doctorId: e.id,
           doctorName: e.name,
           phone: e.phone,
+          scheduledDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+          scheduleSummary: "All Days (General Timings)",
+          days: {},
         }));
       }
     }

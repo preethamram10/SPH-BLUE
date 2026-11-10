@@ -22,6 +22,9 @@ interface DoctorOption {
   doctorId: string;
   doctorName: string;
   phone: string;
+  scheduledDays?: string[];
+  scheduleSummary?: string;
+  days?: Record<string, { isAvailable: boolean; slots: string[] }>;
 }
 
 interface DoctorNoShowRecord {
@@ -55,6 +58,7 @@ export default function DoctorNoShowPage() {
   // Add Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [branchScope, setBranchScope] = useState<"CURRENT" | "ALL">("CURRENT");
   const [dateRangeMode, setDateRangeMode] = useState<"SINGLE" | "RANGE">("SINGLE");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -63,6 +67,23 @@ export default function DoctorNoShowPage() {
   const [startTime, setStartTime] = useState("10:00 AM");
   const [endTime, setEndTime] = useState("01:00 PM");
   const [reason, setReason] = useState("");
+
+  const getDayAbbrFromDate = (dStr: string) => {
+    if (!dStr) return "";
+    // If format is YYYY-MM-DD
+    const parts = dStr.split("-");
+    let dateObj: Date;
+    if (parts.length === 3 && parts[0].length === 4) {
+      dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else if (parts.length === 3 && parts[2].length === 4) {
+      dateObj = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    } else {
+      dateObj = new Date(dStr);
+    }
+    if (isNaN(dateObj.getTime())) return "";
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[dateObj.getDay()];
+  };
 
   const formatDateDDMMYYYY = (dStr: string) => {
     if (!dStr) return "";
@@ -126,7 +147,7 @@ export default function DoctorNoShowPage() {
       const payload = {
         doctorId: doc.doctorId,
         doctorName: doc.doctorName,
-        branch: branchName,
+        branch: branchScope === "ALL" ? "ALL" : branchName,
         type: noShowType,
         startDate,
         endDate: dateRangeMode === "RANGE" ? endDate : startDate,
@@ -446,28 +467,89 @@ export default function DoctorNoShowPage() {
 
             {/* Modal Form */}
             <form onSubmit={handleCreateNoShow} className="p-6 space-y-4">
-              {/* Doctor Selector */}
+              {/* Scope Selector: This Branch vs All Branches */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Select Doctor (Available at {branchName}) <span className="text-rose-500">*</span>
+                  No-Show Scope <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBranchScope("CURRENT")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                      branchScope === "CURRENT"
+                        ? "border-[#268ec8] bg-sky-50 text-[#1f75a6] shadow-sm"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    📍 {branchName} Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBranchScope("ALL")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                      branchScope === "ALL"
+                        ? "border-rose-500 bg-rose-50 text-rose-700 shadow-sm"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    🌐 All Clinic Branches (Full Leave)
+                  </button>
+                </div>
+              </div>
+
+              {/* Doctor Selector with Schedule Details */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Select Doctor <span className="text-rose-500">*</span>
                 </label>
                 {branchDoctors.length === 0 ? (
                   <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-medium">
                     No doctors found for this branch in master schedules.
                   </div>
                 ) : (
-                  <select
-                    value={selectedDoctorId}
-                    onChange={(e) => setSelectedDoctorId(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#268ec8]"
-                  >
-                    {branchDoctors.map((doc) => (
-                      <option key={doc.doctorId} value={doc.doctorId}>
-                        {doc.doctorName} {doc.phone ? `(${doc.phone})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={selectedDoctorId}
+                      onChange={(e) => {
+                        setSelectedDoctorId(e.target.value);
+                        const doc = branchDoctors.find((d) => d.doctorId === e.target.value);
+                        const day = getDayAbbrFromDate(startDate);
+                        if (doc?.days?.[day]?.slots?.[0]) {
+                          const slotStr = doc.days[day].slots[0];
+                          const parts = slotStr.split(/[-–—]|to/i);
+                          if (parts.length === 2) {
+                            setStartTime(parts[0].trim());
+                            setEndTime(parts[1].trim());
+                          }
+                        }
+                      }}
+                      required
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-[#268ec8]"
+                    >
+                      {branchDoctors.map((doc) => (
+                        <option key={doc.doctorId} value={doc.doctorId}>
+                          {doc.doctorName} {doc.scheduledDays && doc.scheduledDays.length > 0 ? `[${doc.scheduledDays.join(", ")}]` : ""}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Active Doctor Schedule Badge */}
+                    {(() => {
+                      const doc = branchDoctors.find((d) => d.doctorId === selectedDoctorId);
+                      if (!doc) return null;
+                      return (
+                        <div className="mt-1.5 px-3 py-1.5 bg-slate-100 rounded-lg text-[11px] text-slate-600 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700">Scheduled Days:</span>
+                          <span className="font-bold text-[#268ec8]">
+                            {doc.scheduledDays && doc.scheduledDays.length > 0
+                              ? doc.scheduledDays.join(", ")
+                              : "All Days (General)"}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
 
@@ -539,6 +621,32 @@ export default function DoctorNoShowPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Date Availability Indicator */}
+                {(() => {
+                  const doc = branchDoctors.find((d) => d.doctorId === selectedDoctorId);
+                  const day = getDayAbbrFromDate(startDate);
+                  if (!doc || !day) return null;
+                  const isScheduled = doc.scheduledDays ? doc.scheduledDays.includes(day) : true;
+                  const slots = doc.days?.[day]?.slots;
+
+                  return (
+                    <div className="mt-2">
+                      {isScheduled ? (
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 font-semibold flex items-center justify-between">
+                          <span>✅ Available on {day}:</span>
+                          <span className="font-bold">
+                            {slots && slots.length > 0 ? slots.join(", ") : "Standard timings"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 font-medium">
+                          ⚠️ <strong>Doctor is normally OFF on {day}s</strong> at this branch. (Scheduled: {doc.scheduledDays?.join(", ") || "None"}).
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* No-Show Type Selection */}

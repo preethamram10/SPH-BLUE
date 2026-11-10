@@ -991,15 +991,32 @@ function getDoctorNoShowsStore(): DoctorNoShowRecord[] {
   return global.__sphDoctorNoShowsStore;
 }
 
+export interface BranchDoctorWithSchedule {
+  doctorId: string;
+  doctorName: string;
+  phone: string;
+  scheduledDays: string[];
+  scheduleSummary: string;
+  days: Record<string, { isAvailable: boolean; slots: string[] }>;
+}
+
 function normalizeDateStr(dt: string): string {
   if (!dt) return "";
   const cleaned = dt.trim().split("T")[0].replace(/\//g, "-");
   const parts = cleaned.split("-");
-  if (parts.length === 3 && parts[0].length === 2 && parts[2].length === 4) {
-    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+  // Handle DD-MM-YYYY or D-M-YYYY
+  if (parts.length === 3 && parts[2].length === 4) {
+    const d = parts[0].padStart(2, "0");
+    const m = parts[1].padStart(2, "0");
+    const y = parts[2];
+    return `${y}-${m}-${d}`;
   }
+  // Handle YYYY-MM-DD or YYYY-M-D
   if (parts.length === 3 && parts[0].length === 4) {
-    return `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+    const y = parts[0];
+    const m = parts[1].padStart(2, "0");
+    const d = parts[2].padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
   return cleaned;
 }
@@ -1032,6 +1049,8 @@ export const doctorNoShowService = {
       const cleanBranch = branch.toLowerCase().replace(/branch/gi, "").trim();
       store = store.filter((item) => {
         const itemBranch = item.branch.toLowerCase().replace(/branch/gi, "").trim();
+        // If marked for ALL branches, it applies everywhere
+        if (itemBranch === "all" || item.branch === "ALL") return true;
         return itemBranch === cleanBranch || cleanBranch.includes(itemBranch) || itemBranch.includes(cleanBranch);
       });
     }
@@ -1067,14 +1086,16 @@ export const doctorNoShowService = {
     return true;
   },
 
-  async getDoctorsAvailableForBranch(branchName: string): Promise<{ doctorId: string; doctorName: string; phone: string }[]> {
+  async getDoctorsAvailableForBranch(branchName: string): Promise<BranchDoctorWithSchedule[]> {
     const schedules = getDoctorSchedulesStore();
     const cleanTarget = normalizeBranchName(branchName);
     if (!cleanTarget) return [];
-    const matchedDoctors: { doctorId: string; doctorName: string; phone: string }[] = [];
+    const matchedDoctors: BranchDoctorWithSchedule[] = [];
+
+    const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
     for (const doc of schedules) {
-      const worksInBranch = (doc.branchSchedules || []).some((bs) => {
+      const branchSchedule = (doc.branchSchedules || []).find((bs) => {
         const cleanBs = normalizeBranchName(bs.branchName || (bs as any).targetBranch || "");
         if (!cleanBs) return false;
         return (
@@ -1082,11 +1103,55 @@ export const doctorNoShowService = {
           (cleanBs.length >= 4 && cleanTarget.length >= 4 && (cleanBs.startsWith(cleanTarget) || cleanTarget.startsWith(cleanBs)))
         );
       });
-      if (worksInBranch) {
+
+      if (branchSchedule) {
+        const scheduledDays: string[] = [];
+        const daysMap: Record<string, { isAvailable: boolean; slots: string[] }> = {};
+
+        weekDays.forEach((dayAbbr) => {
+          const daySched = branchSchedule.days?.[dayAbbr];
+          const daySchedAlt = (branchSchedule as any).daySchedules?.[dayAbbr];
+
+          let isAvail = false;
+          let slotsDesc: string[] = [];
+
+          if (daySched && daySched.isAvailable === true) {
+            isAvail = true;
+            if (Array.isArray(daySched.slots) && daySched.slots.length > 0) {
+              slotsDesc = daySched.slots.map((s: any) => s.displayText || `${s.startHour || "10"}:${s.startMin || "00"} ${s.startAmPm || "AM"} - ${s.endHour || "01"}:${s.endMin || "00"} ${s.endAmPm || "PM"}`);
+            }
+          } else if (daySchedAlt && daySchedAlt.status === "Available") {
+            isAvail = true;
+            if (Array.isArray(daySchedAlt.slots) && daySchedAlt.slots.length > 0) {
+              slotsDesc = daySchedAlt.slots.map((s: any) => s.displayText || `${s.startHour || "10"}:${s.startMin || "00"} ${s.startAmPm || "AM"} - ${s.endHour || "01"}:${s.endMin || "00"} ${s.endAmPm || "PM"}`);
+            }
+          }
+
+          if (isAvail) {
+            scheduledDays.push(dayAbbr);
+            if (slotsDesc.length === 0) {
+              slotsDesc = ["10:00 AM - 01:00 PM", "05:00 PM - 09:00 PM"];
+            }
+            daysMap[dayAbbr] = { isAvailable: true, slots: slotsDesc };
+          }
+        });
+
+        // Summary of timings
+        const firstActiveDay = scheduledDays[0];
+        const sampleSlots = firstActiveDay && daysMap[firstActiveDay]?.slots.length > 0
+          ? daysMap[firstActiveDay].slots.join(", ")
+          : "10:00 AM - 01:00 PM, 05:00 PM - 09:00 PM";
+        const summary = scheduledDays.length > 0
+          ? `${scheduledDays.join(", ")} (${sampleSlots})`
+          : "Configured for branch";
+
         matchedDoctors.push({
           doctorId: doc.doctorId,
           doctorName: doc.doctorName,
           phone: doc.phone,
+          scheduledDays,
+          scheduleSummary: summary,
+          days: daysMap,
         });
       }
     }

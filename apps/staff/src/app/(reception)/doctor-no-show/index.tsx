@@ -45,6 +45,9 @@ interface DoctorOption {
   doctorId: string;
   doctorName: string;
   phone?: string;
+  scheduledDays?: string[];
+  scheduleSummary?: string;
+  days?: Record<string, { isAvailable: boolean; slots: string[] }>;
 }
 
 interface DoctorNoShowRecord {
@@ -77,6 +80,7 @@ export default function ReceptionDoctorNoShowScreen() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorOption | null>(null);
+  const [branchScope, setBranchScope] = useState<"CURRENT" | "ALL">("CURRENT");
   const [dateRangeMode, setDateRangeMode] = useState<"SINGLE" | "RANGE">("SINGLE");
   const [startDate, setStartDate] = useState("05-11-2026");
   const [endDate, setEndDate] = useState("05-11-2026");
@@ -87,6 +91,26 @@ export default function ReceptionDoctorNoShowScreen() {
   const [reason, setReason] = useState("");
 
   const [showDoctorPickerModal, setShowDoctorPickerModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [calendarTarget, setCalendarTarget] = useState<"start" | "end">("start");
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+
+  const getDayAbbrFromDate = (dStr: string) => {
+    if (!dStr) return "";
+    const parts = dStr.trim().split("-");
+    let dateObj: Date;
+    if (parts.length === 3 && parts[2].length === 4) {
+      dateObj = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    } else if (parts.length === 3 && parts[0].length === 4) {
+      dateObj = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      dateObj = new Date(dStr);
+    }
+    if (isNaN(dateObj.getTime())) return "";
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[dateObj.getDay()];
+  };
 
   const getBranchCleanName = (branchObj: any) => {
     if (!branchObj?.name) return "KPHB Branch";
@@ -144,7 +168,7 @@ export default function ReceptionDoctorNoShowScreen() {
       const payload = {
         doctorId: selectedDoctor.doctorId,
         doctorName: selectedDoctor.doctorName,
-        branch: bName,
+        branch: branchScope === "ALL" ? "ALL" : bName,
         type: noShowType,
         startDate,
         endDate: dateRangeMode === "RANGE" ? endDate : startDate,
@@ -472,6 +496,56 @@ export default function ReceptionDoctorNoShowScreen() {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
               >
+              {/* Scope Selector: This Branch vs All Branches */}
+              <Text style={styles.inputLabel}>No-Show Scope *</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.scopeBtn,
+                    branchScope === "CURRENT" && styles.scopeBtnActive,
+                  ]}
+                  onPress={() => setBranchScope("CURRENT")}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="location-outline"
+                    size={14}
+                    color={branchScope === "CURRENT" ? COLORS.themeBlue : COLORS.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.scopeBtnText,
+                      branchScope === "CURRENT" && styles.scopeBtnTextActive,
+                    ]}
+                  >
+                    {branchClean} Only
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.scopeBtn,
+                    branchScope === "ALL" && styles.scopeBtnActiveRose,
+                  ]}
+                  onPress={() => setBranchScope("ALL")}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="globe-outline"
+                    size={14}
+                    color={branchScope === "ALL" ? COLORS.rose : COLORS.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.scopeBtnText,
+                      branchScope === "ALL" && styles.scopeBtnTextActiveRose,
+                    ]}
+                  >
+                    All Clinic Branches
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Doctor Selector */}
               <Text style={styles.inputLabel}>Select Doctor *</Text>
               <TouchableOpacity
@@ -479,14 +553,21 @@ export default function ReceptionDoctorNoShowScreen() {
                 onPress={() => setShowDoctorPickerModal(true)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.pickerTriggerText}>
-                  {selectedDoctor ? selectedDoctor.doctorName : "Choose Doctor"}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pickerTriggerText}>
+                    {selectedDoctor ? selectedDoctor.doctorName : "Choose Doctor"}
+                  </Text>
+                  {selectedDoctor?.scheduledDays && selectedDoctor.scheduledDays.length > 0 ? (
+                    <Text style={{ fontSize: 10, color: COLORS.themeBlue, fontWeight: "700", marginTop: 2 }}>
+                      Working Days: {selectedDoctor.scheduledDays.join(", ")}
+                    </Text>
+                  ) : null}
+                </View>
                 <Ionicons name="chevron-down" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
 
               {/* Date Configuration */}
-              <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionHeaderRow, { marginTop: 14 }]}>
                 <Text style={styles.inputLabel}>Date Configuration *</Text>
                 <View style={styles.pillToggleBox}>
                   <TouchableOpacity
@@ -525,41 +606,82 @@ export default function ReceptionDoctorNoShowScreen() {
               </View>
 
               {dateRangeMode === "SINGLE" ? (
-                <View style={styles.inputBox}>
-                  <Ionicons name="calendar-outline" size={16} color={COLORS.themeBlue} />
-                  <TextInput
-                    value={startDate}
-                    onChangeText={setStartDate}
-                    placeholder="DD-MM-YYYY"
-                    style={styles.textInput}
-                  />
-                </View>
+                <TouchableOpacity
+                  style={styles.datePickerBtn}
+                  onPress={() => {
+                    setCalendarTarget("start");
+                    setShowCalendarModal(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Ionicons name="calendar" size={18} color={COLORS.themeBlue} />
+                    <Text style={styles.datePickerBtnText}>{startDate}</Text>
+                  </View>
+                  <Text style={styles.tapToChangeText}>Tap to pick</Text>
+                </TouchableOpacity>
               ) : (
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
+                  <TouchableOpacity
+                    style={[styles.datePickerBtn, { flex: 1 }]}
+                    onPress={() => {
+                      setCalendarTarget("start");
+                      setShowCalendarModal(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
                     <Text style={styles.subInputLabel}>From Date</Text>
-                    <View style={styles.inputBox}>
-                      <TextInput
-                        value={startDate}
-                        onChangeText={setStartDate}
-                        placeholder="DD-MM-YYYY"
-                        style={styles.textInput}
-                      />
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <Ionicons name="calendar-outline" size={14} color={COLORS.themeBlue} />
+                      <Text style={styles.datePickerBtnText}>{startDate}</Text>
                     </View>
-                  </View>
-                  <View style={{ flex: 1 }}>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.datePickerBtn, { flex: 1 }]}
+                    onPress={() => {
+                      setCalendarTarget("end");
+                      setShowCalendarModal(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
                     <Text style={styles.subInputLabel}>To Date</Text>
-                    <View style={styles.inputBox}>
-                      <TextInput
-                        value={endDate}
-                        onChangeText={setEndDate}
-                        placeholder="DD-MM-YYYY"
-                        style={styles.textInput}
-                      />
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <Ionicons name="calendar-outline" size={14} color={COLORS.themeBlue} />
+                      <Text style={styles.datePickerBtnText}>{endDate}</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               )}
+
+              {/* Dynamic Doctor Schedule notice on this Date */}
+              {(() => {
+                if (!selectedDoctor) return null;
+                const dayAbbr = getDayAbbrFromDate(startDate);
+                if (!dayAbbr) return null;
+                const isScheduled = selectedDoctor.scheduledDays ? selectedDoctor.scheduledDays.includes(dayAbbr) : true;
+                const slots = selectedDoctor.days?.[dayAbbr]?.slots;
+
+                return (
+                  <View style={{ marginTop: 8 }}>
+                    {isScheduled ? (
+                      <View style={styles.availNoticeGreen}>
+                        <Ionicons name="checkmark-circle" size={14} color={COLORS.green} />
+                        <Text style={styles.availNoticeGreenText}>
+                          Available on {dayAbbr}: {slots && slots.length > 0 ? slots.join(", ") : "Standard shifts"}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.availNoticeAmber}>
+                        <Ionicons name="alert-circle" size={14} color={COLORS.amber} />
+                        <Text style={styles.availNoticeAmberText}>
+                          Doctor is normally OFF on {dayAbbr}s (Scheduled: {selectedDoctor.scheduledDays?.join(", ") || "None"}).
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
 
               {/* No-Show Type */}
               <Text style={[styles.inputLabel, { marginTop: 14 }]}>Duration Type *</Text>
@@ -739,9 +861,15 @@ export default function ReceptionDoctorNoShowScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.pickerDocName}>{doc.doctorName}</Text>
-                      {doc.phone ? (
-                        <Text style={styles.pickerDocPhone}>{doc.phone}</Text>
-                      ) : null}
+                      {doc.scheduledDays && doc.scheduledDays.length > 0 ? (
+                        <Text style={{ fontSize: 10, color: COLORS.themeBlue, fontWeight: "700", marginTop: 2 }}>
+                          Working: {doc.scheduledDays.join(", ")}
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
+                          General Timings
+                        </Text>
+                      )}
                     </View>
                     {selectedDoctor?.doctorId === doc.doctorId ? (
                       <Ionicons name="checkmark-circle" size={20} color={COLORS.themeBlue} />
@@ -752,6 +880,97 @@ export default function ReceptionDoctorNoShowScreen() {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* CALENDAR PICKER MODAL */}
+      <Modal
+        visible={showCalendarModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCalendarModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCalendarModal(false)}
+        >
+          <View style={styles.calModalCard}>
+            <View style={styles.calHeaderRow}>
+              <Text style={styles.calMonthTitle}>
+                {new Date(calYear, calMonth).toLocaleString("default", { month: "long" })} {calYear}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (calMonth === 0) {
+                      setCalMonth(11);
+                      setCalYear((y) => y - 1);
+                    } else {
+                      setCalMonth((m) => m - 1);
+                    }
+                  }}
+                  style={styles.calNavBtn}
+                >
+                  <Ionicons name="chevron-back" size={18} color={COLORS.themeBlue} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (calMonth === 11) {
+                      setCalMonth(0);
+                      setCalYear((y) => y + 1);
+                    } else {
+                      setCalMonth((m) => m + 1);
+                    }
+                  }}
+                  style={styles.calNavBtn}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.themeBlue} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Weekday Row */}
+            <View style={styles.calWeekdaysRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <Text key={d} style={styles.calWeekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.calDaysGrid}>
+              {Array.from({ length: new Date(calYear, calMonth, 1).getDay() }).map((_, i) => (
+                <View key={`empty-${i}`} style={styles.calDayCell} />
+              ))}
+              {Array.from({ length: new Date(calYear, calMonth + 1, 0).getDate() }).map((_, i) => {
+                const day = i + 1;
+                const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
+                const isSelected = (calendarTarget === "start" ? startDate : endDate) === formatted;
+
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    onPress={() => {
+                      if (calendarTarget === "start") {
+                        setStartDate(formatted);
+                        if (dateRangeMode === "SINGLE") {
+                          setEndDate(formatted);
+                        }
+                      } else {
+                        setEndDate(formatted);
+                      }
+                      setShowCalendarModal(false);
+                    }}
+                    style={[styles.calDayCell, isSelected && styles.calDayCellSelected]}
+                  >
+                    <Text style={[styles.calDayText, isSelected && styles.calDayTextSelected]}>
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -1305,6 +1524,164 @@ const styles = StyleSheet.create({
   pickerDocPhone: {
     fontSize: 10,
     color: COLORS.textLight,
+  },
+  scopeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: COLORS.bg,
+  },
+  scopeBtnActive: {
+    borderColor: COLORS.themeBlue,
+    backgroundColor: COLORS.themeBlueLight,
+  },
+  scopeBtnActiveRose: {
+    borderColor: COLORS.rose,
+    backgroundColor: COLORS.roseLight,
+  },
+  scopeBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+  },
+  scopeBtnTextActive: {
+    color: COLORS.themeBlue,
+    fontWeight: "800",
+  },
+  scopeBtnTextActiveRose: {
+    color: COLORS.rose,
+    fontWeight: "800",
+  },
+  datePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  datePickerBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.textDark,
+  },
+  tapToChangeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.themeBlue,
+  },
+  availNoticeGreen: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  availNoticeGreenText: {
+    fontSize: 11,
+    color: "#166534",
+    fontWeight: "700",
+    flex: 1,
+  },
+  availNoticeAmber: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fde68a",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  availNoticeAmberText: {
+    fontSize: 11,
+    color: "#b45309",
+    fontWeight: "600",
+    flex: 1,
+  },
+  calModalCard: {
+    width: "88%",
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  calHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  calMonthTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.textDark,
+  },
+  calNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: COLORS.themeBlueLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calWeekdaysRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 8,
+    marginBottom: 8,
+  },
+  calWeekdayText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+    width: 36,
+    textAlign: "center",
+  },
+  calDaysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-around",
+  },
+  calDayCell: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 3,
+    borderRadius: 18,
+  },
+  calDayCellSelected: {
+    backgroundColor: COLORS.themeBlue,
+  },
+  calDayText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textDark,
+  },
+  calDayTextSelected: {
+    color: "#ffffff",
+    fontWeight: "800",
   },
 });
 
