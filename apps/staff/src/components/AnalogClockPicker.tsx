@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Feather } from "@expo/vector-icons";
 
 interface AnalogClockPickerProps {
-  value: string;
+  value: string; // e.g. "10:30 AM"
   onChange: (time: string) => void;
   doctorName?: string;
 }
@@ -13,6 +13,7 @@ export default function AnalogClockPicker({
   onChange,
   doctorName,
 }: AnalogClockPickerProps) {
+  // Parse incoming value or default to 10:00 AM
   const parseTime = (val: string) => {
     if (!val) return { hour: 10, minute: 0, period: "AM" as const };
     const match = val.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -28,6 +29,7 @@ export default function AnalogClockPicker({
   const [hour, setHour] = useState<number>(initial.hour);
   const [minute, setMinute] = useState<number>(initial.minute);
   const [period, setPeriod] = useState<"AM" | "PM">(initial.period);
+  const [pickerMode, setPickerMode] = useState<"hour" | "minute">("hour");
 
   useEffect(() => {
     if (value) {
@@ -46,6 +48,8 @@ export default function AnalogClockPicker({
   const handleSelectHour = (h: number) => {
     setHour(h);
     emitTime(h, minute, period);
+    // Auto-transition to minute selection
+    setPickerMode("minute");
   };
 
   const handleSelectMinute = (m: number) => {
@@ -53,50 +57,28 @@ export default function AnalogClockPicker({
     emitTime(hour, m, period);
   };
 
-  const handleStepMinute = (delta: number) => {
-    let nextM = minute + delta;
-    if (nextM >= 60) nextM = 0;
-    if (nextM < 0) nextM = 55;
-    setMinute(nextM);
-    emitTime(hour, nextM, period);
-  };
-
   const handleTogglePeriod = (p: "AM" | "PM") => {
     setPeriod(p);
     emitTime(hour, minute, p);
   };
 
-  const handleQuickPreset = (presetStr: string) => {
-    const parsed = parseTime(presetStr);
-    setHour(parsed.hour);
-    setMinute(parsed.minute);
-    setPeriod(parsed.period);
-    onChange(presetStr);
-  };
+  // Dial Geometry (240px wide dial, center at 120, radius 86)
+  const center = 120;
+  const radius = 86;
 
-  const hourAngle = (hour % 12) * 30 + (minute / 60) * 30;
-  const minuteAngle = minute * 6;
+  const hoursList = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const minutesList = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
-  const clockNumbers = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  const radius = 78;
-  const center = 105;
-
-  const quickPresets = [
-    "09:00 AM",
-    "10:30 AM",
-    "11:45 AM",
-    "02:00 PM",
-    "03:30 PM",
-    "05:00 PM",
-    "06:30 PM",
-    "08:00 PM",
-  ];
+  const currentAngle =
+    pickerMode === "hour"
+      ? (hour % 12) * 30
+      : (minute / 60) * 360;
 
   const currentTimeFormatted = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
 
   return (
     <View style={styles.card}>
-      {/* Header */}
+      {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           <View style={styles.iconCircle}>
@@ -104,7 +86,7 @@ export default function AnalogClockPicker({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Online Consultation Time (Clock)</Text>
-            <Text style={styles.headerSub}>Doctor is available at any time. Pick preferred time.</Text>
+            <Text style={styles.headerSub}>Tap dial numbers to set hour and minutes</Text>
           </View>
         </View>
 
@@ -114,76 +96,41 @@ export default function AnalogClockPicker({
         </View>
       </View>
 
-      {/* Clock Face & Digital Controls */}
-      <View style={styles.clockContainer}>
-        {/* Analog Clock Dial */}
-        <View style={styles.dial}>
-          {/* Hour Hand Container rotated around center */}
-          <View
-            style={[
-              styles.handContainer,
-              { height: 100, top: 55, left: 103, transform: [{ rotate: `${hourAngle}deg` }] },
-            ]}
+      {/* Digital Control Bar: [ HH ] : [ MM ] + [ AM | PM ] */}
+      <View style={styles.digitalBar}>
+        <View style={styles.timeSegmentsRow}>
+          {/* Hour Selector Tab */}
+          <TouchableOpacity
+            onPress={() => setPickerMode("hour")}
+            style={[styles.timeBox, pickerMode === "hour" && styles.timeBoxActive]}
+            activeOpacity={0.8}
           >
-            <View style={styles.hourHand} />
-            <View style={{ height: 50 }} />
-          </View>
-
-          {/* Minute Hand Container rotated around center */}
-          <View
-            style={[
-              styles.handContainer,
-              { height: 140, top: 35, left: 103.5, transform: [{ rotate: `${minuteAngle}deg` }] },
-            ]}
-          >
-            <View style={styles.minuteHand} />
-            <View style={{ height: 70 }} />
-          </View>
-
-          {/* Center Pivot Pin */}
-          <View style={styles.centerPin} />
-
-          {/* 12 Hour Markers */}
-          {clockNumbers.map((num) => {
-            const angle = (num * 30 - 90) * (Math.PI / 180);
-            const x = center + radius * Math.cos(angle);
-            const y = center + radius * Math.sin(angle);
-            const isSelected = hour === num;
-
-            return (
-              <TouchableOpacity
-                key={num}
-                onPress={() => handleSelectHour(num)}
-                style={[
-                  styles.numButton,
-                  { left: x - 13, top: y - 13 },
-                  isSelected && styles.numButtonSelected,
-                ]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.numText, isSelected && styles.numTextSelected]}>
-                  {num}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <Text style={styles.dialHint}>Tap any number on the dial to select hour</Text>
-      </View>
-
-      {/* Time Display & AM/PM Selector */}
-      <View style={styles.controlRow}>
-        <View>
-          <Text style={styles.controlLabel}>Consultation Time</Text>
-          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-            <Text style={styles.timeBigText}>
-              {String(hour).padStart(2, "0")}:{String(minute).padStart(2, "0")}
+            <Text style={[styles.timeBoxText, pickerMode === "hour" && styles.timeBoxTextActive]}>
+              {String(hour).padStart(2, "0")}
             </Text>
-            <Text style={styles.timePeriodText}>{period}</Text>
-          </View>
+            <Text style={[styles.timeBoxLabel, pickerMode === "hour" && styles.timeBoxLabelActive]}>
+              HR
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.timeColon}>:</Text>
+
+          {/* Minute Selector Tab */}
+          <TouchableOpacity
+            onPress={() => setPickerMode("minute")}
+            style={[styles.timeBox, pickerMode === "minute" && styles.timeBoxActive]}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.timeBoxText, pickerMode === "minute" && styles.timeBoxTextActive]}>
+              {String(minute).padStart(2, "0")}
+            </Text>
+            <Text style={[styles.timeBoxLabel, pickerMode === "minute" && styles.timeBoxLabelActive]}>
+              MIN
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* AM / PM Toggle */}
+        {/* AM / PM Switcher */}
         <View style={styles.amPmContainer}>
           <TouchableOpacity
             onPress={() => handleTogglePeriod("AM")}
@@ -206,70 +153,122 @@ export default function AnalogClockPicker({
         </View>
       </View>
 
-      {/* Minute Selector */}
-      <View>
-        <Text style={styles.subLabel}>Minutes</Text>
-        <View style={styles.minuteRow}>
-          {[0, 15, 30, 45].map((m) => {
-            const isSelected = minute === m;
-            return (
-              <TouchableOpacity
-                key={m}
-                onPress={() => handleSelectMinute(m)}
-                style={[styles.minuteChip, isSelected && styles.minuteChipSelected]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.minuteText, isSelected && styles.minuteTextSelected]}>
-                  :{String(m).padStart(2, "0")}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-          <TouchableOpacity
-            onPress={() => handleStepMinute(-5)}
-            style={styles.stepBtn}
-            activeOpacity={0.7}
-          >
-            <Feather name="minus" size={13} color="#475569" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleStepMinute(5)}
-            style={styles.stepBtn}
-            activeOpacity={0.7}
-          >
-            <Feather name="plus" size={13} color="#475569" />
-          </TouchableOpacity>
-        </View>
+      {/* Mode Switcher Pill */}
+      <View style={styles.modeIndicatorRow}>
+        <TouchableOpacity
+          onPress={() => setPickerMode(pickerMode === "hour" ? "minute" : "hour")}
+          style={styles.modePill}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.modePillText}>
+            {pickerMode === "hour"
+              ? "🕒 Setting Hour (1-12) → Tap for Minutes"
+              : "⏱ Setting Minutes (:00-:55) → Tap for Hour"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Quick Presets */}
-      <View>
-        <Text style={styles.subLabel}>Popular Times</Text>
-        <View style={styles.presetsGrid}>
-          {quickPresets.map((preset) => {
-            const isSelected = value === preset;
-            return (
-              <TouchableOpacity
-                key={preset}
-                onPress={() => handleQuickPreset(preset)}
-                style={[styles.presetChip, isSelected && styles.presetChipSelected]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.presetText, isSelected && styles.presetTextSelected]}>
-                  {preset}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* Clock Dial (240x240) */}
+      <View style={styles.clockContainer}>
+        <View style={styles.dial}>
+          {/* Inner Decorative Circle */}
+          <View style={styles.dialInnerGuide} />
+
+          {/* Center Pivot Pin */}
+          <View style={styles.centerPin} />
+
+          {/* Rotating Hand */}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.handContainer,
+              {
+                height: pickerMode === "hour" ? 120 : 160,
+                top: pickerMode === "hour" ? 60 : 40,
+                left: 118.5,
+                transform: [{ rotate: `${currentAngle}deg` }],
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.pointerHand,
+                { height: pickerMode === "hour" ? 60 : 80 },
+              ]}
+            />
+            <View style={styles.knobShadow} />
+            <View style={{ height: pickerMode === "hour" ? 60 : 80 }} />
+          </View>
+
+          {/* Dial Numbers: Hours or Minutes */}
+          {pickerMode === "hour"
+            ? hoursList.map((num) => {
+                const angle = (num * 30 - 90) * (Math.PI / 180);
+                const x = center + radius * Math.cos(angle);
+                const y = center + radius * Math.sin(angle);
+                const isSelected = hour === num;
+
+                return (
+                  <TouchableOpacity
+                    key={`h-${num}`}
+                    onPress={() => handleSelectHour(num)}
+                    style={[
+                      styles.numButton,
+                      { left: x - 18, top: y - 18 },
+                      isSelected && styles.numButtonSelected,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.numText, isSelected && styles.numTextSelected]}>
+                      {num}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            : minutesList.map((m) => {
+                const angle = (m * 6 - 90) * (Math.PI / 180);
+                const x = center + radius * Math.cos(angle);
+                const y = center + radius * Math.sin(angle);
+                const isSelected = minute === m;
+
+                return (
+                  <TouchableOpacity
+                    key={`m-${m}`}
+                    onPress={() => handleSelectMinute(m)}
+                    style={[
+                      styles.numButton,
+                      { left: x - 18, top: y - 18 },
+                      isSelected && styles.numButtonSelected,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.numTextSmall, isSelected && styles.numTextSelected]}>
+                      {String(m).padStart(2, "0")}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
         </View>
+
+        <Text style={styles.dialHint}>
+          {pickerMode === "hour"
+            ? "Tap any hour on the dial (1 to 12)"
+            : "Tap any minute on the dial (:00 to :55)"}
+        </Text>
       </View>
 
-      {/* Online Info Banner */}
-      <View style={styles.infoBanner}>
-        <MaterialCommunityIcons name="check-circle" size={16} color="#15803d" />
-        <Text style={styles.infoBannerText}>
-          Online Consultation: <Text style={{ fontWeight: "800" }}>{currentTimeFormatted}</Text> with{" "}
-          <Text style={{ fontWeight: "800" }}>{doctorName || "Selected Doctor"}</Text>. Regular in-clinic slots are unaffected.
+      {/* Online Confirmation Banner */}
+      <View style={styles.confirmBanner}>
+        <Feather name="check-circle" size={15} color="#16a34a" />
+        <Text style={styles.confirmBannerText}>
+          Online Consultation:{" "}
+          <Text style={{ fontWeight: "800", color: "#15803d" }}>
+            {currentTimeFormatted}
+          </Text>{" "}
+          with{" "}
+          <Text style={{ fontWeight: "800", color: "#15803d" }}>
+            {doctorName || "Selected Doctor"}
+          </Text>
         </Text>
       </View>
     </View>
@@ -281,15 +280,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#e0f2fe",
-    borderRadius: 18,
-    padding: 14,
-    gap: 14,
+    borderRadius: 20,
+    padding: 16,
+    marginVertical: 12,
     shadowColor: "#0284c7",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 2,
-    marginBottom: 10,
   },
   headerRow: {
     flexDirection: "row",
@@ -297,47 +295,47 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
-    paddingBottom: 10,
+    paddingBottom: 12,
+    marginBottom: 14,
   },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: "#e0f2fe",
     alignItems: "center",
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
     color: "#0f172a",
     textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   headerSub: {
     fontSize: 10,
-    fontWeight: "500",
     color: "#64748b",
+    fontWeight: "500",
+    marginTop: 1,
   },
   selectedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
     backgroundColor: "#f0f9ff",
-    borderColor: "#bae6fd",
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 10,
+    alignItems: "flex-end",
   },
   selectedBadgeLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
     color: "#64748b",
   },
@@ -346,221 +344,217 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#0284c7",
   },
+  digitalBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    padding: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  timeSegmentsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  timeBox: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: "center",
+    minWidth: 54,
+  },
+  timeBoxActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+    shadowColor: "#0284c7",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  timeBoxText: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#1e293b",
+  },
+  timeBoxTextActive: {
+    color: "#ffffff",
+  },
+  timeBoxLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#94a3b8",
+    marginTop: 1,
+  },
+  timeBoxLabelActive: {
+    color: "#e0f2fe",
+  },
+  timeColon: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#94a3b8",
+    marginHorizontal: 2,
+  },
+  amPmContainer: {
+    flexDirection: "row",
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  amPmBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 9,
+  },
+  amPmBtnActive: {
+    backgroundColor: "#0284c7",
+  },
+  amPmText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#64748b",
+  },
+  amPmTextActive: {
+    color: "#ffffff",
+  },
+  modeIndicatorRow: {
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  modePill: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  modePillText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
   clockContainer: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 4,
+    paddingVertical: 10,
   },
   dial: {
-    width: 210,
-    height: 210,
-    borderRadius: 105,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
     backgroundColor: "#ffffff",
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: "#e2e8f0",
     position: "relative",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     elevation: 3,
   },
+  dialInnerGuide: {
+    position: "absolute",
+    width: 216,
+    height: 216,
+    borderRadius: 108,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    borderStyle: "dashed",
+    top: 8,
+    left: 8,
+  },
   centerPin: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: "#0284c7",
     borderWidth: 2,
     borderColor: "#ffffff",
-    position: "absolute",
-    left: 96,
-    top: 96,
+    top: 113,
+    left: 113,
     zIndex: 30,
   },
   handContainer: {
-    width: 4,
     position: "absolute",
+    width: 3,
     alignItems: "center",
-    justifyContent: "flex-start",
     zIndex: 10,
   },
-  hourHand: {
-    width: 4,
-    height: 50,
-    backgroundColor: "#1e293b",
+  pointerHand: {
+    width: 3,
+    backgroundColor: "#0284c7",
     borderRadius: 2,
   },
-  minuteHand: {
-    width: 2.5,
-    height: 70,
-    backgroundColor: "#0284c7",
-    borderRadius: 1.5,
+  knobShadow: {
+    position: "absolute",
+    top: -8,
+    left: -8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(2, 132, 199, 0.25)",
   },
   numButton: {
     position: "absolute",
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 20,
+    zIndex: 25,
   },
   numButtonSelected: {
     backgroundColor: "#0284c7",
     shadowColor: "#0284c7",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
-    shadowRadius: 2,
-    elevation: 3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   numText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#334155",
+  },
+  numTextSmall: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#475569",
+    color: "#334155",
   },
   numTextSelected: {
     color: "#ffffff",
     fontWeight: "900",
   },
   dialHint: {
-    fontSize: 10,
-    fontWeight: "600",
+    fontSize: 11,
     color: "#94a3b8",
+    fontWeight: "600",
     marginTop: 8,
   },
-  controlRow: {
+  confirmBanner: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f8fafc",
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
-  },
-  controlLabel: {
-    fontSize: 9.5,
-    fontWeight: "800",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.3,
-  },
-  timeBigText: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#0f172a",
-  },
-  timePeriodText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#0284c7",
-  },
-  amPmContainer: {
-    flexDirection: "row",
-    backgroundColor: "#e2e8f0",
-    padding: 3,
-    borderRadius: 10,
-  },
-  amPmBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  amPmBtnActive: {
-    backgroundColor: "#0284c7",
-  },
-  amPmText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#475569",
-  },
-  amPmTextActive: {
-    color: "#ffffff",
-  },
-  subLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#334155",
-    marginBottom: 6,
-  },
-  minuteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  minuteChip: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  minuteChipSelected: {
-    backgroundColor: "#0284c7",
-    borderColor: "#0284c7",
-  },
-  minuteText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  minuteTextSelected: {
-    color: "#ffffff",
-  },
-  stepBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  presetsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  presetChip: {
-    width: "23.5%",
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  presetChipSelected: {
-    backgroundColor: "#059669",
-    borderColor: "#059669",
-  },
-  presetText: {
-    fontSize: 9.5,
-    fontWeight: "700",
-    color: "#334155",
-  },
-  presetTextSelected: {
-    color: "#ffffff",
-  },
-  infoBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    gap: 8,
     backgroundColor: "#f0fdf4",
     borderWidth: 1,
     borderColor: "#bbf7d0",
-    padding: 8,
-    borderRadius: 10,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 6,
   },
-  infoBannerText: {
-    fontSize: 10.5,
+  confirmBannerText: {
+    fontSize: 11,
     color: "#166534",
+    fontWeight: "600",
     flex: 1,
-    lineHeight: 14,
   },
 });
