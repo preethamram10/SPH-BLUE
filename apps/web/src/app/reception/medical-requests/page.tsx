@@ -42,7 +42,7 @@ const DOSAGE_TIMING_OPTIONS = [
   { value: "SOS", label: "SOS (As Needed / Emergency)" },
 ];
 
-export const MEDICINE_TYPE_OPTIONS = [
+const MEDICINE_TYPE_OPTIONS = [
   { value: "Pills", label: "Pills / Globules" },
   { value: "Drops", label: "Drops / Liquid Dilution" },
   { value: "Mother Tincture", label: "Mother Tincture (Q)" },
@@ -52,7 +52,7 @@ export const MEDICINE_TYPE_OPTIONS = [
   { value: "Ointment", label: "Ointment / Cream" },
 ];
 
-export const DURATION_OPTIONS = [
+const DURATION_OPTIONS = [
   "15 Days",
   "1 Month",
   "2 Months",
@@ -61,7 +61,7 @@ export const DURATION_OPTIONS = [
   "6 Months",
 ];
 
-export const BRANCH_OPTIONS = [
+const BRANCH_OPTIONS = [
   "KPHB Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
