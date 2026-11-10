@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.spiritualhomeo.staff",
+      "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
