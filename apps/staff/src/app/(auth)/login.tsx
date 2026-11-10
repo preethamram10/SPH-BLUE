@@ -158,9 +158,10 @@ export default function StaffLoginScreen() {
       setTimer(30);
       setOtp("1234");
     } catch (err: any) {
+      console.error("[Login] validate-phone error:", err);
       Alert.alert(
         "Connection Notice",
-        "Unable to reach server to verify phone. Ensure your device is on Wi-Fi."
+        `Unable to reach server (${API_BASE_URL}). ${err?.message || "Please check internet connection."}`
       );
     } finally {
       setLoading(false);
