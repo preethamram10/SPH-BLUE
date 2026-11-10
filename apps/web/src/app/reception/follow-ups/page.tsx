@@ -756,15 +756,13 @@ function ReceptionFollowUpsContent() {
                     <th className="py-2 px-2.5">Branch</th>
                     <th className="py-2 px-3">Attending Doctor</th>
                     <th className="py-2 px-2.5 text-center">Follow-Up Due Date</th>
-                    <th className="py-2 px-2.5 text-center">Interval</th>
-                    <th className="py-2 px-2.5 text-center">Status</th>
                     <th className="py-2 px-3 text-center">Action Options</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="py-16 text-center text-slate-400">
+                      <td colSpan={7} className="py-16 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <RefreshCw className="w-6 h-6 animate-spin text-sky-600" />
                           <span className="font-bold text-xs text-slate-600">Loading follow-ups...</span>
@@ -773,7 +771,7 @@ function ReceptionFollowUpsContent() {
                     </tr>
                   ) : followUps.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-16 text-center text-slate-400">
+                      <td colSpan={7} className="py-16 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <CalendarCheck className="w-8 h-8 text-slate-300" />
                           <span className="font-bold text-slate-700 text-sm">No follow-ups found</span>
@@ -845,31 +843,6 @@ function ReceptionFollowUpsContent() {
                               <Calendar className="w-2.5 h-2.5 text-slate-500" />
                               <span>{item.dueDate}</span>
                             </div>
-                          </td>
-
-                          {/* Interval */}
-                          <td className="py-2 px-2.5 text-center">
-                            <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[9.5px]">
-                              {item.followUpInterval}
-                            </span>
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-2 px-2.5 text-center">
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[9.5px] tracking-wide uppercase ${item.status === "Overdue"
-                                  ? "bg-rose-100 text-rose-800 border border-rose-200"
-                                  : item.status === "Due Today"
-                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
-                                    : item.status === "Completed"
-                                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                                      : "bg-sky-100 text-sky-800 border border-sky-200"
-                                }`}
-                            >
-                              {item.status === "Overdue" && <AlertCircle className="w-2.5 h-2.5" />}
-                              {item.status === "Due Today" && <Clock className="w-2.5 h-2.5" />}
-                              {item.status}
-                            </span>
                           </td>
 
                           {/* Action Options: Reschedule & Book Appointment */}
