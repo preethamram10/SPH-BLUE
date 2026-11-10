@@ -256,9 +256,13 @@ export default function ReceptionDoctorNoShowScreen() {
     return () => sub.remove();
   }, [router]);
 
+  const fullDayCount = noShows.filter((n) => n.type === "FULL_DAY").length;
+  const halfDayCount = noShows.filter((n) => n.type === "HALF_DAY").length;
+  const customCount = noShows.filter((n) => n.type === "SPECIFIC_TIME").length;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
-      {/* TOP HEADER */}
+      {/* 1. TOP HEADER / APP BAR */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
@@ -266,11 +270,14 @@ export default function ReceptionDoctorNoShowScreen() {
             onPress={handleBack}
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={22} color={COLORS.textDark} />
+            <Ionicons name="arrow-back" size={20} color={COLORS.textDark} />
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Doctor No-Show</Text>
-            <Text style={styles.headerSubTitle}>{branchClean}</Text>
+            <View style={styles.branchPillBadge}>
+              <Ionicons name="location-sharp" size={10} color={COLORS.themeBlue} />
+              <Text style={styles.branchPillBadgeText}>{branchClean}</Text>
+            </View>
           </View>
         </View>
 
@@ -284,71 +291,91 @@ export default function ReceptionDoctorNoShowScreen() {
           }}
           activeOpacity={0.8}
         >
-          <Ionicons name="add" size={18} color={COLORS.white} />
+          <Ionicons name="add" size={16} color={COLORS.white} />
           <Text style={styles.addBtnText}>Add No-Show</Text>
         </TouchableOpacity>
       </View>
 
-      {/* NOTICE BANNER */}
-      <View style={styles.noticeBanner}>
-        <Ionicons name="information-circle-outline" size={18} color={COLORS.themeBlue} />
-        <Text style={styles.noticeText}>
-          Only doctors scheduled at <Text style={{ fontWeight: "700" }}>{branchClean}</Text> under master doctor timings are selectable. Unavailable slots are automatically blocked in the booking screen.
-        </Text>
+      {/* 2. QUICK STATS SUMMARY ROW */}
+      <View style={styles.statsSummaryRow}>
+        <View style={styles.statCard}>
+          <View style={[styles.statIconBox, { backgroundColor: "#f0fdf4" }]}>
+            <Ionicons name="medkit-outline" size={16} color={COLORS.green} />
+          </View>
+          <View>
+            <Text style={styles.statLabel}>Branch Doctors</Text>
+            <Text style={styles.statValue}>{branchDoctors.length} Configured</Text>
+          </View>
+        </View>
+
+        <View style={styles.statCard}>
+          <View style={[styles.statIconBox, { backgroundColor: COLORS.roseLight }]}>
+            <Ionicons name="person-remove-outline" size={16} color={COLORS.rose} />
+          </View>
+          <View>
+            <Text style={styles.statLabel}>Active No-Shows</Text>
+            <Text style={[styles.statValue, { color: COLORS.rose }]}>{noShows.length} Recorded</Text>
+          </View>
+        </View>
       </View>
 
-      {/* CONTROLS: SEARCH & FILTER */}
+      {/* 3. SEARCH & CONTROLS BAR */}
       <View style={styles.controlsRow}>
         <View style={styles.searchBox}>
-          <Ionicons name="search" size={16} color={COLORS.textLight} />
+          <Ionicons name="search" size={15} color={COLORS.textLight} />
           <TextInput
-            placeholder="Search doctor or reason..."
+            placeholder="Search by doctor name or note..."
             placeholderTextColor={COLORS.textLight}
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.searchInput}
           />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons name="close-circle" size={16} color={COLORS.textLight} />
+            </TouchableOpacity>
+          ) : null}
         </View>
         <TouchableOpacity
           style={styles.refreshBtn}
           onPress={() => loadData(branchClean)}
           activeOpacity={0.7}
         >
-          <Ionicons name="refresh" size={18} color={COLORS.themeBlue} />
+          <Ionicons name="refresh" size={17} color={COLORS.themeBlue} />
         </TouchableOpacity>
       </View>
 
-      {/* FILTER TABS */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterTabsContainer}
-      >
-        {[
-          { key: "ALL", label: "All" },
-          { key: "FULL_DAY", label: "Full Day" },
-          { key: "HALF_DAY", label: "Half Day" },
-          { key: "SPECIFIC_TIME", label: "Custom Time" },
-        ].map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.filterTab, filterType === tab.key && styles.filterTabActive]}
-            onPress={() => setFilterType(tab.key)}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                filterType === tab.key && styles.filterTabTextActive,
-              ]}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* 4. SEGMENTED FILTER TABS WITH COUNTS */}
+      <View style={{ height: 44 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterTabsContainer}
+        >
+          {[
+            { key: "ALL", label: `All (${noShows.length})` },
+            { key: "FULL_DAY", label: `Full Day (${fullDayCount})` },
+            { key: "HALF_DAY", label: `Half Day (${halfDayCount})` },
+            { key: "SPECIFIC_TIME", label: `Custom (${customCount})` },
+          ].map((tab) => {
+            const isActive = filterType === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.filterTab, isActive && styles.filterTabActive]}
+                onPress={() => setFilterType(tab.key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-      {/* RECORDS LIST */}
+      {/* 5. RECORDS LIST */}
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
@@ -362,106 +389,142 @@ export default function ReceptionDoctorNoShowScreen() {
         ) : filteredNoShows.length === 0 ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconCircle}>
-              <Ionicons name="checkmark-circle-outline" size={32} color={COLORS.green} />
+              <Ionicons name="checkmark-done-circle-outline" size={36} color={COLORS.green} />
             </View>
             <Text style={styles.emptyTitle}>All Doctors Available</Text>
             <Text style={styles.emptySubtitle}>
-              No active or upcoming no-shows found for {branchClean}. All doctors are available for appointments as scheduled.
+              {searchQuery
+                ? "No doctor no-shows match your search filter."
+                : `No active or upcoming no-shows for ${branchClean}. All consultation slots are open as scheduled.`}
             </Text>
             <TouchableOpacity
               style={styles.emptyActionBtn}
-              onPress={() => setIsModalOpen(true)}
+              onPress={() => {
+                if (branchDoctors.length > 0 && !selectedDoctor) {
+                  setSelectedDoctor(branchDoctors[0]);
+                }
+                setIsModalOpen(true);
+              }}
               activeOpacity={0.8}
             >
-              <Ionicons name="add" size={16} color={COLORS.white} />
+              <Ionicons name="add-circle" size={17} color={COLORS.white} />
               <Text style={styles.emptyActionBtnText}>Mark Doctor No-Show</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          filteredNoShows.map((item) => (
-            <View key={item.id} style={styles.recordCard}>
-              <View style={styles.recordCardTop}>
-                <View style={styles.doctorInfoRow}>
-                  <View style={styles.docAvatar}>
-                    <Text style={styles.docAvatarText}>
-                      {item.doctorName.replace("Dr.", "").trim().charAt(0) || "D"}
+          filteredNoShows.map((item) => {
+            const isFull = item.type === "FULL_DAY";
+            const isHalf = item.type === "HALF_DAY";
+            const accentColor = isFull ? COLORS.rose : isHalf ? COLORS.amber : COLORS.themeBlue;
+            const badgeBg = isFull ? COLORS.roseLight : isHalf ? COLORS.amberLight : COLORS.themeBlueLight;
+
+            return (
+              <View
+                key={item.id}
+                style={[
+                  styles.recordCard,
+                  { borderLeftWidth: 4, borderLeftColor: accentColor },
+                ]}
+              >
+                {/* CARD TOP ROW */}
+                <View style={styles.recordCardTop}>
+                  <View style={styles.doctorInfoRow}>
+                    <View style={[styles.docAvatar, { backgroundColor: badgeBg }]}>
+                      <Ionicons name="person" size={16} color={accentColor} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.docNameText}>{item.doctorName}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+                        <Ionicons
+                          name={item.branch === "ALL" ? "globe-outline" : "location-outline"}
+                          size={11}
+                          color={COLORS.textMuted}
+                        />
+                        <Text style={styles.docBranchText}>
+                          {item.branch === "ALL" ? "All Clinic Branches" : item.branch}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* NO-SHOW TYPE BADGE */}
+                  <View style={[styles.typeBadge, { backgroundColor: badgeBg }]}>
+                    <Text style={[styles.typeBadgeText, { color: accentColor }]}>
+                      {isFull && "FULL DAY OFF"}
+                      {isHalf && (item.halfDayType === "FIRST_HALF" ? "1ST HALF" : "2ND HALF")}
+                      {!isFull && !isHalf && "CUSTOM HOURS"}
                     </Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.docNameText}>{item.doctorName}</Text>
-                    <Text style={styles.docBranchText}>{item.branch}</Text>
+                </View>
+
+                {/* DETAILS ROW: DATES & TIMINGS */}
+                <View style={styles.recordDetailsBox}>
+                  <View style={styles.detailRow}>
+                    <Ionicons name="calendar" size={14} color={COLORS.themeBlue} />
+                    <Text style={styles.detailText}>
+                      {item.startDate === item.endDate || !item.endDate
+                        ? item.startDate
+                        : `${item.startDate} to ${item.endDate}`}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailRow}>
+                    <Ionicons name="time" size={14} color={accentColor} />
+                    <Text style={[styles.detailText, { color: accentColor, fontWeight: "800" }]}>
+                      {isFull && "All Slots Blocked (Entire Day)"}
+                      {isHalf &&
+                        (item.halfDayType === "FIRST_HALF"
+                          ? "1st Half Blocked (Until 02:00 PM)"
+                          : "2nd Half Blocked (02:00 PM Onwards)")}
+                      {!isFull && !isHalf &&
+                        `${item.startTime || "10:00 AM"} - ${item.endTime || "01:00 PM"} (Slots Blocked)`}
+                    </Text>
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  onPress={() => handleDeleteNoShow(item.id, item.doctorName)}
-                  style={styles.deleteBtn}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="trash-outline" size={18} color={COLORS.rose} />
-                </TouchableOpacity>
-              </View>
+                {/* REASON / NOTE IF ENTERED */}
+                {item.reason ? (
+                  <View style={styles.reasonBox}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={13} color={COLORS.textMuted} />
+                    <Text style={styles.reasonText}>{item.reason}</Text>
+                  </View>
+                ) : null}
 
-              {/* DETAILS ROW */}
-              <View style={styles.recordDetailsBox}>
-                <View style={styles.detailRow}>
-                  <Ionicons name="calendar-outline" size={14} color={COLORS.themeBlue} />
-                  <Text style={styles.detailText}>
-                    {item.startDate === item.endDate || !item.endDate
-                      ? item.startDate
-                      : `${item.startDate} to ${item.endDate}`}
+                {/* FOOTER: TIMESTAMP & REVOKE ACTION */}
+                <View style={styles.cardFooter}>
+                  <Text style={styles.timestampText}>
+                    Added {item.createdAt ? item.createdAt.substring(0, 10) : "Recently"}
                   </Text>
-                </View>
 
-                <View style={styles.detailRow}>
-                  <Ionicons name="time-outline" size={14} color={COLORS.amber} />
-                  <Text style={styles.detailText}>
-                    {item.type === "FULL_DAY" && "Full Day (All Slots Locked)"}
-                    {item.type === "HALF_DAY" &&
-                      (item.halfDayType === "FIRST_HALF"
-                        ? "1st Half (Until 02:00 PM)"
-                        : "2nd Half (02:00 PM Onwards)")}
-                    {item.type === "SPECIFIC_TIME" &&
-                      `${item.startTime || "10:00 AM"} - ${item.endTime || "01:00 PM"}`}
-                  </Text>
-                </View>
-              </View>
-
-              {item.reason ? (
-                <View style={styles.reasonBox}>
-                  <Text style={styles.reasonText}>Note: {item.reason}</Text>
-                </View>
-              ) : null}
-
-              {/* BADGE FOOTER */}
-              <View style={styles.cardFooter}>
-                <View
-                  style={[
-                    styles.typeBadge,
-                    item.type === "FULL_DAY" && { backgroundColor: COLORS.roseLight },
-                    item.type === "HALF_DAY" && { backgroundColor: COLORS.amberLight },
-                    item.type === "SPECIFIC_TIME" && { backgroundColor: COLORS.themeBlueLight },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.typeBadgeText,
-                      item.type === "FULL_DAY" && { color: COLORS.rose },
-                      item.type === "HALF_DAY" && { color: COLORS.amber },
-                      item.type === "SPECIFIC_TIME" && { color: COLORS.themeBlue },
-                    ]}
+                  <TouchableOpacity
+                    onPress={() => handleDeleteNoShow(item.id, item.doctorName)}
+                    style={styles.revokeBtn}
+                    activeOpacity={0.7}
                   >
-                    {item.type.replace("_", " ")}
-                  </Text>
+                    <Ionicons name="trash-outline" size={13} color={COLORS.rose} />
+                    <Text style={styles.revokeBtnText}>Revoke</Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.timestampText}>
-                  Added {item.createdAt ? item.createdAt.substring(0, 10) : "Recently"}
-                </Text>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
+
+      {/* 6. FLOATING ACTION BUTTON (FAB) */}
+      <TouchableOpacity
+        style={styles.fabBtn}
+        onPress={() => {
+          if (branchDoctors.length > 0 && !selectedDoctor) {
+            setSelectedDoctor(branchDoctors[0]);
+          }
+          setIsModalOpen(true);
+        }}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={24} color={COLORS.white} />
+        <Text style={styles.fabBtnText}>Mark No-Show</Text>
+      </TouchableOpacity>
 
       {/* CREATE NO-SHOW MODAL */}
       <Modal
@@ -1005,6 +1068,100 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: COLORS.textDark,
+  },
+  branchPillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+    alignSelf: "flex-start",
+  },
+  branchPillBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.themeBlue,
+  },
+  statsSummaryRow: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  statCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  statIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: COLORS.textMuted,
+  },
+  statValue: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.textDark,
+    marginTop: 1,
+  },
+  revokeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#fff1f2",
+    borderWidth: 1,
+    borderColor: "#fecdd3",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  revokeBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.rose,
+  },
+  fabBtn: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: COLORS.themeBlue,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 30,
+    shadowColor: "#0284c7",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 40,
+  },
+  fabBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: "800",
   },
   headerSubTitle: {
     fontSize: 11,
