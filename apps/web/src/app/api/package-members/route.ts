@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       members = members.filter(
-        (m) =>
+        (m: any) =>
           (m.patientName || "").toLowerCase().includes(q) ||
           (m.phone || "").includes(q) ||
           (m.registrationId || "").toLowerCase().includes(q) ||

@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     // Prescription validation: must have at least 1 prescription image unless already completed or clinical details are present
     const rxImages = appt.prescriptionImages || [];
     const isExempt =
-      appt.hasPackage ||
+      Boolean((appt as any).hasPackage) ||
       Boolean((appt as any).activePackage) ||
       Boolean(hasPackage) ||
       Boolean(isRegularBilling) ||

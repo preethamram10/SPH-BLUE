@@ -42,12 +42,12 @@ export async function GET(req: NextRequest) {
       success: true,
       patientFile: {
         ...appt,
-        followUpDate: appt.followUpDate || appt.activeFollowUpDate || "",
+        followUpDate: appt.followUpDate || (appt as any).activeFollowUpDate || "",
         totalVisits: history.length + 1,
         totalPaid: history.reduce((sum, h) => sum + (h.consultationFee || 0), 0) + (appt.consultationFee || 0),
         activePackage: activePkg || null,
         hasPackage: !!activePkg,
-        packageName: activePkg?.packageName || appt.packageName || "",
+        packageName: activePkg?.packageName || (appt as any).packageName || "",
         history: history.map((h) => ({
           id: h.id,
           date: h.appointmentDate,

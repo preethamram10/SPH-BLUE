@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const branch = searchParams.get("branch") || undefined;
     const realMembers = await packageService.getAllPackageMembers(branch);
 
-    const formattedMembers = realMembers.map((m) => ({
+    const formattedMembers = realMembers.map((m: any) => ({
       id: m.id,
       packageId: m.id,
       packageName: m.packageName,

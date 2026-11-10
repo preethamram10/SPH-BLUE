@@ -28,7 +28,7 @@ import {
 import { CLINIC_LOGO_BASE64 } from "./pdf/logoBase64";
 
 // --- OPTIONS CONSTANTS ---
-export const DOSAGE_TIMING_OPTIONS = [
+const DOSAGE_TIMING_OPTIONS = [
   { value: "", label: "Select Timing" },
   { value: "M - A - N", label: "M - A - N (Morning - Afternoon - Night)" },
   { value: "M - - E", label: "M - - E (Morning - Evening)" },

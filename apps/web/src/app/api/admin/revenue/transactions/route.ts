@@ -72,7 +72,7 @@ export async function GET(req: Request) {
       const disc = Number(a.discountApproved || a.discount) || 0;
 
       const isPkg = Boolean(
-        a.hasPackage ||
+        (a as any).hasPackage ||
         (a as any).activePackage ||
         (a as any).packageTotalAmount ||
         (a as any).packageName ||
@@ -137,11 +137,11 @@ export async function GET(req: Request) {
         displayMethod = "Card";
       } else if (rawMethod.includes("SPLIT")) {
         displayMethod = "Split";
-        if (a.splitDetails) {
+        if ((a as any).splitDetails) {
           const parts: string[] = [];
-          if (a.splitDetails.upi) parts.push(`UPI ₹${a.splitDetails.upi}`);
-          if (a.splitDetails.cash) parts.push(`Cash ₹${a.splitDetails.cash}`);
-          if (a.splitDetails.card) parts.push(`Card ₹${a.splitDetails.card}`);
+          if ((a as any).splitDetails.upi) parts.push(`UPI ₹${(a as any).splitDetails.upi}`);
+          if ((a as any).splitDetails.cash) parts.push(`Cash ₹${(a as any).splitDetails.cash}`);
+          if ((a as any).splitDetails.card) parts.push(`Card ₹${(a as any).splitDetails.card}`);
           if (parts.length > 0) {
             displayMethod = `Split (${parts.join(" + ")})`;
           }
@@ -191,7 +191,7 @@ export async function GET(req: Request) {
         totalAmount: total,
         paymentMethod: method,
         displayPaymentMethod: displayMethod,
-        splitDetails: a.splitDetails,
+        splitDetails: (a as any).splitDetails,
         timestamp: dt,
         dateTime: `${dt}, ${formattedTime}`,
         status: isPaid ? "PAID" : "PENDING",
