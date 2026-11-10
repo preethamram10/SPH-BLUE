@@ -99,36 +99,36 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
   ];
 
   return (
-    <aside className="w-52 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-xs h-full z-20">
+    <aside className="w-52 bg-white flex flex-col justify-between shrink-0 shadow-xs h-full z-20">
       <div>
-        {/* Brand Header */}
-        <div className="p-3 border-b border-slate-100 flex items-center justify-between gap-1.5">
+        {/* Brand Header - Logo moved a bit down */}
+        <div className="pt-6 px-3.5 pb-2.5 flex items-center justify-between gap-1.5">
           <img
             src="/assets/SH logo.png"
             alt="Spiritual Homeopathy"
             className="h-7 w-auto max-w-[130px] object-contain shrink-0"
           />
-          <span className="text-[8.5px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 uppercase tracking-wider shrink-0">
+          <span className="text-[8px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
             Reception
           </span>
         </div>
 
-        {/* Active Branch Pill */}
-        <div className="mx-2.5 mt-2.5 p-2 bg-slate-50 border border-slate-200/80 rounded-lg">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800">
+        {/* Active Branch Pill - Border removed */}
+        <div className="mx-2.5 mt-1.5 p-2 bg-slate-50/80 rounded-lg">
+          <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-slate-800">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
             <span className="truncate">{branchName}</span>
           </div>
           {branchPhone && (
-            <div className="flex items-center gap-1 text-[9.5px] text-slate-500 mt-0.5">
+            <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-0.5">
               <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" />
               <span className="truncate">{branchPhone}</span>
             </div>
           )}
         </div>
 
-        {/* Navigation Items */}
-        <nav className="p-2.5 space-y-1">
+        {/* Navigation Items - Box & Icon bg removed, text size reduced */}
+        <nav className="p-2 space-y-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
@@ -136,13 +136,13 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
               <Link
                 key={item.id}
                 href={item.href}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all ${
                   isActive
-                    ? "bg-[#268ec8] text-white shadow-xs"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "text-[#0284c7] font-extrabold bg-transparent"
+                    : "text-slate-600 font-semibold hover:text-slate-900 bg-transparent"
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#0284c7]" : "text-slate-400"}`} />
                 <span className="truncate">{item.name}</span>
               </Link>
             );
@@ -150,11 +150,11 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
         </nav>
       </div>
 
-      {/* Logout Footer */}
-      <div className="p-2.5 border-t border-slate-100">
+      {/* Logout Footer - Border removed */}
+      <div className="p-2.5">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition-colors"
         >
           <LogOut className="w-3.5 h-3.5 shrink-0" />
           <span>Sign Out</span>
