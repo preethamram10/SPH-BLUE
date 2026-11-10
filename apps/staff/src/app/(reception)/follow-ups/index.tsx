@@ -93,10 +93,10 @@ export default function ReceptionFollowUpsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
 
-  // Period Filters matching Web portal exactly (Default to 'all' so all follow-ups load right away)
+  // Period Filters matching Web portal exactly (Default to 'this_month' so opening loads only this month)
   const [periodFilter, setPeriodFilter] = useState<
     "this_month" | "next_month" | "due_today" | "overdue" | "all" | "month" | "range"
-  >("all");
+  >("this_month");
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -370,43 +370,7 @@ export default function ReceptionFollowUpsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.periodScrollContent}
         >
-          {/* All Follow-Ups */}
-          <TouchableOpacity
-            style={[styles.periodChip, periodFilter === "all" && styles.periodChipActiveDark]}
-            onPress={() => setPeriodFilter("all")}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name="list"
-              size={12}
-              color={periodFilter === "all" ? "#ffffff" : "#475569"}
-            />
-            <Text
-              style={[
-                styles.periodChipText,
-                periodFilter === "all" && styles.periodChipTextActive,
-              ]}
-            >
-              All Follow-Ups
-            </Text>
-            <View
-              style={[
-                styles.countBadge,
-                periodFilter === "all" ? styles.countBadgeActiveWhite : styles.countBadgeSlate,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.countBadgeText,
-                  periodFilter === "all" ? styles.countBadgeTextDark : styles.countBadgeTextSlateDark,
-                ]}
-              >
-                {stats.total}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* This Month */}
+          {/* This Month (FIRST & DEFAULT) */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
             onPress={() => setPeriodFilter("this_month")}
@@ -602,6 +566,42 @@ export default function ReceptionFollowUpsScreen() {
               size={11}
               color={periodFilter === "range" ? "#ffffff" : "#64748b"}
             />
+          </TouchableOpacity>
+
+          {/* All Follow-Ups (MOVED TO LAST) */}
+          <TouchableOpacity
+            style={[styles.periodChip, periodFilter === "all" && styles.periodChipActiveDark]}
+            onPress={() => setPeriodFilter("all")}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="list"
+              size={12}
+              color={periodFilter === "all" ? "#ffffff" : "#475569"}
+            />
+            <Text
+              style={[
+                styles.periodChipText,
+                periodFilter === "all" && styles.periodChipTextActive,
+              ]}
+            >
+              All Follow-Ups
+            </Text>
+            <View
+              style={[
+                styles.countBadge,
+                periodFilter === "all" ? styles.countBadgeActiveWhite : styles.countBadgeSlate,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.countBadgeText,
+                  periodFilter === "all" ? styles.countBadgeTextDark : styles.countBadgeTextSlateDark,
+                ]}
+              >
+                {stats.total}
+              </Text>
+            </View>
           </TouchableOpacity>
         </ScrollView>
       </View>

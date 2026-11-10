@@ -532,7 +532,7 @@ function ReceptionFollowUpsContent() {
               {/* This Month (FIRST & DEFAULT) */}
               <button
                 onClick={() => handlePeriodChange("this_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "this_month"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "this_month"
                     ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
                     : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
                   }`}
@@ -540,7 +540,7 @@ function ReceptionFollowUpsContent() {
                 <Calendar className="w-3.5 h-3.5" />
                 <span>This Month</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
                     }`}
                 >
                   {stats.thisMonth}
@@ -550,7 +550,7 @@ function ReceptionFollowUpsContent() {
               {/* Next Month */}
               <button
                 onClick={() => handlePeriodChange("next_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
                     ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
                     : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
                   }`}
@@ -558,7 +558,7 @@ function ReceptionFollowUpsContent() {
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Next Month</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
                     }`}
                 >
                   {stats.nextMonth}
@@ -568,7 +568,7 @@ function ReceptionFollowUpsContent() {
               {/* Due Today */}
               <button
                 onClick={() => handlePeriodChange("due_today")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "due_today"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "due_today"
                     ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
                     : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
                   }`}
@@ -576,7 +576,7 @@ function ReceptionFollowUpsContent() {
                 <Clock className="w-3.5 h-3.5" />
                 <span>Due Today</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
                     }`}
                 >
                   {stats.dueToday}
@@ -586,7 +586,7 @@ function ReceptionFollowUpsContent() {
               {/* Overdue (Follow-up date passed) */}
               <button
                 onClick={() => handlePeriodChange("overdue")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "overdue"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "overdue"
                     ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
                     : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
                   }`}
@@ -594,49 +594,17 @@ function ReceptionFollowUpsContent() {
                 <AlertCircle className="w-3.5 h-3.5" />
                 <span>Overdue (Date Passed)</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
                     }`}
                 >
                   {stats.overdue}
                 </span>
               </button>
 
-              {/* All Follow-Ups */}
-              <button
-                onClick={() => handlePeriodChange("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "all"
-                    ? "bg-slate-900 text-white shadow-2xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                  }`}
-              >
-                <span>All Follow-Ups</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-current font-extrabold">
-                  {stats.total}
-                </span>
-              </button>
-
-              {/* Next Month */}
-              <button
-                onClick={() => handlePeriodChange("next_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
-                    ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
-                    : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
-                  }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Next Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
-                    }`}
-                >
-                  {stats.nextMonth}
-                </span>
-              </button>
-
               {/* Choose Month */}
               <button
                 onClick={() => handlePeriodChange("month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                   periodFilter === "month"
                     ? "bg-purple-600 text-white shadow-2xs shadow-purple-200"
                     : "bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200"
@@ -645,7 +613,7 @@ function ReceptionFollowUpsContent() {
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Choose Month</span>
                 {periodFilter === "month" && selectedMonth && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-800 text-white font-mono">
+                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-purple-800 text-white font-mono">
                     {selectedMonth}
                   </span>
                 )}
@@ -654,7 +622,7 @@ function ReceptionFollowUpsContent() {
               {/* Date Range */}
               <button
                 onClick={() => handlePeriodChange("range")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                   periodFilter === "range"
                     ? "bg-teal-600 text-white shadow-2xs shadow-teal-200"
                     : "bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200"
@@ -663,10 +631,24 @@ function ReceptionFollowUpsContent() {
                 <CalendarPlus className="w-3.5 h-3.5" />
                 <span>Date Range</span>
                 {periodFilter === "range" && (startDate || endDate) && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-800 text-white">
+                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-teal-800 text-white">
                     Active
                   </span>
                 )}
+              </button>
+
+              {/* All Follow-Ups (MOVED TO LAST) */}
+              <button
+                onClick={() => handlePeriodChange("all")}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "all"
+                    ? "bg-slate-900 text-white shadow-2xs"
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  }`}
+              >
+                <span>All Follow-Ups</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-white/20 text-current font-extrabold">
+                  {stats.total}
+                </span>
               </button>
             </div>
 
@@ -765,18 +747,18 @@ function ReceptionFollowUpsContent() {
           {/* Follow-Ups Table Card */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-[11px]">
                 <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-black uppercase text-slate-500 tracking-wider">
-                    <th className="py-3 px-3 w-12 text-center">S.No</th>
-                    <th className="py-3 px-4">Patient MRN & Name</th>
-                    <th className="py-3 px-3">Phone</th>
-                    <th className="py-3 px-3">Branch</th>
-                    <th className="py-3 px-4">Attending Doctor</th>
-                    <th className="py-3 px-3 text-center">Follow-Up Due Date</th>
-                    <th className="py-3 px-3 text-center">Interval</th>
-                    <th className="py-3 px-3 text-center">Status</th>
-                    <th className="py-3 px-4 text-center">Action Options</th>
+                  <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    <th className="py-2 px-2 w-10 text-center">S.No</th>
+                    <th className="py-2 px-3">Patient MRN & Name</th>
+                    <th className="py-2 px-2.5">Phone</th>
+                    <th className="py-2 px-2.5">Branch</th>
+                    <th className="py-2 px-3">Attending Doctor</th>
+                    <th className="py-2 px-2.5 text-center">Follow-Up Due Date</th>
+                    <th className="py-2 px-2.5 text-center">Interval</th>
+                    <th className="py-2 px-2.5 text-center">Status</th>
+                    <th className="py-2 px-3 text-center">Action Options</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -812,21 +794,21 @@ function ReceptionFollowUpsContent() {
                           className="hover:bg-sky-50/40 transition-colors group"
                         >
                           {/* S.No */}
-                          <td className="py-3 px-3 text-center text-slate-400 font-bold">
+                          <td className="py-2 px-2 text-center text-slate-400 font-bold text-[10px]">
                             {sNo}
                           </td>
 
                           {/* Patient MRN & Name */}
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-[11px] shrink-0">
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-6 h-6 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-[10px] shrink-0">
                                 {item.patientName.charAt(0).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors flex items-center gap-1.5">
+                                <div className="font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors flex items-center gap-1 text-[11.5px]">
                                   <span>{item.patientName}</span>
                                 </div>
-                                <div className="text-[10px] font-mono text-slate-500 font-semibold">
+                                <div className="text-[9.5px] font-mono text-slate-500 font-semibold">
                                   {item.mrn}
                                 </div>
                               </div>
@@ -834,48 +816,48 @@ function ReceptionFollowUpsContent() {
                           </td>
 
                           {/* Phone */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-1 text-slate-700 font-semibold">
-                              <Phone className="w-3 h-3 text-slate-400" />
+                          <td className="py-2 px-2.5">
+                            <div className="flex items-center gap-1 text-slate-700 font-semibold text-[10.5px]">
+                              <Phone className="w-2.5 h-2.5 text-slate-400" />
                               <span>{cleanPhone || "—"}</span>
                             </div>
                           </td>
 
                           {/* Branch */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-1 text-slate-600 font-semibold">
-                              <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span className="truncate max-w-[120px]">{item.branch}</span>
+                          <td className="py-2 px-2.5">
+                            <div className="flex items-center gap-1 text-slate-600 font-semibold text-[10.5px]">
+                              <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[110px]">{item.branch}</span>
                             </div>
                           </td>
 
                           {/* Attending Doctor */}
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-1.5 text-slate-800 font-bold">
-                              <Stethoscope className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                              <span className="truncate max-w-[150px]">{item.doctorName}</span>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1 text-slate-800 font-bold text-[11px]">
+                              <Stethoscope className="w-3 h-3 text-sky-600 shrink-0" />
+                              <span className="truncate max-w-[140px]">{item.doctorName}</span>
                             </div>
                           </td>
 
                           {/* Follow-Up Due Date */}
-                          <td className="py-3 px-3 text-center">
-                            <div className="inline-flex items-center gap-1 font-mono font-bold text-slate-900 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-                              <Calendar className="w-3 h-3 text-slate-500" />
+                          <td className="py-2 px-2.5 text-center">
+                            <div className="inline-flex items-center gap-1 font-mono font-bold text-slate-900 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 text-[10.5px]">
+                              <Calendar className="w-2.5 h-2.5 text-slate-500" />
                               <span>{item.dueDate}</span>
                             </div>
                           </td>
 
                           {/* Interval */}
-                          <td className="py-3 px-3 text-center">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10.5px]">
+                          <td className="py-2 px-2.5 text-center">
+                            <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[9.5px]">
                               {item.followUpInterval}
                             </span>
                           </td>
 
                           {/* Status */}
-                          <td className="py-3 px-3 text-center">
+                          <td className="py-2 px-2.5 text-center">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-black text-[10px] tracking-wide uppercase ${item.status === "Overdue"
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[9.5px] tracking-wide uppercase ${item.status === "Overdue"
                                   ? "bg-rose-100 text-rose-800 border border-rose-200"
                                   : item.status === "Due Today"
                                     ? "bg-amber-100 text-amber-800 border border-amber-200"
@@ -890,49 +872,27 @@ function ReceptionFollowUpsContent() {
                             </span>
                           </td>
 
-                          {/* Action Options: Reschedule, Book Appointment, WhatsApp, Patient File */}
-                          <td className="py-3 px-4 text-center">
+                          {/* Action Options: Reschedule & Book Appointment */}
+                          <td className="py-2.5 px-3 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               {/* Reschedule Button */}
                               <button
                                 onClick={() => openRescheduleModal(item)}
-                                className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                                className="px-2 py-0.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                                 title="Reschedule Follow-Up Date"
                               >
-                                <RotateCcw className="w-3 h-3" />
+                                <RotateCcw className="w-2.5 h-2.5" />
                                 <span>Reschedule</span>
                               </button>
 
                               {/* Book Appointment Button */}
                               <button
                                 onClick={() => openBookingModal(item)}
-                                className="px-2.5 py-1 rounded-md bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs transition-colors"
+                                className="px-2 py-0.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                                 title="Book Clinical Appointment"
                               >
-                                <CalendarPlus className="w-3 h-3" />
+                                <CalendarPlus className="w-2.5 h-2.5" />
                                 <span>Book Appointment</span>
-                              </button>
-
-                              {/* WhatsApp Button */}
-                              <button
-                                onClick={() => handleWhatsApp(item)}
-                                className="p-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors"
-                                title="Send WhatsApp Follow-up Reminder"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" />
-                              </button>
-
-                              {/* Patient File Link Button */}
-                              <button
-                                onClick={() =>
-                                  router.push(
-                                    `/reception/patient-file?id=${encodeURIComponent(item.appointmentId)}&name=${encodeURIComponent(item.patientName)}&phone=${encodeURIComponent(item.phone)}&registrationId=${encodeURIComponent(item.mrn)}&branch=${encodeURIComponent(item.branch)}`
-                                  )
-                                }
-                                className="p-1 rounded-md bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors"
-                                title="Open Patient File & Prescription History"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>

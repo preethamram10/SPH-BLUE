@@ -15,6 +15,8 @@ import {
   FolderPlus,
   ClipboardList,
   Crown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 interface ReceptionSidebarProps {
@@ -25,13 +27,31 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
   const router = useRouter();
   const [branchName, setBranchName] = useState<string>("Clinic Branch");
   const [branchPhone, setBranchPhone] = useState<string>("");
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("reception_sidebar_collapsed");
+      if (saved !== null) {
+        setIsCollapsed(saved === "true");
+      }
+    } catch {}
+
     const savedName = localStorage.getItem("branch_name");
     const savedPhone = localStorage.getItem("branch_phone");
     if (savedName) setBranchName(savedName);
     if (savedPhone) setBranchPhone(savedPhone);
   }, []);
+
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("reception_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("user_role");
@@ -99,36 +119,75 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
   ];
 
   return (
-    <aside className="w-52 bg-white flex flex-col justify-between shrink-0 shadow-xs h-full z-20">
+    <aside
+      className={`${
+        isCollapsed ? "w-14" : "w-52"
+      } bg-white flex flex-col justify-between shrink-0 shadow-xs h-full z-20 select-none transition-all duration-300 ease-in-out`}
+    >
       <div>
-        {/* Brand Header - Logo moved a bit down */}
-        <div className="pt-6 px-3.5 pb-2.5 flex items-center justify-between gap-1.5">
-          <img
-            src="/assets/SH logo.png"
-            alt="Spiritual Homeopathy"
-            className="h-7 w-auto max-w-[130px] object-contain shrink-0"
-          />
-          <span className="text-[8px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
-            Reception
-          </span>
-        </div>
-
-        {/* Active Branch Pill - Border removed */}
-        <div className="mx-2.5 mt-1.5 p-2 bg-slate-50/80 rounded-lg">
-          <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-slate-800">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-            <span className="truncate">{branchName}</span>
-          </div>
-          {branchPhone && (
-            <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-0.5">
-              <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-              <span className="truncate">{branchPhone}</span>
+        {/* Brand Header with < / > collapse toggle */}
+        <div
+          className={`pt-6 px-2.5 pb-2.5 flex items-center ${
+            isCollapsed ? "flex-col justify-center gap-2" : "justify-between gap-1.5"
+          }`}
+        >
+          {!isCollapsed ? (
+            <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+              <img
+                src="/assets/SH logo.png"
+                alt="Spiritual Homeopathy"
+                className="h-7 w-auto max-w-[125px] object-contain shrink-0"
+              />
+              <span className="text-[8px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                Reception
+              </span>
+            </div>
+          ) : (
+            <div
+              className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0"
+              title="Spiritual Homeopathy Reception"
+            >
+              <img
+                src="/assets/SH logo.png"
+                alt="SH Logo"
+                className="h-6 w-auto max-w-none object-contain"
+              />
             </div>
           )}
+
+          {/* < / > Collapse Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleCollapse}
+            title={isCollapsed ? "Expand sidebar (>)" : "Collapse sidebar (<)"}
+            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
 
-        {/* Navigation Items - Box & Icon bg removed, text size reduced */}
-        <nav className="p-2 space-y-0.5">
+        {/* Active Branch Pill - Shown when expanded */}
+        {!isCollapsed && (
+          <div className="mx-2.5 mt-1.5 p-2 bg-slate-50/80 rounded-lg">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-bold text-slate-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+              <span className="truncate">{branchName}</span>
+            </div>
+            {branchPhone && (
+              <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-0.5">
+                <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                <span className="truncate">{branchPhone}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Navigation Items */}
+        <nav className="p-1.5 space-y-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
@@ -136,28 +195,38 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
               <Link
                 key={item.id}
                 href={item.href}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all ${
+                title={isCollapsed ? item.name : undefined}
+                className={`w-full flex items-center ${
+                  isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
+                } py-1.5 rounded-lg text-[11px] transition-all ${
                   isActive
                     ? "text-[#0284c7] font-extrabold bg-transparent"
                     : "text-slate-600 font-semibold hover:text-slate-900 bg-transparent"
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#0284c7]" : "text-slate-400"}`} />
-                <span className="truncate">{item.name}</span>
+                <Icon
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isActive ? "text-[#0284c7]" : "text-slate-400"
+                  }`}
+                />
+                {!isCollapsed && <span className="truncate">{item.name}</span>}
               </Link>
             );
           })}
         </nav>
       </div>
 
-      {/* Logout Footer - Border removed */}
-      <div className="p-2.5">
+      {/* Logout Footer */}
+      <div className="p-2">
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition-colors"
+          title={isCollapsed ? "Sign Out" : undefined}
+          className={`w-full flex items-center ${
+            isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
+          } py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer`}
         >
           <LogOut className="w-3.5 h-3.5 shrink-0" />
-          <span>Sign Out</span>
+          {!isCollapsed && <span>Sign Out</span>}
         </button>
       </div>
     </aside>
