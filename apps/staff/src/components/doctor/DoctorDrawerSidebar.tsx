@@ -215,23 +215,28 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.menuItem,
-                activeRoute === "total-revenue" && styles.menuItemActive,
-              ]}
-              onPress={() => handleNavigate(isHeadDoctor ? "/(admin)/total-revenue" : "/(doctor)/total-revenue")}
-              activeOpacity={0.7}
-            >
-              <Text
+            {isHeadDoctor && (
+              <TouchableOpacity
                 style={[
-                  styles.menuText,
-                  activeRoute === "total-revenue" && styles.menuTextActive,
+                  styles.menuItem,
+                  activeRoute === "total-revenue" && styles.menuItemActive,
                 ]}
+                onPress={() => handleNavigate("/(admin)/total-revenue")}
+                activeOpacity={0.7}
               >
-                {isHeadDoctor ? "Total Revenue (Clinic)" : "Total Revenue"}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.menuText,
+                    activeRoute === "total-revenue" && styles.menuTextActive,
+                  ]}
+                >
+                  Total Revenue
+                </Text>
+                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
+                  <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>HEAD</Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
             {isHeadDoctor && (
               <TouchableOpacity

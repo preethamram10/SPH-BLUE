@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
+import { useRouter } from "next/navigation";
 import {
   DollarSign,
   TrendingUp,
@@ -12,13 +13,24 @@ import {
   Clock,
   ArrowUpRight,
   Stethoscope,
+  Lock,
 } from "lucide-react";
 
 export default function DoctorTotalRevenuePage() {
+  const router = useRouter();
   const [revenueData, setRevenueData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
 
   useEffect(() => {
+    const savedDoc = localStorage.getItem("doctor_name") || "Dr. Prashanth K Vaidya";
+    setDoctorName(savedDoc);
+    const isHead = savedDoc.toLowerCase().includes("prashanth") || savedDoc.toLowerCase().includes("head");
+    if (isHead) {
+      router.replace("/admin/total-revenue");
+      return;
+    }
+
     fetch("/api/doctor/revenue")
       .then((res) => res.json())
       .then((data) => {
@@ -28,7 +40,34 @@ export default function DoctorTotalRevenuePage() {
       })
       .catch((err) => console.error(err))
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [router]);
+
+  const isHeadDoctor =
+    doctorName.toLowerCase().includes("prashanth") ||
+    doctorName.toLowerCase().includes("head");
+
+  if (!isHeadDoctor) {
+    return (
+      <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
+        <DoctorSidebar activePage="dashboard" />
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+            <Lock className="w-7 h-7" />
+          </div>
+          <h2 className="text-base font-bold text-slate-900">Restricted Access</h2>
+          <p className="text-xs text-slate-500 max-w-sm mt-1">
+            Total Revenue analytics is restricted to Head Doctors, Clinic Administration & HR only.
+          </p>
+          <a
+            href="/doctor/dashboard"
+            className="mt-4 px-4 py-2 rounded-xl bg-sky-600 text-white font-bold text-xs hover:bg-sky-700 transition"
+          >
+            Return to Doctor Dashboard
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   const stats = revenueData?.stats || {
     doctorName: "Dr. Prashanth K Vaidya",

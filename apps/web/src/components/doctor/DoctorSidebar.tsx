@@ -61,21 +61,21 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
       href: "/doctor/patient-list",
       icon: Users,
     },
-    {
-      id: "total-revenue",
-      name: isHeadDoctor ? "Total Revenue (Full Clinic)" : "Total Revenue",
-      href: isHeadDoctor ? "/admin/total-revenue" : "/doctor/total-revenue",
-      icon: DollarSign,
-    },
     ...(isHeadDoctor
       ? [
-        {
-          id: "fee-requests",
-          name: "Fee Requests",
-          href: "/admin/fee-requests",
-          icon: FileCheck2,
-        },
-      ]
+          {
+            id: "total-revenue",
+            name: "Total Revenue",
+            href: "/admin/total-revenue",
+            icon: DollarSign,
+          },
+          {
+            id: "fee-requests",
+            name: "Fee Requests",
+            href: "/admin/fee-requests",
+            icon: FileCheck2,
+          },
+        ]
       : []),
   ];
 

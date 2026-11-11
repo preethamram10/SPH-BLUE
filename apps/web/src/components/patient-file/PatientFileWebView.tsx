@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
+import { DietPlanManager } from "./DietPlanManager";
 import {
   ArrowLeft,
   Calendar,
@@ -150,6 +151,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [dietPlan, setDietPlan] = useState("");
+  const [dietPlanFee, setDietPlanFee] = useState<number>(500);
 
   // History
   const [historyTab, setHistoryTab] = useState<"all" | "prescriptions" | "payments">("all");
@@ -244,6 +246,8 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
           if (pf.dietPlan) setDietPlan(pf.dietPlan);
+          if (pf.dietPlanFee) setDietPlanFee(Number(pf.dietPlanFee));
+          else if (pf.dietFee) setDietPlanFee(Number(pf.dietFee));
           if (pf.history) setPatientHistory(pf.history);
           if (pf.totalPaid) setTotalPaid(pf.totalPaid);
         }
@@ -539,6 +543,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           followUpDate,
           consultationFee: parseFloat(consultationFee) || 0,
           dietPlan,
+          dietPlanFee: Number(dietPlanFee) || 0,
           sendToReception: true,
         }),
       });
@@ -564,6 +569,9 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
           timeSlot: patientData.timeSlot || "02:30 PM",
           consultationFee: parseFloat(consultationFee) || 0,
+          dietPlanFee: Number(dietPlanFee) || 0,
+          dietFee: Number(dietPlanFee) || 0,
+          dietPlan: dietPlan,
           prescriptionImages: uploadedImages,
           hasPackage: patientData.hasPackage,
           packageName: patientData.packageName || patientData.activePackage?.packageName,
@@ -585,6 +593,76 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       }
     } catch (err: any) {
       alert("Error saving patient file.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveDietPlan = async (
+    updatedPlan: string,
+    updatedFee: number,
+    sendToReception = false
+  ) => {
+    setDietPlan(updatedPlan);
+    setDietPlanFee(updatedFee);
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/patient-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: appointmentId || "temp-id",
+          prescriptionImages: uploadedImages,
+          prescriptionText,
+          followUpInterval,
+          followUpDate,
+          consultationFee: parseFloat(consultationFee) || 0,
+          dietPlan: updatedPlan,
+          dietPlanFee: updatedFee,
+          sendToReception,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Failed to save Diet Plan.");
+        return;
+      }
+
+      if (sendToReception) {
+        if (role === "RECEPTION") {
+          setSelectedPaymentAppt({
+            id: appointmentId || "temp-id",
+            patientName: patientData.patientName,
+            phoneNumber: patientData.phone,
+            phone: patientData.phone,
+            registrationId: patientData.registrationId,
+            patientId: patientData.registrationId,
+            doctorName: patientData.doctorName || "Dr. Prashanth K Vaidya",
+            branch: patientData.branch,
+            appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
+            timeSlot: patientData.timeSlot || "02:30 PM",
+            consultationFee: parseFloat(consultationFee) || 0,
+            dietPlanFee: updatedFee,
+            dietFee: updatedFee,
+            dietPlan: updatedPlan,
+            prescriptionImages: uploadedImages,
+            hasPackage: patientData.hasPackage,
+            packageName: patientData.packageName || patientData.activePackage?.packageName,
+            status: "COLLECT_FEE",
+          });
+          setIsPaymentModalOpen(true);
+        } else {
+          alert(
+            `Diet Plan & Fee (₹${updatedFee}) saved and dispatched to Reception for ${patientData.patientName}!`
+          );
+          router.push("/doctor/dashboard");
+        }
+      } else {
+        alert("Diet Plan and Fee saved successfully!");
+      }
+    } catch (err: any) {
+      alert("Error saving diet plan: " + (err.message || ""));
     } finally {
       setIsSubmitting(false);
     }
@@ -816,19 +894,130 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
               </div>
 
               {activeTab === "diet" && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2">
-                  <h3 className="font-bold text-slate-900 text-sm">Diet & Regimen</h3>
-                  <textarea
-                    rows={3}
-                    placeholder="Enter homeopathic dietary restrictions, foods to avoid, and water intake..."
-                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs"
-                    value={dietPlan}
-                    onChange={(e) => setDietPlan(e.target.value)}
-                  />
+                <DietPlanManager
+                  appointmentId={appointmentId}
+                  patientData={patientData}
+                  initialDietPlan={dietPlan}
+                  initialDietFee={dietPlanFee}
+                  onSavePlan={handleSaveDietPlan}
+                  isSaving={isSubmitting}
+                />
+              )}
+
+              {activeTab === "media" && (
+                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-sky-600" />
+                      <span>Shared Medical Documents & Reports</span>
+                    </h3>
+                    <span className="text-xs text-slate-500 font-semibold">
+                      {uploadedImages.length} Attached
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Upload lab reports, scans, patient diet charts, or past medical records.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Document / Report</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Camera</span>
+                    </button>
+                  </div>
+                  {uploadedImages.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+                      {uploadedImages.map((src, idx) => (
+                        <div
+                          key={idx}
+                          className="relative aspect-square rounded-xl border border-slate-200 overflow-hidden cursor-pointer group shadow-2xs"
+                          onClick={() => {
+                            setViewerIndex(idx);
+                            setRotation(0);
+                            setZoomScale(1);
+                            setIsViewerOpen(true);
+                          }}
+                        >
+                          <img
+                            src={resolvePrescriptionImageUrl(src)}
+                            alt={`Document ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveImage(idx);
+                            }}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 shadow-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                      No documents or files uploaded yet.
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* 4. Digital Prescription Section */}
+              {activeTab === "clinical" && (
+                <>
+                  {dietPlan ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xl">🥗</span>
+                        <div>
+                          <div className="text-xs font-bold text-emerald-950 flex items-center gap-2">
+                            <span>Personalized Diet Plan Active</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-200 text-emerald-900 font-black">
+                              ₹{dietPlanFee} Fee Attached
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-emerald-700">
+                            30-Day regimen configured. Will be auto-included in reception fee collection.
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("diet")}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-2xs"
+                      >
+                        View / Edit Diet Plan
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-sky-50/60 border border-sky-200 border-dashed rounded-xl p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs text-sky-900">
+                        <span>🥗</span>
+                        <span>Need a clinical 30-day diet plan for this patient?</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("diet")}
+                        className="px-2.5 py-1 rounded-lg border border-sky-300 bg-white text-sky-700 hover:bg-sky-50 font-bold text-xs transition-colors"
+                      >
+                        + Create Diet Plan
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 4. Digital Prescription Section */}
               <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-extrabold text-slate-900 text-sm">Digital Prescription</h3>
@@ -1082,8 +1271,10 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                       : "Send to Reception"}
                 </button>
               </div>
+            </>
+          )}
 
-              {/* 7. Patient History & Records Section */}
+          {/* 7. Patient History & Records Section */}
               <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-extrabold text-sky-700 text-sm">

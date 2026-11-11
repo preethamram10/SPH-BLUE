@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
       followUpDate,
       consultationFee,
       dietPlan,
+      dietPlanFee,
       sendToReception,
       markCompleted,
     } = body;
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
       followUpDate,
       consultationFee: typeof consultationFee === "string" ? parseFloat(consultationFee) || 0 : consultationFee,
       dietPlan,
+      dietPlanFee: typeof dietPlanFee === "string" ? parseFloat(dietPlanFee) || 0 : dietPlanFee,
       isSentToReception: true,
       status: "COLLECT_FEE",
     });

@@ -192,7 +192,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           : 0;
       setTargetAmount(docFee > 0 ? String(docFee) : "");
       setConsultationFee(docFee);
-      setIncludeConsult(docFee > 0 || !isPaid);
+      const isZeroConsult = appointment.consultationFee === 0;
+      setIncludeConsult(isZeroConsult ? false : (docFee > 0 || !isPaid));
 
       // Pre-populate medicines if available in appointment or prescriptionText
       let loadedMeds: MedicineItem[] = [];
@@ -256,7 +257,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         setIncludeMedicine(Boolean(medFee > 0));
       }
 
-      setIncludeDiet(Boolean(appointment.dietPlanFee && appointment.dietPlanFee > 0));
+      const loadedDietFee = Number(appointment.dietPlanFee || (appointment as any).dietFee || 0);
+      setDietFee(loadedDietFee > 0 ? loadedDietFee : 500);
+      setIncludeDiet(Boolean(loadedDietFee > 0));
       setIsPayLater(false);
       setAmountPaidNow("");
       setPayLaterNotes("");

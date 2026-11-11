@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { getActiveDoctor } from "../../services/auth";
 
 export type DoctorTabType = "dashboard" | "patient-list" | "packages" | "total-revenue";
 
@@ -13,6 +14,22 @@ interface DoctorBottomNavProps {
 export const DoctorBottomNav: React.FC<DoctorBottomNavProps> = ({ activeTab }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [isHeadDoctor, setIsHeadDoctor] = useState(false);
+
+  useEffect(() => {
+    async function checkDoc() {
+      try {
+        const doc = await getActiveDoctor();
+        const name = (doc?.name || doc?.doctorName || "").toLowerCase();
+        if (name.includes("prashanth") || name.includes("head")) {
+          setIsHeadDoctor(true);
+        }
+      } catch (e) {
+        console.warn("Could not check doctor role in bottom nav:", e);
+      }
+    }
+    checkDoc();
+  }, []);
 
   const handlePress = (tab: DoctorTabType, route: string) => {
     if (activeTab === tab) return;
@@ -47,13 +64,17 @@ export const DoctorBottomNav: React.FC<DoctorBottomNavProps> = ({ activeTab }) =
       iconActive: "layers",
       iconInactive: "layers-outline",
     },
-    {
-      id: "total-revenue",
-      label: "Total Revenue",
-      route: "/(doctor)/total-revenue",
-      iconActive: "stats-chart",
-      iconInactive: "stats-chart-outline",
-    },
+    ...(isHeadDoctor
+      ? [
+          {
+            id: "total-revenue" as DoctorTabType,
+            label: "Total Revenue",
+            route: "/(doctor)/total-revenue",
+            iconActive: "stats-chart" as keyof typeof Ionicons.glyphMap,
+            iconInactive: "stats-chart-outline" as keyof typeof Ionicons.glyphMap,
+          },
+        ]
+      : []),
   ];
 
   return (

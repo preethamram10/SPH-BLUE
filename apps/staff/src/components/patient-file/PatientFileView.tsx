@@ -23,6 +23,7 @@ import { Image as ExpoImage } from "expo-image";
 import { DrawingCanvasModal } from "./DrawingCanvasModal";
 import { PrescriptionViewerModal } from "./PrescriptionViewerModal";
 import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
+import { MobileDietPlanView } from "./MobileDietPlanView";
 import { API_BASE_URL } from "../../config/api";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
@@ -161,6 +162,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [dietPlan, setDietPlan] = useState("");
+  const [dietPlanFee, setDietPlanFee] = useState<number>(500);
 
   // Calendar Modal State
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
@@ -229,6 +231,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
           if (pf.dietPlan) setDietPlan(pf.dietPlan);
+          if (pf.dietPlanFee) setDietPlanFee(Number(pf.dietPlanFee));
+          else if (pf.dietFee) setDietPlanFee(Number(pf.dietFee));
           if (pf.history) setPatientHistory(pf.history);
           if (pf.totalPaid) setTotalPaid(pf.totalPaid);
         }
@@ -539,6 +543,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         followUpDate,
         consultationFee: parseFloat(consultationFee) || 0,
         dietPlan,
+        dietPlanFee: Number(dietPlanFee) || 0,
         sendToReception: true,
       };
 
@@ -563,6 +568,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
             timeSlot: patientData.timeSlot || "02:30 PM",
             consultationFee: parseFloat(consultationFee) || 0,
+            dietPlanFee: Number(dietPlanFee) || 0,
+            dietFee: Number(dietPlanFee) || 0,
             prescriptionImages: uploadedImages,
             hasPackage: patientData.hasPackage,
             packageName: patientData.packageName || patientData.activePackage?.packageName,
@@ -589,10 +596,80 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           );
         }
       } else {
-        Alert.alert("Error", res.error || "Failed to submit patient file.");
+        Alert.alert("Error", res.error || "Failed to update patient file.");
       }
     } catch (err: any) {
-      Alert.alert("Submission Error", err.message || "Failed to communicate with server.");
+      Alert.alert("Error", "Error saving patient file.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveDietPlan = async (
+    updatedPlan: string,
+    updatedFee: number,
+    sendToReception = false
+  ) => {
+    setDietPlan(updatedPlan);
+    setDietPlanFee(updatedFee);
+    setIsSubmitting(true);
+    try {
+      const targetId = appointmentId || "temp-appt-id";
+      const payload = {
+        id: targetId,
+        prescriptionImages: uploadedImages,
+        prescriptionText,
+        followUpInterval,
+        followUpDate,
+        consultationFee: parseFloat(consultationFee) || 0,
+        dietPlan: updatedPlan,
+        dietPlanFee: updatedFee,
+        sendToReception,
+      };
+
+      const res = await apiFetch<any>("/patient-file", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (res.success) {
+        if (sendToReception) {
+          if (role === "RECEPTION") {
+            setSelectedPaymentAppt({
+              id: targetId,
+              patientName: patientData.patientName,
+              phoneNumber: patientData.phone,
+              phone: patientData.phone,
+              registrationId: patientData.registrationId,
+              patientId: patientData.registrationId,
+              doctorName: patientData.doctorName || "Dr. Prashanth K Vaidya",
+              branch: patientData.branch,
+              appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
+              timeSlot: patientData.timeSlot || "02:30 PM",
+              consultationFee: parseFloat(consultationFee) || 0,
+              dietPlanFee: updatedFee,
+              dietFee: updatedFee,
+              prescriptionImages: uploadedImages,
+              hasPackage: patientData.hasPackage,
+              packageName: patientData.packageName || patientData.activePackage?.packageName,
+              status: "COLLECT_FEE",
+            });
+            setIsPaymentModalOpen(true);
+          } else {
+            Alert.alert(
+              "Dispatched to Reception",
+              `Diet Plan & Fee (₹${updatedFee}) saved and dispatched to Reception for ${patientData.patientName}!`,
+              [{ text: "OK", onPress: () => handleBack() }]
+            );
+          }
+        } else {
+          Alert.alert("Success", "Diet Plan and Fee saved successfully!");
+        }
+      } else {
+        Alert.alert("Error", res.error || "Failed to save Diet Plan.");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to save diet plan.");
     } finally {
       setIsSubmitting(false);
     }
@@ -834,18 +911,13 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
             {/* TAB CONTENT: DIET PLAN */}
             {activeTab === "diet" && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionCardTitle}>Homeopathic Diet & Regimen</Text>
-                <Text style={styles.fieldLabel}>Dietary Instructions & Restrictions</Text>
-                <TextInput
-                  style={[styles.textInputArea, { minHeight: 90 }]}
-                  multiline
-                  placeholder="e.g. Avoid strong coffee, raw onion, garlic, menthol while taking medicines. Drink 3L water daily."
-                  placeholderTextColor="#94a3b8"
-                  value={dietPlan}
-                  onChangeText={setDietPlan}
-                />
-              </View>
+              <MobileDietPlanView
+                patientData={patientData}
+                initialDietPlan={dietPlan}
+                initialDietFee={dietPlanFee}
+                onSavePlan={handleSaveDietPlan}
+                isSaving={isSubmitting}
+              />
             )}
 
             {/* TAB CONTENT: SHARE MEDIA */}
@@ -862,8 +934,35 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
               </View>
             )}
 
-            {/* 4. Digital Prescription Section Card */}
-            <View style={styles.sectionCard}>
+            {/* TAB CONTENT: CLINICAL FORM */}
+            {activeTab === "clinical" && (
+              <>
+                {dietPlan ? (
+                  <View style={[styles.sectionCard, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={{ fontSize: 20 }}>🥗</Text>
+                        <View>
+                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#14532d" }}>
+                            Diet Plan Attached (₹{dietPlanFee})
+                          </Text>
+                          <Text style={{ fontSize: 11, color: "#166534" }}>
+                            30-day regimen configured for Reception
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={{ backgroundColor: "#16a34a", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                        onPress={() => setActiveTab("diet")}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 11 }}>View / Edit</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* 4. Digital Prescription Section Card */}
+                <View style={styles.sectionCard}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={styles.sectionCardTitle}>Digital Prescription</Text>
                 {uploadedImages.length > 0 && (
@@ -1062,8 +1161,10 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 )}
               </TouchableOpacity>
             </View>
+          </>
+        )}
 
-            {/* 7. Patient History & Records Section (Matching Screenshot) */}
+        {/* 7. Patient History & Records Section (Matching Screenshot) */}
             <View style={styles.historyCard}>
               <View style={styles.historyCardHeader}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
+import { generate30DayDietSchedule, DayDietPlan } from "../patient-file/dietPlanData";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -82,6 +83,7 @@ export interface PatientAppointment {
   pendingBalance?: number;
   previousDuePaid?: number;
   prescriptionText?: string;
+  dietPlan?: string;
 }
 
 export interface FeeCheckoutModalProps {
@@ -541,6 +543,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           }
           .no-print {
             display: none !important;
+          }
+          .diet-sheet-page {
+            page-break-before: always !important;
+            break-before: page !important;
+            margin-top: 24px;
+            padding-top: 16px;
           }
         }
       `}</style>
@@ -1721,6 +1729,133 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     <span>{activeInvoice.branch || "KPHB BRANCH"}</span>
                   </div>
                 </div>
+
+                {/* 9. ATTACHED 30-DAY DIET PLAN SHEETS (2 PAGES: DAYS 1-15 & DAYS 16-30) */}
+                {Boolean(activeInvoice.dietPlan || (activeInvoice.dietPlanFee && activeInvoice.dietPlanFee > 0) || (activeInvoice.dietFee && activeInvoice.dietFee > 0)) && (
+                  (() => {
+                    const fullSchedule = generate30DayDietSchedule([], 30, "Normal");
+                    const page1Days = fullSchedule.filter((d) => d.day <= 15);
+                    const page2Days = fullSchedule.filter((d) => d.day > 15);
+
+                    return (
+                      <div className="mt-8 space-y-8">
+                        {/* SHEET 1: DAYS 1 TO 15 */}
+                        <div className="diet-sheet-page rounded-xl border border-slate-300 p-5 bg-white shadow-xs">
+                          {/* Header */}
+                          <div className="flex items-start justify-between border-b border-slate-200 pb-3 mb-3">
+                            <div className="flex items-center gap-2">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src="/assets/SH logo.png" alt="Logo" className="h-10 w-auto object-contain" />
+                              <div>
+                                <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                                  SPIRITUAL HOMEOPATHY CLINICS
+                                </h3>
+                                <p className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">
+                                  Personalized 30-Day Regimen • Sheet 1 of 2 (Days 01 – 15)
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right text-[10px] font-semibold text-slate-500">
+                              <div>Patient: <strong className="text-slate-800">{activeInvoice.patientName}</strong></div>
+                              <div>Reg ID: {activeInvoice.registrationId || activeInvoice.patientId || "SPH-REC"}</div>
+                              <div>Branch: {activeInvoice.branch || "Clinic"}</div>
+                            </div>
+                          </div>
+
+                          {/* Critical 30-min water rule banner */}
+                          <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-950 font-bold leading-tight">
+                            ⚠️ Mandatory Homeopathic 30-Min Protocol: DO NOT drink water 30 minutes before or 30 minutes after your meal. Sip lukewarm water between meals (Total 2.5–3.5 Liters).
+                          </div>
+
+                          {/* Days 1-15 Table */}
+                          <table className="w-full text-left text-[10px] border-collapse border border-slate-300">
+                            <thead>
+                              <tr className="bg-slate-100 text-slate-900 font-black uppercase text-[9px] border-b border-slate-300">
+                                <th className="p-1.5 border-r border-slate-300 text-center w-12">Day</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-amber-50/70 text-amber-950">Breakfast (08:30 AM)</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-sky-50/70 text-sky-950">Lunch (01:15 PM)</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-emerald-50/70 text-emerald-950">Snacks (05:00 PM)</th>
+                                <th className="p-1.5 w-[24%] bg-indigo-50/70 text-indigo-950">Dinner (07:45 PM)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {page1Days.map((d) => (
+                                <tr key={d.day} className={d.day % 2 === 0 ? "bg-slate-50/40" : "bg-white"}>
+                                  <td className="p-1.5 border-r border-slate-300 font-black text-center text-sky-800">Day {d.day}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.breakfast}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.lunch}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.snacks}</td>
+                                  <td className="p-1.5 leading-tight">{d.dinner}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          <div className="mt-3 text-right text-[9px] text-slate-400 italic">
+                            Sheet 1 of 2 • Follow strictly as prescribed by your treating doctor.
+                          </div>
+                        </div>
+
+                        {/* SHEET 2: DAYS 16 TO 30 */}
+                        <div className="diet-sheet-page rounded-xl border border-slate-300 p-5 bg-white shadow-xs">
+                          {/* Header */}
+                          <div className="flex items-start justify-between border-b border-slate-200 pb-3 mb-3">
+                            <div className="flex items-center gap-2">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src="/assets/SH logo.png" alt="Logo" className="h-10 w-auto object-contain" />
+                              <div>
+                                <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                                  SPIRITUAL HOMEOPATHY CLINICS
+                                </h3>
+                                <p className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">
+                                  Personalized 30-Day Regimen • Sheet 2 of 2 (Days 16 – 30)
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right text-[10px] font-semibold text-slate-500">
+                              <div>Patient: <strong className="text-slate-800">{activeInvoice.patientName}</strong></div>
+                              <div>Reg ID: {activeInvoice.registrationId || activeInvoice.patientId || "SPH-REC"}</div>
+                              <div>Branch: {activeInvoice.branch || "Clinic"}</div>
+                            </div>
+                          </div>
+
+                          {/* Critical 30-min water rule banner */}
+                          <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-950 font-bold leading-tight">
+                            🌿 Weeks 3 & 4 Focus: Cellular Repair, Hormone Harmony & Metabolic Stabilization. Adhere to light dinners before 8:00 PM.
+                          </div>
+
+                          {/* Days 16-30 Table */}
+                          <table className="w-full text-left text-[10px] border-collapse border border-slate-300">
+                            <thead>
+                              <tr className="bg-slate-100 text-slate-900 font-black uppercase text-[9px] border-b border-slate-300">
+                                <th className="p-1.5 border-r border-slate-300 text-center w-12">Day</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-amber-50/70 text-amber-950">Breakfast (08:30 AM)</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-sky-50/70 text-sky-950">Lunch (01:15 PM)</th>
+                                <th className="p-1.5 border-r border-slate-300 w-[24%] bg-emerald-50/70 text-emerald-950">Snacks (05:00 PM)</th>
+                                <th className="p-1.5 w-[24%] bg-indigo-50/70 text-indigo-950">Dinner (07:45 PM)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {page2Days.map((d) => (
+                                <tr key={d.day} className={d.day % 2 === 0 ? "bg-slate-50/40" : "bg-white"}>
+                                  <td className="p-1.5 border-r border-slate-300 font-black text-center text-sky-800">Day {d.day}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.breakfast}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.lunch}</td>
+                                  <td className="p-1.5 border-r border-slate-300 leading-tight">{d.snacks}</td>
+                                  <td className="p-1.5 leading-tight">{d.dinner}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          <div className="mt-3 text-right text-[9px] text-slate-400 italic">
+                            Sheet 2 of 2 • Book follow-up consultation with your doctor after Day 30.
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
 
               </div>
 
