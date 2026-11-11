@@ -682,10 +682,10 @@ export function AppointmentPaymentWebModal({
                     const docFee =
                       typeof appointment.consultationFee === "number" && appointment.consultationFee > 0
                         ? appointment.consultationFee
-                        : 500;
-                    setTargetAmount(docFee > 0 ? String(docFee) : "500");
-                    setIncludeConsult(true);
-                    setConsultationFee(docFee || 500);
+                        : 0;
+                    setTargetAmount(docFee > 0 ? String(docFee) : "");
+                    setIncludeConsult(docFee > 0);
+                    setConsultationFee(docFee);
                     setIncludeMedicine(false);
                     setMedicineFee(0);
                   }}

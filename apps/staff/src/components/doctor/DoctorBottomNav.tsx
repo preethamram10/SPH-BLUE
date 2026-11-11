@@ -68,7 +68,7 @@ export const DoctorBottomNav: React.FC<DoctorBottomNavProps> = ({ activeTab }) =
     },
     {
       id: "packages",
-      label: "Packages",
+      label: "Package Members",
       route: "/(doctor)/packages",
       iconActive: "layers",
       iconInactive: "layers-outline",

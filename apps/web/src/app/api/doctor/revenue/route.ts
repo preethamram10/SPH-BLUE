@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     // Compute consultation & package earnings from real appointments
     const consultationEarnings = completed.reduce(
-      (sum, a) => sum + (Number(a.consultationFee) || 500),
+      (sum, a) => sum + (Number(a.consultationFee) || 0),
       0
     );
 

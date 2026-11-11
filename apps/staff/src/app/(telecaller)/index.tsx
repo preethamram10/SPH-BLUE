@@ -112,6 +112,7 @@ export default function TelecallerPortalScreen() {
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
 
   // Section 3: Book Appointment State
+  const [bookFollowUpId, setBookFollowUpId] = useState<string | null>(null);
   const [bookPatientName, setBookPatientName] = useState("");
   const [bookMobileNumber, setBookMobileNumber] = useState("");
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
@@ -297,6 +298,7 @@ export default function TelecallerPortalScreen() {
 
   // Prefill Section 3 from follow-up card
   const handleBookFromFollowUp = (item: any) => {
+    setBookFollowUpId(item.appointmentId || item.id || null);
     setBookPatientName(item.patientName || "");
     setBookMobileNumber((item.phone || "").replace(/\D/g, ""));
     if (item.branch) {
@@ -388,6 +390,7 @@ export default function TelecallerPortalScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          followUpAppointmentId: bookFollowUpId,
           patientName: bookPatientName.trim(),
           phoneNumber: cleanPhone,
           branch: bookBranch,
@@ -408,15 +411,24 @@ export default function TelecallerPortalScreen() {
           ...prev,
           bookedCount: prev.bookedCount + 1,
         }));
+        if (bookFollowUpId) {
+          setFollowUps((prev) =>
+            prev.filter(
+              (f) => f.id !== bookFollowUpId && f.appointmentId !== bookFollowUpId
+            )
+          );
+        }
         Alert.alert(
           "Appointment Booked!",
-          `Appointment confirmed for ${bookPatientName} with ${bookDoctor} on ${bookDate} at ${bookSlot} (${bookBranch}).\nToken: ${data.appointment?.token || "SPH-GEN"}`
+          `Appointment confirmed for ${bookPatientName} with ${bookDoctor} on ${bookDate} at ${bookSlot} (${bookBranch}).\nPatient shifted from follow-up to confirmed appointments queue.\nToken: ${data.appointment?.token || "SPH-GEN"}`
         );
         // Clear
+        setBookFollowUpId(null);
         setBookPatientName("");
         setBookMobileNumber("");
         setBookNotes("");
         setActiveTab("followups");
+        fetchFollowUps();
       } else {
         Alert.alert("Booking Failed", data.error || "Unable to confirm appointment slot.");
       }

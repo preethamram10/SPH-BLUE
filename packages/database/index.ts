@@ -1592,6 +1592,9 @@ export interface AppointmentRecord {
   prescriptionImages?: string[];
   followUpInterval?: string;
   followUpDate?: string;
+  isFollowUpBooked?: boolean;
+  followUpBookedAppointmentId?: string;
+  followUpBookedAt?: string;
   consultationFee?: number;
   dietPlan?: string;
   isSentToReception?: boolean;
@@ -2236,7 +2239,68 @@ export const appointmentService = {
       branch: newRecord.branch,
     });
 
+    // When an appointment is booked, mark any prior follow-up for this patient as booked/shifted
+    const sourceFollowUpId = (data as any).followUpAppointmentId || (data as any).sourceFollowUpId;
+    await this.markFollowUpAsBooked(sourceFollowUpId, newRecord.id, {
+      phone: newRecord.phone,
+      regId: newRecord.registrationId,
+      name: newRecord.patientName,
+    });
+
     return newRecord;
+  },
+
+  /**
+   * Marks a follow-up consultation as booked into a confirmed appointment,
+   * shifting it out of the active follow-up queue.
+   */
+  async markFollowUpAsBooked(
+    sourceId?: string,
+    bookedAppointmentId?: string,
+    patientIdentifier?: { phone?: string; regId?: string; name?: string }
+  ): Promise<boolean> {
+    const store = getAppointmentsStore();
+    let modified = false;
+
+    if (sourceId) {
+      const idx = store.findIndex((a) => a.id === sourceId || a.token === sourceId);
+      if (idx !== -1) {
+        store[idx].isFollowUpBooked = true;
+        store[idx].followUpBookedAppointmentId = bookedAppointmentId;
+        store[idx].followUpBookedAt = new Date().toISOString();
+        modified = true;
+      }
+    }
+
+    if (patientIdentifier) {
+      for (const a of store) {
+        if (
+          !a.isFollowUpBooked &&
+          (a.followUpDate || a.followUpInterval) &&
+          matchPatientProfile(a, patientIdentifier)
+        ) {
+          a.isFollowUpBooked = true;
+          a.followUpBookedAppointmentId = bookedAppointmentId;
+          a.followUpBookedAt = new Date().toISOString();
+          modified = true;
+        }
+      }
+
+      // Also clear patient activeFollowUpDate so patient profile reflects the booking
+      const patients = getPatientsStore();
+      const pIdx = patients.findIndex((p) => matchPatientProfile(p, patientIdentifier));
+      if (pIdx !== -1) {
+        patients[pIdx].activeFollowUpDate = undefined;
+        global.__sphPatientsStore = patients;
+        savePatientsToDisk(patients);
+      }
+    }
+
+    if (modified) {
+      global.__sphAppointmentsStore = store;
+      saveAppointmentsToDisk(store);
+    }
+    return modified;
   },
 
   async getSlotBookedCount(branch: string, date: string, doctorId: string, timeSlot: string): Promise<number> {

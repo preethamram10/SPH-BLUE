@@ -53,7 +53,7 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
     },
     {
       id: "packages",
-      name: "Packages",
+      name: "Package Members",
       href: "/doctor/packages",
       icon: Package,
     },

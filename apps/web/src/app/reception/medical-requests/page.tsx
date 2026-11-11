@@ -316,8 +316,8 @@ function MedicalRequestsContent() {
       .map((m, i) => `  ${i + 1}. *${m.name}* (${m.type || "Pills"})\n     Dosage: ${m.timing}`)
       .join("\n\n");
 
-    const notesBlock = sharePopupData.notes
-      ? `*Clinical Notes / Instructions:*\n${sharePopupData.notes}\n\n--------------------------------\n`
+    const notesBlock = sharePopupData.notes && sharePopupData.notes.trim()
+      ? `${sharePopupData.notes.trim()}\n\n--------------------------------\n`
       : "";
 
     const text = encodeURIComponent(
@@ -1028,6 +1028,12 @@ function MedicalRequestsContent() {
                         CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
                       </p>
 
+                      {sharePopupData.notes && sharePopupData.notes.trim() ? (
+                        <div className="pt-2 pb-1 text-[10.5px] text-slate-800 whitespace-pre-wrap leading-relaxed font-medium text-left">
+                          {sharePopupData.notes.trim()}
+                        </div>
+                      ) : null}
+
                       {/* Prescribed Remedies Table */}
                       <div className="pt-2">
                         <div className="flex items-center justify-between border-b-2 border-slate-200 pb-1 mb-1.5">
@@ -1066,17 +1072,6 @@ function MedicalRequestsContent() {
                           </tbody>
                         </table>
                       </div>
-
-                      {sharePopupData.notes && sharePopupData.notes.trim() ? (
-                        <div className="mt-2.5 bg-slate-50 border border-slate-200 border-l-2 border-l-[#1d8ecd] rounded p-2 text-left">
-                          <div className="font-extrabold text-[9px] text-[#1d8ecd] uppercase tracking-wider mb-0.5">
-                            Clinical Notes / Instructions:
-                          </div>
-                          <div className="text-[9.5px] text-slate-700 whitespace-pre-wrap leading-tight">
-                            {sharePopupData.notes.trim()}
-                          </div>
-                        </div>
-                      ) : null}
 
                       <div className="pt-4 text-center text-[9px] text-slate-400 italic border-t border-dashed border-slate-200">
                         This is a computer-generated document. No physical signature required.

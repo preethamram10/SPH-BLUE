@@ -381,6 +381,16 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
     }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
         </div>
 
+        ${
+          req.notes && req.notes.trim()
+            ? `
+          <div style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 16px 0 14px 0; font-weight: 500; white-space: pre-wrap;">
+            ${req.notes.trim()}
+          </div>
+        `
+            : ""
+        }
+
         <!-- MEDICINE TABLE SECTION -->
         <div class="med-heading-bar">
           <div class="med-heading">PRESCRIBED MEDICINES</div>
@@ -426,21 +436,6 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
       : ""
     }
         </table>
-
-        ${
-          req.notes && req.notes.trim()
-            ? `
-          <div style="margin-top: 20px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-left: 4px solid #1d8ecd; border-radius: 8px; padding: 12px 16px;">
-            <div style="font-weight: 800; font-size: 11px; color: #1d8ecd; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">
-              Clinical Notes / Special Instructions:
-            </div>
-            <div style="font-size: 12.5px; color: #334155; line-height: 1.6; font-weight: 500; white-space: pre-wrap;">
-              ${req.notes.trim()}
-            </div>
-          </div>
-        `
-            : ""
-        }
 
         <div class="disclaimer-text">
           This is a computer-generated document. No physical signature required.

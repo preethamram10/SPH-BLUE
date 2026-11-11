@@ -327,14 +327,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         setPackageInstallmentAmount(pkgPending > 0 ? String(pkgPending) : "");
       } else {
         setBillingMode("regular");
-        setPaymentType("split");
-        const total = (docFee > 0 ? docFee : 500) + (appointment.medicineFee || 0);
-        setTargetAmount(String(total));
-        const half = Math.round(total / 2);
-        setConsultationFee(half);
-        setMedicineFee(total - half);
-        setIncludeConsult(true);
-        setIncludeMedicine(true);
+        const medFee = appointment.medicineFee || 0;
+        const total = (docFee > 0 ? docFee : 0) + medFee;
+        setTargetAmount(total > 0 ? String(total) : "");
+        setConsultationFee(docFee > 0 ? docFee : 0);
+        setMedicineFee(medFee);
+        setIncludeConsult(docFee > 0);
+        setIncludeMedicine(medFee > 0 || loadedMeds.length > 0);
+        setPaymentType(docFee > 0 && medFee > 0 ? "split" : docFee > 0 ? "consultation" : "split");
       }
 
       setSelectedMethod(null);

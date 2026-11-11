@@ -305,8 +305,8 @@ export default function MedicalRequestsScreen() {
       .map((m, i) => `  ${i + 1}. *${m.name}* (${m.type || "Pills"})\n     Dosage: ${m.timing}`)
       .join("\n\n");
 
-    const notesBlock = sharePopupData.notes
-      ? `*Clinical Notes / Instructions:*\n${sharePopupData.notes}\n\n--------------------------------\n`
+    const notesBlock = sharePopupData.notes && sharePopupData.notes.trim()
+      ? `${sharePopupData.notes.trim()}\n\n--------------------------------\n`
       : "";
 
     const text = encodeURIComponent(
@@ -910,6 +910,12 @@ export default function MedicalRequestsScreen() {
                     WE RECOMMENDED TO CONTINUE WITH PRESCRIBED MEDICATIONS.
                   </Text>
 
+                  {sharePopupData?.notes && sharePopupData.notes.trim() ? (
+                    <Text style={{ fontSize: 8.5, color: "#1e293b", lineHeight: 12, marginTop: 4, marginBottom: 8, fontWeight: "500" }}>
+                      {sharePopupData.notes.trim()}
+                    </Text>
+                  ) : null}
+
                   {/* Prescribed Remedies Heading & Fee */}
                   <View style={styles.certMedsBar}>
                     <Text style={styles.certMedsTitle}>PRESCRIBED MEDICINES</Text>
@@ -947,17 +953,6 @@ export default function MedicalRequestsScreen() {
                       </View>
                     ))}
                   </View>
-
-                  {sharePopupData?.notes ? (
-                    <View style={{ marginTop: 6, backgroundColor: "#f8fafc", padding: 6, borderRadius: 4, borderLeftWidth: 2, borderLeftColor: "#0284c7" }}>
-                      <Text style={{ fontSize: 7.5, fontWeight: "800", color: "#0284c7", textTransform: "uppercase", marginBottom: 2 }}>
-                        Clinical Notes / Instructions:
-                      </Text>
-                      <Text style={{ fontSize: 8, color: "#334155", lineHeight: 11 }}>
-                        {sharePopupData.notes}
-                      </Text>
-                    </View>
-                  ) : null}
 
                   <Text style={styles.certDisclaimer}>
                     This is a computer-generated document. No physical signature required.

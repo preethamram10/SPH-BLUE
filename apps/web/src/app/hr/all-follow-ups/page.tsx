@@ -301,6 +301,7 @@ function AllFollowUpsContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          followUpAppointmentId: bookingItem.appointmentId || bookingItem.id,
           registrationId: bookingItem.mrn,
           patientName: bookingItem.patientName,
           phoneNumber: bookingItem.phone,
@@ -316,7 +317,14 @@ function AllFollowUpsContent() {
       });
       const data = await res.json();
       if (data.success) {
-        setActionMessage(`Appointment successfully booked for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})!`);
+        setFollowUps((prev) =>
+          prev.filter(
+            (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
+          )
+        );
+        setActionMessage(
+          `Appointment successfully booked for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})! Patient shifted from follow-up to confirmed appointments.`
+        );
         setTimeout(() => setActionMessage(null), 4500);
         setBookingItem(null);
         fetchFollowUps(true);

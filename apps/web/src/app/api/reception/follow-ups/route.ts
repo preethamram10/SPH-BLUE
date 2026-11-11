@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService, branchService, registrationSequenceService } from "@spiritualhomeo/database";
+import { appointmentService, branchService, registrationSequenceService, matchPatientProfile } from "@spiritualhomeo/database";
 
 // Helper: Normalize date string to DD-MM-YYYY
 function normalizeToDDMMYYYY(dateStr: string): string {
@@ -108,8 +108,33 @@ interface FollowUpRecordItem {
   prescriptionImages: string[];
 }
 
-    // Filter appointments that have followUpDate or followUpInterval
-    const withFollowUp = (all as any[]).filter((a: any) => !!(a.followUpDate || a.followUpInterval));
+    // Filter appointments that have followUpDate or followUpInterval, are NOT deleted/cancelled, and NOT already booked into an upcoming appointment
+    const withFollowUp = (all as any[]).filter((a: any) => {
+      if (a.isDeleted || a.status === "CANCELLED") return false;
+      if (a.isFollowUpBooked) return false;
+      if (!a.followUpDate && !a.followUpInterval) return false;
+
+      // If this appointment itself is prospective (not completed yet), it belongs to appointments, not follow-up queue
+      if (a.status === "SCHEDULED" || a.status === "CONFIRMED" || a.status === "WAITING") {
+        return false;
+      }
+
+      // Check if patient already has an active upcoming appointment booked/confirmed (takes them off the follow-up list)
+      const hasUpcomingBooked = (all as any[]).some(
+        (other: any) =>
+          other.id !== a.id &&
+          !other.isDeleted &&
+          other.status !== "CANCELLED" &&
+          other.status !== "COMPLETED" &&
+          ["SCHEDULED", "CONFIRMED", "WAITING", "IN_CONSULTATION", "COLLECT_FEE"].includes(other.status) &&
+          matchPatientProfile(a, other)
+      );
+      if (hasUpcomingBooked) {
+        return false;
+      }
+
+      return true;
+    });
 
     const followUpsList: FollowUpRecordItem[] = withFollowUp
       .map((a: any) => {
@@ -387,6 +412,8 @@ export async function POST(req: NextRequest) {
     }
 
     const normDate = normalizeToDDMMYYYY(appointmentDate);
+    const sourceFollowUpId =
+      body.followUpAppointmentId || body.sourceFollowUpId || body.appointmentId || undefined;
 
     const finalRegId =
       registrationId && registrationId !== "SPH-GEN"
@@ -408,6 +435,14 @@ export async function POST(req: NextRequest) {
       branch: branch || "KPHB Branch",
       isReback: true,
       notes: notes || "Booked from reception follow-up queue",
+      followUpAppointmentId: sourceFollowUpId,
+    } as any);
+
+    // Ensure source follow up is marked booked and removed from follow-up queue
+    await appointmentService.markFollowUpAsBooked(sourceFollowUpId, created.id, {
+      phone: created.phone,
+      regId: created.registrationId,
+      name: created.patientName,
     });
 
     return NextResponse.json({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService, branchService, registrationSequenceService } from "@spiritualhomeo/database";
+import { appointmentService, branchService, registrationSequenceService, matchPatientProfile } from "@spiritualhomeo/database";
 
 // Normalize date to DD-MM-YYYY
 function normalizeToDDMMYYYY(dateStr?: string): string {
@@ -79,9 +79,40 @@ export async function GET(req: NextRequest) {
     const tomorrowDDMMYYYY = `${String(tomorrow.getDate()).padStart(2, "0")}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${tomorrow.getFullYear()}`;
     const tomorrowTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate()).getTime();
 
-    // Map all appointments into follow-up records
+    // Map follow-up records: Exclude deleted, cancelled, already-booked follow-ups,
+    // active prospective appointments (which belong to Appointments desk), and patients who already have an upcoming booked appointment
     const followUpsList = allAppts
-      .filter((a) => !a.isDeleted && a.status !== "CANCELLED")
+      .filter((a) => {
+        if (a.isDeleted || a.status === "CANCELLED") return false;
+        if (a.isFollowUpBooked) return false;
+
+        // Prospective active appointments (not completed yet) belong to the Appointment desk, not Follow-ups
+        const st = String(a.status || "");
+        if (st === "SCHEDULED" || st === "CONFIRMED" || st === "WAITING") {
+          return false;
+        }
+
+        // Must have an explicit follow-up date/interval or be a completed clinical consultation
+        if (!a.followUpDate && !a.followUpInterval && a.status !== "COMPLETED") {
+          return false;
+        }
+
+        // Check if this patient already has an active upcoming appointment confirmed/scheduled
+        const hasUpcomingBooked = allAppts.some(
+          (other) =>
+            other.id !== a.id &&
+            !other.isDeleted &&
+            other.status !== "CANCELLED" &&
+            other.status !== "COMPLETED" &&
+            ["SCHEDULED", "CONFIRMED", "WAITING", "IN_CONSULTATION", "COLLECT_FEE"].includes(String(other.status || "")) &&
+            matchPatientProfile(a, other)
+        );
+        if (hasUpcomingBooked) {
+          return false;
+        }
+
+        return true;
+      })
       .map((a, idx) => {
         const normA = (a.branch || "")
           .toLowerCase()
@@ -384,6 +415,8 @@ export async function POST(req: NextRequest) {
     }
 
     const normDate = normalizeToDDMMYYYY(appointmentDate);
+    const sourceFollowUpId =
+      body.followUpAppointmentId || body.sourceFollowUpId || body.appointmentId || undefined;
 
     const finalRegId =
       registrationId && registrationId !== "SPH-GEN"
@@ -407,6 +440,14 @@ export async function POST(req: NextRequest) {
       notes: notes || "Booked from follow-up queue",
       bookedByTelecallerId: bookedByTelecallerId || undefined,
       bookedByTelecallerName: bookedByTelecallerName || undefined,
+      followUpAppointmentId: sourceFollowUpId,
+    } as any);
+
+    // Ensure source follow up is marked booked and removed from follow-up queue
+    await appointmentService.markFollowUpAsBooked(sourceFollowUpId, created.id, {
+      phone: created.phone,
+      regId: created.registrationId,
+      name: created.patientName,
     });
 
     return NextResponse.json({

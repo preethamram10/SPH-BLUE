@@ -61,13 +61,6 @@ export default function DoctorDashboard() {
   // Reception-Style Filter: ALL | UPCOMING | ACTIVE | SENT_TO_RECEPTION | COMPLETED
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "SENT_TO_RECEPTION" | "COMPLETED">("ALL");
 
-  // Reschedule Modal State
-  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
-  const [rescheduleTarget, setRescheduleTarget] = useState<any>(null);
-  const [rescheduleDate, setRescheduleDate] = useState("");
-  const [rescheduleSlot, setRescheduleSlot] = useState("10:30 AM");
-  const [isRescheduling, setIsRescheduling] = useState(false);
-
   useEffect(() => {
     const now = new Date();
     const d = String(now.getDate()).padStart(2, "0");
@@ -289,43 +282,6 @@ export default function DoctorDashboard() {
     }
     const msg = `Hello ${patientName || "Patient"}, Dr. Prashanth K Vaidya is reviewing your consultation slot (${slot || "today"}). Please be seated outside the doctor cabin.`;
     Linking.openURL(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`);
-  };
-
-  const openRescheduleModal = (appt: any) => {
-    setRescheduleTarget(appt);
-    setRescheduleDate(appt.appointmentDate || selectedDate);
-    setRescheduleSlot(appt.timeSlot || appt.slot || "10:30 AM");
-    setIsRescheduleOpen(true);
-  };
-
-  const handleConfirmReschedule = async () => {
-    if (!rescheduleTarget) return;
-    setIsRescheduling(true);
-    try {
-      const data = await apiFetch<any>("/doctor/appointments", {
-        method: "PATCH",
-        body: JSON.stringify({
-          action: "RESCHEDULE",
-          id: rescheduleTarget.id,
-          appointmentDate: rescheduleDate,
-          timeSlot: rescheduleSlot,
-        }),
-      });
-      if (data.success) {
-        Alert.alert(
-          "Rescheduled",
-          `Appointment for ${rescheduleTarget.name || rescheduleTarget.patientName} moved to ${rescheduleDate} (${rescheduleSlot})!`
-        );
-        setIsRescheduleOpen(false);
-        fetchDoctorAppointments(selectedDate, true);
-      } else {
-        Alert.alert("Error", data.error || "Failed to reschedule appointment.");
-      }
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to reschedule.");
-    } finally {
-      setIsRescheduling(false);
-    }
   };
 
   const onPullRefresh = async () => {
@@ -847,15 +803,6 @@ export default function DoctorDashboard() {
                     >
                       <Ionicons name="logo-whatsapp" size={15} color="#16a34a" />
                     </TouchableOpacity>
-
-                    {/* Reschedule Calendar Icon Button */}
-                    <TouchableOpacity
-                      style={styles.outlineIconBtn}
-                      onPress={() => openRescheduleModal(appt)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -863,72 +810,6 @@ export default function DoctorDashboard() {
           })
         )}
       </ScrollView>
-
-      {/* Reschedule Modal */}
-      <Modal
-        visible={isRescheduleOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsRescheduleOpen(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ width: "100%", alignItems: "center" }}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalTitle}>Reschedule Appointment</Text>
-                  <Text style={styles.modalSub}>
-                    {rescheduleTarget?.name || rescheduleTarget?.patientName}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => setIsRescheduleOpen(false)}
-                  style={styles.modalCloseBtn}
-                >
-                  <Ionicons name="close" size={18} color="#64748b" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={{ gap: 8 }}>
-                <Text style={styles.modalInputLabel}>Appointment Date (DD-MM-YYYY)</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={rescheduleDate}
-                  onChangeText={setRescheduleDate}
-                  placeholder="DD-MM-YYYY"
-                />
-
-                <Text style={styles.modalInputLabel}>Time Slot</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={rescheduleSlot}
-                  onChangeText={setRescheduleSlot}
-                  placeholder="e.g. 11:00 AM"
-                />
-
-                <TouchableOpacity
-                  style={[styles.confirmRescheduleBtn, isRescheduling && { opacity: 0.7 }]}
-                  onPress={handleConfirmReschedule}
-                  disabled={isRescheduling}
-                  activeOpacity={0.8}
-                >
-                  {isRescheduling ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
-                      <Text style={styles.confirmRescheduleBtnText}>Confirm Reschedule</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
 
       {/* Interactive Calendar Modal */}
       <Modal
@@ -1504,21 +1385,6 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     fontSize: 12.5,
     color: "#0f172a",
-  },
-  confirmRescheduleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#0284c7",
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  confirmRescheduleBtnText: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: "#ffffff",
   },
 
   // Calendar Modal Styles

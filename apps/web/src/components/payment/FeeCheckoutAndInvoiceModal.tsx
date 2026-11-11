@@ -107,7 +107,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const [currentStep, setCurrentStep] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
 
   // --- FORM INPUT STATES ---
-  const [consultationFee, setConsultationFee] = useState<number>(500);
+  const [consultationFee, setConsultationFee] = useState<number>(0);
   const [includeConsultFee, setIncludeConsultFee] = useState<boolean>(true);
 
   const [medicineDuration, setMedicineDuration] = useState<string>("1 Month");
@@ -223,10 +223,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       );
       setCurrentStep(isPaid ? "invoice_receipt" : "collect_fee");
 
-      const consult = typeof appointment.consultationFee === "number" ? appointment.consultationFee : 500;
+      const consult = typeof appointment.consultationFee === "number" && appointment.consultationFee > 0 ? appointment.consultationFee : 0;
       const medFee = typeof appointment.medicineFee === "number" ? appointment.medicineFee : 0;
-      const initialTarget = (consult > 0 ? consult : 500) + medFee;
+      const initialTarget = consult + medFee;
       setTargetAmount(initialTarget);
+      setConsultationFee(consult);
+      setIncludeConsultFee(consult > 0);
       setMedicineDuration(appointment.medicineDuration || "1 Month");
 
       const meds = appointment.medicines || appointment.medicinesList || [];
@@ -1074,8 +1076,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       type="button"
                       onClick={() => {
                         setBillingMode("regular");
-                        setIncludeConsultFee(true);
-                        setConsultationFee(typeof appointment.consultationFee === "number" && appointment.consultationFee > 0 ? appointment.consultationFee : 500);
+                        setIncludeConsultFee(typeof appointment.consultationFee === "number" && appointment.consultationFee > 0);
+                        setConsultationFee(typeof appointment.consultationFee === "number" && appointment.consultationFee > 0 ? appointment.consultationFee : 0);
                         setIncludeMedicineFee(true);
                       }}
                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${billingMode === "regular"

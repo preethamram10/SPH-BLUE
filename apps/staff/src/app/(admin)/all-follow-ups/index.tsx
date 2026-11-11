@@ -670,6 +670,7 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
       const res = await apiFetch<any>("/admin/all-follow-ups", {
         method: "POST",
         body: JSON.stringify({
+          followUpAppointmentId: bookingItem.appointmentId || bookingItem.id,
           registrationId: bookingItem.mrn,
           patientName: bookingItem.patientName,
           phoneNumber: bookingItem.phone,
@@ -685,9 +686,14 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
       });
 
       if (res && res.success) {
+        setFollowUps((prev) =>
+          prev.filter(
+            (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
+          )
+        );
         Alert.alert(
-          "Success",
-          `Appointment successfully booked for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})!`
+          "Appointment Booked",
+          `Appointment successfully confirmed for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})!\nPatient shifted from follow-up to confirmed appointments queue.`
         );
         setBookingItem(null);
         loadFollowUps();

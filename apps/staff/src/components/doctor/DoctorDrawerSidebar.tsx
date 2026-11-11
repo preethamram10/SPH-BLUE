@@ -213,7 +213,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                   activeRoute === "packages" && styles.menuTextActive,
                 ]}
               >
-                Packages
+                Package Members
               </Text>
             </TouchableOpacity>
 

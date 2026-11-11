@@ -1,290 +1,358 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
 import {
-  Package,
-  Plus,
-  Users,
-  Clock,
-  Sparkles,
-  ShieldCheck,
-  CheckCircle2,
+  Crown,
   Search,
-  Check,
-  X,
+  Calendar,
+  Building2,
+  Clock,
+  Phone,
+  ShieldCheck,
+  ChevronRight,
+  Eye,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function DoctorPackagesPage() {
-  const [packages, setPackages] = useState<any[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<any>(null);
-
-  // New enrollment form state
-  const [patientName, setPatientName] = useState("");
-  const [registrationId, setRegistrationId] = useState("");
-  const [phone, setPhone] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedMember, setSelectedMember] = useState<any | null>(null);
 
   useEffect(() => {
-    fetch("/api/doctor/packages")
+    setIsLoading(true);
+    fetch("/api/package-members")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setPackages(data.packages || []);
-          setMembers(data.members || []);
+        if (data.success && Array.isArray(data.members)) {
+          setMembers(data.members);
         }
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error("Error loading doctor package members:", err))
+      .finally(() => setIsLoading(false));
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) setAvailableBranches(names);
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const handleEnroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPackage || !patientName) return;
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/doctor/packages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          packageId: selectedPackage.id,
-          patientName,
-          registrationId: registrationId || "SPH-GEN",
-          phone,
-        }),
-      });
-      const data = await res.json();
-      if (data.success && data.member) {
-        setMembers([data.member, ...members]);
-        setFeedback(`Patient ${patientName} enrolled into ${selectedPackage.name}!`);
-        setIsModalOpen(false);
-        setPatientName("");
-        setRegistrationId("");
-        setPhone("");
-      }
-    } catch (err: any) {
-      alert("Failed to enroll patient: " + err.message);
-    } finally {
-      setIsSubmitting(false);
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    availableBranches.forEach((b) => set.add(b));
+    members.forEach((m) => {
+      if (m.branch) set.add(m.branch);
+    });
+    if (set.size === 0) {
+      ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => set.add(b));
     }
-  };
+    return ["All Branches", ...Array.from(set)];
+  }, [availableBranches, members]);
 
-  const filteredMembers = members.filter(
-    (m) =>
-      m.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.packageName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (m.registrationId || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = members.filter((m) => {
+    const q = searchTerm.toLowerCase();
+    const matchesSearch =
+      (m.patientName || "").toLowerCase().includes(q) ||
+      (m.phone || "").includes(q) ||
+      (m.registrationId || "").toLowerCase().includes(q) ||
+      (m.packageName || "").toLowerCase().includes(q);
+    const mNorm = (m.branch || "").toLowerCase().replace(/spiritual|homeopathy|clinic|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+    const sNorm = selectedBranch.toLowerCase().replace(/spiritual|homeopathy|clinic|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+    const matchesBranch = selectedBranch === "All Branches" || mNorm === sNorm || (mNorm === "kpb" && sNorm === "kphb") || (mNorm === "kphb" && sNorm === "kpb");
+    return matchesSearch && matchesBranch;
+  });
+
+  const totalMembers = members.length;
+  const totalValue = members.reduce((sum, m) => sum + (m.totalAmount || 0), 0);
+  const totalCollected = members.reduce((sum, m) => sum + (m.paidAmount || 0), 0);
+  const totalPending = members.reduce((sum, m) => sum + (m.pendingAmount || 0), 0);
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
       <DoctorSidebar activePage="packages" />
 
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-2.5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
-                <Package className="w-4 h-4" />
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
+        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-7 py-4 shadow-xs">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
+                  <Crown className="w-4 h-4" />
+                </div>
+                <h1 className="text-base font-extrabold text-slate-900">Package Members &amp; Subscriptions</h1>
               </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 leading-tight">Doctor Treatment Packages</h2>
-                <p className="text-[10px] text-slate-400">Clinical Courses &amp; Membership Management</p>
+              <p className="text-[11.5px] text-slate-500 mt-0.5">
+                Overview of active long-term treatment packages, revenues, &amp; pending balances
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search member, phone, or ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
               </div>
+
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white"
+              >
+                {branchOptions.map((b: string) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-3.5 max-w-7xl w-full mx-auto space-y-3.5">
-          {feedback && (
-            <div className="p-2.5 rounded-xl border bg-emerald-50 border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{feedback}</span>
-              </div>
-              <button onClick={() => setFeedback(null)} className="text-[10px] underline hover:opacity-75 cursor-pointer">
-                Dismiss
-              </button>
+        <div className="p-7 space-y-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Package Members</div>
+              <div className="text-2xl font-black text-slate-900 mt-1">{totalMembers}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Across clinic branches</div>
             </div>
-          )}
 
-          {/* Treatment Packages Catalog Cards */}
-          <div>
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide mb-2">Available Clinical Plans</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {packages.map((pkg) => (
-                <div key={pkg.id} className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-100">
-                        {pkg.category}
-                      </span>
-                      <span className="text-xs font-black text-[#0284c7]">₹{pkg.price.toLocaleString("en-IN")}</span>
-                    </div>
-                    <h4 className="text-[11.5px] font-bold text-slate-900 leading-tight">{pkg.name}</h4>
-                    <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">{pkg.description}</p>
-                    <div className="flex items-center gap-2 mt-2 text-[9.5px] text-slate-500">
-                      <span>⏳ {pkg.duration}</span>
-                      <span>•</span>
-                      <span>🩺 {pkg.totalVisits} Consultations</span>
-                    </div>
-                  </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Package Value</div>
+              <div className="text-2xl font-black text-slate-900 mt-1">₹{totalValue.toLocaleString()}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Combined contract value</div>
+            </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedPackage(pkg);
-                      setIsModalOpen(true);
-                    }}
-                    className="mt-3 w-full inline-flex items-center justify-center gap-1 py-1 px-2 rounded-lg text-[10.5px] font-extrabold bg-[#0284c7] hover:bg-[#0369a1] text-white shadow-xs transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Prescribe / Enroll</span>
-                  </button>
-                </div>
-              ))}
+            <div className="bg-white p-4 rounded-xl border border-emerald-100 bg-emerald-50/20 shadow-2xs">
+              <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Total Collected</div>
+              <div className="text-2xl font-black text-emerald-700 mt-1">₹{totalCollected.toLocaleString()}</div>
+              <div className="text-[11px] text-emerald-600/80 mt-0.5">Total installments received</div>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-amber-100 bg-amber-50/20 shadow-2xs">
+              <div className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">Total Pending Balance</div>
+              <div className="text-2xl font-black text-amber-700 mt-1">₹{totalPending.toLocaleString()}</div>
+              <div className="text-[11px] text-amber-600/80 mt-0.5">Receivables from patients</div>
             </div>
           </div>
 
-          {/* Enrolled Patients Under Packages */}
-          <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">Enrolled Package Members</h3>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-200">
-                  {filteredMembers.length}
-                </span>
+          {/* Members Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+              <div className="font-extrabold text-sm text-slate-900">
+                Package Enrolled Members ({filtered.length})
               </div>
-
-              <div className="relative w-full sm:w-60">
-                <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search member or package..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-7 pr-2.5 py-1 text-[10.5px] rounded-lg border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-[#0284c7]"
-                />
-              </div>
+              <span className="text-[11px] text-slate-400 font-medium">All Branches</span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[11px]">
-                <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-3">Member ID</th>
-                    <th className="py-2 px-3">Patient Details</th>
-                    <th className="py-2 px-3">Package Enrolled</th>
-                    <th className="py-2 px-3">Visits Used / Total</th>
-                    <th className="py-2 px-3">Validity</th>
-                    <th className="py-2 px-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredMembers.map((m) => (
-                    <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2 px-3 font-mono font-bold text-[#0284c7] text-[10px]">{m.id}</td>
-                      <td className="py-2 px-3">
-                        <span className="font-bold text-slate-900 text-xs block">{m.patientName}</span>
-                        <span className="text-[10px] text-slate-400">{m.registrationId} • 📞 {m.phone}</span>
-                      </td>
-                      <td className="py-2 px-3 font-semibold text-slate-700">{m.packageName}</td>
-                      <td className="py-2 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-[#0284c7]">{m.visitsUsed}</span>
-                          <span className="text-slate-400">/ {m.totalVisits}</span>
-                        </div>
-                      </td>
-                      <td className="py-2 px-3 text-[10px] text-slate-500">
-                        <span>{m.enrolledDate} → {m.expiryDate}</span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {m.status}
-                        </span>
-                      </td>
+            {isLoading ? (
+              <div className="p-16 text-center text-slate-400 font-medium text-xs">
+                Loading package members...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-16 text-center text-slate-400 font-medium text-xs">
+                No package members found.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4">Patient &amp; Contact</th>
+                      <th className="py-3 px-4">Branch</th>
+                      <th className="py-3 px-4">Reg ID</th>
+                      <th className="py-3 px-4">Package &amp; Duration</th>
+                      <th className="py-3 px-4">Validity</th>
+                      <th className="py-3 px-4 text-right">Total Fee</th>
+                      <th className="py-3 px-4 text-right">Paid</th>
+                      <th className="py-3 px-4 text-right">Pending</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-center">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </main>
-      </div>
-
-      {/* Enroll Patient Modal */}
-      {isModalOpen && selectedPackage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-sm overflow-hidden">
-            <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-              <div>
-                <h3 className="font-bold text-slate-900 text-xs">Enroll Patient in Package</h3>
-                <p className="text-[10px] text-slate-500">{selectedPackage.name} (₹{selectedPackage.price})</p>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700 font-semibold">
+                    {filtered.map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-900 text-xs">{m.patientName}</div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <Phone className="w-2.5 h-2.5" />
+                            <span>{m.phone}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px] border border-slate-200">
+                            {m.branch || "Clinic"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-bold text-[11px] border border-sky-200">
+                            {m.registrationId || "SPH-PAT"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-bold text-slate-800">{m.packageName}</div>
+                          <div className="text-[11px] text-sky-700 font-semibold mt-0.5">
+                            {m.durationMonths} Month{m.durationMonths > 1 ? "s" : ""} duration
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="text-slate-600 text-[11px] font-medium">Start: {m.startDate}</div>
+                          <div className="text-slate-400 text-[10px]">Till: {m.endDate}</div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-black text-slate-800">
+                          ₹{(m.totalAmount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-black text-emerald-700">
+                          ₹{(m.paidAmount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-black text-amber-700">
+                          ₹{(m.pendingAmount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              m.status === "ACTIVE"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-slate-100 text-slate-600 border border-slate-200"
+                            }`}
+                          >
+                            {m.status || "ACTIVE"}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            onClick={() => setSelectedMember(m)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 hover:border-sky-400 bg-white hover:bg-sky-50 text-slate-700 hover:text-sky-800 text-[11px] font-bold transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>History</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="w-6 h-6 rounded-full hover:bg-slate-200 flex items-center justify-center">
-                <X className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEnroll} className="p-3.5 space-y-2.5">
-              <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 mb-0.5">Patient Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. M. Rajeshwar Rao"
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 mb-0.5">Patient ID / MRN</label>
-                <input
-                  type="text"
-                  placeholder="e.g. SPH-KPB-0012"
-                  value={registrationId}
-                  onChange={(e) => setRegistrationId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10.5px] font-bold text-slate-700 mb-0.5">Mobile Phone *</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="e.g. 9848011223"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg text-[10.5px] font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-3.5 py-1.5 rounded-lg text-[10.5px] font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs disabled:opacity-50"
-                >
-                  {isSubmitting ? "Enrolling..." : "Confirm Enrollment"}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Member Installment History Modal */}
+        {selectedMember && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-black text-xs">
+                    PKG
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">{selectedMember.patientName}</h3>
+                    <p className="text-[11px] text-slate-500">
+                      {selectedMember.packageName} • {selectedMember.branch} • Reg: {selectedMember.registrationId}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedMember(null)}
+                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* 3 Summary Cards */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase">Total Package</div>
+                    <div className="text-sm font-black text-slate-900 mt-0.5">
+                      ₹{(selectedMember.totalAmount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200">
+                    <div className="text-[10px] font-bold text-emerald-600 uppercase">Total Paid</div>
+                    <div className="text-sm font-black text-emerald-700 mt-0.5">
+                      ₹{(selectedMember.paidAmount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="bg-amber-50/50 p-2.5 rounded-xl border border-amber-200">
+                    <div className="text-[10px] font-bold text-amber-600 uppercase">Pending Balance</div>
+                    <div className="text-sm font-black text-amber-700 mt-0.5">
+                      ₹{(selectedMember.pendingAmount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Installments List */}
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2">
+                    Payment Installments History
+                  </h4>
+                  {selectedMember.payments && selectedMember.payments.length > 0 ? (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {selectedMember.payments.map((p: any, idx: number) => {
+                        const d = new Date(p.paidAt);
+                        const dateStr = !isNaN(d.getTime()) ? d.toLocaleDateString("en-IN") : p.paidAt;
+                        const timeStr = !isNaN(d.getTime())
+                          ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                          : "";
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                          >
+                            <div>
+                              <div className="font-bold text-slate-800">
+                                {dateStr} at {timeStr}
+                              </div>
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                Mode: <span className="font-semibold">{p.paymentMethod || "CASH"}</span>
+                                {p.notes ? ` • ${p.notes}` : ""}
+                              </div>
+                            </div>
+                            <div className="font-black text-emerald-700 text-sm">
+                              +₹{(p.amount || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      No payment installments logged yet.
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => setSelectedMember(null)}
+                    className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
-
