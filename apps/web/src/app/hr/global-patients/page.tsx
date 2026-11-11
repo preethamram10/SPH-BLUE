@@ -371,7 +371,7 @@ function GlobalPatientsContent() {
                             <div className="flex items-center justify-center gap-1.5">
                               {/* History of Rx (Read-Only in Admin Context) */}
                               <Link
-                                href={`/hr/patient-history?regId=${encodeURIComponent(String(item.mrn || ""))}&name=${encodeURIComponent(String(item.name || ""))}&phone=${encodeURIComponent(String(item.phone || ""))}&branch=${encodeURIComponent(String(item.registeredBranch || ""))}&tab=prescriptions&readOnly=true`}
+                                href={`/admin/patient-history?regId=${encodeURIComponent(String(item.mrn || ""))}&name=${encodeURIComponent(String(item.name || ""))}&phone=${encodeURIComponent(String(item.phone || ""))}&branch=${encodeURIComponent(String(item.registeredBranch || ""))}&tab=prescriptions&readOnly=true`}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-md text-[11px] font-bold transition shadow-2xs"
                                 title="Open History of Rx (Admin View • Read-Only)"
                               >
@@ -541,7 +541,7 @@ function GlobalPatientsContent() {
 
                 <div className="flex items-center gap-2">
                   <Link
-                    href={`/hr/patient-history?regId=${encodeURIComponent(String(selectedPatient.mrn || ""))}&phone=${encodeURIComponent(String(selectedPatient.phone || ""))}&name=${encodeURIComponent(String(selectedPatient.name || ""))}&branch=${encodeURIComponent(String(selectedPatient.registeredBranch || ""))}&tab=prescriptions&readOnly=true`}
+                    href={`/admin/patient-history?regId=${encodeURIComponent(String(selectedPatient.mrn || ""))}&phone=${encodeURIComponent(String(selectedPatient.phone || ""))}&name=${encodeURIComponent(String(selectedPatient.name || ""))}&branch=${encodeURIComponent(String(selectedPatient.registeredBranch || ""))}&tab=prescriptions&readOnly=true`}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-lg transition"
                   >
                     <Activity className="w-3.5 h-3.5 text-emerald-600" />

@@ -7,6 +7,7 @@ interface DoctorHeaderProps {
   subtitle?: string;
   onOpenDrawer?: () => void;
   onBack?: () => void;
+  onLogout?: () => void;
   rightAction?: {
     icon: keyof typeof Ionicons.glyphMap;
     onPress: () => void;
@@ -20,6 +21,7 @@ export const DoctorHeader: React.FC<DoctorHeaderProps> = ({
   subtitle,
   onOpenDrawer,
   onBack,
+  onLogout,
   rightAction,
 }) => {
   return (
@@ -57,30 +59,44 @@ export const DoctorHeader: React.FC<DoctorHeaderProps> = ({
         </View>
       </View>
 
-      {rightAction ? (
-        <TouchableOpacity
-          onPress={rightAction.onPress}
-          style={styles.actionButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons
-            name={rightAction.icon}
-            size={20}
-            color={rightAction.color || "#0f172a"}
-          />
-          {typeof rightAction.badgeCount === "number" && rightAction.badgeCount > 0 && (
-            <View style={styles.badgeContainer}>
-              <Text style={styles.badgeText}>
-                {rightAction.badgeCount > 9 ? "9+" : rightAction.badgeCount}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      ) : (
-        /* Empty space placeholder for symmetric balance */
-        <View style={{ width: onBack ? 36 : 0 }} />
-      )}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {rightAction ? (
+          <TouchableOpacity
+            onPress={rightAction.onPress}
+            style={styles.actionButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={rightAction.icon}
+              size={20}
+              color={rightAction.color || "#0f172a"}
+            />
+            {typeof rightAction.badgeCount === "number" && rightAction.badgeCount > 0 && (
+              <View style={styles.badgeContainer}>
+                <Text style={styles.badgeText}>
+                  {rightAction.badgeCount > 9 ? "9+" : rightAction.badgeCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : null}
+
+        {onLogout ? (
+          <TouchableOpacity
+            onPress={onLogout}
+            style={[styles.actionButton, { backgroundColor: "#fee2e2" }]}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+          </TouchableOpacity>
+        ) : null}
+
+        {!rightAction && !onLogout && onBack ? (
+          <View style={{ width: 36 }} />
+        ) : null}
+      </View>
     </View>
   );
 };

@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
+import HRSidebar from "@/components/HRSidebar";
 import {
   Clock,
   Search,
-  CheckCircle2,
+  Filter,
+  DollarSign,
   AlertCircle,
+  CheckCircle2,
   Phone,
   MessageSquare,
   Building2,
@@ -14,7 +16,6 @@ import {
   CreditCard,
   User,
   RefreshCw,
-  ArrowLeft,
 } from "lucide-react";
 
 interface PayLaterRecord {
@@ -32,6 +33,7 @@ interface PayLaterRecord {
   createdAt: string;
   dueDate?: string;
   clearedAt?: string;
+  clearedInAppointmentId?: string;
   notes?: string;
   paymentMode?: string;
 }
@@ -46,7 +48,7 @@ const BRANCHES = [
 
 type DateFilterPreset = "THIS_MONTH" | "LAST_MONTH" | "ALL_HISTORY" | "CUSTOM";
 
-export default function HRPayLaterPage() {
+export default function AdminPayLaterPage() {
   const [records, setRecords] = useState<PayLaterRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
@@ -174,7 +176,7 @@ export default function HRPayLaterPage() {
     setSettlingRecord(record);
     setSettleAmount(String(record.dueAmount));
     setSettleMethod("UPI");
-    setSettleNotes(`Cleared by HR on ${new Date().toLocaleDateString("en-IN")}`);
+    setSettleNotes(`Cleared by Admin on ${new Date().toLocaleDateString("en-IN")}`);
   };
 
   const handleConfirmSettle = async () => {
@@ -226,373 +228,397 @@ export default function HRPayLaterPage() {
       `Paid at Clinic: ₹${r.paidAmount.toLocaleString()}\n` +
       `Pending Pay Later Due: ₹${r.dueAmount.toLocaleString()}\n\n` +
       `You may clear this balance at your next visit or via UPI to sseomni9k9v0j291124pos@mairtel.\n\n` +
-      `Spiritual Homeopathy Clinics\nSupport: +91 9030176176`
+      `Thank you,\nSpiritual Homeopathy Clinics\nSupport: +91 9030176176`
     );
     window.open(`https://wa.me/91${cleanPhone}?text=${msg}`, "_blank");
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-xs">
-      {/* Compact Top Navbar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-2xs sticky top-0 z-20">
-        <div className="flex items-center gap-2.5">
-          <Link
-            href="/hr/dashboard"
-            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-          </Link>
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-[#268ec8] to-[#a8ce3a] flex items-center justify-center text-white font-bold shadow-2xs">
-            <Clock className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-sm font-bold text-slate-900">HR Operations • Pay Later Dues</h1>
-            <span className="text-[10px] font-semibold text-[#0284c7]">
-              Branch-wise pending fee recovery &amp; settlements
-            </span>
-          </div>
-        </div>
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-xs">
+      <HRSidebar currentPath="/hr/pay-later" />
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchPayLaterData}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all"
-          >
-            <RefreshCw className={`w-3 h-3 text-[#0284c7] ${isLoading ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </header>
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Compact Header */}
+        <header className="bg-white border-b border-slate-200 px-6 py-3.5 sticky top-0 z-20 shadow-2xs">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-[#268ec8] to-[#a8ce3a] flex items-center justify-center text-white shadow-xs">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-base font-bold text-slate-900 tracking-tight">Pay Later &amp; Pending Dues</h1>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-[#0284c7] border border-sky-200">
+                    Finance
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">Track and settle partial fee payments and carried-forward patient balances</p>
+              </div>
+            </div>
 
-      {/* Main Content */}
-      <main className="flex-1 p-5 max-w-6xl w-full mx-auto space-y-4">
-        {/* Compact Date Range Filter Toolbar */}
-        <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs">
-          <div className="flex items-center justify-between flex-wrap gap-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
-              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Date Filter:</span>
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
-                {(
-                  [
-                    { key: "THIS_MONTH", label: "This Month" },
-                    { key: "LAST_MONTH", label: "Last Month" },
-                    { key: "ALL_HISTORY", label: "All History" },
-                    { key: "CUSTOM", label: "Custom Range" },
-                  ] as const
-                ).map((preset) => (
-                  <button
-                    key={preset.key}
-                    onClick={() => setDatePreset(preset.key)}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
-                      datePreset === preset.key
-                        ? "bg-[#268ec8] text-white shadow-2xs"
-                        : "text-slate-600 hover:text-slate-900"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchPayLaterData}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-2xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-[#0284c7] ${isLoading ? "animate-spin" : ""}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="p-5 max-w-7xl w-full mx-auto space-y-4">
+          {/* Compact Date Range Filter Toolbar */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs">
+            <div className="flex items-center justify-between flex-wrap gap-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Date Filter:</span>
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
+                  {(
+                    [
+                      { key: "THIS_MONTH", label: "This Month" },
+                      { key: "LAST_MONTH", label: "Last Month" },
+                      { key: "ALL_HISTORY", label: "All History" },
+                      { key: "CUSTOM", label: "Custom Range" },
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.key}
+                      onClick={() => setDatePreset(preset.key)}
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                        datePreset === preset.key
+                          ? "bg-[#268ec8] text-white shadow-2xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Date Pickers */}
+              {datePreset === "CUSTOM" && (
+                <div className="flex items-center gap-2 flex-wrap animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5">
+                    <span className="text-[10px] font-bold text-slate-500">From:</span>
+                    <input
+                      type="date"
+                      value={customFromDate}
+                      onChange={(e) => setCustomFromDate(e.target.value)}
+                      className="text-[11px] text-slate-800 bg-transparent focus:outline-hidden font-medium"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5">
+                    <span className="text-[10px] font-bold text-slate-500">To:</span>
+                    <input
+                      type="date"
+                      value={customToDate}
+                      onChange={(e) => setCustomToDate(e.target.value)}
+                      className="text-[11px] text-slate-800 bg-transparent focus:outline-hidden font-medium"
+                    />
+                  </div>
+                  {(customFromDate || customToDate) && (
+                    <button
+                      onClick={() => {
+                        setCustomFromDate("");
+                        setCustomToDate("");
+                      }}
+                      className="text-[10px] text-[#0284c7] font-bold hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Compact Summary KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Total Pending */}
+            <div className="bg-gradient-to-br from-[#0284c7] to-[#0369a1] rounded-xl p-3.5 text-white shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-sky-100 uppercase tracking-wider">Total Pending Due</span>
+                <span className="p-1 bg-white/20 rounded-md">
+                  <AlertCircle className="w-3.5 h-3.5 text-white" />
+                </span>
+              </div>
+              <p className="text-xl font-black mt-1 tracking-tight">
+                ₹{metrics.totalPending.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-sky-100 mt-0.5">
+                {datePreset === "THIS_MONTH" ? "This Month" : datePreset === "LAST_MONTH" ? "Last Month" : "Selected Period"}
+              </p>
+            </div>
+
+            {/* Total Cleared */}
+            <div className="bg-gradient-to-br from-[#16a34a] to-[#15803d] rounded-xl p-3.5 text-white shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">Total Cleared</span>
+                <span className="p-1 bg-white/20 rounded-md">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                </span>
+              </div>
+              <p className="text-xl font-black mt-1 tracking-tight">
+                ₹{metrics.totalCleared.toLocaleString()}
+              </p>
+              <p className="text-[10px] text-emerald-100 mt-0.5">Settled in follow-up visits</p>
+            </div>
+
+            {/* Pending Patients Count */}
+            <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Profiles</span>
+                <span className="p-1 bg-sky-50 rounded-md text-[#0284c7]">
+                  <User className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <p className="text-xl font-black text-slate-900 mt-1 tracking-tight">
+                {metrics.pendingCount}
+              </p>
+              <p className="text-[10px] text-[#0284c7] font-semibold mt-0.5">Patients with balance</p>
+            </div>
+
+            {/* Total Entries */}
+            <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
+                <span className="p-1 bg-emerald-50 rounded-md text-[#16a34a]">
+                  <CreditCard className="w-3.5 h-3.5" />
+                </span>
+              </div>
+              <p className="text-xl font-black text-slate-900 mt-1 tracking-tight">
+                {metrics.totalRecords}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">In selected date filter</p>
+            </div>
+          </div>
+
+          {/* Compact Branch-Wise Breakdown Cards */}
+          <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
+                Branch-Wise Pending ({datePreset === "THIS_MONTH" ? "This Month" : "Selected Period"})
+              </h3>
+              <span className="text-[10px] font-bold text-[#0284c7]">Click branch to filter</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              {["KPHB", "Chandanagar", "Dilshuknagar", "Nallagandla"].map((branch) => {
+                const branchRecords = records.filter((r) => {
+                  if (dateBounds.start || dateBounds.end) {
+                    const d = new Date(r.createdAt);
+                    if (dateBounds.start && d < dateBounds.start) return false;
+                    if (dateBounds.end && d > dateBounds.end) return false;
+                  }
+                  return (r.branch || "").toLowerCase().includes(branch.toLowerCase());
+                });
+
+                const branchPending = branchRecords
+                  .filter((r) => r.status === "PENDING")
+                  .reduce((sum, r) => sum + (Number(r.dueAmount) || 0), 0);
+                const count = branchRecords.filter((r) => r.status === "PENDING").length;
+
+                const isSelected = selectedBranch === branch;
+
+                return (
+                  <div
+                    key={branch}
+                    onClick={() => setSelectedBranch(isSelected ? "All Branches" : branch)}
+                    className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                      isSelected
+                        ? "border-[#268ec8] bg-sky-50 shadow-2xs"
+                        : "border-slate-100 bg-slate-50 hover:bg-slate-100/70"
                     }`}
                   >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Date Pickers */}
-            {datePreset === "CUSTOM" && (
-              <div className="flex items-center gap-2 flex-wrap animate-in fade-in duration-150">
-                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5">
-                  <span className="text-[10px] font-bold text-slate-500">From:</span>
-                  <input
-                    type="date"
-                    value={customFromDate}
-                    onChange={(e) => setCustomFromDate(e.target.value)}
-                    className="text-[11px] text-slate-800 bg-transparent focus:outline-hidden font-medium"
-                  />
-                </div>
-                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5">
-                  <span className="text-[10px] font-bold text-slate-500">To:</span>
-                  <input
-                    type="date"
-                    value={customToDate}
-                    onChange={(e) => setCustomToDate(e.target.value)}
-                    className="text-[11px] text-slate-800 bg-transparent focus:outline-hidden font-medium"
-                  />
-                </div>
-                {(customFromDate || customToDate) && (
-                  <button
-                    onClick={() => {
-                      setCustomFromDate("");
-                      setCustomToDate("");
-                    }}
-                    className="text-[10px] text-[#0284c7] font-bold hover:underline"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Compact KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-gradient-to-br from-[#0284c7] to-[#0369a1] rounded-xl p-3.5 text-white shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-sky-100 uppercase tracking-wider">Total Pending Due</span>
-              <AlertCircle className="w-3.5 h-3.5 text-white" />
-            </div>
-            <p className="text-xl font-black mt-1 tracking-tight">
-              ₹{metrics.totalPending.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-sky-100 mt-0.5">
-              {datePreset === "THIS_MONTH" ? "This Month" : "Active Balances"}
-            </p>
-          </div>
-
-          <div className="bg-gradient-to-br from-[#16a34a] to-[#15803d] rounded-xl p-3.5 text-white shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-emerald-100 uppercase tracking-wider">Total Cleared</span>
-              <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-            </div>
-            <p className="text-xl font-black mt-1 tracking-tight">
-              ₹{metrics.totalCleared.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-emerald-100 mt-0.5">Settled in next visits</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Profiles</span>
-              <User className="w-3.5 h-3.5 text-[#0284c7]" />
-            </div>
-            <p className="text-xl font-black text-slate-900 mt-1 tracking-tight">
-              {metrics.pendingCount}
-            </p>
-            <p className="text-[10px] text-[#0284c7] font-semibold mt-0.5">Patients with balances</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Bills</span>
-              <CreditCard className="w-3.5 h-3.5 text-[#16a34a]" />
-            </div>
-            <p className="text-xl font-black text-slate-900 mt-1 tracking-tight">
-              {metrics.totalRecords}
-            </p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Partial billing records</p>
-          </div>
-        </div>
-
-        {/* Compact Branch-Wise Cards */}
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
-              Branch-Wise Pending ({datePreset === "THIS_MONTH" ? "This Month" : "Selected Period"})
-            </h3>
-            <span className="text-[10px] font-bold text-[#0284c7]">Click branch to filter</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-            {["KPHB", "Chandanagar", "Dilshuknagar", "Nallagandla"].map((branch) => {
-              const branchRecords = records.filter((r) => {
-                if (dateBounds.start || dateBounds.end) {
-                  const d = new Date(r.createdAt);
-                  if (dateBounds.start && d < dateBounds.start) return false;
-                  if (dateBounds.end && d > dateBounds.end) return false;
-                }
-                return (r.branch || "").toLowerCase().includes(branch.toLowerCase());
-              });
-
-              const branchPending = branchRecords
-                .filter((r) => r.status === "PENDING")
-                .reduce((sum, r) => sum + (Number(r.dueAmount) || 0), 0);
-              const count = branchRecords.filter((r) => r.status === "PENDING").length;
-
-              const isSelected = selectedBranch === branch;
-
-              return (
-                <div
-                  key={branch}
-                  onClick={() => setSelectedBranch(isSelected ? "All Branches" : branch)}
-                  className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                    isSelected
-                      ? "border-[#268ec8] bg-sky-50 shadow-2xs"
-                      : "border-slate-100 bg-slate-50 hover:bg-slate-100/70"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-800">{branch}</span>
-                    <Building2 className={`w-3.5 h-3.5 ${isSelected ? "text-[#0284c7]" : "text-slate-400"}`} />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-800">{branch}</span>
+                      <Building2 className={`w-3.5 h-3.5 ${isSelected ? "text-[#0284c7]" : "text-slate-400"}`} />
+                    </div>
+                    <p className="text-sm font-black text-[#0284c7] mt-1">
+                      ₹{branchPending.toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{count} pending</p>
                   </div>
-                  <p className="text-sm font-black text-[#0284c7] mt-1">
-                    ₹{branchPending.toLocaleString()}
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">{count} pending</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Compact Filters Toolbar */}
-        <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-            {BRANCHES.map((b) => (
-              <button
-                key={b}
-                onClick={() => setSelectedBranch(b)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
-                  selectedBranch === b
-                    ? "bg-[#268ec8] text-white shadow-2xs"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {b}
-              </button>
-            ))}
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
-              {(["PENDING", "CLEARED", "ALL"] as const).map((st) => (
+          {/* Compact Filters & Search Toolbar */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
+            {/* Branch Pills */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+              {BRANCHES.map((b) => (
                 <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
-                    statusFilter === st
-                      ? "bg-white text-slate-900 shadow-2xs"
-                      : "text-slate-500 hover:text-slate-900"
+                  key={b}
+                  onClick={() => setSelectedBranch(b)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
+                    selectedBranch === b
+                      ? "bg-[#268ec8] text-white shadow-2xs"
+                      : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
-                  {st === "PENDING" ? "⏳ Pending" : st === "CLEARED" ? "✓ Cleared" : "All"}
+                  {b}
                 </button>
               ))}
             </div>
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search patient, phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#268ec8] w-48"
-              />
+            {/* Status & Search */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
+                {(["PENDING", "CLEARED", "ALL"] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setStatusFilter(st)}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all ${
+                      statusFilter === st
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-500 hover:text-slate-900"
+                    }`}
+                  >
+                    {st === "PENDING" ? "⏳ Pending" : st === "CLEARED" ? "✓ Cleared" : "All"}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search patient, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-[#268ec8] w-48"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Compact Patient Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Patient Details</th>
-                  <th className="py-2.5 px-3">Branch &amp; Doctor</th>
-                  <th className="py-2.5 px-3 text-right">Total Bill</th>
-                  <th className="py-2.5 px-3 text-right">Paid Amount</th>
-                  <th className="py-2.5 px-3 text-right">Pending Due</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-slate-400">
-                      <Clock className="w-6 h-6 mx-auto mb-1 text-slate-300" />
-                      <p className="font-semibold text-xs">No Pay Later records found matching your filters</p>
-                    </td>
+          {/* Compact Patient Dues Table */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                    <th className="py-2.5 px-3">Patient Details</th>
+                    <th className="py-2.5 px-3">Branch &amp; Doctor</th>
+                    <th className="py-2.5 px-3 text-right">Total Bill</th>
+                    <th className="py-2.5 px-3 text-right">Paid Amount</th>
+                    <th className="py-2.5 px-3 text-right">Pending Due</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3 text-center">Actions</th>
                   </tr>
-                ) : (
-                  filteredRecords.map((r) => {
-                    const isPending = r.status === "PENDING";
-                    return (
-                      <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-2 px-3">
-                          <div className="font-bold text-slate-900 text-xs">{r.patientName || "Unknown"}</div>
-                          <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                            <Phone className="w-2.5 h-2.5 text-slate-400" />
-                            <span>+91 {r.patientPhone || "N/A"}</span>
-                          </div>
-                        </td>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400">
+                        <Clock className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                        <p className="font-semibold text-xs">No Pay Later records found matching your filters</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRecords.map((r) => {
+                      const isPending = r.status === "PENDING";
+                      return (
+                        <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                          {/* Patient */}
+                          <td className="py-2 px-3">
+                            <div className="font-bold text-slate-900 text-xs">{r.patientName || "Unknown"}</div>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-1">
+                              <Phone className="w-2.5 h-2.5 text-slate-400" />
+                              <span>+91 {r.patientPhone || "N/A"}</span>
+                            </div>
+                          </td>
 
-                        <td className="py-2 px-3">
-                          <span className="font-semibold text-slate-800 text-[11px]">{r.branch || "KPHB"}</span>
-                          {r.doctorName && (
-                            <div className="text-[10px] text-slate-500">Dr. {r.doctorName}</div>
-                          )}
-                        </td>
-
-                        <td className="py-2 px-3 text-right font-medium text-slate-700 text-xs">
-                          ₹{r.totalBill?.toLocaleString() || "0"}
-                        </td>
-
-                        <td className="py-2 px-3 text-right font-semibold text-emerald-600 text-xs">
-                          ₹{r.paidAmount?.toLocaleString() || "0"}
-                        </td>
-
-                        <td className="py-2 px-3 text-right">
-                          {isPending ? (
-                            <span className="inline-block px-2 py-0.5 rounded-md bg-sky-100 text-[#0284c7] font-extrabold text-[11px] border border-sky-200">
-                              ₹{r.dueAmount?.toLocaleString() || "0"}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-semibold line-through text-[11px]">
-                              ₹{r.dueAmount?.toLocaleString() || "0"}
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-2 px-3 text-slate-500 text-[10px]">
-                          {new Date(r.createdAt).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </td>
-
-                        <td className="py-2 px-3">
-                          {isPending ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-sky-100 text-[#0284c7] uppercase">
-                              <Clock className="w-2.5 h-2.5" />
-                              <span>Pending</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 uppercase">
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                              <span>Cleared</span>
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="py-2 px-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {isPending && (
-                              <button
-                                onClick={() => handleOpenSettleModal(r)}
-                                className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#268ec8] text-white hover:bg-[#0284c7] transition-all shadow-2xs"
-                              >
-                                Settle
-                              </button>
+                          {/* Branch & Doctor */}
+                          <td className="py-2 px-3">
+                            <span className="font-semibold text-slate-800 text-[11px]">{r.branch || "KPHB"}</span>
+                            {r.doctorName && (
+                              <div className="text-[10px] text-slate-500">Dr. {r.doctorName}</div>
                             )}
+                          </td>
 
-                            <button
-                              onClick={() => sendWhatsAppReminder(r)}
-                              title="Send WhatsApp Reminder"
-                              className="p-1 rounded-md border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all"
-                            >
-                              <MessageSquare className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                          {/* Total Bill */}
+                          <td className="py-2 px-3 text-right font-medium text-slate-700 text-xs">
+                            ₹{r.totalBill?.toLocaleString() || "0"}
+                          </td>
+
+                          {/* Paid */}
+                          <td className="py-2 px-3 text-right font-semibold text-emerald-600 text-xs">
+                            ₹{r.paidAmount?.toLocaleString() || "0"}
+                          </td>
+
+                          {/* Pending Due Badge */}
+                          <td className="py-2 px-3 text-right">
+                            {isPending ? (
+                              <span className="inline-block px-2 py-0.5 rounded-md bg-sky-100 text-[#0284c7] font-extrabold text-[11px] border border-sky-200">
+                                ₹{r.dueAmount?.toLocaleString() || "0"}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-semibold line-through text-[11px]">
+                                ₹{r.dueAmount?.toLocaleString() || "0"}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-2 px-3 text-slate-500 text-[10px]">
+                            {new Date(r.createdAt).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-2 px-3">
+                            {isPending ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-sky-100 text-[#0284c7] uppercase">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>Pending</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 uppercase">
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>Cleared</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-2 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {isPending && (
+                                <button
+                                  onClick={() => handleOpenSettleModal(r)}
+                                  className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#268ec8] text-white hover:bg-[#0284c7] transition-all shadow-2xs"
+                                >
+                                  Settle
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => sendWhatsAppReminder(r)}
+                                title="Send WhatsApp Reminder"
+                                className="p-1 rounded-md border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all"
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </main>
@@ -677,7 +703,7 @@ export default function HRPayLaterPage() {
                   rows={2}
                   value={settleNotes}
                   onChange={(e) => setSettleNotes(e.target.value)}
-                  placeholder="e.g. Cleared via HR portal"
+                  placeholder="e.g. Cleared at reception counter"
                   className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-[#268ec8]"
                 />
               </div>

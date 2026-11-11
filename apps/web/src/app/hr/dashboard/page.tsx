@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import HRSidebar from "@/components/HRSidebar";
-import Link from "next/link";
 import {
   Building2,
   Users,
@@ -15,11 +14,6 @@ import {
   UserCheck,
   CalendarX,
   ArrowUpRight,
-  Target,
-  FileCheck2,
-  Sparkles,
-  DollarSign,
-  ChevronRight,
 } from "lucide-react";
 
 interface BranchStat {
@@ -59,7 +53,7 @@ interface DashboardSummary {
   totalDoctors: number;
 }
 
-export default function HRDashboardPage() {
+export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<DashboardSummary>({
     totalBranches: 0,
@@ -92,7 +86,7 @@ export default function HRDashboardPage() {
         }
       }
     } catch (err) {
-      console.warn("Failed to load live dashboard stats for HR:", err);
+      console.warn("Failed to load live dashboard stats:", err);
     } finally {
       setLoading(false);
     }
@@ -124,44 +118,47 @@ export default function HRDashboardPage() {
 
       // Status filter
       if (selectedStatus !== "all") {
-        if (selectedStatus === "Present" && item.status !== "Present" && item.status !== "In Clinic") {
-          return false;
-        }
-        if (selectedStatus === "Late" && item.status !== "Late") {
-          return false;
-        }
-        if (selectedStatus === "Leave" && item.status !== "On Leave" && item.status !== "Absent") {
-          return false;
-        }
+        if (selectedStatus === "in_clinic" && item.status !== "In Clinic") return false;
+        if (selectedStatus === "present" && item.status !== "Present" && item.status !== "In Clinic") return false;
+        if (selectedStatus === "late" && item.status !== "Late") return false;
+        if (selectedStatus === "leave" && item.status !== "On Leave") return false;
+        if (selectedStatus === "absent" && item.status !== "Absent") return false;
       }
 
       return true;
     });
   }, [attendance, searchStaff, selectedBranch, selectedStatus]);
 
+  // Clean branch name helper
+  const cleanBranch = (name: string) => {
+    return (name || "")
+      .replace(/Spiritual Homeopathy/gi, "")
+      .replace(/Branch/gi, "")
+      .replace(/Clinic/gi, "")
+      .replace(/-/g, "")
+      .trim() || name;
+  };
+
   return (
-    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
-      {/* Dedicated Synchronized HR Sidebar */}
+    <div className="h-screen bg-[#f8fafc] flex overflow-hidden font-sans text-slate-800">
+      {/* Unified Collapsible Sidebar */}
       <HRSidebar currentPath="/hr/dashboard" />
 
-      {/* Main Container */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        {/* Top Navbar Header */}
+      {/* Main Content Viewport */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Top Header */}
         <header className="bg-white border-b border-slate-200/80 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
               <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
                 Clinic Master Dashboard
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-300">
-                HR Portal
-              </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
                 Live Overview
               </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-              Multi-branch real-time operations, staff attendance ledger &amp; patient footfalls.
+              Multi-branch real-time operations, patient footfalls, and today&apos;s staff punch-in/out ledger.
             </p>
           </div>
 
@@ -198,7 +195,7 @@ export default function HRDashboardPage() {
                   <span className="text-[11px] font-bold text-emerald-600">All Live</span>
                 </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
                 <Building2 className="w-5 h-5" />
               </div>
             </div>
@@ -251,286 +248,416 @@ export default function HRDashboardPage() {
                   </span>
                   <span className="text-xs font-bold text-slate-400">Present</span>
                   {summary.totalLeaveStaff > 0 && (
-                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
-                      {summary.totalLeaveStaff} Leave
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                      {summary.totalLeaveStaff} on Leave
                     </span>
                   )}
                 </div>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-lime-50 text-lime-700 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
                 <UserCheck className="w-5 h-5" />
               </div>
             </div>
           </div>
 
-          {/* Quick Operations Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
-            <Link
-              href="/hr/employee-management"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
+          {/* =============================================================== */}
+          {/* 1. ALL BRANCH REAL-TIME OVERVIEW BOXES                           */}
+          {/* =============================================================== */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <span>🏥</span>
+                  <span>Branch-Wise Real-Time Operations</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Live metrics for each clinic branch: today&apos;s patients, revenue, active staff on duty, and approved leaves.
+                </p>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-purple-700">Staff Mgmt</p>
-                <p className="text-[10px] text-slate-400 truncate">Directory &amp; Roles</p>
-              </div>
-            </Link>
+              <span className="text-xs font-bold text-slate-500">
+                {branches.length} Registered Clinics
+              </span>
+            </div>
 
-            <Link
-              href="/hr/doctor-timings"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-sky-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
-                <Clock className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-sky-700">Doctor Timings</p>
-                <p className="text-[10px] text-slate-400 truncate">OPD Rosters</p>
-              </div>
-            </Link>
+            {/* Branch Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {loading ? (
+                Array.from({ length: 4 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white p-5 rounded-2xl border border-slate-200 animate-pulse space-y-3"
+                  >
+                    <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                    <div className="h-3 bg-slate-100 rounded w-1/2"></div>
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <div className="h-14 bg-slate-100 rounded-xl"></div>
+                      <div className="h-14 bg-slate-100 rounded-xl"></div>
+                      <div className="h-14 bg-slate-100 rounded-xl"></div>
+                      <div className="h-14 bg-slate-100 rounded-xl"></div>
+                    </div>
+                  </div>
+                ))
+              ) : branches.length === 0 ? (
+                <div className="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400">
+                  No active branches found. Add branches in Branch Management.
+                </div>
+              ) : (
+                branches.map((b) => {
+                  const isCurrentFilter = selectedBranch.toLowerCase() === b.shortName.toLowerCase();
+                  return (
+                    <div
+                      key={b.id}
+                      className={`bg-white rounded-2xl border transition-all shadow-xs hover:shadow-md flex flex-col justify-between overflow-hidden ${
+                        isCurrentFilter
+                          ? "border-[#0284c7] ring-2 ring-[#0284c7]/20"
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      {/* Branch Header */}
+                      <div className="p-4 border-b border-slate-100/90 bg-slate-50/50">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-black uppercase text-[#0284c7] tracking-wider block">
+                              Clinic Branch
+                            </span>
+                            <h4 className="font-extrabold text-slate-900 text-sm leading-snug">
+                              {b.name}
+                            </h4>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                            Active OPD
+                          </span>
+                        </div>
 
-            <Link
-              href="/hr/total-revenue"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-emerald-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-                <DollarSign className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-emerald-700">Total Revenue</p>
-                <p className="text-[10px] text-slate-400 truncate">Filters &amp; Ledger</p>
-              </div>
-            </Link>
+                        {/* Contact & Hours */}
+                        <div className="mt-2.5 space-y-1 text-[11px] text-slate-600">
+                          {b.phone && (
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <Phone className="w-3 h-3 text-[#0284c7] shrink-0" />
+                              <span>{b.phone}</span>
+                            </div>
+                          )}
+                          {b.timings && (
+                            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                              <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{b.timings}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-            <Link
-              href="/hr/target-management"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-                <Target className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-amber-700">Targets</p>
-                <p className="text-[10px] text-slate-400 truncate">Monthly Goals</p>
-              </div>
-            </Link>
+                      {/* 4 Metric Boxes Inside Each Branch Card */}
+                      <div className="p-4 space-y-2.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Box 1: Patients Today */}
+                          <div className="bg-sky-50/70 p-2.5 rounded-xl border border-sky-100 flex flex-col justify-between">
+                            <span className="text-[9.5px] font-extrabold text-sky-700 uppercase tracking-wide">
+                              Today Patients
+                            </span>
+                            <div className="flex items-baseline gap-1 mt-1">
+                              <Users className="w-3.5 h-3.5 text-[#0284c7]" />
+                              <span className="text-lg font-black text-slate-900">
+                                {b.todayPatients}
+                              </span>
+                            </div>
+                          </div>
 
-            <Link
-              href="/hr/leave-requests"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-rose-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center shrink-0">
-                <CalendarX className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-rose-700">Leaves</p>
-                <p className="text-[10px] text-slate-400 truncate">Approvals</p>
-              </div>
-            </Link>
+                          {/* Box 2: Revenue Today */}
+                          <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-100 flex flex-col justify-between">
+                            <span className="text-[9.5px] font-extrabold text-emerald-700 uppercase tracking-wide">
+                              Today Revenue
+                            </span>
+                            <div className="flex items-baseline gap-0.5 mt-1">
+                              <span className="text-[11px] font-bold text-emerald-600">₹</span>
+                              <span className="text-lg font-black text-slate-900 truncate">
+                                {b.todayRevenue.toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-            <Link
-              href="/hr/branch-management"
-              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-xs transition group flex items-center gap-2.5"
-            >
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-700">Branches</p>
-                <p className="text-[10px] text-slate-400 truncate">Operations</p>
-              </div>
-            </Link>
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Box 3: Present Staff */}
+                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex flex-col justify-between">
+                            <span className="text-[9.5px] font-extrabold text-slate-600 uppercase tracking-wide">
+                              Present Members
+                            </span>
+                            <div className="flex items-baseline gap-1 mt-1">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                              <span className="text-lg font-black text-slate-900">
+                                {b.presentStaff}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-semibold">
+                                / {b.totalStaff}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Box 4: Staff on Leave */}
+                          <div className="bg-rose-50/70 p-2.5 rounded-xl border border-rose-100 flex flex-col justify-between">
+                            <span className="text-[9.5px] font-extrabold text-rose-700 uppercase tracking-wide">
+                              Staff on Leave
+                            </span>
+                            <div className="flex items-baseline gap-1 mt-1">
+                              <CalendarX className="w-3.5 h-3.5 text-rose-600" />
+                              <span className="text-lg font-black text-rose-900">
+                                {b.leaveStaff}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Footer: Quick filter punch timings table below */}
+                      <div className="px-4 py-2.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isCurrentFilter) {
+                              setSelectedBranch("all");
+                            } else {
+                              setSelectedBranch(b.shortName);
+                            }
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-bold text-[#0284c7] hover:bg-sky-100/60 transition-colors cursor-pointer"
+                        >
+                          <span>{isCurrentFilter ? "Showing in Table Below ✓" : "View Punch Timings"}</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
-          {/* Section 1: Branch-Wise Real-Time Operations */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                  Branch-Wise Real-Time Operations
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Live snapshot of OPD footfalls, collections, and on-duty doctors &amp; staff.
-                </p>
-              </div>
-              <Link
-                href="/hr/branch-management"
-                className="text-xs font-bold text-[#0284c7] hover:underline flex items-center gap-1"
-              >
-                <span>Manage Branches</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {branches.map((b) => (
-                <div
-                  key={b.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 p-4.5 shadow-xs hover:border-slate-300 transition space-y-3.5"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] font-black text-sky-700 uppercase bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
-                        {b.shortName}
-                      </span>
-                      <h4 className="text-sm font-extrabold text-slate-900 mt-1">{b.name}</h4>
-                    </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-50"></span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 text-xs">
-                    <div className="bg-slate-50 p-2 rounded-xl">
-                      <p className="text-[9.5px] font-bold text-slate-400 uppercase">Patients</p>
-                      <p className="text-base font-black text-slate-800 mt-0.5">
-                        {b.todayPatients}{" "}
-                        <span className="text-[10px] font-semibold text-slate-400">today</span>
-                      </p>
-                    </div>
-
-                    <div className="bg-slate-50 p-2 rounded-xl">
-                      <p className="text-[9.5px] font-bold text-slate-400 uppercase">Revenue</p>
-                      <p className="text-base font-black text-emerald-700 mt-0.5">
-                        ₹{b.todayRevenue.toLocaleString("en-IN")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs text-slate-600 pt-1">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-slate-500">Staff Attendance:</span>
-                      <span className="font-bold text-slate-900">
-                        <span className="text-emerald-600">{b.presentStaff} Present</span>
-                        {b.leaveStaff > 0 && (
-                          <span className="text-rose-600 ml-1">/ {b.leaveStaff} Leave</span>
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
-                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">{b.phone}</span>
-                    </div>
-                  </div>
+          {/* =============================================================== */}
+          {/* 2. TODAY'S ALL BRANCHES STAFF PUNCH-IN & PUNCH-OUT TIMINGS     */}
+          {/* =============================================================== */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden pt-1">
+            {/* Table Header & Controls */}
+            <div className="p-5 border-b border-slate-200/80 bg-white space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                    <span>⏱️</span>
+                    <span>Today&apos;s Staff Punch-In &amp; Punch-Out Timings</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    All branches biometric check-in log: actual punch-in and punch-out time recorded today.
+                  </p>
                 </div>
-              ))}
-            </div>
-          </section>
 
-          {/* Section 2: Today's Staff Punch-In & Punch-Out Timings */}
-          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[#0284c7]" />
-                  Today&apos;s Staff Punch-In &amp; Punch-Out Timings
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Live daily attendance ledger, punctuality status, and clinic shift hours.
-                </p>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    {filteredAttendance.length} Records
+                  </span>
+                </div>
               </div>
 
-              {/* Filters */}
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Filter & Search Bar */}
+              <div className="flex flex-wrap items-center gap-3">
                 {/* Search */}
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
+                    placeholder="Search staff name or role..."
                     value={searchStaff}
                     onChange={(e) => setSearchStaff(e.target.value)}
-                    placeholder="Search staff..."
-                    className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0284c7] w-40"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20"
                   />
                 </div>
 
-                {/* Branch Dropdown */}
-                <select
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none cursor-pointer"
-                >
-                  <option value="all">All Branches</option>
-                  <option value="KPHB">KPHB Main</option>
-                  <option value="Chandanagar">Chandanagar</option>
-                  <option value="Dilsukhnagar">Dilsukhnagar</option>
-                  <option value="Nallagandla">Nallagandla</option>
-                </select>
+                {/* Branch Quick Pills */}
+                <div className="inline-flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/60 flex-wrap gap-1">
+                  <button
+                    onClick={() => setSelectedBranch("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      selectedBranch === "all"
+                        ? "bg-white text-[#0284c7] shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    All Branches
+                  </button>
+                  {branches.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setSelectedBranch(b.shortName)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        selectedBranch.toLowerCase() === b.shortName.toLowerCase()
+                          ? "bg-white text-[#0284c7] shadow-xs"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {b.shortName}
+                    </button>
+                  ))}
+                </div>
 
-                {/* Status Filter */}
+                {/* Status Dropdown Filter */}
                 <select
                   value={selectedStatus}
                   onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none cursor-pointer"
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20"
                 >
                   <option value="all">All Status</option>
-                  <option value="Present">Present Today</option>
-                  <option value="Late">Late Arrival</option>
-                  <option value="Leave">On Leave / Absent</option>
+                  <option value="in_clinic">In Clinic (Active)</option>
+                  <option value="present">Present (Completed)</option>
+                  <option value="late">Late Arrival</option>
+                  <option value="leave">On Leave</option>
+                  <option value="absent">Not Punched In</option>
                 </select>
+
+                {/* Reset Filters */}
+                {(searchStaff || selectedBranch !== "all" || selectedStatus !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearchStaff("");
+                      setSelectedBranch("all");
+                      setSelectedStatus("all");
+                    }}
+                    className="text-xs font-bold text-rose-600 hover:underline px-2"
+                  >
+                    Clear Filters
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Attendance Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/75 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    <th className="py-2.5 px-4">Staff Member</th>
-                    <th className="py-2.5 px-4">Role</th>
-                    <th className="py-2.5 px-4">Branch</th>
-                    <th className="py-2.5 px-4">Punch In</th>
-                    <th className="py-2.5 px-4">Punch Out</th>
-                    <th className="py-2.5 px-4">Working Hours</th>
-                    <th className="py-2.5 px-4 text-right">Status</th>
+                <thead className="bg-[#f8fafc] border-b border-slate-200/80 text-[11px] font-bold text-slate-700 tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3.5">STAFF NAME</th>
+                    <th className="px-6 py-3.5">BRANCH</th>
+                    <th className="px-6 py-3.5">TODAY PUNCH IN</th>
+                    <th className="px-6 py-3.5">TODAY PUNCH OUT</th>
+                    <th className="px-6 py-3.5">SHIFT DURATION</th>
+                    <th className="px-6 py-3.5 text-center">STATUS</th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-slate-100">
-                  {filteredAttendance.length > 0 ? (
-                    filteredAttendance.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/60 transition">
-                        <td className="py-2.5 px-4">
-                          <div className="font-extrabold text-slate-900">{item.staffName}</div>
-                          <span className="text-[10px] text-slate-400 font-mono">{item.staffId}</span>
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-700 font-medium">{item.role}</td>
-                        <td className="py-2.5 px-4 text-slate-700 font-semibold">{item.branch}</td>
-                        <td className="py-2.5 px-4 font-mono font-bold text-slate-800">
-                          {item.punchInTime || <span className="text-slate-400 font-normal">--:--</span>}
-                        </td>
-                        <td className="py-2.5 px-4 font-mono font-bold text-slate-800">
-                          {item.punchOutTime || <span className="text-slate-400 font-normal">--:--</span>}
-                        </td>
-                        <td className="py-2.5 px-4 font-semibold text-slate-600">
-                          {item.workingHours || "--"}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${item.status === "Present" || item.status === "In Clinic"
-                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                : item.status === "Late"
-                                  ? "bg-amber-100 text-amber-800 border border-amber-300"
-                                  : "bg-rose-100 text-rose-800 border border-rose-300"
-                              }`}
-                          >
-                            {item.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
+                  {loading ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400">
-                        No staff attendance records matched the filter criteria.
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        Loading today&apos;s punch records...
                       </td>
                     </tr>
+                  ) : filteredAttendance.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        No staff punch records found for the selected criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAttendance.map((item) => {
+                      const isInClinic = item.status === "In Clinic";
+                      const isLate = item.status === "Late";
+                      const isOnLeave = item.status === "On Leave";
+                      const isAbsent = item.status === "Absent";
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          {/* 1. STAFF NAME & ROLE */}
+                          <td className="px-6 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-xs">
+                                {item.staffName}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  item.role === "Doctor"
+                                    ? "bg-slate-100 text-slate-800 border border-slate-300"
+                                    : item.role === "HR Staff"
+                                    ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                    : "bg-sky-50 text-[#0284c7] border border-sky-200"
+                                }`}
+                              >
+                                {item.role}
+                              </span>
+                            </div>
+                            {item.punchInLocation && (
+                              <p className="text-[10.5px] text-slate-400 mt-0.5 font-medium">
+                                📍 {item.punchInLocation}
+                              </p>
+                            )}
+                          </td>
+
+                          {/* 2. BRANCH */}
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            <span className="font-bold text-slate-800 text-xs">
+                              {cleanBranch(item.branch)}
+                            </span>
+                          </td>
+
+                          {/* 3. TODAY PUNCH IN */}
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            {item.punchInTime ? (
+                              <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                <span className="text-emerald-500">▶</span>
+                                <span>{item.punchInTime}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            )}
+                          </td>
+
+                          {/* 4. TODAY PUNCH OUT */}
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            {item.punchOutTime ? (
+                              <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                                <span className="text-rose-500">⏹</span>
+                                <span>{item.punchOutTime}</span>
+                              </div>
+                            ) : isInClinic ? (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10.5px] font-extrabold border border-emerald-300">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span>In Clinic Now</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-medium text-xs">-</span>
+                            )}
+                          </td>
+
+                          {/* 5. SHIFT DURATION */}
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            <span className="font-semibold text-slate-700 text-xs">
+                              {item.workingHours}
+                            </span>
+                          </td>
+
+                          {/* 6. STATUS */}
+                          <td className="px-6 py-3.5 text-center whitespace-nowrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-extrabold ${
+                                isInClinic
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : isLate
+                                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                  : isOnLeave
+                                  ? "bg-purple-100 text-purple-800 border border-purple-300"
+                                  : isAbsent
+                                  ? "bg-slate-100 text-slate-600 border border-slate-200"
+                                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              }`}
+                            >
+                              {isInClinic && <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>}
+                              <span>{item.status}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
         </main>
       </div>
     </div>
