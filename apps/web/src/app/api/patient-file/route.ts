@@ -27,14 +27,41 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Patient record not found" }, { status: 404 });
     }
 
-    // Get previous visits for THIS specific patient profile only (isolated by registrationId/name, NOT shared by phone)
+    // Get all visits for THIS specific patient profile only (isolated by registrationId/name, NOT shared by phone)
     const all = await appointmentService.getAppointments();
-    const history = all.filter(
-      (a) =>
-        a.id !== appt.id &&
-        !a.isDeleted &&
-        matchPatientProfile(a, appt)
+    const allPatientVisits = all.filter(
+      (a) => !a.isDeleted && matchPatientProfile(a, appt)
     );
+
+    // Compute total paid across all visits of this patient profile
+    let totalLifetimePaid = 0;
+    allPatientVisits.forEach((v) => {
+      const isPaid = Boolean(v.isFeeCollected || v.paidAt || v.status === "COMPLETED");
+      let paidForVisit = 0;
+      if (typeof v.totalPaid === "number" && v.totalPaid > 0) {
+        paidForVisit = v.totalPaid;
+      } else if (isPaid) {
+        const due = typeof v.totalAmountDue === "number" && v.totalAmountDue > 0
+          ? v.totalAmountDue
+          : (v.consultationFee || 0) + (v.medicineFee || 0) + (v.dietPlanFee || 0);
+        const discount = v.discountApproved || v.discount || 0;
+        const payLater = v.payLaterAmount || 0;
+        paidForVisit = Math.max(0, due - discount - payLater);
+      }
+      if (v.previousDuePaid && v.previousDuePaid > 0) {
+        paidForVisit += v.previousDuePaid;
+      }
+      totalLifetimePaid += paidForVisit;
+    });
+
+    // History visits: include previous visits, plus current appointment if it already has prescriptions or fees
+    const historyVisits = allPatientVisits
+      .filter((a) => a.id !== appt.id || (a.prescriptionImages && a.prescriptionImages.length > 0) || a.isFeeCollected || a.status === "COMPLETED" || (typeof a.totalPaid === "number" && a.totalPaid > 0))
+      .sort((a, b) => {
+        const dtA = a.appointmentDate || a.createdAt || "";
+        const dtB = b.appointmentDate || b.createdAt || "";
+        return dtB.localeCompare(dtA);
+      });
 
     const activePkg = await packageService.getPackageByProfile(appt.registrationId || appt.phone, appt.patientName);
 
@@ -43,20 +70,55 @@ export async function GET(req: NextRequest) {
       patientFile: {
         ...appt,
         followUpDate: appt.followUpDate || (appt as any).activeFollowUpDate || "",
-        totalVisits: history.length + 1,
-        totalPaid: history.reduce((sum, h) => sum + (h.consultationFee || 0), 0) + (appt.consultationFee || 0),
+        totalVisits: allPatientVisits.length,
+        totalPaid: totalLifetimePaid,
         activePackage: activePkg || null,
         hasPackage: !!activePkg,
         packageName: activePkg?.packageName || (appt as any).packageName || "",
-        history: history.map((h) => ({
-          id: h.id,
-          date: h.appointmentDate,
-          doctorName: h.doctorName,
-          status: h.status,
-          diagnosisNotes: h.diagnosisNotes || h.notes,
-          consultationFee: h.consultationFee || 0,
-          prescriptionImages: h.prescriptionImages || [],
-        })),
+        history: historyVisits.map((h) => {
+          const isPaid = Boolean(h.isFeeCollected || h.paidAt || h.status === "COMPLETED");
+          const consultationFee = h.consultationFee || 0;
+          const medicineFee = h.medicineFee || 0;
+          const dietPlanFee = h.dietPlanFee || 0;
+          const discount = h.discountApproved || h.discount || 0;
+          const totalAmountDue = typeof h.totalAmountDue === "number" && h.totalAmountDue > 0
+            ? h.totalAmountDue
+            : consultationFee + medicineFee + dietPlanFee;
+          const totalPaid = typeof h.totalPaid === "number" && h.totalPaid > 0
+            ? h.totalPaid
+            : isPaid
+            ? Math.max(0, totalAmountDue - discount - (h.payLaterAmount || 0))
+            : 0;
+
+          return {
+            id: h.id,
+            isCurrent: h.id === appt.id,
+            token: h.token || "",
+            date: h.appointmentDate,
+            timeSlot: h.timeSlot || "",
+            doctorName: h.doctorName || "",
+            branch: h.branch || "",
+            status: h.status,
+            isFeeCollected: isPaid,
+            diagnosisNotes: h.diagnosisNotes || h.notes || "",
+            consultationFee,
+            medicineFee,
+            medicinesList: h.medicinesList || [],
+            medicineDuration: h.medicineDuration || "",
+            dietPlanFee,
+            discount,
+            totalAmountDue,
+            totalPaid,
+            payLaterAmount: h.payLaterAmount || 0,
+            pendingBalance: h.pendingBalance || 0,
+            paymentMethod: h.paymentMethod || (isPaid ? "CASH" : ""),
+            invoiceId: h.invoiceId || "",
+            paidAt: h.paidAt || "",
+            followUpDate: h.followUpDate || "",
+            followUpInterval: h.followUpInterval || "",
+            prescriptionImages: h.prescriptionImages || [],
+          };
+        }),
       },
     });
   } catch (error: any) {
@@ -72,6 +134,7 @@ export async function POST(req: NextRequest) {
     const {
       id,
       diagnosisNotes,
+      prescriptionText,
       prescriptionImages,
       followUpInterval,
       followUpDate,
@@ -85,6 +148,7 @@ export async function POST(req: NextRequest) {
     }
     const updated = await appointmentService.updatePatientFile(id, {
       diagnosisNotes,
+      prescriptionText,
       prescriptionImages,
       followUpInterval,
       followUpDate,

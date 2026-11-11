@@ -87,6 +87,7 @@ export interface MedicalRequestItem {
   totalAmount: number;
   medicines: MedicineItem[];
   deliveryAddress?: string;
+  notes?: string;
   status: "pending" | "completed" | "dispatched";
   createdAt: string;
 }
@@ -112,6 +113,7 @@ export default function MedicalRequestsScreen() {
   const [medicines, setMedicines] = useState<MedicineItem[]>([
     { id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 },
   ]);
+  const [notes, setNotes] = useState("");
   const [isSharing, setIsSharing] = useState(false);
 
   // Share Popup Modal State (WhatsApp & PDF)
@@ -124,6 +126,7 @@ export default function MedicalRequestsScreen() {
     duration: string;
     totalAmount: number;
     medicines: MedicineItem[];
+    notes?: string;
   } | null>(null);
   const [whatsappPhone, setWhatsappPhone] = useState("");
 
@@ -221,6 +224,7 @@ export default function MedicalRequestsScreen() {
     setDuration("1 Month");
     setTotalAmount(0);
     setMedicines([{ id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 }]);
+    setNotes("");
   };
 
   // SHARE MEDICAL REQUEST ACTION (No mandatory DB save needed, directly prepares instant share)
@@ -258,8 +262,7 @@ export default function MedicalRequestsScreen() {
       return;
     }
 
-    // Open share popup modal directly with prefilled details
-    setSharePopupData({
+    const payload = {
       patientName: patientName.trim(),
       phone: cleanPhone.slice(-10),
       age: age.trim() || undefined,
@@ -268,7 +271,24 @@ export default function MedicalRequestsScreen() {
       duration,
       totalAmount: finalTotal,
       medicines: validMeds,
-    });
+      notes: notes.trim() || undefined,
+    };
+
+    // Save to DB in background
+    apiFetch("/reception/medical-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((res: any) => {
+        if (res?.success) {
+          fetchRequests();
+        }
+      })
+      .catch((err) => console.warn("Could not save medical request to DB on mobile:", err));
+
+    // Open share popup modal directly with prefilled details
+    setSharePopupData(payload);
     setWhatsappPhone(cleanPhone.slice(-10));
   };
 
@@ -285,6 +305,10 @@ export default function MedicalRequestsScreen() {
       .map((m, i) => `  ${i + 1}. *${m.name}* (${m.type || "Pills"})\n     Dosage: ${m.timing}`)
       .join("\n\n");
 
+    const notesBlock = sharePopupData.notes
+      ? `*Clinical Notes / Instructions:*\n${sharePopupData.notes}\n\n--------------------------------\n`
+      : "";
+
     const text = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY CLINICS*\n` +
       `*Official Medical Request & Remedy Slip*\n` +
@@ -295,6 +319,7 @@ export default function MedicalRequestsScreen() {
       `*Course Duration:* ${sharePopupData.duration}\n` +
       `*Total Medicine Fee:* ₹${Number(sharePopupData.totalAmount || 0).toFixed(2)}\n` +
       `--------------------------------\n` +
+      `${notesBlock}` +
       `*Prescribed Remedies:*\n\n${medsList}\n\n` +
       `--------------------------------\n` +
       `Spiritual Homeopathy Clinics\nHelpline: 9030176176 | spiritualhomeoclinic.com`
@@ -317,6 +342,7 @@ export default function MedicalRequestsScreen() {
       duration: sharePopupData.duration,
       totalAmount: sharePopupData.totalAmount,
       medicines: sharePopupData.medicines,
+      notes: sharePopupData.notes,
     });
   };
 
@@ -331,6 +357,7 @@ export default function MedicalRequestsScreen() {
       duration: sharePopupData.duration,
       totalAmount: sharePopupData.totalAmount,
       medicines: sharePopupData.medicines,
+      notes: sharePopupData.notes,
     });
   };
 
@@ -467,6 +494,13 @@ export default function MedicalRequestsScreen() {
                         )}
                       </View>
                     ))}
+                    {item.notes ? (
+                      <View style={{ marginTop: 6, backgroundColor: "#f0f9ff", padding: 6, borderRadius: 6, borderLeftWidth: 2, borderLeftColor: "#0284c7" }}>
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#0284c7" }}>
+                          Notes: <Text style={{ fontWeight: "500", color: "#334155" }}>{item.notes}</Text>
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* Card Footer */}
@@ -476,6 +510,27 @@ export default function MedicalRequestsScreen() {
                     </Text>
 
                     <View style={styles.actionsRow}>
+                      <TouchableOpacity
+                        style={styles.cardPdfBtn}
+                        onPress={() => {
+                          setSharePopupData({
+                            patientName: item.patientName,
+                            gender: item.gender,
+                            phone: item.phone,
+                            age: item.age,
+                            branchName: item.branchName,
+                            duration: item.duration,
+                            totalAmount: item.totalAmount,
+                            medicines: item.medicines,
+                            notes: item.notes,
+                          });
+                          setWhatsappPhone(item.phone);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="document-text-outline" size={13} color="#0284c7" />
+                        <Text style={styles.cardPdfBtnText}>PDF</Text>
+                      </TouchableOpacity>
                       {isCompleted ? (
                         <View style={styles.completedBadgeBtn}>
                           <Ionicons name="checkmark-circle" size={14} color="#15803d" />
@@ -746,6 +801,28 @@ export default function MedicalRequestsScreen() {
                   </View>
                 ))}
               </View>
+
+              {/* Step 3: Clinical Notes / Special Instructions */}
+              <View style={styles.formCard}>
+                <View style={styles.formSectionHeader}>
+                  <View style={[styles.stepNumBadge, { backgroundColor: "#0284c7" }]}>
+                    <Text style={styles.stepNumText}>3</Text>
+                  </View>
+                  <Text style={styles.formSectionTitle}>Clinical Notes / Instructions</Text>
+                </View>
+                <TextInput
+                  style={[
+                    styles.inputBox,
+                    { height: 75, textAlignVertical: "top", paddingTop: 8, paddingBottom: 8 },
+                  ]}
+                  placeholder="Enter clinical notes, dietary instructions, or special precautions..."
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  numberOfLines={3}
+                  value={notes}
+                  onChangeText={setNotes}
+                />
+              </View>
             </ScrollView>
 
             {/* Bottom Footer Bar */}
@@ -871,6 +948,17 @@ export default function MedicalRequestsScreen() {
                     ))}
                   </View>
 
+                  {sharePopupData?.notes ? (
+                    <View style={{ marginTop: 6, backgroundColor: "#f8fafc", padding: 6, borderRadius: 4, borderLeftWidth: 2, borderLeftColor: "#0284c7" }}>
+                      <Text style={{ fontSize: 7.5, fontWeight: "800", color: "#0284c7", textTransform: "uppercase", marginBottom: 2 }}>
+                        Clinical Notes / Instructions:
+                      </Text>
+                      <Text style={{ fontSize: 8, color: "#334155", lineHeight: 11 }}>
+                        {sharePopupData.notes}
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <Text style={styles.certDisclaimer}>
                     This is a computer-generated document. No physical signature required.
                   </Text>
@@ -879,8 +967,10 @@ export default function MedicalRequestsScreen() {
                 {/* Bottom Green Footer */}
                 <View style={styles.certBottomBanner}>
                   <Text style={styles.certFooterText}>
-                    📞 Reception: {getBranchPhone(sharePopupData?.branchName || "")}
+                    📞 {getBranchPhone(sharePopupData?.branchName || "")}
                   </Text>
+                  <Text style={styles.certFooterText}>•</Text>
+                  <Text style={styles.certFooterText}>✉️ support@spiritualhomeo.com</Text>
                   <Text style={styles.certFooterText}>•</Text>
                   <Text style={styles.certFooterText} numberOfLines={1}>
                     📍 {sharePopupData?.branchName}
@@ -1324,6 +1414,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  cardPdfBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  cardPdfBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0284c7",
   },
   completedBadgeBtn: {
     flexDirection: "row",

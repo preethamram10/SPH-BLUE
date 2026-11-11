@@ -23,6 +23,7 @@ export interface MedicineRequest {
   totalAmount?: number;
   medicines: MedicineItem[];
   deliveryAddress?: string;
+  notes?: string;
 }
 
 // Branch phone directory mapping
@@ -81,13 +82,12 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         </td>
         <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0;">
           <div style="font-weight: 700; color: #0f172a; font-size: 13.5px;">${m.name || "-"}</div>
-          ${
-            m.amount && Number(m.amount) > 0
-              ? `<div style="font-size: 11px; color: #166534; font-weight: 700; margin-top: 2px;">Fee: ₹${Number(
-                  m.amount
-                ).toFixed(2)}</div>`
-              : ""
-          }
+          ${m.amount && Number(m.amount) > 0
+          ? `<div style="font-size: 11px; color: #166534; font-weight: 700; margin-top: 2px;">Fee: ₹${Number(
+            m.amount
+          ).toFixed(2)}</div>`
+          : ""
+        }
         </td>
         <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0; text-align: center;">
           <span style="background: #e0f2fe; color: #0284c7; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11.5px; display: inline-block; border: 1px solid #bae6fd;">
@@ -147,28 +147,24 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         </div>
         <div class="cert-title">TO WHOM SO EVER IT MAY CONCERN</div>
         <div class="cert-para">
-          THIS IS TO CERTIFY THAT <strong>${title} ${patUpper}</strong>${
-            ageVal ? ` AGED ABOUT <strong>${ageVal} YEARS</strong>,` : ""
-          } HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY (${branchDisplay}).
+          THIS IS TO CERTIFY THAT <strong>${title} ${patUpper}</strong>${ageVal ? ` AGED ABOUT <strong>${ageVal} YEARS</strong>,` : ""
+    } HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY (${branchDisplay}).
         </div>
         <div class="cert-para">
-          ${
-            cleanDuration
-              ? `<strong>${pronoun}</strong> NEEDED TO TAKE HOMEOPATHY MEDICINE FOR <strong>${cleanDuration} ${
-                  cleanDuration === "1" ? "MONTH" : "MONTHS"
-                }</strong>. `
-              : ""
-          }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
+          ${cleanDuration
+      ? `<strong>${pronoun}</strong> NEEDED TO TAKE HOMEOPATHY MEDICINE FOR <strong>${cleanDuration} ${cleanDuration === "1" ? "MONTH" : "MONTHS"
+      }</strong>. `
+      : ""
+    }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
         </div>
         <div class="med-heading-bar">
           <div class="med-heading">PRESCRIBED MEDICINES</div>
-          ${
-            totalAmt > 0
-              ? `<div style="font-weight: 800; color: #166534; font-size: 13px;">Total Medicine Fee: ₹${totalAmt.toFixed(
-                  2
-                )}</div>`
-              : ""
-          }
+          ${totalAmt > 0
+      ? `<div style="font-weight: 800; color: #166534; font-size: 13px;">Total Medicine Fee: ₹${totalAmt.toFixed(
+        2
+      )}</div>`
+      : ""
+    }
         </div>
         <table class="med-table">
           <thead>
@@ -181,13 +177,27 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
+        ${
+          req.notes && req.notes.trim()
+            ? `
+          <div style="margin-top: 18px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-left: 4px solid #1d8ecd; border-radius: 6px; padding: 10px 14px;">
+            <div style="font-weight: 800; font-size: 11px; color: #1d8ecd; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+              Clinical Notes / Special Instructions:
+            </div>
+            <div style="font-size: 12px; color: #334155; line-height: 1.5; font-weight: 500; white-space: pre-wrap;">
+              ${req.notes.trim()}
+            </div>
+          </div>
+        `
+            : ""
+        }
         <div class="disclaimer-text">
           This is a computer-generated document. No physical signature required.
         </div>
       </div>
       <div class="bottom-banner">
         <div class="footer-item">📞 Reception: ${branchPhone}</div>
-        <div class="footer-item">✉️ support@spiritualhomeoclinic.com</div>
+        <div class="footer-item">✉️ support@spiritualhomeo.com</div>
         <div class="footer-item">📍 ${branchDisplay}</div>
       </div>
     </body>
@@ -214,7 +224,7 @@ export const generateMedicineRequestPDF = async (req: MedicineRequest): Promise<
         if (targetFile.exists) {
           try {
             targetFile.delete();
-          } catch {}
+          } catch { }
         }
         targetFile.create();
         await targetFile.write(printResult.base64, { encoding: "base64" });
@@ -259,6 +269,7 @@ export const generateMedicineRequestPDF = async (req: MedicineRequest): Promise<
       const medsList = (req.medicines || [])
         .map((m, i) => `${i + 1}. ${m.name} (${m.type || "Pills"}) - ${m.timing}`)
         .join("\n");
+      const notesStr = req.notes?.trim() ? `Notes: ${req.notes.trim()}\n\n` : "";
       Share.share({
         title: `Medicine Certificate - ${req.patientName}`,
         message:
@@ -268,6 +279,7 @@ export const generateMedicineRequestPDF = async (req: MedicineRequest): Promise<
           `Branch: ${req.branchName}\n` +
           `Duration: ${req.duration}\n` +
           `Total Fee: ₹${req.totalAmount}\n\n` +
+          notesStr +
           `Prescribed Remedies:\n${medsList}\n\n` +
           `Helpline: ${getBranchPhone(req.branchName)}`,
       });

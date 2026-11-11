@@ -19,6 +19,7 @@ export interface MedicineRequest {
   totalAmount?: number;
   medicines: MedicineItem[];
   deliveryAddress?: string;
+  notes?: string;
 }
 
 // Branch phone directory mapping
@@ -79,13 +80,12 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         </td>
         <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0;">
           <div style="font-weight: 700; color: #0f172a; font-size: 13.5px;">${m.name || "-"}</div>
-          ${
-            m.amount && Number(m.amount) > 0
-              ? `<div style="font-size: 11px; color: #166534; font-weight: 700; margin-top: 2px;">Fee: ₹${Number(
-                  m.amount
-                ).toFixed(2)}</div>`
-              : ""
-          }
+          ${m.amount && Number(m.amount) > 0
+          ? `<div style="font-size: 11px; color: #166534; font-weight: 700; margin-top: 2px;">Fee: ₹${Number(
+            m.amount
+          ).toFixed(2)}</div>`
+          : ""
+        }
         </td>
         <td style="padding: 10px 14px; border-bottom: 1px solid #e2e8f0; text-align: center;">
           <span style="background: #e0f2fe; color: #0284c7; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 11.5px; display: inline-block; border: 1px solid #bae6fd;">
@@ -351,37 +351,33 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         </div>
 
         <div class="cert-para">
-          THIS IS TO CERTIFY THAT <strong>${title} ${patUpper}</strong>${
-            ageVal ? ` AGED ABOUT <strong>${ageVal} YEARS</strong>,` : ""
-          } HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY (${branchDisplay}).
+          THIS IS TO CERTIFY THAT <strong>${title} ${patUpper}</strong>${ageVal ? ` AGED ABOUT <strong>${ageVal} YEARS</strong>,` : ""
+    } HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY (${branchDisplay}).
         </div>
 
         <div class="cert-para">
-          ${
-            cleanDuration
-              ? `<strong>${pronoun}</strong> NEEDED TO TAKE HOMEOPATHY MEDICINE FOR <strong>${cleanDuration} ${
-                  cleanDuration === "1" ? "MONTH" : "MONTHS"
-                }</strong>. `
-              : ""
-          }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
+          ${cleanDuration
+      ? `<strong>${pronoun}</strong> NEEDED TO TAKE HOMEOPATHY MEDICINE FOR <strong>${cleanDuration} ${cleanDuration === "1" ? "MONTH" : "MONTHS"
+      }</strong>. `
+      : ""
+    }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
         </div>
 
         <!-- MEDICINE TABLE SECTION -->
         <div class="med-heading-bar">
           <div class="med-heading">PRESCRIBED MEDICINES</div>
-          ${
-            totalAmt > 0
-              ? `
+          ${totalAmt > 0
+      ? `
             <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 4px 12px; display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 11px; font-weight: 700; color: #166534; text-transform: uppercase;">Total Medicine Fee:</span>
               <span style="font-size: 14px; font-weight: 900; color: #15803d;">₹${totalAmt.toLocaleString(
-                "en-IN",
-                { minimumFractionDigits: 2 }
-              )}</span>
+        "en-IN",
+        { minimumFractionDigits: 2 }
+      )}</span>
             </div>
           `
-              : ""
-          }
+      : ""
+    }
         </div>
 
         <table class="med-table">
@@ -396,9 +392,8 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
           <tbody>
             ${rowsHtml}
           </tbody>
-          ${
-            totalAmt > 0
-              ? `
+          ${totalAmt > 0
+      ? `
             <tfoot>
               <tr style="background-color: #f8fafc; border-top: 2px solid #1d8ecd;">
                 <td colspan="3" style="padding: 10px 12px; text-align: right; font-weight: 800; font-size: 12px; color: #0f172a; text-transform: uppercase;">
@@ -410,9 +405,24 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
               </tr>
             </tfoot>
           `
-              : ""
-          }
+      : ""
+    }
         </table>
+
+        ${
+          req.notes && req.notes.trim()
+            ? `
+          <div style="margin-top: 20px; background: #f8fafc; border: 1.5px solid #e2e8f0; border-left: 4px solid #1d8ecd; border-radius: 8px; padding: 12px 16px;">
+            <div style="font-weight: 800; font-size: 11px; color: #1d8ecd; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">
+              Clinical Notes / Special Instructions:
+            </div>
+            <div style="font-size: 12.5px; color: #334155; line-height: 1.6; font-weight: 500; white-space: pre-wrap;">
+              ${req.notes.trim()}
+            </div>
+          </div>
+        `
+            : ""
+        }
 
         <div class="disclaimer-text">
           This is a computer-generated document. No physical signature required.
@@ -426,7 +436,7 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
         </div>
         <div class="footer-v-divider"></div>
         <div class="footer-item">
-          <span>✉️ support@spiritualhomeoclinic.com</span>
+          <span>✉️ support@spiritualhomeo.com</span>
         </div>
         <div class="footer-v-divider"></div>
         <div class="footer-item">

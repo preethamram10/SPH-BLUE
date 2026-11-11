@@ -51,6 +51,53 @@ export const resolvePrescriptionImageUrl = (url: string) => {
   return url;
 };
 
+export const POPULAR_HOMEOPATHY_REMEDIES = [
+  "Aconite Napellus",
+  "Allium Cepa",
+  "Antimonium Tart",
+  "Apis Mellifica",
+  "Arnica Montana",
+  "Arsenicum Album",
+  "Belladonna",
+  "Bryonia Alba",
+  "Calcarea Carbonica",
+  "Calcarea Fluorica",
+  "Calcarea Phosphorica",
+  "Carbo Vegetabilis",
+  "Causticum",
+  "Chamomilla",
+  "China Officinalis",
+  "Drosera",
+  "Dulcamara",
+  "Ferrum Phosphoricum",
+  "Gelsemium",
+  "Hepar Sulphuris",
+  "Hypericum Perforatum",
+  "Ignatia Amara",
+  "Ipecacuanha",
+  "Kali Bichromicum",
+  "Lachesis Mutus",
+  "Ledum Palustre",
+  "Lycopodium Clavatum",
+  "Magnesia Phosphorica",
+  "Mercurius Solubilis",
+  "Natrum Muriaticum",
+  "Natrum Sulphuricum",
+  "Nux Vomica",
+  "Phosphorus",
+  "Plumbum Metallicum",
+  "Pulsatilla Nigricans",
+  "Rhus Toxicodendron",
+  "Ruta Graveolens",
+  "Sepia Officinalis",
+  "Silicea",
+  "Spongia Tosta",
+  "Staphysagria",
+  "Sulphur",
+  "Symphytum",
+  "Thuja Occidentalis",
+];
+
 interface PatientFileViewProps {
   role: "DOCTOR" | "RECEPTION";
   bottomNav?: React.ReactNode;
@@ -87,6 +134,13 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Form Fields & Prescriptions
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [prescriptionText, setPrescriptionText] = useState("");
+  const [isAddRemedyModalOpen, setIsAddRemedyModalOpen] = useState(false);
+  const [selectedRemedy, setSelectedRemedy] = useState("");
+  const [selectedPotency, setSelectedPotency] = useState("30C");
+  const [selectedForm, setSelectedForm] = useState("Pills");
+  const [selectedTiming, setSelectedTiming] = useState("M - N - N");
+  const [selectedFoodTiming, setSelectedFoodTiming] = useState("After Food");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -103,10 +157,14 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
 
-  const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months">("No Follow-up");
+  const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date" | string>("No Follow-up");
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [dietPlan, setDietPlan] = useState("");
+
+  // Calendar Modal State
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
 
   // History Tab: all | prescriptions | payments
   const [historyTab, setHistoryTab] = useState<"all" | "prescriptions" | "payments">("all");
@@ -150,8 +208,23 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             packageName: pf.packageName || "",
             visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
+            pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
           });
+
+          // Also check live pending balance by phone
+          const cleanPhone = (pf.phone || initialPhone || "").replace(/\D/g, "").slice(-10);
+          if (cleanPhone) {
+            apiFetch<any>(`/pay-later?phone=${cleanPhone}`)
+              .then((plData) => {
+                if (plData && plData.success && typeof plData.pendingTotal === "number" && plData.pendingTotal > 0) {
+                  setPatientData((prev: any) => ({ ...prev, pendingBalance: plData.pendingTotal }));
+                }
+              })
+              .catch(() => {});
+          }
+
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
+          if (pf.prescriptionText) setPrescriptionText(pf.prescriptionText);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
@@ -232,13 +305,17 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     }
   };
 
-  // Follow-up Interval calculation (1 Month, 2 Months, 3 Months, 4 Months)
+  // Follow-up Interval calculation (1 Month, 2 Months, 3 Months, 4 Months, Custom Date)
   const handleSelectInterval = (
-    interval: "No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months"
+    interval: "No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date"
   ) => {
     setFollowUpInterval(interval);
     if (interval === "No Follow-up") {
       setFollowUpDate("");
+      return;
+    }
+    if (interval === "Custom Date") {
+      setIsCalendarModalOpen(true);
       return;
     }
     const daysToAdd =
@@ -254,6 +331,70 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     const m = String(targetDate.getMonth() + 1).padStart(2, "0");
     const y = targetDate.getFullYear();
     setFollowUpDate(`${d}-${m}-${y}`);
+  };
+
+  const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const handlePrevMonth = () => {
+    setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1));
+  };
+
+  const renderCalendarDays = () => {
+    const year = calendarViewDate.getFullYear();
+    const month = calendarViewDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    const days = [];
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<View key={`empty-${i}`} style={styles.calendarDayCell} />);
+    }
+
+    const today = new Date();
+    const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+    const [fDay, fMonth, fYear] = (followUpDate || "").split("-").map(Number);
+
+    for (let d = 1; d <= totalDays; d++) {
+      const isToday = isCurrentMonth && today.getDate() === d;
+      const isSelected = fYear === year && fMonth === month + 1 && fDay === d;
+
+      days.push(
+        <TouchableOpacity
+          key={`day-${d}`}
+          style={[
+            styles.calendarDayCell,
+            isToday && !isSelected && styles.calendarDayCellToday,
+            isSelected && styles.calendarDayCellActive,
+          ]}
+          onPress={() => {
+            const dayStr = String(d).padStart(2, "0");
+            const monthStr = String(month + 1).padStart(2, "0");
+            setFollowUpDate(`${dayStr}-${monthStr}-${year}`);
+            setFollowUpInterval("Custom Date");
+            setIsCalendarModalOpen(false);
+          }}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.calendarDayText,
+              isToday && !isSelected && styles.calendarDayTextToday,
+              isSelected && styles.calendarDayTextActive,
+            ]}
+          >
+            {d}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    return days;
   };
 
   // Helper: Upload to AWS S3 (Bucket: sph-prescription, Region: ap-south-1)
@@ -374,12 +515,26 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Send to Reception & Collect Fee (Core CTA)
   const handleSendToReception = async () => {
+    // 1. Mandatory Prescription check for OPD patients
+    const hasRxImages = uploadedImages.length > 0;
+    const hasRxText = Boolean(prescriptionText && prescriptionText.trim().length > 0);
+    const isOpd = patientData.consultationMode !== "ONLINE";
+
+    if (isOpd && !hasRxImages && !hasRxText) {
+      Alert.alert(
+        "Prescription Required",
+        "⚠️ Prescription is mandatory for OPD patients!\n\nPlease draw on the Digital Pad, capture a photo, or enter prescription remedies before sending to reception."
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const targetId = appointmentId || "temp-appt-id";
       const payload = {
         id: targetId,
         prescriptionImages: uploadedImages,
+        prescriptionText,
         followUpInterval,
         followUpDate,
         consultationFee: parseFloat(consultationFee) || 0,
@@ -508,10 +663,30 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                       <Text style={[styles.durationPillText, { color: "#ffffff", fontWeight: "900" }]}>PKG</Text>
                     </View>
                   )}
+                  {Number(patientData.pendingBalance) > 0 && (
+                    <View style={[styles.durationPill, { backgroundColor: "#ea580c", borderColor: "#c2410c" }]}>
+                      <Text style={[styles.durationPillText, { color: "#ffffff", fontWeight: "900" }]}>
+                        DUE: ₹{Number(patientData.pendingBalance).toLocaleString()}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
               <View style={styles.metaInfoList}>
+                {Number(patientData.pendingBalance) > 0 && (
+                  <View style={[styles.metaRow, { backgroundColor: "#fff7ed", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#fed7aa", marginBottom: 4 }]}>
+                    <Text style={styles.metaIcon}>⚠️</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.metaText, { color: "#c2410c", fontWeight: "800" }]}>
+                        Pending Due: ₹{Number(patientData.pendingBalance).toLocaleString()} (Pay Later)
+                      </Text>
+                      <Text style={{ fontSize: 9.5, color: "#ea580c" }}>
+                        Can be settled or added in Collect Fee
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 <View style={styles.metaRow}>
                   <Text style={styles.metaIcon}>📋</Text>
                   <Text style={styles.regIdHighlight}>Reg ID: {patientData.registrationId}</Text>
@@ -777,6 +952,29 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                   No prescription attached yet. Tap &quot;Digital Pad&quot; or &quot;Open Pad&quot; to draw.
                 </Text>
               )}
+
+              {/* Prescription Remedies & Text Instructions (M - N - N) */}
+              <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#f1f5f9" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={styles.fieldLabel}>Prescription Remedies & Notes</Text>
+                  <TouchableOpacity
+                    style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#f0f9ff", borderWidth: 1, borderColor: "#bae6fd", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+                    onPress={() => setIsAddRemedyModalOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={13} color="#0284c7" />
+                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#0284c7" }}>+ Add Remedy (M - N - N)</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={[styles.textInputArea, { minHeight: 70 }]}
+                  multiline
+                  placeholder="Type remedies, dosage, or tap '+ Add Remedy' to insert with timing (M - N - N)..."
+                  placeholderTextColor="#94a3b8"
+                  value={prescriptionText}
+                  onChangeText={setPrescriptionText}
+                />
+              </View>
             </View>
 
             {/* 5. Follow-up Recommendation Section (Matching Screenshot) */}
@@ -784,9 +982,9 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
               <Text style={styles.sectionCardTitle}>Follow-up Recommendation</Text>
               <Text style={styles.fieldLabel}>Follow-up Interval</Text>
 
-              {/* Interval Chips Row (1 Month, 2 Months, 3 Months, 4 Months) */}
+              {/* Interval Chips Row (1 Month, 2 Months, 3 Months, 4 Months, Custom Date) */}
               <View style={styles.intervalsRow}>
-                {(["No Follow-up", "1 Month", "2 Months", "3 Months", "4 Months"] as const).map((interval) => (
+                {(["No Follow-up", "1 Month", "2 Months", "3 Months", "4 Months", "Custom Date"] as const).map((interval) => (
                   <TouchableOpacity
                     key={interval}
                     style={[styles.intervalChip, followUpInterval === interval && styles.intervalChipActive]}
@@ -807,17 +1005,30 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
               {/* Preferred Follow-up Date */}
               <Text style={styles.fieldLabel}>Preferred Follow-up Date (DD-MM-YYYY)</Text>
-              <View style={styles.dateInputWrapper}>
-                <Ionicons name="calendar" size={16} color="#0284c7" />
+              <TouchableOpacity
+                style={styles.dateInputWrapper}
+                onPress={() => setIsCalendarModalOpen(true)}
+                activeOpacity={0.8}
+              >
+                <TouchableOpacity onPress={() => setIsCalendarModalOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="calendar" size={16} color="#0284c7" />
+                </TouchableOpacity>
                 <TextInput
                   style={styles.dateInputText}
                   placeholder="DD-MM-YYYY"
                   placeholderTextColor="#94a3b8"
                   value={followUpDate}
-                  onChangeText={setFollowUpDate}
+                  onChangeText={(val) => {
+                    setFollowUpDate(val);
+                    if (followUpInterval !== "Custom Date") {
+                      setFollowUpInterval("Custom Date");
+                    }
+                  }}
                 />
-                <Ionicons name="calendar-outline" size={16} color="#0284c7" />
-              </View>
+                <TouchableOpacity onPress={() => setIsCalendarModalOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="calendar-outline" size={16} color="#0284c7" />
+                </TouchableOpacity>
+              </TouchableOpacity>
             </View>
 
             {/* 6. Enter Amount Section (Optional for Doctor, Reception can Collect) */}
@@ -893,7 +1104,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                       historyTab === "prescriptions" && styles.historyTabPillTextActive,
                     ]}
                   >
-                    Prescriptions
+                    Prescriptions ({patientHistory.filter((h) => h.prescriptionImages && h.prescriptionImages.length > 0).length})
                   </Text>
                 </TouchableOpacity>
 
@@ -908,25 +1119,175 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                       historyTab === "payments" && styles.historyTabPillTextActive,
                     ]}
                   >
-                    Payments
+                    Payments ({patientHistory.filter((h) => h.isFeeCollected || (typeof h.totalPaid === "number" && h.totalPaid > 0) || (typeof h.totalAmountDue === "number" && h.totalAmountDue > 0)).length})
                   </Text>
                 </TouchableOpacity>
               </View>
 
               {/* History Content */}
-              {patientHistory.length === 0 ? (
-                <View style={styles.historyEmptyBox}>
-                  <Ionicons name="document-text-outline" size={30} color="#94a3b8" />
-                  <Text style={styles.historyEmptyText}>No previous visits recorded for this patient.</Text>
-                </View>
-              ) : (
-                patientHistory.map((h, i) => (
+              {(() => {
+                const items = historyTab === "prescriptions"
+                  ? patientHistory.filter((h) => h.prescriptionImages && h.prescriptionImages.length > 0)
+                  : historyTab === "payments"
+                  ? patientHistory.filter((h) => h.isFeeCollected || (typeof h.totalPaid === "number" && h.totalPaid > 0) || (typeof h.totalAmountDue === "number" && h.totalAmountDue > 0))
+                  : patientHistory;
+
+                if (items.length === 0) {
+                  return (
+                    <View style={styles.historyEmptyBox}>
+                      <Ionicons name="document-text-outline" size={30} color="#94a3b8" />
+                      <Text style={styles.historyEmptyText}>
+                        {historyTab === "prescriptions"
+                          ? "No prescription records found for this patient."
+                          : historyTab === "payments"
+                          ? "No payment records found for this patient."
+                          : "No previous visits recorded for this patient."}
+                      </Text>
+                    </View>
+                  );
+                }
+
+                if (historyTab === "prescriptions") {
+                  return items.map((h, i) => (
+                    <View key={h.id || i} style={styles.historyItemCard}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={styles.historyItemDate}>{h.date} {h.timeSlot ? `• ${h.timeSlot}` : ""}</Text>
+                        <View style={styles.badgePrescriptionCount}>
+                          <Text style={styles.badgePrescriptionText}>{h.prescriptionImages?.length || 0} Images</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.historyItemDoc}>{h.doctorName} • {h.branch}</Text>
+                      {h.diagnosisNotes ? (
+                        <Text style={styles.historyItemNotes} numberOfLines={2}>
+                          Notes: {h.diagnosisNotes}
+                        </Text>
+                      ) : null}
+
+                      {/* Prescriptions Gallery */}
+                      {h.prescriptionImages && h.prescriptionImages.length > 0 && (
+                        <View style={{ marginTop: 8 }}>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                            {h.prescriptionImages.map((rxUrl: string, rIdx: number) => (
+                              <TouchableOpacity
+                                key={rIdx}
+                                style={styles.rxThumbCard}
+                                onPress={() => {
+                                  setUploadedImages(h.prescriptionImages);
+                                  setViewerInitialIndex(rIdx);
+                                  setIsViewerOpen(true);
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <ExpoImage
+                                  source={resolvePrescriptionImageUrl(rxUrl)}
+                                  style={{ width: "100%", height: "100%" }}
+                                  contentFit="cover"
+                                />
+                                <View style={styles.rxThumbBadge}>
+                                  <Text style={styles.rxThumbBadgeText}>Rx {rIdx + 1}</Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+                  ));
+                }
+
+                if (historyTab === "payments") {
+                  return items.map((h, i) => (
+                    <View key={h.id || i} style={[styles.historyItemCard, { borderColor: "#a7f3d0", backgroundColor: "#f0fdf4" }]}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <Text style={styles.historyItemDate}>{h.date}</Text>
+                            {h.invoiceId ? (
+                              <View style={styles.invoicePill}>
+                                <Text style={styles.invoicePillText}>{h.invoiceId}</Text>
+                              </View>
+                            ) : null}
+                            {h.isCurrent ? (
+                              <View style={styles.currentVisitPill}>
+                                <Text style={styles.currentVisitPillText}>Current Visit</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={[styles.historyItemDoc, { marginTop: 2 }]}>{h.doctorName} • {h.branch}</Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ fontSize: 9, color: "#64748b", fontWeight: "600" }}>Total Paid</Text>
+                          <Text style={{ fontSize: 15, fontWeight: "900", color: "#16a34a" }}>
+                            ₹{h.totalPaid ?? (h.totalAmountDue || h.consultationFee || 0)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Payment Card Body */}
+                      <View style={styles.paymentReceiptBox}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <Text style={{ fontSize: 11, color: "#475569", fontWeight: "600" }}>Payment Mode</Text>
+                          <View style={styles.paymentModePill}>
+                            <Text style={styles.paymentModeText}>{h.paymentMethod || "CASH"}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.paymentGrid}>
+                          <View style={styles.paymentGridCol}>
+                            <Text style={styles.paymentGridLabel}>Consultation</Text>
+                            <Text style={styles.paymentGridVal}>₹{h.consultationFee || 0}</Text>
+                          </View>
+                          <View style={styles.paymentGridCol}>
+                            <Text style={styles.paymentGridLabel}>Medicine</Text>
+                            <Text style={styles.paymentGridVal}>₹{h.medicineFee || 0}</Text>
+                          </View>
+                          <View style={styles.paymentGridCol}>
+                            <Text style={styles.paymentGridLabel}>Discount</Text>
+                            <Text style={[styles.paymentGridVal, { color: "#e11d48" }]}>₹{h.discount || 0}</Text>
+                          </View>
+                          <View style={styles.paymentGridCol}>
+                            <Text style={styles.paymentGridLabel}>Total Due</Text>
+                            <Text style={styles.paymentGridVal}>₹{h.totalAmountDue || 0}</Text>
+                          </View>
+                        </View>
+
+                        {h.payLaterAmount > 0 && (
+                          <View style={styles.payLaterWarningBox}>
+                            <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>Pay Later (Pending):</Text>
+                            <Text style={{ fontSize: 11, fontWeight: "900", color: "#b45309" }}>₹{h.payLaterAmount}</Text>
+                          </View>
+                        )}
+
+                        {h.paidAt ? (
+                          <Text style={{ fontSize: 9, color: "#94a3b8", textAlign: "right", marginTop: 4 }}>
+                            Paid: {h.paidAt.replace("T", " ").slice(0, 16)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ));
+                }
+
+                // Default "all" tab
+                return items.map((h, i) => (
                   <View key={h.id || i} style={styles.historyItemCard}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                      <Text style={styles.historyItemDate}>{h.date}</Text>
-                      <Text style={styles.historyItemFee}>₹{h.consultationFee}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <Text style={styles.historyItemDate}>{h.date}</Text>
+                        {h.isCurrent ? (
+                          <View style={styles.currentVisitPill}>
+                            <Text style={styles.currentVisitPillText}>Current</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={styles.historyItemFee}>₹{h.totalPaid ?? (h.totalAmountDue || h.consultationFee || 0)}</Text>
+                        <Text style={[styles.historyStatusPill, h.isFeeCollected ? styles.historyStatusPaid : styles.historyStatusPending]}>
+                          {h.isFeeCollected ? "Paid" : h.status || "Pending"}
+                        </Text>
+                      </View>
                     </View>
-                    <Text style={styles.historyItemDoc}>{h.doctorName}</Text>
+                    <Text style={styles.historyItemDoc}>{h.doctorName} • {h.branch}</Text>
                     {h.diagnosisNotes ? (
                       <Text style={styles.historyItemNotes} numberOfLines={2}>
                         Notes: {h.diagnosisNotes}
@@ -943,16 +1304,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                           {h.prescriptionImages.map((rxUrl: string, rIdx: number) => (
                             <TouchableOpacity
                               key={rIdx}
-                              style={{
-                                width: 50,
-                                height: 50,
-                                borderRadius: 6,
-                                borderWidth: 1,
-                                borderColor: "#cbd5e1",
-                                overflow: "hidden",
-                                marginRight: 6,
-                                backgroundColor: "#f8fafc",
-                              }}
+                              style={styles.rxThumbCard}
                               onPress={() => {
                                 setUploadedImages(h.prescriptionImages);
                                 setViewerInitialIndex(rIdx);
@@ -965,26 +1317,31 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                                 style={{ width: "100%", height: "100%" }}
                                 contentFit="cover"
                               />
-                              <View
-                                style={{
-                                  position: "absolute",
-                                  bottom: 0,
-                                  right: 0,
-                                  backgroundColor: "rgba(15, 23, 42, 0.8)",
-                                  paddingHorizontal: 3,
-                                  borderTopLeftRadius: 4,
-                                }}
-                              >
-                                <Text style={{ color: "#ffffff", fontSize: 8, fontWeight: "bold" }}>Rx {rIdx + 1}</Text>
+                              <View style={styles.rxThumbBadge}>
+                                <Text style={styles.rxThumbBadgeText}>Rx {rIdx + 1}</Text>
                               </View>
                             </TouchableOpacity>
                           ))}
                         </ScrollView>
                       </View>
                     )}
+
+                    {/* Financial Summary */}
+                    <View style={styles.historyFeeSummaryRow}>
+                      <Text style={styles.historyFeeSummaryText}>Consultation: ₹{h.consultationFee || 0}</Text>
+                      {h.medicineFee > 0 && (
+                        <Text style={styles.historyFeeSummaryText}>Medicine: ₹{h.medicineFee}{h.medicineDuration ? ` (${h.medicineDuration})` : ""}</Text>
+                      )}
+                      {h.discount > 0 && (
+                        <Text style={[styles.historyFeeSummaryText, { color: "#e11d48" }]}>Disc: -₹{h.discount}</Text>
+                      )}
+                      {h.paymentMethod && (
+                        <Text style={styles.historyFeeSummaryText}>Mode: {h.paymentMethod}</Text>
+                      )}
+                    </View>
                   </View>
-                ))
-              )}
+                ));
+              })()}
             </View>
           </>
         )}
@@ -998,6 +1355,255 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         onClose={() => setIsDrawingModalOpen(false)}
         onSaveDrawing={handleSaveCanvasDrawing}
       />
+
+      {/* CALENDAR PICKER MODAL (FOLLOW-UP DATE) */}
+      <Modal
+        visible={isCalendarModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsCalendarModalOpen(false)}
+      >
+        <View style={styles.calendarModalOverlay}>
+          <View style={styles.calendarModalContent}>
+            {/* Header: Month & Year with Navigation */}
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity
+                style={styles.calendarNavBtn}
+                onPress={handlePrevMonth}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="chevron-back" size={18} color="#0f172a" />
+              </TouchableOpacity>
+
+              <Text style={styles.calendarMonthTitle}>
+                {MONTH_NAMES[calendarViewDate.getMonth()]} {calendarViewDate.getFullYear()}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.calendarNavBtn}
+                onPress={handleNextMonth}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="chevron-forward" size={18} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Days of week header */}
+            <View style={styles.calendarDaysOfWeekRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((dayName, idx) => (
+                <Text key={idx} style={styles.calendarDayOfWeekText}>
+                  {dayName}
+                </Text>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.calendarGrid}>
+              {renderCalendarDays()}
+            </View>
+
+            {/* Footer Actions */}
+            <View style={styles.calendarActionsRow}>
+              <TouchableOpacity
+                style={styles.calendarActionBtn}
+                onPress={() => {
+                  const today = new Date();
+                  const d = String(today.getDate()).padStart(2, "0");
+                  const m = String(today.getMonth() + 1).padStart(2, "0");
+                  const y = today.getFullYear();
+                  setFollowUpDate(`${d}-${m}-${y}`);
+                  setFollowUpInterval("Custom Date");
+                  setIsCalendarModalOpen(false);
+                }}
+              >
+                <Text style={styles.calendarActionText}>Today</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.calendarActionBtn, styles.calendarActionBtnPrimary]}
+                onPress={() => setIsCalendarModalOpen(false)}
+              >
+                <Text style={[styles.calendarActionText, styles.calendarActionTextPrimary]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ADD REMEDY / SCRIPT MODAL (M - N - N) */}
+      <Modal
+        visible={isAddRemedyModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsAddRemedyModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "center", alignItems: "center", padding: 16 }}
+        >
+          <View style={{ backgroundColor: "#ffffff", borderRadius: 18, width: "100%", maxWidth: 360, padding: 18, maxHeight: "90%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 16 }}>💊</Text>
+                <Text style={{ fontSize: 14, fontWeight: "900", color: "#0f172a" }}>Add Remedy to Prescription</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsAddRemedyModalOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Remedy Input */}
+              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>
+                Remedy / Medicine Name <Text style={{ color: "#ef4444" }}>*</Text>
+              </Text>
+              <TextInput
+                style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, fontWeight: "700", color: "#0f172a", marginBottom: 8 }}
+                placeholder="Type remedy (e.g. Arnica Montana)..."
+                placeholderTextColor="#94a3b8"
+                value={selectedRemedy}
+                onChangeText={setSelectedRemedy}
+              />
+
+              {/* Popular quick chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
+                {POPULAR_HOMEOPATHY_REMEDIES.slice(0, 10).map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => setSelectedRemedy(r)}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: selectedRemedy === r ? "#0284c7" : "#cbd5e1",
+                      backgroundColor: selectedRemedy === r ? "#e0f2fe" : "#ffffff",
+                      marginRight: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: selectedRemedy === r ? "#0284c7" : "#475569" }}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Potency */}
+              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Potency</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
+                {["30C", "200C", "1M", "10M", "6X", "12X", "Q / Tincture"].map((p) => (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setSelectedPotency(p)}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: selectedPotency === p ? "#0284c7" : "#cbd5e1",
+                      backgroundColor: selectedPotency === p ? "#0284c7" : "#ffffff",
+                      marginRight: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: selectedPotency === p ? "#ffffff" : "#475569" }}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Form */}
+              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Form</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
+                {["Pills", "Drops", "Dilution", "Syrup", "Tablet"].map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    onPress={() => setSelectedForm(f)}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: selectedForm === f ? "#0284c7" : "#cbd5e1",
+                      backgroundColor: selectedForm === f ? "#0284c7" : "#ffffff",
+                      marginRight: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: selectedForm === f ? "#ffffff" : "#475569" }}>{f}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Timing (M - N - N, M - A - N, etc.) */}
+              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>
+                Dosage Timing <Text style={{ color: "#ef4444" }}>*</Text>
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {["M - N - N", "M - A - N", "M - N", "1 - 0 - 1", "1 - 1 - 1", "M only", "N only", "SOS"].map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => setSelectedTiming(t)}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: selectedTiming === t ? "#0284c7" : "#cbd5e1",
+                      backgroundColor: selectedTiming === t ? "#0284c7" : "#ffffff",
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: "800", color: selectedTiming === t ? "#ffffff" : "#334155" }}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Food relation */}
+              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Food Relation</Text>
+              <View style={{ flexDirection: "row", gap: 6, marginBottom: 14 }}>
+                {["After Food", "Before Food", "Empty Stomach"].map((food) => (
+                  <TouchableOpacity
+                    key={food}
+                    onPress={() => setSelectedFoodTiming(food)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: selectedFoodTiming === food ? "#16a34a" : "#cbd5e1",
+                      backgroundColor: selectedFoodTiming === food ? "#16a34a" : "#ffffff",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: selectedFoodTiming === food ? "#ffffff" : "#475569" }}>{food}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: "#f1f5f9", paddingTop: 10 }}>
+              <TouchableOpacity
+                onPress={() => setIsAddRemedyModalOpen(false)}
+                style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#64748b" }}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (!selectedRemedy.trim()) {
+                    Alert.alert("Required", "Please select or enter a remedy name.");
+                    return;
+                  }
+                  const line = `• ${selectedRemedy.trim()} ${selectedPotency} (${selectedForm}) — Timing: ${selectedTiming} (${selectedFoodTiming})`;
+                  setPrescriptionText((prev) => (prev ? `${prev}\n${line}` : line));
+                  setIsAddRemedyModalOpen(false);
+                  setSelectedRemedy("");
+                }}
+                style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: "#0284c7" }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>+ Insert into Rx</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* FULL-SCREEN INTERACTIVE PRESCRIPTION VIEWER (SLIDER, ROTATE, ZOOM) */}
       <PrescriptionViewerModal
@@ -1910,6 +2516,264 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#475569",
     marginTop: 2,
+  },
+  rxThumbCard: {
+    width: 50,
+    height: 50,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    overflow: "hidden",
+    marginRight: 6,
+    backgroundColor: "#f8fafc",
+  },
+  rxThumbBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
+    paddingHorizontal: 3,
+    borderTopLeftRadius: 4,
+  },
+  rxThumbBadgeText: {
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: "bold",
+  },
+  badgePrescriptionCount: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  badgePrescriptionText: {
+    color: "#0369a1",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  invoicePill: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  invoicePillText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  currentVisitPill: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  currentVisitPillText: {
+    fontSize: 8.5,
+    fontWeight: "800",
+    color: "#0369a1",
+  },
+  paymentReceiptBox: {
+    backgroundColor: "#ffffff",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    padding: 8,
+    marginTop: 6,
+  },
+  paymentModePill: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  paymentModeText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
+  paymentGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    paddingTop: 6,
+  },
+  paymentGridCol: {
+    flex: 1,
+  },
+  paymentGridLabel: {
+    fontSize: 8.5,
+    color: "#94a3b8",
+  },
+  paymentGridVal: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#334155",
+    marginTop: 1,
+  },
+  payLaterWarningBox: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  historyStatusPill: {
+    fontSize: 8.5,
+    fontWeight: "700",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  historyStatusPaid: {
+    backgroundColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
+    color: "#059669",
+  },
+  historyStatusPending: {
+    backgroundColor: "#fffbeb",
+    borderColor: "#fde68a",
+    color: "#d97706",
+  },
+  historyFeeSummaryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+    marginTop: 4,
+  },
+  historyFeeSummaryText: {
+    fontSize: 9.5,
+    color: "#64748b",
+  },
+  calendarModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  calendarModalContent: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 340,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  calendarMonthTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  calendarNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  calendarDaysOfWeekRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 4,
+  },
+  calendarDayOfWeekText: {
+    width: 36,
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  calendarGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  calendarDayCell: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  calendarDayCellActive: {
+    backgroundColor: "#0284c7",
+  },
+  calendarDayCellToday: {
+    borderWidth: 1,
+    borderColor: "#0284c7",
+  },
+  calendarDayText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  calendarDayTextActive: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  calendarDayTextToday: {
+    color: "#0284c7",
+    fontWeight: "700",
+  },
+  calendarActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  calendarActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+  },
+  calendarActionBtnPrimary: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  calendarActionText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  calendarActionTextPrimary: {
+    color: "#ffffff",
   },
 });
 

@@ -66,6 +66,32 @@ export default function HRDashboardPage() {
           </div>
         </div>
 
+        {/* Pay Later & Pending Dues Action Card */}
+        <div className="bg-gradient-to-r from-[#268ec8] to-[#0284c7] rounded-2xl p-6 text-white shadow-md mb-4 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+              <Clock className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-extrabold text-white">Pay Later &amp; Pending Dues</h3>
+                <span className="text-[10px] uppercase font-black bg-white/25 px-2 py-0.5 rounded-full text-white">
+                  Finance
+                </span>
+              </div>
+              <p className="text-xs text-sky-100 mt-0.5">
+                Monitor branch-wise pending patient fee balances, send WhatsApp reminders, and record settlements
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/hr/pay-later"
+            className="px-5 py-2.5 bg-white text-sky-700 hover:bg-sky-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
+          >
+            Manage Pay Later Dues →
+          </Link>
+        </div>
+
         {/* Medical Discount Approvals Action Card */}
         <div className="bg-gradient-to-r from-sky-600 to-[#0284c7] rounded-2xl p-6 text-white shadow-md mb-4 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">

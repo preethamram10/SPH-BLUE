@@ -24,6 +24,7 @@ import {
   CalendarPlus,
   RotateCcw,
 } from "lucide-react";
+import AnalogClockPicker from "@/components/AnalogClockPicker";
 export interface FollowUpItem {
   id: string;
   appointmentId: string;
@@ -73,6 +74,109 @@ const DOCTOR_OPTIONS = [
   { id: "doc-ramakrishna", name: "Dr. Ramakrishna Chanduri" },
 ];
 
+const CONSULTATION_MODES = [
+  { id: "In-Clinic", label: "In-Clinic Consultation" },
+  { id: "Online", label: "Online Consultation" },
+];
+
+function getDayOfWeekAbbr(dateStr: string): string {
+  if (!dateStr) return "Mon";
+  let d: Date;
+  if (dateStr.includes("-")) {
+    const parts = dateStr.split("-");
+    if (parts[0].length === 4) {
+      d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
+  } else {
+    d = new Date(dateStr);
+  }
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return days[d.getDay()] || "Mon";
+}
+
+function parseTimeToMinutes(t: string): number {
+  if (!t) return 0;
+  const clean = t.trim().toUpperCase();
+  const match = clean.match(/(\d{1,2})(?::(\d{1,2}))?\s*([APap][Mm])?/);
+  if (!match) return 0;
+  let h = parseInt(match[1], 10);
+  const m = match[2] ? parseInt(match[2], 10) : 0;
+  const ap = (match[3] || "").toUpperCase();
+  if (ap === "PM" && h !== 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+function minutesToTimeString(minutes: number): string {
+  let h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  const hStr = String(h).padStart(2, "0");
+  const mStr = String(m).padStart(2, "0");
+  return `${hStr}:${mStr} ${ap}`;
+}
+
+function generateSlotsFromRanges(ranges: any[]): string[] {
+  if (!ranges || ranges.length === 0) {
+    return STANDARD_TIME_SLOTS;
+  }
+
+  const slotList: string[] = [];
+  for (const r of ranges) {
+    let startMin = 0;
+    let endMin = 0;
+    if (typeof r === "object" && r?.startHour && r?.endHour) {
+      const sHour = r.startHour;
+      const sMin = r.startMin ?? r.startMinute ?? "00";
+      const sAmPm = r.startAmPm || "AM";
+      const eHour = r.endHour;
+      const eMin = r.endMin ?? r.endMinute ?? "00";
+      const eAmPm = r.endAmPm || "PM";
+      startMin = parseTimeToMinutes(`${sHour}:${sMin} ${sAmPm}`);
+      endMin = parseTimeToMinutes(`${eHour}:${eMin} ${eAmPm}`);
+    } else {
+      const rText = typeof r === "string" ? r : (r?.displayText || "");
+      const parts = rText.split(/[-–—]|to/i);
+      if (parts.length === 2) {
+        startMin = parseTimeToMinutes(parts[0]);
+        endMin = parseTimeToMinutes(parts[1]);
+      }
+    }
+
+    if (endMin > startMin) {
+      for (let cur = startMin; cur < endMin; cur += 30) {
+        slotList.push(minutesToTimeString(cur));
+      }
+    }
+  }
+
+  return slotList.length > 0 ? Array.from(new Set(slotList)) : STANDARD_TIME_SLOTS;
+}
+
+function isSlotBlocked(slotTime: string, noShow: any): boolean {
+  if (!noShow) return false;
+  if (noShow.type === "FULL_DAY") return true;
+  if (noShow.type === "HALF_DAY") {
+    const curMin = parseTimeToMinutes(slotTime);
+    if (noShow.halfDayType === "FIRST_HALF") {
+      return curMin < 840;
+    } else {
+      return curMin >= 840;
+    }
+  }
+  if (noShow.type === "SPECIFIC_TIME" && noShow.startTime && noShow.endTime) {
+    const startMin = parseTimeToMinutes(noShow.startTime);
+    const endMin = parseTimeToMinutes(noShow.endTime);
+    const curMin = parseTimeToMinutes(slotTime);
+    return curMin >= startMin && curMin <= endMin;
+  }
+  return false;
+}
+
 function ReceptionFollowUpsContent() {
   const router = useRouter();
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
@@ -116,11 +220,17 @@ function ReceptionFollowUpsContent() {
   const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
   const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashanth K Vaidya");
   const [bookDate, setBookDate] = useState("");
-  const [bookTimeSlot, setBookTimeSlot] = useState("11:00 AM");
-  const [bookMode, setBookMode] = useState<"In-Clinic" | "Video Call">("In-Clinic");
+  const [bookTimeSlot, setBookTimeSlot] = useState("");
+  const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [bookReason, setBookReason] = useState("");
   const [bookNotes, setBookNotes] = useState("");
   const [savingBooking, setSavingBooking] = useState(false);
+
+  // Dynamic doctors, no-shows & booked appointments for booking modal
+  const [bookingAvailableDoctors, setBookingAvailableDoctors] = useState<any[]>([]);
+  const [bookedAppointments, setBookedAppointments] = useState<any[]>([]);
+  const [loadingBookingDoctors, setLoadingBookingDoctors] = useState(false);
+  const [activeBookingNoShows, setActiveBookingNoShows] = useState<any[]>([]);
 
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -272,29 +382,312 @@ function ReceptionFollowUpsContent() {
   // Open Book Appointment Modal
   const openBookingModal = (item: FollowUpItem) => {
     setBookingItem(item);
-    setBookBranch(item.branch || "KPHB Branch");
+    const initialBranch =
+      item.branch ||
+      (branchName && branchName !== "Spiritual Homeopathy Clinic" && branchName !== "All Branches"
+        ? branchName
+        : "KPHB Branch");
+    setBookBranch(initialBranch);
     setBookDoctorId(item.doctorId || "1793864791241");
     setBookDoctorName(item.doctorName || "Dr. Prashanth K Vaidya");
 
-    // Default booking date to tomorrow or follow-up date
+    // Convert DD-MM-YYYY to YYYY-MM-DD
+    let initDate = "";
     const parts = (item.dueDate || "").split("-");
     if (parts.length === 3) {
-      setBookDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      initDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
     } else {
-      setBookDate(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+      initDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     }
-
-    setBookTimeSlot("11:00 AM");
+    setBookDate(initDate);
+    setBookTimeSlot("");
     setBookMode("In-Clinic");
     setBookReason(`Follow-up review for ${item.patientName}`);
     setBookNotes(item.notes || "Booked from reception follow-up queue");
   };
+
+  // Fetch doctors and active no-shows for Book Appointment based on branch, date, and mode
+  useEffect(() => {
+    if (!bookingItem || !bookDate) return;
+
+    let isMounted = true;
+    setLoadingBookingDoctors(true);
+
+    if (bookMode === "Online") {
+      // Online mode: Fetch ALL clinic doctors across all branches
+      fetch("/api/admin/employees?category=DOCTOR")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!isMounted) return;
+          const docList = Array.isArray(data.employees) ? data.employees : [];
+          const mapped = docList.map((d: any) => ({
+            id: d.id,
+            doctorId: d.id,
+            name: d.name,
+            doctorName: d.name,
+            specialty: d.designation || d.specialty || "Homeopathic Consultant",
+            slots: [],
+          }));
+          setBookingAvailableDoctors(mapped);
+          setActiveBookingNoShows([]);
+
+          if (mapped.length > 0) {
+            const match = mapped.find((d: any) => d.id === bookDoctorId || d.name === bookDoctorName);
+            const sel = match || mapped[0];
+            setBookDoctorId(sel.id);
+            setBookDoctorName(sel.name);
+          }
+        })
+        .catch((err) => {
+          console.error("Error fetching online doctors:", err);
+          if (isMounted) setBookingAvailableDoctors([]);
+        })
+        .finally(() => {
+          if (isMounted) setLoadingBookingDoctors(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    // In-Clinic mode: Fetch branch doctors and active no-shows for this date
+    const day = getDayOfWeekAbbr(bookDate);
+    const cleanBranch = bookBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+
+    let dtFormatted = bookDate;
+    if (bookDate.includes("-")) {
+      const p = bookDate.split("-");
+      if (p[0].length === 4) {
+        dtFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+    }
+
+    Promise.all([
+      fetch(`/api/admin/doctor-timings?branch=${encodeURIComponent(cleanBranch)}&day=${day}`).then((r) => r.json()),
+      fetch(`/api/reception/doctor-no-show?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dtFormatted)}`).then((r) => r.json()),
+    ])
+      .then(([timingsData, noShowData]) => {
+        if (!isMounted) return;
+        let noShows: any[] = [];
+        if (noShowData && noShowData.success && Array.isArray(noShowData.noShows)) {
+          noShows = noShowData.noShows;
+        }
+        setActiveBookingNoShows(noShows);
+
+        let doctors: any[] = [];
+        if (timingsData && timingsData.success && Array.isArray(timingsData.doctors)) {
+          doctors = timingsData.doctors;
+        }
+
+        const availableDocs = doctors.map((d: any) => ({
+          ...d,
+          id: d.doctorId || d.id,
+          doctorId: d.doctorId || d.id,
+          name: d.doctorName || d.name,
+          doctorName: d.doctorName || d.name,
+        }));
+
+        setBookingAvailableDoctors(availableDocs);
+
+        // Select doctor
+        const currentDocMatch = availableDocs.find(
+          (d: any) => d.doctorId === bookDoctorId || d.id === bookDoctorId || d.doctorName === bookDoctorName
+        );
+        const activeDoc = currentDocMatch || availableDocs[0] || null;
+
+        if (activeDoc) {
+          setBookDoctorId(activeDoc.doctorId || activeDoc.id);
+          setBookDoctorName(activeDoc.doctorName || activeDoc.name);
+        } else {
+          setBookDoctorId("");
+          setBookDoctorName("");
+          setBookTimeSlot("");
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching booking doctors:", err);
+        if (isMounted) {
+          setBookingAvailableDoctors([]);
+          setActiveBookingNoShows([]);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setLoadingBookingDoctors(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingItem, bookBranch, bookDate, bookMode]);
+
+  // Fetch booked appointments for live slot capacity calculation (In-Clinic mode)
+  useEffect(() => {
+    if (!bookingItem || bookMode !== "In-Clinic" || !bookDoctorId || !bookDate) {
+      setBookedAppointments([]);
+      return;
+    }
+
+    let isMounted = true;
+    let dtFormatted = bookDate;
+    if (bookDate.includes("-")) {
+      const p = bookDate.split("-");
+      if (p[0].length === 4) {
+        dtFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+      }
+    }
+    const cleanBranch = bookBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+
+    fetch(
+      `/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dtFormatted)}&doctorId=${encodeURIComponent(bookDoctorId)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data && data.success && Array.isArray(data.appointments)) {
+          setBookedAppointments(data.appointments);
+        } else {
+          setBookedAppointments([]);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setBookedAppointments([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookingItem, bookMode, bookBranch, bookDate, bookDoctorId]);
+
+  // Compute 15-minute slot sessions with 3-capacity per slot for In-Clinic mode
+  const bookingSlotSessions = useMemo(() => {
+    if (bookMode === "Online" || !bookDoctorId || bookingAvailableDoctors.length === 0) return [];
+
+    const selectedDoc = bookingAvailableDoctors.find(
+      (d: any) => (d.doctorId || d.id) === bookDoctorId
+    );
+    if (!selectedDoc) return [];
+
+    let ranges = Array.isArray(selectedDoc.slots) ? selectedDoc.slots : [];
+    if (ranges.length === 0) {
+      if (selectedDoc.shift1Start && selectedDoc.shift1End) {
+        ranges = [{ displayText: `${selectedDoc.shift1Start} - ${selectedDoc.shift1End}` }];
+      } else if (selectedDoc.shiftHours && selectedDoc.shiftHours.includes("-")) {
+        ranges = [{ displayText: selectedDoc.shiftHours }];
+      } else {
+        ranges = [
+          { displayText: "10:00 AM - 01:00 PM" },
+          { displayText: "05:00 PM - 09:00 PM" },
+        ];
+      }
+    }
+
+    const doctorNoShow = activeBookingNoShows.find(
+      (ns) =>
+        ns.doctorId === selectedDoc.doctorId ||
+        ns.doctorId === selectedDoc.id ||
+        ns.doctorName === selectedDoc.name ||
+        ns.doctorName === selectedDoc.doctorName
+    );
+
+    const checkIsSlotNoShow = (curMin: number): boolean => {
+      if (!doctorNoShow) return false;
+      if (doctorNoShow.type === "FULL_DAY") return true;
+      if (doctorNoShow.type === "HALF_DAY") {
+        if (doctorNoShow.halfDayType === "FIRST_HALF") {
+          return curMin < 840; // Before 2:00 PM
+        } else {
+          return curMin >= 840; // 2:00 PM onwards
+        }
+      }
+      if (doctorNoShow.type === "SPECIFIC_TIME" && doctorNoShow.startTime && doctorNoShow.endTime) {
+        const startNoShow = parseTimeToMinutes(doctorNoShow.startTime);
+        const endNoShow = parseTimeToMinutes(doctorNoShow.endTime);
+        return curMin >= startNoShow && curMin < endNoShow;
+      }
+      return false;
+    };
+
+    const getSlotBookedCount = (timeStr: string) => {
+      const normTime = timeStr.trim().toUpperCase();
+      return bookedAppointments.filter(
+        (a) => (a.timeSlot || "").trim().toUpperCase() === normTime && a.status !== "CANCELLED"
+      ).length;
+    };
+
+    return ranges.map((r: any, sIdx: number) => {
+      let startMin = 0;
+      let endMin = 0;
+      const rText = typeof r === "string" ? r : (r?.displayText || "");
+
+      if (typeof r === "object" && r?.startHour && r?.endHour) {
+        const sHour = r.startHour;
+        const sMin = r.startMin ?? r.startMinute ?? "00";
+        const sAmPm = r.startAmPm || "AM";
+
+        const eHour = r.endHour;
+        const eMin = r.endMin ?? r.endMinute ?? "00";
+        const eAmPm = r.endAmPm || "PM";
+
+        startMin = parseTimeToMinutes(`${sHour}:${sMin} ${sAmPm}`);
+        endMin = parseTimeToMinutes(`${eHour}:${eMin} ${eAmPm}`);
+      } else if (rText) {
+        const parts = rText.split(/[-–—]|to/i);
+        if (parts.length === 2) {
+          startMin = parseTimeToMinutes(parts[0]);
+          endMin = parseTimeToMinutes(parts[1]);
+        }
+      }
+
+      if (startMin === 0 && endMin === 0) {
+        startMin = 600; // 10:00 AM
+        endMin = 780;  // 01:00 PM
+      }
+
+      if (endMin <= startMin) {
+        endMin = startMin + 180;
+      }
+
+      const sessionSlots: { time: string; bookedCount: number; maxCapacity: number; isFull: boolean; isNoShow: boolean }[] = [];
+
+      for (let cur = startMin; cur < endMin; cur += 15) {
+        const timeStr = minutesToTimeString(cur);
+        const isNoShow = checkIsSlotNoShow(cur);
+        const bookedCount = getSlotBookedCount(timeStr);
+        const isFull = isNoShow || bookedCount >= 3;
+        sessionSlots.push({
+          time: timeStr,
+          bookedCount,
+          maxCapacity: 3,
+          isFull,
+          isNoShow,
+        });
+      }
+
+      const displayRange = rText || `${minutesToTimeString(startMin)} - ${minutesToTimeString(endMin)}`;
+      const title = ranges.length > 1 ? `Session ${sIdx + 1} (${displayRange})` : `Consultation Session (${displayRange})`;
+
+      return {
+        id: `session-${sIdx + 1}`,
+        title,
+        slots: sessionSlots,
+      };
+    });
+  }, [bookingAvailableDoctors, bookDoctorId, bookMode, activeBookingNoShows, bookedAppointments]);
 
   // Submit Book Appointment
   const handleConfirmBooking = async () => {
     if (!bookingItem || !bookDate || !bookTimeSlot) return;
     setSavingBooking(true);
     try {
+      let dtFormatted = bookDate;
+      if (bookDate.includes("-")) {
+        const p = bookDate.split("-");
+        if (p[0].length === 4) {
+          dtFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+      }
+
       const res = await fetch("/api/reception/follow-ups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -302,10 +695,10 @@ function ReceptionFollowUpsContent() {
           registrationId: bookingItem.mrn,
           patientName: bookingItem.patientName,
           phoneNumber: bookingItem.phone,
-          branch: bookBranch,
+          branch: bookMode === "Online" ? "Online Consultation" : bookBranch,
           doctorId: bookDoctorId,
           doctorName: bookDoctorName,
-          appointmentDate: bookDate,
+          appointmentDate: dtFormatted,
           selectedTimeSlot: bookTimeSlot,
           consultationMode: bookMode,
           diseases: bookReason,
@@ -314,7 +707,7 @@ function ReceptionFollowUpsContent() {
       });
       const data = await res.json();
       if (data.success) {
-        setActionMessage(`Appointment successfully booked for ${bookingItem.patientName} on ${bookDate} (${bookTimeSlot})!`);
+        setActionMessage(`Appointment successfully booked for ${bookingItem.patientName} on ${dtFormatted} (${bookTimeSlot})!`);
         setTimeout(() => setActionMessage(null), 4500);
         setBookingItem(null);
         fetchFollowUps(true);
@@ -851,7 +1244,7 @@ function ReceptionFollowUpsContent() {
                               {/* Reschedule Button */}
                               <button
                                 onClick={() => openRescheduleModal(item)}
-                                className="px-2 py-0.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                className="px-2 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                                 title="Reschedule Follow-Up Date"
                               >
                                 <RotateCcw className="w-2.5 h-2.5" />
@@ -923,14 +1316,14 @@ function ReceptionFollowUpsContent() {
       {rescheduleItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-scaleIn">
-            <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-5 py-4 text-white flex items-center justify-between">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                   <RotateCcw className="w-4 h-4 text-white" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm">Reschedule Follow-Up</h3>
-                  <p className="text-[11px] text-amber-100">
+                  <p className="text-[11px] text-blue-100">
                     Patient: {rescheduleItem.patientName} ({rescheduleItem.mrn})
                   </p>
                 </div>
@@ -944,7 +1337,7 @@ function ReceptionFollowUpsContent() {
             </div>
 
             <div className="p-5 space-y-4 text-xs font-medium text-slate-700">
-              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between">
+              <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between">
                 <span>Current Follow-Up Due Date:</span>
                 <span className="font-black font-mono">{rescheduleItem.dueDate}</span>
               </div>
@@ -957,7 +1350,7 @@ function ReceptionFollowUpsContent() {
                   type="date"
                   value={newDueDate}
                   onChange={(e) => setNewDueDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -968,7 +1361,7 @@ function ReceptionFollowUpsContent() {
                 <select
                   value={newInterval}
                   onChange={(e) => setNewInterval(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
                   <option value="1 Week">1 Week</option>
                   <option value="2 Weeks">2 Weeks</option>
@@ -990,7 +1383,7 @@ function ReceptionFollowUpsContent() {
                   onChange={(e) => setRescheduleNotes(e.target.value)}
                   rows={2}
                   placeholder="Patient requested postponement, traveling, etc."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -1006,7 +1399,7 @@ function ReceptionFollowUpsContent() {
                   type="button"
                   onClick={handleSaveReschedule}
                   disabled={savingReschedule || !newDueDate}
-                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
                 >
                   {savingReschedule ? "Updating..." : "Save Rescheduled Date"}
                 </button>
@@ -1019,7 +1412,7 @@ function ReceptionFollowUpsContent() {
       {/* POPUP MODAL 2: Book Appointment Directly */}
       {bookingItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-scaleIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden animate-scaleIn">
             <div className="bg-gradient-to-r from-sky-600 to-sky-700 px-5 py-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
@@ -1040,61 +1433,88 @@ function ReceptionFollowUpsContent() {
               </button>
             </div>
 
-            <div className="p-5 space-y-3.5 text-xs font-medium text-slate-700 max-h-[80vh] overflow-y-auto">
+            <div className="p-5 space-y-3.5 text-xs font-medium text-slate-700 max-h-[82vh] overflow-y-auto">
               {/* Patient info bar */}
               <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-between text-sky-950">
                 <div>
                   <span className="font-black text-slate-900">{bookingItem.patientName}</span>
                   <span className="ml-2 text-slate-500 font-mono">({bookingItem.phone})</span>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-sky-200 text-sky-900 font-bold text-[10px]">
-                  {bookingItem.mrn}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 rounded bg-sky-200 text-sky-900 font-bold text-[10px]">
+                    {bookingItem.mrn}
+                  </span>
+                  {bookBranch && bookMode === "In-Clinic" && (
+                    <span className="px-2 py-0.5 rounded bg-white text-sky-800 font-bold text-[10px] border border-sky-200">
+                      {bookBranch}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Branch & Doctor */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Select Branch <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={bookBranch}
-                    onChange={(e) => setBookBranch(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                  >
-                    {branches.filter((b) => b !== "All Branches").map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
+              {/* Consultation Mode (In-Clinic vs Online) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Consultation Mode <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {CONSULTATION_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setBookMode(m.id as "In-Clinic" | "Online");
+                        setBookTimeSlot("");
+                      }}
+                      className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        bookMode === m.id
+                          ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500 shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${bookMode === m.id ? "bg-sky-600" : "bg-slate-300"}`} />
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
                 </div>
+              </div>
 
+              {/* Doctor & Date */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
                     Consultant Doctor <span className="text-rose-500">*</span>
                   </label>
-                  <select
-                    value={bookDoctorId}
-                    onChange={(e) => {
-                      setBookDoctorId(e.target.value);
-                      const doc = DOCTOR_OPTIONS.find((d) => d.id === e.target.value);
-                      if (doc) setBookDoctorName(doc.name);
-                    }}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                  >
-                    {DOCTOR_OPTIONS.map((doc) => (
-                      <option key={doc.id} value={doc.id}>
-                        {doc.name}
-                      </option>
-                    ))}
-                  </select>
+                  {loadingBookingDoctors ? (
+                    <div className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-400 font-semibold flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3 animate-spin text-sky-600" />
+                      <span>Loading doctors...</span>
+                    </div>
+                  ) : bookingAvailableDoctors.length === 0 ? (
+                    <div className="w-full px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-[11px] text-rose-700 font-bold">
+                      {bookMode === "Online"
+                        ? "No online doctors available"
+                        : `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}`}
+                    </div>
+                  ) : (
+                    <select
+                      value={bookDoctorId}
+                      onChange={(e) => {
+                        setBookDoctorId(e.target.value);
+                        const doc = bookingAvailableDoctors.find((d: any) => (d.doctorId || d.id) === e.target.value);
+                        if (doc) setBookDoctorName(doc.doctorName || doc.name);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    >
+                      {bookingAvailableDoctors.map((doc: any) => (
+                        <option key={doc.doctorId || doc.id} value={doc.doctorId || doc.id}>
+                          {doc.doctorName || doc.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-              </div>
 
-              {/* Date & Time Slot */}
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
                     Appointment Date <span className="text-rose-500">*</span>
@@ -1106,53 +1526,94 @@ function ReceptionFollowUpsContent() {
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
+              </div>
 
+              {/* TIME SELECTION: ANALOG CLOCK FOR ONLINE, 15-MIN GRID FOR IN-CLINIC */}
+              {bookMode === "Online" ? (
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Time Slot <span className="text-rose-500">*</span>
-                  </label>
-                  <select
+                  <AnalogClockPicker
                     value={bookTimeSlot}
-                    onChange={(e) => setBookTimeSlot(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                  >
-                    {STANDARD_TIME_SLOTS.map((slot) => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setBookTimeSlot}
+                    doctorName={bookDoctorName}
+                  />
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                      Select Time Slot (15-min intervals) *
+                    </label>
+                    {bookTimeSlot && (
+                      <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                        Selected: {bookTimeSlot}
+                      </span>
+                    )}
+                  </div>
 
-              {/* Consultation Mode */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Consultation Mode
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBookMode("In-Clinic")}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${bookMode === "In-Clinic"
-                        ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500"
-                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                  >
-                    In-Clinic Visit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBookMode("Video Call")}
-                    className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all ${bookMode === "Video Call"
-                        ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500"
-                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                  >
-                    Video Consultation
-                  </button>
+                  {bookingSlotSessions.length === 0 ? (
+                    <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-800 font-medium">
+                      {bookingAvailableDoctors.length === 0
+                        ? `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}.`
+                        : !bookDoctorId
+                        ? "Please select a doctor to view their consultation slots."
+                        : `No consultation slots configured for ${bookDoctorName} on this day.`}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-56 overflow-y-auto p-2 bg-slate-50/80 rounded-xl border border-slate-200">
+                      {bookingSlotSessions.map((session: any) => (
+                        <div key={session.id} className="space-y-1.5">
+                          <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                            <span className="text-[11px] font-extrabold text-slate-800">
+                              {session.title}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-semibold">
+                              {session.slots.length} slots
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+                            {session.slots.map((slot: any) => {
+                              const isSelected = bookTimeSlot === slot.time;
+                              const disabled = slot.isFull || slot.isNoShow;
+                              return (
+                                <button
+                                  key={slot.time}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => setBookTimeSlot(slot.time)}
+                                  className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg text-center transition-all border ${
+                                    disabled
+                                      ? "bg-red-50 border-red-200 text-red-600 opacity-60 cursor-not-allowed"
+                                      : isSelected
+                                      ? "bg-sky-600 border-sky-600 text-white shadow-2xs"
+                                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300 cursor-pointer"
+                                  }`}
+                                >
+                                  <span className={`text-[10.5px] font-bold ${isSelected ? "text-white" : ""}`}>
+                                    {slot.time}
+                                  </span>
+                                  {slot.isNoShow ? (
+                                    <span className="text-[7.5px] font-extrabold uppercase px-1 rounded bg-red-600 text-white mt-0.5">
+                                      NO-SHOW
+                                    </span>
+                                  ) : slot.isFull ? (
+                                    <span className="text-[7.5px] font-extrabold uppercase px-1 rounded bg-red-500 text-white mt-0.5">
+                                      FULL
+                                    </span>
+                                  ) : (
+                                    <span className={`text-[8.5px] ${isSelected ? "text-sky-100" : "text-slate-400"}`}>
+                                      ({slot.bookedCount}/3)
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Reason / Complaints */}
               <div>

@@ -593,6 +593,19 @@ export default function AdminDashboard() {
                 <Text style={styles.drawerMenuText}>Target Management</Text>
               </TouchableOpacity>
 
+              {/* Pay Later Dues */}
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(admin)/pay-later")}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="time-outline" size={20} color="#0284c7" style={styles.drawerMenuIcon} />
+                <Text style={styles.drawerMenuText}>Pay Later Dues</Text>
+                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
+                  <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>DUES</Text>
+                </View>
+              </TouchableOpacity>
+
               {/* Fee Requests */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}

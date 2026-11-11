@@ -368,7 +368,7 @@ export default function HRPayrollPage() {
                 </div>
                 <div className="text-right text-[10px] text-slate-600">
                   <div className="font-extrabold uppercase text-slate-900">{selectedPayslip.branchName || "KPHB"}</div>
-                  <div>support@spiritualhomeoclinic.com</div>
+                  <div>support@spiritualhomeo.com</div>
                 </div>
               </div>
 

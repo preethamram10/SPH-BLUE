@@ -495,7 +495,7 @@ export default function AdminPayCutsPage() {
                 </div>
                 <div className="text-right text-[10px] text-slate-600">
                   <div className="font-extrabold uppercase text-slate-900">{selectedSlip.branch}</div>
-                  <div>support@spiritualhomeoclinic.com</div>
+                  <div>support@spiritualhomeo.com</div>
                 </div>
               </div>
 

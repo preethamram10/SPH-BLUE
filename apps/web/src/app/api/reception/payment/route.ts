@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
       isRegularBilling,
       skipPackagePayment,
       splitDetails,
+      payLaterAmount,
+      previousDuePaid,
+      dueDate,
+      payLaterNotes,
     } = body;
 
     if (!appointmentId) {
@@ -111,6 +115,10 @@ export async function POST(req: NextRequest) {
       isRegularBilling,
       skipPackagePayment,
       splitDetails,
+      payLaterAmount: typeof payLaterAmount === "number" ? payLaterAmount : parseFloat(payLaterAmount) || 0,
+      previousDuePaid: typeof previousDuePaid === "number" ? previousDuePaid : parseFloat(previousDuePaid) || 0,
+      dueDate,
+      payLaterNotes,
     } as any);
 
     if (!updated) {

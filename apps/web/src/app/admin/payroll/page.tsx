@@ -329,13 +329,12 @@ export default function AdminPayrollPage() {
                         {/* Late Days */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
-                              item.lateDaysCount >= lateConfig.lateThresholdDays
+                            className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${item.lateDaysCount >= lateConfig.lateThresholdDays
                                 ? "bg-rose-100 text-rose-800"
                                 : item.lateDaysCount > 0
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                              }`}
                           >
                             {item.lateDaysCount} days
                           </span>
@@ -534,7 +533,7 @@ export default function AdminPayrollPage() {
                 </div>
                 <div className="text-right text-[10px] text-slate-600">
                   <div className="font-extrabold uppercase text-slate-900">{selectedPayslip.branchName || "KPHB Branch"}</div>
-                  <div>support@spiritualhomeoclinic.com</div>
+                  <div>support@spiritualhomeo.com</div>
                 </div>
               </div>
 

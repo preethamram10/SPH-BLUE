@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
       totalAmount,
       medicines,
       deliveryAddress,
+      notes,
     } = body;
 
     if (!patientName || !patientName.trim()) {
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
       totalAmount: typeof totalAmount === "number" ? totalAmount : parseFloat(totalAmount) || 0,
       medicines: validMedicines,
       deliveryAddress: deliveryAddress ? deliveryAddress.trim() : undefined,
+      notes: notes && typeof notes === "string" ? notes.trim() : undefined,
       status: "pending",
     });
 

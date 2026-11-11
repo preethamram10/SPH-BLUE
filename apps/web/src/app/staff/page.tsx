@@ -235,11 +235,10 @@ export default function StaffDashboardPage() {
             <button
               type="button"
               onClick={() => setActiveTab("attendance")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                activeTab === "attendance"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTab === "attendance"
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <Clock className="w-4 h-4" /> Attendance &amp; Punch
             </button>
@@ -247,11 +246,10 @@ export default function StaffDashboardPage() {
             <button
               type="button"
               onClick={() => setActiveTab("daily_work")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                activeTab === "daily_work"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTab === "daily_work"
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <Briefcase className="w-4 h-4" /> Daily Work Report
             </button>
@@ -259,11 +257,10 @@ export default function StaffDashboardPage() {
             <button
               type="button"
               onClick={() => setActiveTab("leaves")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                activeTab === "leaves"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTab === "leaves"
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <Calendar className="w-4 h-4" /> Leave Applications
             </button>
@@ -271,11 +268,10 @@ export default function StaffDashboardPage() {
             <button
               type="button"
               onClick={() => setActiveTab("pay_cuts")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                activeTab === "pay_cuts"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTab === "pay_cuts"
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "text-slate-600 hover:bg-slate-100"
-              }`}
+                }`}
             >
               <DollarSign className="w-4 h-4" /> My Pay Cuts &amp; Slips
               {payCutsList.length > 0 && (
@@ -449,7 +445,7 @@ export default function StaffDashboardPage() {
                 </div>
                 <div className="text-right text-[10px] text-slate-600">
                   <div className="font-extrabold uppercase text-slate-900">{selectedPayCut.branch}</div>
-                  <div>support@spiritualhomeoclinic.com</div>
+                  <div>support@spiritualhomeo.com</div>
                 </div>
               </div>
 

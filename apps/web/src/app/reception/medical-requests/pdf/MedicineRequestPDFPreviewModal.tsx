@@ -147,6 +147,17 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
                 </table>
               </div>
 
+              {request.notes && request.notes.trim() ? (
+                <div className="mt-4 bg-slate-50 border border-slate-200 border-l-4 border-l-[#1d8ecd] rounded-lg p-3">
+                  <div className="font-extrabold text-[10px] text-[#1d8ecd] uppercase tracking-wider mb-1">
+                    Clinical Notes / Instructions:
+                  </div>
+                  <div className="text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {request.notes.trim()}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="pt-8 text-center text-[10px] text-slate-400 italic border-t border-dashed border-slate-200">
                 This is a computer-generated document. No physical signature required.
               </div>
@@ -156,7 +167,7 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
             <div className="bg-[#a3cf3b] h-10 px-4 flex items-center justify-around text-white text-[10px] font-bold tracking-wide uppercase">
               <span>📞 {branchPhone}</span>
               <span>•</span>
-              <span>✉️ support@spiritualhomeoclinic.com</span>
+              <span>✉️ support@spiritualhomeo.com</span>
               <span>•</span>
               <span>📍 {request.branchName}</span>
             </div>

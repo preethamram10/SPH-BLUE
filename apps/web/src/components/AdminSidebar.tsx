@@ -83,6 +83,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
       title: "FINANCE & REVENUE",
       items: [
         { label: "Total Revenue", href: "/admin/total-revenue", icon: DollarSign },
+        { label: "Pay Later Dues", href: "/admin/pay-later", icon: Clock },
         { label: "Reports & Visual Analytics", href: "/admin/reports-analytics", icon: BarChart3 },
         { label: "Target Management", href: "/admin/target-management", icon: Target },
         { label: "Fee Requests", href: "/admin/fee-requests", icon: FileCheck2 },

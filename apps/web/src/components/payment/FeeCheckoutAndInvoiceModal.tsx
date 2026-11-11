@@ -27,6 +27,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
+import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -77,6 +78,9 @@ export interface PatientAppointment {
   packageDurationMonths?: number;
   packageEndDate?: string;
   packageInstallmentPaid?: number;
+  payLaterAmount?: number;
+  pendingBalance?: number;
+  previousDuePaid?: number;
 }
 
 export interface FeeCheckoutModalProps {
@@ -150,6 +154,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const isPackageMode = isPackageMember && billingMode === "package";
   const [packageInstallmentAmount, setPackageInstallmentAmount] = useState<number>(0);
 
+  // --- PAY LATER STATES ---
+  const [isPayLater, setIsPayLater] = useState<boolean>(false);
+  const [isPayLaterModalOpen, setIsPayLaterModalOpen] = useState<boolean>(false);
+  const [amountPaidNow, setAmountPaidNow] = useState<number>(0);
+  const [payLaterNotes, setPayLaterNotes] = useState<string>("");
+  const [previousPendingBalance, setPreviousPendingBalance] = useState<number>(0);
+  const [includePreviousDue, setIncludePreviousDue] = useState<boolean>(false);
+
   // Completed Invoice State for Receipt View
   const [completedInvoice, setCompletedInvoice] = useState<PatientAppointment | null>(appointment);
 
@@ -191,6 +203,26 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setDiscount(appointment.discount ?? 0);
       setDiscountReason(appointment.discountReason || "");
       setPaymentMode(appointment.paymentMode || appointment.paymentMethod || "Counter UPI");
+      setIsPayLater(false);
+      setPayLaterNotes("");
+      setIncludePreviousDue(false);
+
+      // Check previous pending balance from database
+      const cleanP = (appointment.phoneNumber || appointment.phone || "").replace(/\D/g, "").slice(-10);
+      if (cleanP) {
+        fetch(`/api/pay-later?phone=${cleanP}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && typeof data.pendingTotal === "number" && data.pendingTotal > 0) {
+              setPreviousPendingBalance(data.pendingTotal);
+            } else {
+              setPreviousPendingBalance(0);
+            }
+          })
+          .catch(() => setPreviousPendingBalance(0));
+      } else {
+        setPreviousPendingBalance(0);
+      }
 
       if (isPackageMember) {
         setBillingMode("package");
@@ -218,8 +250,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     const mFee = totalMedicineAmount;
     const dFee = Number(dietFee) || 0;
     const oFee = Number(otherCharges) || 0;
-    return cFee + mFee + dFee + oFee;
-  }, [includeConsultFee, consultationFee, totalMedicineAmount, dietFee, otherCharges]);
+    const prevFee = includePreviousDue ? Number(previousPendingBalance) || 0 : 0;
+    return cFee + mFee + dFee + oFee + prevFee;
+  }, [includeConsultFee, consultationFee, totalMedicineAmount, dietFee, otherCharges, includePreviousDue, previousPendingBalance]);
 
   const grandTotalDue = useMemo(() => {
     if (isPackageMode) {
@@ -227,6 +260,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     }
     return Math.max(0, subTotalAmount - (Number(discount) || 0));
   }, [isPackageMode, packageInstallmentAmount, subTotalAmount, discount]);
+
+  // Auto-sync amountPaidNow when grandTotalDue changes if pay later is not customized
+  useEffect(() => {
+    if (!isPayLater) {
+      setAmountPaidNow(grandTotalDue);
+    }
+  }, [grandTotalDue, isPayLater]);
+
+  const effectivePaidToday = isPayLater ? Math.min(grandTotalDue, Number(amountPaidNow) || 0) : grandTotalDue;
+  const calculatedPayLater = isPayLater ? Math.max(0, grandTotalDue - effectivePaidToday) : 0;
 
   // --- MEDICINE ITEMS HANDLERS ---
   const handleAddMedicineRow = () => {
@@ -256,11 +299,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const handleConfirmPayment = async () => {
     if (!appointment) return;
 
+    const calculatedPreviousDue = includePreviousDue ? Number(previousPendingBalance) || 0 : 0;
+
     if (paymentMode === "Split") {
       const splitAllocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
-      if (splitAllocated !== grandTotalDue) {
+      if (splitAllocated !== effectivePaidToday) {
         alert(
-          `Split payment amounts (₹${splitAllocated}) must equal the total amount due (₹${grandTotalDue}). Difference: ₹${Math.abs(grandTotalDue - splitAllocated)}.`
+          `Split payment amounts (₹${splitAllocated}) must equal the amount paid today (₹${effectivePaidToday}). Difference: ₹${Math.abs(effectivePaidToday - splitAllocated)}.`
         );
         return;
       }
@@ -293,12 +338,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         otherCharges: Number(otherCharges) || 0,
         discount: (!isPackageMode) ? (Number(discount) || 0) : 0,
         discountReason: (!isPackageMode) ? (discountReason || undefined) : undefined,
-        totalPaid: grandTotalDue,
+        totalPaid: effectivePaidToday,
         totalAmountDue: grandTotalDue,
+        payLaterAmount: calculatedPayLater,
+        previousDuePaid: calculatedPreviousDue,
+        dueDate: isPayLater ? new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0] : undefined,
+        payLaterNotes: isPayLater ? payLaterNotes : undefined,
         hasPackage: isPackageMode,
         isRegularBilling: !isPackageMode,
         skipPackagePayment: !isPackageMode,
-        packageInstallmentPaid: isPackageMode ? grandTotalDue : undefined,
+        packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
         paymentMode,
         paymentMethod: paymentMode,
         splitDetails: paymentMode === "Split" ? {
@@ -373,8 +422,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       `Specialty: Homeopathy\n` +
       `--------------------------------\n` +
       `*TOTAL AMOUNT PAID: ₹${totalPaidNum}*\n` +
-      `Payment Mode: VIA ${activeInvoice.paymentMode || paymentMode}\n` +
-      `Payment Status: PAID ✓\n` +
+      `Payment Mode: VIA ${formatPaymentModeForInvoice(activeInvoice.paymentMode || paymentMode)}\n` +
+      `Payment Status: ${Number(activeInvoice.payLaterAmount) > 0 ? "PARTIAL PAID" : "PAID ✓"}\n` +
+      (Number(activeInvoice.payLaterAmount) > 0
+        ? `*Remaining Need to Pay (Pay Later): ₹${Number(activeInvoice.payLaterAmount).toFixed(2)}*\n`
+        : "") +
       `--------------------------------\n` +
       `*Fee Breakdown:*\n` +
       (Number(activeInvoice.consultationFee) > 0
@@ -389,15 +441,26 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       (Number(activeInvoice.otherCharges) > 0
         ? `• Other Charges: ₹${Number(activeInvoice.otherCharges).toFixed(2)}\n`
         : "") +
+      (Number(activeInvoice.previousDuePaid) > 0
+        ? `• Previous Pending Balance Cleared: ₹${Number(activeInvoice.previousDuePaid).toFixed(2)}\n`
+        : "") +
       (Number(activeInvoice.discount) > 0
         ? `• Discount Applied: -₹${Number(activeInvoice.discount).toFixed(2)}\n`
         : "") +
       `--------------------------------\n` +
-      `Helpline: 9030176176 | spiritualhomeoclinic.com\n` +
+      `Helpline: 9030176176 | spiritualhomeo.com\n` +
       `This is a computer-generated bill. No signature is required.`
     );
 
     window.open(`https://wa.me/91${phone}?text=${message}`, "_blank");
+  };
+
+  const formatPaymentModeForInvoice = (mode: string = "") => {
+    const upper = (mode || "").toUpperCase();
+    if (upper.includes("UPI")) return "UPI";
+    if (upper.includes("CASH")) return "CASH";
+    if (upper.includes("CARD")) return "CARD";
+    return upper || "UPI";
   };
 
   // Format issued date
@@ -408,7 +471,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     activeInvoice.totalPaid ?? activeInvoice.totalAmountDue ?? grandTotalDue
   ).toFixed(2);
 
-  const displayPaymentMode = (activeInvoice.paymentMode || activeInvoice.paymentMethod || paymentMode).toUpperCase();
+  const displayPaymentMode = formatPaymentModeForInvoice(activeInvoice.paymentMode || activeInvoice.paymentMethod || paymentMode);
 
   return (
     <>
@@ -498,6 +561,47 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           {currentStep === "collect_fee" && (
             <div className="p-6 space-y-5 max-h-[82vh] overflow-y-auto">
 
+              {/* PREVIOUS PENDING BALANCE ALERT (Orange Box) */}
+              {previousPendingBalance > 0 && (
+                <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 shadow-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                        <span>Previous Visit Pending Balance</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-200/80 text-[10px] font-black text-amber-900">
+                          PAY LATER DUE
+                        </span>
+                      </div>
+                      <div className="text-sm font-extrabold text-amber-900 mt-0.5">
+                        Outstanding Due: <span className="text-rose-600 font-black">₹{previousPendingBalance.toLocaleString()}</span>
+                      </div>
+                      <div className="text-[11px] text-amber-800 font-medium">
+                        {includePreviousDue
+                          ? "✓ Added as a separate line item into today's invoice (cleared on payment)"
+                          : "Left pending for a future visit"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIncludePreviousDue(!includePreviousDue)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer shadow-xs whitespace-nowrap ${
+                        includePreviousDue
+                          ? "bg-amber-600 hover:bg-amber-700 text-white"
+                          : "bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+                      }`}
+                    >
+                      {includePreviousDue ? "✓ Added to Bill (+₹" + previousPendingBalance + ")" : "+ Add to Today's Bill"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* PACKAGE MEMBER BANNER & INSTALLMENT INPUT */}
               {isPackageMember && (
                 <div className="rounded-xl border border-sky-300 p-4 bg-linear-to-r from-sky-50 to-blue-50/60 shadow-xs space-y-3">
@@ -528,11 +632,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
                         }
                       }}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
-                        billingMode === "package"
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${billingMode === "package"
                           ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
                           : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
-                      }`}
+                        }`}
                     >
                       <span>✓</span>
                       <span>Pay Package Installment</span>
@@ -545,11 +648,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         setConsultationFee(typeof appointment.consultationFee === "number" && appointment.consultationFee > 0 ? appointment.consultationFee : 500);
                         setIncludeMedicineFee(true);
                       }}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${
-                        billingMode === "regular"
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${billingMode === "regular"
                           ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
                           : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
-                      }`}
+                        }`}
                     >
                       <span>⚡</span>
                       <span>Regular Visit / Extra Medicine</span>
@@ -693,8 +795,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     {medicineItems.map((item, idx) => (
                       <div key={item.id || idx} className="flex items-center gap-2">
                         <input
+                          list="web-remedy-datalist"
                           type="text"
-                          placeholder="Medicine Name / Kit"
+                          placeholder="Medicine Name (e.g. Arnica)"
                           value={item.name}
                           onChange={(e) => handleUpdateMedicine(item.id, "name", e.target.value)}
                           className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-800 bg-white font-medium"
@@ -702,7 +805,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         <select
                           value={item.type || "Pills"}
                           onChange={(e) => handleUpdateMedicine(item.id, "type", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+                          className="w-20 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-700"
                         >
                           <option value="Pills">Pills</option>
                           <option value="Drops">Drops</option>
@@ -710,6 +813,20 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <option value="Tincture">Tincture</option>
                           <option value="Syrup">Syrup</option>
                           <option value="Kit">Kit</option>
+                        </select>
+                        <select
+                          value={item.timing || "M - N - N"}
+                          onChange={(e) => handleUpdateMedicine(item.id, "timing", e.target.value)}
+                          className="w-24 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs font-bold text-slate-700"
+                        >
+                          <option value="M - N - N">M - N - N</option>
+                          <option value="M - A - N">M - A - N</option>
+                          <option value="M - N">M - N</option>
+                          <option value="1 - 0 - 1">1 - 0 - 1</option>
+                          <option value="1 - 1 - 1">1 - 1 - 1</option>
+                          <option value="M only">M only</option>
+                          <option value="N only">N only</option>
+                          <option value="SOS">SOS</option>
                         </select>
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-slate-400">₹</span>
@@ -719,7 +836,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                             onChange={(e) =>
                               handleUpdateMedicine(item.id, "amount", Math.max(0, Number(e.target.value)))
                             }
-                            className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-right text-xs font-bold text-slate-800 bg-white"
+                            className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-xs font-bold text-slate-800 bg-white"
                           />
                         </div>
                         {medicineItems.length > 1 && (
@@ -733,6 +850,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         )}
                       </div>
                     ))}
+                    <datalist id="web-remedy-datalist">
+                      {POPULAR_HOMEOPATHY_REMEDIES.map((r) => (
+                        <option key={r} value={r} />
+                      ))}
+                    </datalist>
 
                     <div className="flex justify-between items-center pt-2">
                       <button
@@ -802,6 +924,45 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 </div>
               </div>
 
+              {/* 3B. PAY LATER (PARTIAL PAYMENT) - SMALL BUTTON & TRIGGER */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
+                    isPayLater ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-500"
+                  }`}>
+                    <Clock size={14} />
+                  </div>
+                  <div>
+                    <span className="text-xs font-extrabold text-slate-800 block">
+                      {isPayLater ? "Pay Later Active (Partial Payment)" : "Pay Later Option"}
+                    </span>
+                    <span className="text-[10.5px] text-slate-500 font-medium">
+                      {isPayLater
+                        ? `₹${amountPaidNow.toLocaleString()} paid today • ₹${calculatedPayLater.toLocaleString()} remaining to pay later`
+                        : "Allow patient to pay a partial amount today"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isPayLater && (amountPaidNow === 0 || amountPaidNow >= grandTotalDue)) {
+                      setAmountPaidNow(Math.round(grandTotalDue * 0.75));
+                    }
+                    setIsPayLaterModalOpen(true);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isPayLater
+                      ? "bg-amber-500 hover:bg-amber-600 text-white shadow-2xs"
+                      : "border border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900"
+                  }`}
+                >
+                  <Clock size={12} />
+                  <span>{isPayLater ? "Edit Pay Later" : "+ Pay Later"}</span>
+                </button>
+              </div>
+
               {/* 4. PAYMENT MODE SELECTION */}
               <div>
                 <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
@@ -836,11 +997,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                             }
                           }
                         }}
-                        className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                          active
+                        className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${active
                             ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs ring-2 ring-sky-500"
                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         <Icon size={17} className={active ? "text-sky-600" : "text-slate-400"} />
                         <span>{mode.label}</span>
@@ -1105,13 +1265,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                       return (
                         <div
-                          className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${
-                            isMatch
+                          className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${isMatch
                               ? "bg-emerald-50 border-emerald-300 text-emerald-800"
                               : diff > 0
-                              ? "bg-amber-50 border-amber-300 text-amber-900"
-                              : "bg-rose-50 border-rose-300 text-rose-900"
-                          }`}
+                                ? "bg-amber-50 border-amber-300 text-amber-900"
+                                : "bg-rose-50 border-rose-300 text-rose-900"
+                            }`}
                         >
                           <div className="flex items-center gap-2">
                             <span>{isMatch ? "✓" : "⚠️"}</span>
@@ -1119,8 +1278,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               {isMatch
                                 ? `Split matches total (₹${grandTotalDue.toLocaleString()}): UPI ₹${(splitUpi || 0).toLocaleString()} + Cash ₹${(splitCash || 0).toLocaleString()}${splitCard > 0 ? ` + Card ₹${splitCard.toLocaleString()}` : ""}`
                                 : diff > 0
-                                ? `₹${diff.toLocaleString()} remaining to allocate (Total due: ₹${grandTotalDue.toLocaleString()})`
-                                : `Split exceeds total due by ₹${Math.abs(diff).toLocaleString()}`}
+                                  ? `₹${diff.toLocaleString()} remaining to allocate (Total due: ₹${grandTotalDue.toLocaleString()})`
+                                  : `Split exceeds total due by ₹${Math.abs(diff).toLocaleString()}`}
                             </span>
                           </div>
                           {!isMatch && (
@@ -1199,7 +1358,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                   <div className="text-right text-[11px] font-semibold text-slate-600 leading-tight">
                     <div>spiritualhomeoclinic.com</div>
-                    <div className="text-slate-500">support@spiritualhomeoclinic.com</div>
+                    <div className="text-slate-500">support@spiritualhomeo.com</div>
                   </div>
                 </div>
 
@@ -1274,31 +1433,59 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   </div>
                 </div>
 
-                {/* 5. PAYMENT INFORMATION BOX (Dashed border, light green background) */}
+                {/* 5. PAYMENT INFORMATION BOX (Dashed border, light green or orange background) */}
                 <div className="mb-5">
                   <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
                     PAYMENT INFORMATION
                   </div>
 
-                  <div className="rounded-xl border-2 border-dashed border-[#86efac] bg-[#f0fdf4] p-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
-                        TOTAL AMOUNT PAID
+                  {Number(activeInvoice.payLaterAmount) > 0 ? (
+                    <div className="rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/80 p-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-900">
+                          AMOUNT PAID TODAY
+                        </div>
+                        <div className="text-3xl font-black text-emerald-600 tracking-tight mt-0.5">
+                          ₹{Number(activeInvoice.totalPaid || 0).toFixed(2)}
+                        </div>
+                        <div className="text-[11px] font-extrabold text-amber-800 mt-1 flex items-center gap-1.5">
+                          <span>Remaining Due (Pay Later):</span>
+                          <span className="bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded font-black text-xs">
+                            ₹{Number(activeInvoice.payLaterAmount).toFixed(2)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-3xl font-black text-emerald-600 tracking-tight mt-0.5">
-                        ₹{displayTotal}
-                      </div>
-                    </div>
 
-                    <div className="flex flex-col items-end">
-                      <div className="inline-flex items-center gap-1 rounded-full bg-[#22c55e] px-3.5 py-1 text-xs font-black text-white shadow-xs">
-                        <span>PAID ✓</span>
-                      </div>
-                      <div className="text-[10px] font-black uppercase text-emerald-800 tracking-wide mt-1.5">
-                        VIA {displayPaymentMode}
+                      <div className="flex flex-col items-end">
+                        <div className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3.5 py-1 text-xs font-black text-white shadow-xs">
+                          <span>PARTIAL PAID</span>
+                        </div>
+                        <div className="text-[10px] font-black uppercase text-amber-900 tracking-wide mt-1.5">
+                          VIA {displayPaymentMode}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-xl border-2 border-dashed border-[#86efac] bg-[#f0fdf4] p-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                          TOTAL AMOUNT PAID
+                        </div>
+                        <div className="text-3xl font-black text-emerald-600 tracking-tight mt-0.5">
+                          ₹{displayTotal}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end">
+                        <div className="inline-flex items-center gap-1 rounded-full bg-[#22c55e] px-3.5 py-1 text-xs font-black text-white shadow-xs">
+                          <span>PAID ✓</span>
+                        </div>
+                        <div className="text-[10px] font-black uppercase text-emerald-800 tracking-wide mt-1.5">
+                          VIA {displayPaymentMode}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 6. FEE BREAKDOWN TABLE */}
@@ -1384,6 +1571,19 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           </tr>
                         )}
 
+                        {/* Previous pending balance cleared in this visit */}
+                        {Number(activeInvoice.previousDuePaid) > 0 && (
+                          <tr className="bg-amber-50/50">
+                            <td className="py-2.5">
+                              <div className="font-extrabold text-slate-900">Previous Pending Balance (Cleared)</div>
+                              <div className="text-[10px] text-amber-700 font-semibold">Previous visit balance cleared today</div>
+                            </td>
+                            <td className="py-2.5 text-right font-black text-amber-800">
+                              ₹{Number(activeInvoice.previousDuePaid).toFixed(2)}
+                            </td>
+                          </tr>
+                        )}
+
                         {/* Discount */}
                         {Number(activeInvoice.discount) > 0 && (
                           <tr className="text-red-600">
@@ -1396,15 +1596,45 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           </tr>
                         )}
 
-                        {/* TOTAL PAID ROW */}
-                        <tr className="border-t-2 border-slate-900 text-slate-900">
-                          <td className="py-2.5 font-black uppercase text-xs">
-                            TOTAL PAID ({displayPaymentMode})
-                          </td>
-                          <td className="py-2.5 text-right font-black text-sm">
-                            ₹{displayTotal}
-                          </td>
-                        </tr>
+                        {/* TOTAL PAID ROWS (Supports Pay Later & Full Payment) */}
+                        {Number(activeInvoice.payLaterAmount) > 0 ? (
+                          <>
+                            <tr className="border-t border-slate-200 text-slate-700">
+                              <td className="py-2 font-bold uppercase text-[11px] text-slate-500">
+                                TOTAL BILL AMOUNT
+                              </td>
+                              <td className="py-2 text-right font-black text-xs text-slate-800">
+                                ₹{Number(activeInvoice.totalAmountDue || (Number(activeInvoice.totalPaid || 0) + Number(activeInvoice.payLaterAmount || 0))).toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr className="border-t border-slate-100 text-slate-900">
+                              <td className="py-2 font-black uppercase text-xs text-emerald-700">
+                                AMOUNT PAID TODAY ({displayPaymentMode})
+                              </td>
+                              <td className="py-2 text-right font-black text-sm text-emerald-600">
+                                ₹{Number(activeInvoice.totalPaid || 0).toFixed(2)}
+                              </td>
+                            </tr>
+                            <tr className="border-t-2 border-amber-400 bg-amber-50/70 text-amber-950 font-black">
+                              <td className="py-2.5 px-2 font-black uppercase text-xs text-amber-900 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                                <span>REMAINING NEED TO PAY (PAY LATER)</span>
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-black text-sm text-amber-800">
+                                ₹{Number(activeInvoice.payLaterAmount).toFixed(2)}
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          <tr className="border-t-2 border-slate-900 text-slate-900">
+                            <td className="py-2.5 font-black uppercase text-xs">
+                              TOTAL PAID ({displayPaymentMode})
+                            </td>
+                            <td className="py-2.5 text-right font-black text-sm">
+                              ₹{displayTotal}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1432,7 +1662,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                   <div className="flex items-center gap-1.5">
                     <Mail size={12} />
-                    <span>support@spiritualhomeoclinic.com</span>
+                    <span>support@spiritualhomeo.com</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -1465,19 +1695,176 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         </div>
       </div>
 
+      {/* PAY LATER POPUP MODAL */}
+      {isPayLaterModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-2xs">
+                  <Clock size={16} />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-slate-900 text-sm">Pay Later (Partial Payment)</h4>
+                  <p className="text-[11px] text-slate-500">Patient clears remaining balance in next visit</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPayLaterModalOpen(false)}
+                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Total Bill Box */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-xs font-bold text-slate-600">Total Bill Amount</span>
+                <span className="text-base font-black text-slate-900">₹{grandTotalDue.toLocaleString()}</span>
+              </div>
+
+              {/* Amount Paid Today */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Amount Paid Today (₹) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={grandTotalDue}
+                    value={amountPaidNow || ""}
+                    onChange={(e) => {
+                      const val = Math.max(0, Math.min(grandTotalDue, parseFloat(e.target.value) || 0));
+                      setAmountPaidNow(val);
+                    }}
+                    placeholder="e.g. 1500"
+                    className="w-full pl-7 pr-3 py-2 rounded-xl border border-amber-300 bg-white text-xs font-black text-emerald-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Quick % buttons */}
+                <div className="flex gap-1.5 mt-2">
+                  {[0.25, 0.5, 0.75].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setAmountPaidNow(Math.round(grandTotalDue * pct))}
+                      className="flex-1 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-[11px] font-bold text-slate-700 cursor-pointer"
+                    >
+                      {pct * 100}% (₹{Math.round(grandTotalDue * pct)})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Remaining Need to Pay */}
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-amber-900 block">Remaining Need to Pay Later</span>
+                  <span className="text-[10px] text-amber-700">Will be recorded in patient file as pending</span>
+                </div>
+                <span className="text-base font-black text-amber-700">
+                  ₹{Math.max(0, grandTotalDue - (Number(amountPaidNow) || 0)).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Pay Later Notes / Reason (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Remaining balance to be paid next week"
+                  value={payLaterNotes}
+                  onChange={(e) => setPayLaterNotes(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPayLater(false);
+                  setAmountPaidNow(grandTotalDue);
+                  setIsPayLaterModalOpen(false);
+                }}
+                className="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold cursor-pointer"
+              >
+                Clear / Full Pay
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (amountPaidNow >= grandTotalDue) {
+                    alert("Amount paid today equals or exceeds total bill. Pay Later is not needed.");
+                    setIsPayLater(false);
+                  } else {
+                    setIsPayLater(true);
+                  }
+                  setIsPayLaterModalOpen(false);
+                }}
+                className="flex-1 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-xs cursor-pointer"
+              >
+                Apply Pay Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Razorpay Dynamic QR Modal */}
       <RazorpayQRModal
         isOpen={isRazorpayQROpen}
         appointmentId={appointment?.id}
         patientName={appointment?.patientName || "Patient"}
         phone={appointment?.phoneNumber || appointment?.phone || ""}
-        amount={razorpayQRAmount || grandTotalDue}
+        amount={razorpayQRAmount || (isPayLater ? amountPaidNow : grandTotalDue)}
         onClose={() => setIsRazorpayQROpen(false)}
-        onPaymentSuccess={(updated) => {
+        onPaymentSuccess={async (updated) => {
           setIsRazorpayQROpen(false);
-          alert(`Payment of ₹${razorpayQRAmount || grandTotalDue} received & verified via Razorpay UPI! Consultation completed.`);
-          if (updated) {
-            setCompletedInvoice(updated);
+          try {
+            const invoicePayload = {
+              appointmentId: appointment?.id,
+              consultationFee: includeConsultFee ? consultationFee : 0,
+              medicineFee: includeMedicineFee ? totalMedicineAmount : 0,
+              medicinesList: includeMedicineFee ? medicineItems : [],
+              medicineDuration: includeMedicineFee ? medicineDuration : "",
+              dietPlanFee: dietFee,
+              otherCharges,
+              discount,
+              discountReason,
+              totalAmountDue: grandTotalDue,
+              totalPaid: isPayLater ? amountPaidNow : grandTotalDue,
+              payLaterAmount: isPayLater ? calculatedPayLater : 0,
+              paymentMethod: "COUNTER_UPI",
+              paymentMode: "Counter UPI",
+              paidAt: new Date().toISOString(),
+              invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+              isFeeCollected: true,
+              status: "COMPLETED",
+            };
+
+            if (onSubmitPayment) {
+              await onSubmitPayment(invoicePayload);
+            } else {
+              await fetch("/api/reception/payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(invoicePayload),
+              });
+            }
+            setCompletedInvoice(updated || { ...appointment, ...invoicePayload });
+            setCurrentStep("invoice_receipt");
+          } catch (e: any) {
+            console.error("Payment finalize error:", e);
+            setCompletedInvoice(updated || appointment);
             setCurrentStep("invoice_receipt");
           }
         }}

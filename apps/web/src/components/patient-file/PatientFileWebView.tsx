@@ -27,6 +27,7 @@ import {
   PenTool,
   RotateCcw,
   Eraser,
+  Plus,
 } from "lucide-react";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
@@ -53,6 +54,53 @@ export const resolvePrescriptionImageUrl = (url: string) => {
   }
   return url;
 };
+
+export const POPULAR_HOMEOPATHY_REMEDIES = [
+  "Aconite Napellus",
+  "Allium Cepa",
+  "Antimonium Tart",
+  "Apis Mellifica",
+  "Arnica Montana",
+  "Arsenicum Album",
+  "Belladonna",
+  "Bryonia Alba",
+  "Calcarea Carbonica",
+  "Calcarea Fluorica",
+  "Calcarea Phosphorica",
+  "Carbo Vegetabilis",
+  "Causticum",
+  "Chamomilla",
+  "China Officinalis",
+  "Drosera",
+  "Dulcamara",
+  "Ferrum Phosphoricum",
+  "Gelsemium",
+  "Hepar Sulphuris",
+  "Hypericum Perforatum",
+  "Ignatia Amara",
+  "Ipecacuanha",
+  "Kali Bichromicum",
+  "Lachesis Mutus",
+  "Ledum Palustre",
+  "Lycopodium Clavatum",
+  "Magnesia Phosphorica",
+  "Mercurius Solubilis",
+  "Natrum Muriaticum",
+  "Natrum Sulphuricum",
+  "Nux Vomica",
+  "Phosphorus",
+  "Plumbum Metallicum",
+  "Pulsatilla Nigricans",
+  "Rhus Toxicodendron",
+  "Ruta Graveolens",
+  "Sepia Officinalis",
+  "Silicea",
+  "Spongia Tosta",
+  "Staphysagria",
+  "Sulphur",
+  "Symphytum",
+  "Thuja Occidentalis",
+];
 
 interface PatientFileWebViewProps {
   role: "DOCTOR" | "RECEPTION";
@@ -91,7 +139,14 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
 
   // Prescriptions & Media
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months">("No Follow-up");
+  const [prescriptionText, setPrescriptionText] = useState("");
+  const [isAddRemedyModalOpen, setIsAddRemedyModalOpen] = useState(false);
+  const [selectedRemedy, setSelectedRemedy] = useState("");
+  const [selectedPotency, setSelectedPotency] = useState("30C");
+  const [selectedForm, setSelectedForm] = useState("Pills");
+  const [selectedTiming, setSelectedTiming] = useState("M - N - N");
+  const [selectedFoodTiming, setSelectedFoodTiming] = useState("After Food");
+  const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date" | string>("No Follow-up");
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [dietPlan, setDietPlan] = useState("");
@@ -167,8 +222,24 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             packageName: pf.packageName || "",
             visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
+            pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
           });
+
+          // Also check live pending balance by phone
+          const cleanPhone = (pf.phone || initialPhone || "").replace(/\D/g, "").slice(-10);
+          if (cleanPhone) {
+            fetch(`/api/pay-later?phone=${cleanPhone}`)
+              .then((r) => r.json())
+              .then((plData) => {
+                if (plData && plData.success && typeof plData.pendingTotal === "number" && plData.pendingTotal > 0) {
+                  setPatientData((prev: any) => ({ ...prev, pendingBalance: plData.pendingTotal }));
+                }
+              })
+              .catch(() => {});
+          }
+
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
+          if (pf.prescriptionText) setPrescriptionText(pf.prescriptionText);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
@@ -248,12 +319,49 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
     }
   };
 
+  const datePickerInputRef = useRef<HTMLInputElement | null>(null);
+
+  const getIsoDate = (dmyStr: string) => {
+    if (!dmyStr) return "";
+    const parts = dmyStr.split("-");
+    if (parts.length === 3 && parts[0].length === 2 && parts[2].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return "";
+  };
+
+  const handleCalendarDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value; // YYYY-MM-DD
+    if (!val) return;
+    const parts = val.split("-");
+    if (parts.length === 3) {
+      const formatted = `${parts[2]}-${parts[1]}-${parts[0]}`; // DD-MM-YYYY
+      setFollowUpDate(formatted);
+      setFollowUpInterval("Custom Date");
+    }
+  };
+
+  const openDatePicker = () => {
+    if (datePickerInputRef.current) {
+      if (typeof (datePickerInputRef.current as any).showPicker === "function") {
+        (datePickerInputRef.current as any).showPicker();
+      } else {
+        datePickerInputRef.current.focus();
+        datePickerInputRef.current.click();
+      }
+    }
+  };
+
   const handleSelectInterval = (
-    interval: "No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months"
+    interval: "No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date"
   ) => {
     setFollowUpInterval(interval);
     if (interval === "No Follow-up") {
       setFollowUpDate("");
+      return;
+    }
+    if (interval === "Custom Date") {
+      openDatePicker();
       return;
     }
     const daysToAdd =
@@ -406,6 +514,18 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   };
 
   const handleSendToReception = async () => {
+    // 1. Mandatory Prescription check for OPD appointments
+    const hasRxImages = uploadedImages.length > 0;
+    const hasRxText = Boolean(prescriptionText && prescriptionText.trim().length > 0);
+    const isOpd = patientData.consultationMode !== "ONLINE";
+
+    if (isOpd && !hasRxImages && !hasRxText) {
+      alert(
+        "⚠️ Prescription is mandatory for OPD patients!\n\nPlease draw on the Digital Pad, upload a prescription file, or enter prescription remedies before sending to reception."
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/patient-file", {
@@ -414,6 +534,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
         body: JSON.stringify({
           id: appointmentId || "temp-id",
           prescriptionImages: uploadedImages,
+          prescriptionText,
           followUpInterval,
           followUpDate,
           consultationFee: parseFloat(consultationFee) || 0,
@@ -530,10 +651,26 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                         PKG
                       </span>
                     )}
+                    {Number(patientData.pendingBalance) > 0 && (
+                      <span className="px-2.5 py-0.5 rounded-md bg-orange-600 text-white font-black text-[10px] shadow-xs">
+                        DUE: ₹{Number(patientData.pendingBalance).toLocaleString()}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-1.5 text-xs text-slate-600">
+                  {Number(patientData.pendingBalance) > 0 && (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-900 font-bold mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">⚠️</span>
+                        <span>Pending Due: ₹{Number(patientData.pendingBalance).toLocaleString()} (Pay Later)</span>
+                      </div>
+                      <span className="text-[10px] text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
+                        Can be settled in Collect Fee
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <span>📋</span>
                     <span className="text-sky-700 font-bold">Reg ID: {patientData.registrationId}</span>
@@ -823,6 +960,30 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     <span>No prescription attached yet. Click the radio button or &quot;Open Pad&quot; to draw.</span>
                   </div>
                 )}
+
+                {/* Prescription Remedies & Text Instructions (M - N - N) */}
+                <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-700 text-xs">
+                      Prescription Remedies & Instructions
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddRemedyModalOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Add Remedy / Script (M - N - N)</span>
+                    </button>
+                  </div>
+                  <textarea
+                    rows={3}
+                    placeholder="Type prescription remedies, instructions, or click '+ Add Remedy / Script' to insert remedies with dosage timing (M - N - N)..."
+                    value={prescriptionText}
+                    onChange={(e) => setPrescriptionText(e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-medium bg-slate-50/50"
+                  />
+                </div>
               </div>
 
               {/* 5. Follow-up Recommendation */}
@@ -832,12 +993,12 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 <div>
                   <label className="block font-bold text-slate-700 mb-1.5 text-xs">Follow-up Interval</label>
                   <div className="flex flex-wrap gap-1.5">
-                    {(["No Follow-up", "1 Month", "2 Months", "3 Months", "4 Months"] as const).map((interval) => (
+                    {(["No Follow-up", "1 Month", "2 Months", "3 Months", "4 Months", "Custom Date"] as const).map((interval) => (
                       <button
                         key={interval}
                         type="button"
                         onClick={() => handleSelectInterval(interval)}
-                        className={`py-1.5 px-3 rounded-lg border font-bold text-xs transition-colors shrink-0 text-center ${followUpInterval === interval
+                        className={`py-1.5 px-3 rounded-lg border font-bold text-xs transition-colors shrink-0 text-center cursor-pointer ${followUpInterval === interval
                           ? "bg-sky-600 border-sky-600 text-white shadow-2xs"
                           : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
                           }`}
@@ -851,15 +1012,44 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 <div>
                   <label className="block font-bold text-slate-700 mb-1 text-xs">Preferred Follow-up Date (DD-MM-YYYY)</label>
                   <div className="relative">
-                    <Calendar className="w-4 h-4 text-sky-600 absolute left-3 top-3 pointer-events-none" />
+                    <button
+                      type="button"
+                      onClick={openDatePicker}
+                      className="absolute left-2.5 top-2.5 text-sky-600 hover:text-sky-700 cursor-pointer p-0.5 rounded"
+                      title="Open Calendar Picker"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
                     <input
                       type="text"
                       placeholder="DD-MM-YYYY"
                       value={followUpDate}
-                      onChange={(e) => setFollowUpDate(e.target.value)}
-                      className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-semibold"
+                      onClick={openDatePicker}
+                      onChange={(e) => {
+                        setFollowUpDate(e.target.value);
+                        if (followUpInterval !== "Custom Date") {
+                          setFollowUpInterval("Custom Date");
+                        }
+                      }}
+                      className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-semibold cursor-pointer"
                     />
-                    <Calendar className="w-4 h-4 text-sky-600 absolute right-3 top-3 pointer-events-none" />
+                    <button
+                      type="button"
+                      onClick={openDatePicker}
+                      className="absolute right-2.5 top-2.5 text-sky-600 hover:text-sky-700 cursor-pointer p-0.5 rounded"
+                      title="Open Calendar Picker"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </button>
+                    <input
+                      ref={datePickerInputRef}
+                      type="date"
+                      value={getIsoDate(followUpDate)}
+                      onChange={handleCalendarDateChange}
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                    />
                   </div>
                 </div>
               </div>
@@ -908,41 +1098,222 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
                   <button
                     onClick={() => setHistoryTab("all")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors cursor-pointer ${historyTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                       }`}
                   >
                     All ({patientHistory.length})
                   </button>
                   <button
                     onClick={() => setHistoryTab("prescriptions")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "prescriptions" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors cursor-pointer ${historyTab === "prescriptions" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                       }`}
                   >
-                    Prescriptions
+                    Prescriptions ({patientHistory.filter((h) => h.prescriptionImages && h.prescriptionImages.length > 0).length})
                   </button>
                   <button
                     onClick={() => setHistoryTab("payments")}
-                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors ${historyTab === "payments" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600"
+                    className={`flex-1 py-1.5 rounded-md font-bold text-xs transition-colors cursor-pointer ${historyTab === "payments" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
                       }`}
                   >
-                    Payments
+                    Payments ({patientHistory.filter((h) => h.isFeeCollected || (typeof h.totalPaid === "number" && h.totalPaid > 0) || (typeof h.totalAmountDue === "number" && h.totalAmountDue > 0)).length})
                   </button>
                 </div>
 
-                {patientHistory.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400">
-                    <FileText className="w-8 h-8 mx-auto mb-1 text-slate-300" />
-                    <p className="text-xs font-medium">No previous visits recorded for this patient.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {patientHistory.map((h, i) => (
-                      <div key={h.id || i} className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 flex items-center justify-between">
-                        <div>
-                          <div className="font-bold text-slate-800 text-xs">{h.date}</div>
-                          <div className="text-[11px] text-slate-500">{h.doctorName}</div>
+                {(() => {
+                  const items = historyTab === "prescriptions"
+                    ? patientHistory.filter((h) => h.prescriptionImages && h.prescriptionImages.length > 0)
+                    : historyTab === "payments"
+                    ? patientHistory.filter((h) => h.isFeeCollected || (typeof h.totalPaid === "number" && h.totalPaid > 0) || (typeof h.totalAmountDue === "number" && h.totalAmountDue > 0))
+                    : patientHistory;
+
+                  if (items.length === 0) {
+                    return (
+                      <div className="py-8 text-center text-slate-400">
+                        <FileText className="w-8 h-8 mx-auto mb-1 text-slate-300" />
+                        <p className="text-xs font-medium">
+                          {historyTab === "prescriptions"
+                            ? "No prescription records found for this patient."
+                            : historyTab === "payments"
+                            ? "No payment records found for this patient."
+                            : "No previous visits recorded for this patient."}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  if (historyTab === "prescriptions") {
+                    return (
+                      <div className="space-y-3">
+                        {items.map((h, i) => (
+                          <div key={h.id || i} className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-extrabold text-slate-800 text-xs">
+                                  {h.date} {h.timeSlot ? `• ${h.timeSlot}` : ""}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  {h.doctorName || "Doctor"} • {h.branch}
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full">
+                                {h.prescriptionImages?.length || 0} Images
+                              </span>
+                            </div>
+
+                            {h.diagnosisNotes && (
+                              <div className="text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-slate-200/80">
+                                <span className="font-bold text-slate-700">Diagnosis/Notes:</span> {h.diagnosisNotes}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 pt-1">
+                              {h.prescriptionImages?.map((rxUrl: string, rIdx: number) => (
+                                <div
+                                  key={rIdx}
+                                  onClick={() => {
+                                    setUploadedImages(h.prescriptionImages);
+                                    setViewerIndex(rIdx);
+                                    setRotation(0);
+                                    setZoomScale(1);
+                                    setIsViewerOpen(true);
+                                  }}
+                                  className="group relative cursor-pointer border border-slate-200 hover:border-sky-500 rounded-lg overflow-hidden bg-white shadow-2xs transition-all"
+                                  title="Click to preview prescription"
+                                >
+                                  <img
+                                    src={resolvePrescriptionImageUrl(rxUrl)}
+                                    alt={`Rx ${rIdx + 1}`}
+                                    className="w-full h-20 object-cover group-hover:scale-105 transition-transform"
+                                  />
+                                  <div className="absolute bottom-0 inset-x-0 bg-slate-900/85 text-white text-[9px] font-bold text-center py-0.5">
+                                    Rx {rIdx + 1}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+
+                  if (historyTab === "payments") {
+                    return (
+                      <div className="space-y-3">
+                        {items.map((h, i) => (
+                          <div key={h.id || i} className="p-3 rounded-xl border border-emerald-200/80 bg-emerald-50/30 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-1.5 font-extrabold text-slate-800 text-xs">
+                                  <span>🧾</span>
+                                  <span>{h.date}</span>
+                                  {h.timeSlot && <span className="text-[10px] text-slate-400 font-semibold">• {h.timeSlot}</span>}
+                                  {h.invoiceId && (
+                                    <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">
+                                      {h.invoiceId}
+                                    </span>
+                                  )}
+                                  {h.isCurrent && (
+                                    <span className="text-[9px] font-extrabold bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded border border-sky-200">
+                                      Current Visit
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">{h.doctorName} • {h.branch}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[10px] text-slate-400 font-semibold">Total Paid</div>
+                                <div className="font-black text-emerald-600 text-sm">₹{h.totalPaid ?? (h.totalAmountDue || h.consultationFee || 0)}</div>
+                              </div>
+                            </div>
+
+                            <div className="bg-white rounded-lg border border-slate-200/80 p-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Payment Mode</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200">
+                                  {h.paymentMethod || "CASH"}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-[11px]">
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Consultation</span>
+                                  <span className="font-bold text-slate-700">₹{h.consultationFee}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Medicine Fee</span>
+                                  <span className="font-bold text-slate-700">₹{h.medicineFee}</span>
+                                  {h.medicineDuration && <span className="text-[9px] text-slate-400 ml-1">({h.medicineDuration})</span>}
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Discount</span>
+                                  <span className="font-bold text-rose-600">₹{h.discount}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 block text-[10px]">Total Due</span>
+                                  <span className="font-bold text-slate-800">₹{h.totalAmountDue}</span>
+                                </div>
+                              </div>
+
+                              {h.payLaterAmount > 0 && (
+                                <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 text-amber-700 bg-amber-50/50 p-1.5 rounded">
+                                  <span className="font-semibold">Pay Later (Pending Balance):</span>
+                                  <span className="font-black">₹{h.payLaterAmount}</span>
+                                </div>
+                              )}
+
+                              {h.paidAt && (
+                                <div className="text-[10px] text-slate-400 pt-1 text-right">
+                                  Paid At: {h.paidAt.replace("T", " ").slice(0, 16)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+
+                  // Default "all" tab
+                  return (
+                    <div className="space-y-2">
+                      {items.map((h, i) => (
+                        <div key={h.id || i} className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                                <span>{h.date}</span>
+                                {h.timeSlot && <span className="text-[10px] text-slate-400 font-semibold">• {h.timeSlot}</span>}
+                                {h.isCurrent && (
+                                  <span className="text-[9px] font-extrabold bg-sky-100 text-sky-700 px-1 py-0.2 rounded border border-sky-200">
+                                    Current
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500">{h.doctorName} • {h.branch}</div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-emerald-600 text-xs block">
+                                ₹{h.totalPaid ?? (h.totalAmountDue || h.consultationFee || 0)}
+                              </span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                h.isFeeCollected
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-amber-50 text-amber-700 border-amber-200"
+                              }`}>
+                                {h.isFeeCollected ? "Paid" : h.status || "Pending"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {h.diagnosisNotes && (
+                            <div className="text-[11px] text-slate-600 bg-white p-1.5 rounded border border-slate-200/80">
+                              <span className="font-bold text-slate-700">Diagnosis/Notes:</span> {h.diagnosisNotes}
+                            </div>
+                          )}
+
                           {h.prescriptionImages && h.prescriptionImages.length > 0 && (
-                            <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                            <div className="flex gap-1.5 flex-wrap pt-0.5">
                               {h.prescriptionImages.map((rxUrl: string, rIdx: number) => (
                                 <div
                                   key={rIdx}
@@ -968,12 +1339,25 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                               ))}
                             </div>
                           )}
+
+                          {/* Fee summary line */}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500 pt-1 border-t border-slate-200/70">
+                            <span>Consultation: <strong className="text-slate-700">₹{h.consultationFee}</strong></span>
+                            {h.medicineFee > 0 && (
+                              <span>Medicine: <strong className="text-slate-700">₹{h.medicineFee}</strong>{h.medicineDuration ? ` (${h.medicineDuration})` : ""}</span>
+                            )}
+                            {h.discount > 0 && (
+                              <span className="text-rose-600">Discount: -₹{h.discount}</span>
+                            )}
+                            {h.paymentMethod && (
+                              <span>Mode: <strong className="text-slate-700">{h.paymentMethod}</strong></span>
+                            )}
+                          </div>
                         </div>
-                        <div className="font-black text-emerald-600 text-xs">₹{h.consultationFee}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </>
           )}
@@ -1415,6 +1799,180 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP DROPDOWN MODAL: ADD REMEDY / SCRIPT (M - N - N) */}
+      {isAddRemedyModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💊</span>
+                <div>
+                  <h4 className="font-extrabold text-slate-900 text-sm">Add Remedy to Prescription</h4>
+                  <p className="text-[11px] text-slate-500">Select medicine, potency & dosage timing (M - N - N)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddRemedyModalOpen(false)}
+                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Remedy Search / Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Medicine / Remedy Name <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    list="remedies-list"
+                    type="text"
+                    placeholder="Type or select remedy (e.g. Arnica Montana)..."
+                    value={selectedRemedy}
+                    onChange={(e) => setSelectedRemedy(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <datalist id="remedies-list">
+                    {POPULAR_HOMEOPATHY_REMEDIES.map((rem) => (
+                      <option key={rem} value={rem} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Quick Popular Remedy Chips */}
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                {POPULAR_HOMEOPATHY_REMEDIES.slice(0, 14).map((rem) => (
+                  <button
+                    key={rem}
+                    type="button"
+                    onClick={() => setSelectedRemedy(rem)}
+                    className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition-colors cursor-pointer ${
+                      selectedRemedy === rem
+                        ? "bg-sky-600 text-white border-sky-600"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {rem}
+                  </button>
+                ))}
+              </div>
+
+              {/* Potency & Form */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Potency</label>
+                  <select
+                    value={selectedPotency}
+                    onChange={(e) => setSelectedPotency(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white"
+                  >
+                    {["30C", "200C", "1M", "10M", "6X", "12X", "Q / Tincture", "Mother Tincture"].map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Form</label>
+                  <select
+                    value={selectedForm}
+                    onChange={(e) => setSelectedForm(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white"
+                  >
+                    {["Pills", "Drops", "Dilution", "Syrup", "Tablet", "Powder"].map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Timing Selection (M - N - N, M - A - N, etc.) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Dosage Timing <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {[
+                    "M - N - N",
+                    "M - A - N",
+                    "M - N",
+                    "1 - 0 - 1",
+                    "1 - 1 - 1",
+                    "M only",
+                    "N only",
+                    "SOS",
+                  ].map((tim) => (
+                    <button
+                      key={tim}
+                      type="button"
+                      onClick={() => setSelectedTiming(tim)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-extrabold border transition-all text-center cursor-pointer ${
+                        selectedTiming === tim
+                          ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {tim}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Food Relation */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Food Relation</label>
+                <div className="flex gap-2">
+                  {["After Food", "Before Food", "Empty Stomach"].map((food) => (
+                    <button
+                      key={food}
+                      type="button"
+                      onClick={() => setSelectedFoodTiming(food)}
+                      className={`flex-1 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                        selectedFoodTiming === food
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {food}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddRemedyModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedRemedy.trim()) {
+                    alert("Please select or enter a remedy name.");
+                    return;
+                  }
+                  const line = `• ${selectedRemedy.trim()} ${selectedPotency} (${selectedForm}) — Timing: ${selectedTiming} (${selectedFoodTiming})`;
+                  setPrescriptionText((prev) => (prev ? `${prev}\n${line}` : line));
+                  setIsAddRemedyModalOpen(false);
+                  setSelectedRemedy("");
+                }}
+                className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-black shadow-xs cursor-pointer"
+              >
+                + Insert into Prescription
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -88,6 +88,7 @@ export interface MedicineRequestPayload {
   totalAmount: number;
   medicines: MedicineItem[];
   deliveryAddress?: string;
+  notes?: string;
   status?: "pending" | "completed" | "dispatched";
   createdAt?: string;
 }
@@ -112,6 +113,7 @@ function MedicalRequestsContent() {
   const [medicines, setMedicines] = useState<MedicineItem[]>([
     { id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 },
   ]);
+  const [notes, setNotes] = useState("");
 
   // Share Popup State (WhatsApp & PDF)
   const [sharePopupData, setSharePopupData] = useState<{
@@ -123,6 +125,7 @@ function MedicalRequestsContent() {
     duration: string;
     totalAmount: number;
     medicines: MedicineItem[];
+    notes?: string;
   } | null>(null);
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -213,6 +216,7 @@ function MedicalRequestsContent() {
     setDuration("1 Month");
     setTotalAmount(0);
     setMedicines([{ id: "1", name: "", type: "Pills", timing: "M - - N", amount: 0 }]);
+    setNotes("");
   };
 
   const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched") => {
@@ -267,8 +271,7 @@ function MedicalRequestsContent() {
       return;
     }
 
-    // Open Share Popup Modal immediately
-    setSharePopupData({
+    const payload = {
       patientName: patientName.trim(),
       phone: cleanPhone.slice(-10),
       age: age.trim() || undefined,
@@ -277,7 +280,25 @@ function MedicalRequestsContent() {
       duration,
       totalAmount: finalTotal,
       medicines: validMedicines,
-    });
+      notes: notes.trim() || undefined,
+    };
+
+    // Save to DB in background
+    fetch("/api/reception/medical-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          fetchRequests();
+        }
+      })
+      .catch((err) => console.warn("Could not save medical request to DB:", err));
+
+    // Open Share Popup Modal immediately
+    setSharePopupData(payload);
     setWhatsappPhone(cleanPhone.slice(-10));
   };
 
@@ -295,6 +316,10 @@ function MedicalRequestsContent() {
       .map((m, i) => `  ${i + 1}. *${m.name}* (${m.type || "Pills"})\n     Dosage: ${m.timing}`)
       .join("\n\n");
 
+    const notesBlock = sharePopupData.notes
+      ? `*Clinical Notes / Instructions:*\n${sharePopupData.notes}\n\n--------------------------------\n`
+      : "";
+
     const text = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY CLINICS*\n` +
       `*Official Medical Request & Remedy Slip*\n` +
@@ -305,6 +330,7 @@ function MedicalRequestsContent() {
       `*Course Duration:* ${sharePopupData.duration}\n` +
       `*Total Medicine Fee:* ₹${Number(sharePopupData.totalAmount || 0).toFixed(2)}\n` +
       `--------------------------------\n` +
+      `${notesBlock}` +
       `*Prescribed Remedies:*\n\n${medsList}\n\n` +
       `--------------------------------\n` +
       `Spiritual Homeopathy Clinics\nHelpline: 9030176176 | spiritualhomeoclinic.com`
@@ -325,6 +351,7 @@ function MedicalRequestsContent() {
       duration: sharePopupData.duration,
       totalAmount: sharePopupData.totalAmount,
       medicines: sharePopupData.medicines,
+      notes: sharePopupData.notes,
     });
   };
 
@@ -412,22 +439,20 @@ function MedicalRequestsContent() {
                 <button
                   type="button"
                   onClick={() => setActiveTab("ALL")}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    activeTab === "ALL"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${activeTab === "ALL"
                       ? "bg-slate-900 text-white"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                    }`}
                 >
                   All Requests ({requests.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("completed")}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    activeTab === "completed"
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${activeTab === "completed"
                       ? "bg-emerald-600 text-white"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                    }`}
                 >
                   Completed ({requests.filter((r) => r.status === "completed").length})
                 </button>
@@ -518,6 +543,11 @@ function MedicalRequestsContent() {
                                     • <span className="font-bold text-slate-900">{m.name}</span> ({m.type || "Pills"}) - {m.timing}
                                   </div>
                                 ))}
+                                {r.notes && (
+                                  <div className="text-[10.5px] text-sky-800 bg-sky-50 border border-sky-200/60 rounded px-1.5 py-0.5 mt-1 truncate">
+                                    <span className="font-bold">Note:</span> {r.notes}
+                                  </div>
+                                )}
                               </div>
                             </td>
 
@@ -527,32 +557,54 @@ function MedicalRequestsContent() {
 
                             <td className="py-3 px-4 text-center">
                               <span
-                                className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                                  isCompleted
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${isCompleted
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     : "bg-amber-50 text-amber-700 border-amber-200"
-                                }`}
+                                  }`}
                               >
                                 {isCompleted ? "COMPLETED" : "PENDING"}
                               </span>
                             </td>
 
                             <td className="py-3 px-4 text-right">
-                              {isCompleted ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Completed</span>
-                                </span>
-                              ) : (
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateStatus(r.id || r.requestId!, "completed")}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition cursor-pointer"
+                                  onClick={() =>
+                                    generateMedicineRequestPDF({
+                                      patientName: r.patientName,
+                                      gender: r.gender,
+                                      age: r.age,
+                                      phone: r.phone,
+                                      branchName: r.branchName,
+                                      duration: r.duration,
+                                      totalAmount: r.totalAmount,
+                                      medicines: r.medicines,
+                                      notes: r.notes,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 transition cursor-pointer"
+                                  title="Print Medicine Certificate PDF"
                                 >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Mark Completed</span>
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>PDF</span>
                                 </button>
-                              )}
+                                {isCompleted ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Completed</span>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateStatus(r.id || r.requestId!, "completed")}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Mark Completed</span>
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -731,11 +783,10 @@ function MedicalRequestsContent() {
               {/* Real-time Fee Match Indicator */}
               {totalAmount > 0 && (
                 <div
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-4 text-xs font-bold border transition ${
-                    medicinesSum === totalAmount
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-4 text-xs font-bold border transition ${medicinesSum === totalAmount
                       ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                       : "bg-amber-50 border-amber-200 text-amber-800"
-                  }`}
+                    }`}
                 >
                   {medicinesSum === totalAmount ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -838,6 +889,49 @@ function MedicalRequestsContent() {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* FORM CARD 3: CLINICAL NOTES / SPECIAL INSTRUCTIONS */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs mb-6">
+              <div className="flex items-center gap-2 mb-3 border-b border-slate-100 pb-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-sky-600 text-white font-extrabold text-xs">
+                  3
+                </div>
+                <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">
+                  Clinical Notes / Special Instructions
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mb-2">
+                Optional clinical advice, dosage precautions, diet restrictions, or special notes to be included in the certificate PDF and WhatsApp slip.
+              </p>
+              <textarea
+                rows={3}
+                placeholder="e.g. Avoid coffee and raw onion for 30 minutes before and after taking medicine. Review after 1 month..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 p-3 text-xs font-medium text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none resize-y"
+              />
+            </div>
+
+            {/* BOTTOM ACTION BAR */}
+            <div className="flex items-center justify-end gap-3 pb-8">
+              <button
+                type="button"
+                onClick={handleClearForm}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-xs cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Clear Form</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleShareMedicalRequest}
+                disabled={!isFeeMatched}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-50 shadow-md shadow-lime-600/20 transition-all cursor-pointer active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Share Medical Request &amp; PDF</span>
+              </button>
             </div>
           </div>
         )}
@@ -973,6 +1067,17 @@ function MedicalRequestsContent() {
                         </table>
                       </div>
 
+                      {sharePopupData.notes && sharePopupData.notes.trim() ? (
+                        <div className="mt-2.5 bg-slate-50 border border-slate-200 border-l-2 border-l-[#1d8ecd] rounded p-2 text-left">
+                          <div className="font-extrabold text-[9px] text-[#1d8ecd] uppercase tracking-wider mb-0.5">
+                            Clinical Notes / Instructions:
+                          </div>
+                          <div className="text-[9.5px] text-slate-700 whitespace-pre-wrap leading-tight">
+                            {sharePopupData.notes.trim()}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="pt-4 text-center text-[9px] text-slate-400 italic border-t border-dashed border-slate-200">
                         This is a computer-generated document. No physical signature required.
                       </div>
@@ -982,7 +1087,7 @@ function MedicalRequestsContent() {
                     <div className="bg-[#a3cf3b] h-9 px-3 flex items-center justify-around text-white text-[9.5px] font-bold tracking-wide uppercase">
                       <span>📞 Reception: {getBranchPhone(sharePopupData.branchName)}</span>
                       <span>•</span>
-                      <span>✉️ support@spiritualhomeoclinic.com</span>
+                      <span>✉️ support@spiritualhomeo.com</span>
                       <span>•</span>
                       <span>📍 Branch: {(sharePopupData.branchName || "KPHB Branch").toUpperCase()}</span>
                     </div>
@@ -1002,6 +1107,11 @@ function MedicalRequestsContent() {
                       <div className="font-bold text-emerald-700 pt-1">
                         Total Fee: ₹{Number(sharePopupData.totalAmount || 0).toFixed(2)} ({sharePopupData.medicines.length} remedies)
                       </div>
+                      {sharePopupData.notes ? (
+                        <div className="mt-2 pt-2 border-t border-slate-200/60 text-[11px] text-slate-600">
+                          <span className="font-bold text-slate-800">Notes:</span> {sharePopupData.notes}
+                        </div>
+                      ) : null}
                     </div>
 
                     {/* WhatsApp Action */}
