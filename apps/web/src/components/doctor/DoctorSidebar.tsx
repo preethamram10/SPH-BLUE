@@ -33,7 +33,9 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
 
   const isHeadDoctor =
     doctorName.toLowerCase().includes("prashanth") ||
-    doctorName.toLowerCase().includes("head");
+    doctorName.toLowerCase().includes("head") ||
+    doctorName.toLowerCase().includes("vaidya") ||
+    doctorName.toLowerCase().includes("chief");
 
   const handleLogout = () => {
     localStorage.removeItem("user_role");
@@ -66,7 +68,7 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
           {
             id: "total-revenue",
             name: "Total Revenue",
-            href: "/admin/total-revenue",
+            href: "/doctor/total-revenue",
             icon: DollarSign,
           },
           {
@@ -125,18 +127,16 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
               </Link>
             );
           })}
-        </nav>
-      </div>
 
-      {/* Logout Footer */}
-      <div className="p-2.5 border-t border-slate-100">
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-        >
-          <LogOut className="w-3.5 h-3.5 shrink-0" />
-          <span>Sign Out</span>
-        </button>
+          {/* Sign Out (Inside side navigation, not fixed) */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer mt-2"
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            <span>Sign Out</span>
+          </button>
+        </nav>
       </div>
     </aside>
   );

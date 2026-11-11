@@ -54,7 +54,7 @@ export interface TransactionRecord {
   packageFee: number;
   dietFee?: number;
   totalAmount: number;
-  paymentMethod: "cash" | "upi" | "card" | "split";
+  paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string;
@@ -71,6 +71,17 @@ interface MobileRevenueLedgerViewProps {
   headerTitle?: string;
   bottomNav?: React.ReactNode;
 }
+
+// Helper to normalize branch names for reliable comparisons and deduplication
+const normalizeBranchKey = (name: string): string => {
+  let c = (name || "")
+    .toLowerCase()
+    .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+  if (c === "kpb") c = "kphb";
+  return c;
+};
 
 export function MobileRevenueLedgerView({
   role,
@@ -177,16 +188,34 @@ export function MobileRevenueLedgerView({
     return count;
   }, [selectedBranch, selectedDoctor, doctorFilterName, selectedMethod, selectedSplitType, selectedSource, selectedAmountRange, datePreset]);
 
-  // Comprehensive branch list from BOTH branches table AND transactions
+  // Comprehensive branch list from registered branches + transactions (strictly deduplicated by normalized key)
   const combinedBranchList = useMemo(() => {
-    const set = new Set<string>();
-    // Pre-seed with official clinic branches
-    ["KPHB Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => set.add(b));
-    allRegisteredBranches.forEach((b) => set.add(b));
-    transactions.forEach((t) => {
-      if (t.branchName) set.add(t.branchName);
+    const map = new Map<string, string>();
+
+    // 1. Registered branches from backend API (highest priority for official names)
+    allRegisteredBranches.forEach((b) => {
+      const k = normalizeBranchKey(b);
+      if (k) map.set(k, b);
     });
-    return Array.from(set);
+
+    // 2. Transaction branch names
+    transactions.forEach((t) => {
+      if (t.branchName && t.branchName !== "Clinic Branch") {
+        const k = normalizeBranchKey(t.branchName);
+        if (k && !map.has(k)) {
+          map.set(k, t.branchName);
+        }
+      }
+    });
+
+    // 3. Fallbacks only if list is empty
+    if (map.size === 0) {
+      ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => {
+        map.set(normalizeBranchKey(b), b);
+      });
+    }
+
+    return Array.from(map.values());
   }, [allRegisteredBranches, transactions]);
 
   // Doctor List
@@ -241,11 +270,11 @@ export function MobileRevenueLedgerView({
         if (!matchesName && !matchesPhone && !matchesId && !matchesDoc) return false;
       }
 
-      // 2. Branch Filter (Matches partial or full e.g. "KPHB" matches "KPHB Branch")
+      // 2. Branch Filter (Matches normalized branch key)
       if (selectedBranch !== "all") {
-        const bTarget = selectedBranch.toLowerCase().replace("branch", "").trim();
-        const bTx = (tx.branchName || "").toLowerCase();
-        if (!bTx.includes(bTarget)) return false;
+        const targetKey = normalizeBranchKey(selectedBranch);
+        const txKey = normalizeBranchKey(tx.branchName || "");
+        if (targetKey !== txKey) return false;
       }
 
       // 3. Doctor Filter
@@ -254,19 +283,23 @@ export function MobileRevenueLedgerView({
         if (!tx.doctorName?.toLowerCase().includes(activeDoctorFilter.toLowerCase())) return false;
       }
 
-      // 4. Payment Method Filter
+      // 4. Payment Method Filter (Separate Counter UPI from Online UPI)
       if (selectedMethod !== "all") {
-        if (selectedMethod === "upi") {
-          const isUpi = tx.paymentMethod === "upi" || tx.displayPaymentMethod?.toLowerCase().includes("upi");
-          if (!isUpi) return false;
+        const disp = (tx.displayPaymentMethod || "").toLowerCase();
+        if (selectedMethod === "counter_upi") {
+          const isCounter = tx.paymentMethod === "counter_upi" || disp.includes("counter");
+          if (!isCounter) return false;
+        } else if (selectedMethod === "upi" || selectedMethod === "online_upi") {
+          const isOnline = (tx.paymentMethod === "upi" || disp.includes("online") || disp.includes("qr")) && !disp.includes("counter");
+          if (!isOnline) return false;
         } else if (selectedMethod === "cash") {
-          const isCash = tx.paymentMethod === "cash" || tx.displayPaymentMethod?.toLowerCase().includes("cash");
+          const isCash = tx.paymentMethod === "cash" || disp.includes("cash");
           if (!isCash) return false;
         } else if (selectedMethod === "card") {
-          const isCard = tx.paymentMethod === "card" || tx.displayPaymentMethod?.toLowerCase().includes("card");
+          const isCard = tx.paymentMethod === "card" || disp.includes("card");
           if (!isCard) return false;
         } else if (selectedMethod === "split") {
-          if (tx.paymentMethod !== "split") return false;
+          if (tx.paymentMethod !== "split" && !disp.includes("split")) return false;
         }
       }
 
@@ -335,8 +368,9 @@ export function MobileRevenueLedgerView({
   // Aggregate Metrics (Grand Total & Mode Summary)
   const metrics = useMemo(() => {
     let grandTotal = 0;
-    let upiTotal = 0;
     let cashTotal = 0;
+    let counterUpiTotal = 0;
+    let onlineUpiTotal = 0;
     let cardTotal = 0;
 
     let splitConsultation = 0;
@@ -348,18 +382,22 @@ export function MobileRevenueLedgerView({
       const amt = Number(tx.totalAmount) || 0;
       grandTotal += amt;
 
-      if (tx.paymentMethod === "upi" || tx.displayPaymentMethod?.toLowerCase().includes("upi")) {
-        upiTotal += amt;
-      } else if (tx.paymentMethod === "cash" || tx.displayPaymentMethod?.toLowerCase().includes("cash")) {
+      const disp = (tx.displayPaymentMethod || "").toLowerCase();
+      if (tx.paymentMethod === "cash" || disp.includes("cash")) {
         cashTotal += amt;
-      } else if (tx.paymentMethod === "card") {
+      } else if (tx.paymentMethod === "counter_upi" || disp.includes("counter")) {
+        counterUpiTotal += amt;
+      } else if (tx.paymentMethod === "upi" || disp.includes("online") || disp.includes("qr")) {
+        onlineUpiTotal += amt;
+      } else if (tx.paymentMethod === "card" || disp.includes("card")) {
         cardTotal += amt;
       } else if (tx.paymentMethod === "split" && tx.splitDetails) {
         cashTotal += Number(tx.splitDetails.cash) || 0;
-        upiTotal += (Number(tx.splitDetails.upi) || 0) + (Number(tx.splitDetails.counterUpi) || 0);
+        onlineUpiTotal += Number(tx.splitDetails.upi) || 0;
+        counterUpiTotal += Number(tx.splitDetails.counterUpi) || 0;
         cardTotal += Number(tx.splitDetails.card) || 0;
       } else {
-        upiTotal += amt;
+        counterUpiTotal += amt;
       }
 
       const sLower = (tx.revenueSplit || "").toLowerCase();
@@ -378,8 +416,9 @@ export function MobileRevenueLedgerView({
 
     return {
       grandTotal,
-      upiTotal,
       cashTotal,
+      counterUpiTotal,
+      onlineUpiTotal,
       cardTotal,
       splitConsultation,
       splitConsultationMed,
@@ -389,30 +428,28 @@ export function MobileRevenueLedgerView({
     };
   }, [filteredTransactions]);
 
-  // Branch Breakdown across ALL clinics
+  // Branch Breakdown across ALL clinics (strictly deduplicated by normalized key)
   const branchBreakdown = useMemo(() => {
-    const map: Record<string, { amount: number; count: number }> = {};
+    const map: Record<string, { name: string; amount: number; count: number }> = {};
 
-    // Seed every branch so none are missing
+    // Seed every branch in combinedBranchList using normalized key
     combinedBranchList.forEach((b) => {
-      map[b] = { amount: 0, count: 0 };
+      const k = normalizeBranchKey(b);
+      map[k] = { name: b, amount: 0, count: 0 };
     });
 
     filteredTransactions.forEach((tx) => {
-      const bRaw = tx.branchName || "Main Branch";
-      // Find matching branch name in combined list
-      const matched = combinedBranchList.find(
-        (cb) => cb.toLowerCase() === bRaw.toLowerCase() || cb.toLowerCase().includes(bRaw.toLowerCase()) || bRaw.toLowerCase().includes(cb.toLowerCase())
-      ) || bRaw;
-
-      if (!map[matched]) map[matched] = { amount: 0, count: 0 };
-      map[matched].amount += Number(tx.totalAmount) || 0;
-      map[matched].count += 1;
+      const k = normalizeBranchKey(tx.branchName || "Main Branch");
+      if (!map[k]) {
+        map[k] = { name: tx.branchName || "Main Branch", amount: 0, count: 0 };
+      }
+      map[k].amount += Number(tx.totalAmount) || 0;
+      map[k].count += 1;
     });
 
-    return Object.entries(map)
-      .map(([name, data]) => ({
-        name,
+    return Object.values(map)
+      .map((data) => ({
+        name: data.name,
         amount: data.amount,
         count: data.count,
         share: metrics.grandTotal > 0 ? ((data.amount / metrics.grandTotal) * 100).toFixed(1) + "%" : "0%",
@@ -481,11 +518,16 @@ export function MobileRevenueLedgerView({
             </View>
           </View>
 
-          {/* Mini Inline Mode Summary (Compact Strip) */}
+          {/* Mini Inline Mode Summary (Compact Strip - Separate Counter UPI and Online UPI) */}
           <View style={styles.heroStrip}>
             <View style={styles.heroStripCol}>
-              <Text style={styles.heroStripLabel}>UPI</Text>
-              <Text style={styles.heroStripVal}>₹{metrics.upiTotal.toLocaleString("en-IN")}</Text>
+              <Text style={styles.heroStripLabel}>COUNTER UPI</Text>
+              <Text style={styles.heroStripVal}>₹{metrics.counterUpiTotal.toLocaleString("en-IN")}</Text>
+            </View>
+            <View style={styles.heroStripDivider} />
+            <View style={styles.heroStripCol}>
+              <Text style={styles.heroStripLabel}>ONLINE UPI</Text>
+              <Text style={styles.heroStripVal}>₹{metrics.onlineUpiTotal.toLocaleString("en-IN")}</Text>
             </View>
             <View style={styles.heroStripDivider} />
             <View style={styles.heroStripCol}>
@@ -494,13 +536,8 @@ export function MobileRevenueLedgerView({
             </View>
             <View style={styles.heroStripDivider} />
             <View style={styles.heroStripCol}>
-              <Text style={styles.heroStripLabel}>PACKAGES</Text>
-              <Text style={styles.heroStripVal}>₹{metrics.splitCarePackage.toLocaleString("en-IN")}</Text>
-            </View>
-            <View style={styles.heroStripDivider} />
-            <View style={styles.heroStripCol}>
-              <Text style={styles.heroStripLabel}>DIET PLANS</Text>
-              <Text style={styles.heroStripVal}>₹{metrics.splitDietPlan.toLocaleString("en-IN")}</Text>
+              <Text style={styles.heroStripLabel}>CARD</Text>
+              <Text style={styles.heroStripVal}>₹{metrics.cardTotal.toLocaleString("en-IN")}</Text>
             </View>
           </View>
         </View>
@@ -641,7 +678,7 @@ export function MobileRevenueLedgerView({
                     </Text>
                   </TouchableOpacity>
                   {combinedBranchList.map((b) => {
-                    const isSel = selectedBranch.toLowerCase() === b.toLowerCase();
+                    const isSel = selectedBranch !== "all" && normalizeBranchKey(selectedBranch) === normalizeBranchKey(b);
                     return (
                       <TouchableOpacity
                         key={b}
@@ -701,7 +738,8 @@ export function MobileRevenueLedgerView({
                 <View style={styles.chipsRow}>
                   {[
                     { id: "all", label: "All Modes" },
-                    { id: "upi", label: "UPI / Online" },
+                    { id: "counter_upi", label: "Counter UPI" },
+                    { id: "upi", label: "UPI / QR Code" },
                     { id: "cash", label: "Cash" },
                     { id: "card", label: "Card" },
                     { id: "split", label: "Split" },
@@ -763,24 +801,25 @@ export function MobileRevenueLedgerView({
         </View>
 
         <View style={styles.branchGrid}>
-          {branchBreakdown.map((b, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.branchCard,
-                selectedBranch.toLowerCase().includes(b.name.toLowerCase().replace("branch", "").trim()) &&
-                  styles.branchCardSelected,
-              ]}
-              onPress={() => {
-                if (selectedBranch.toLowerCase() === b.name.toLowerCase()) {
-                  setSelectedBranch("all");
-                } else {
-                  setSelectedBranch(b.name);
-                }
-                setCurrentPage(1);
-              }}
-              activeOpacity={0.8}
-            >
+          {branchBreakdown.map((b, idx) => {
+            const isSelected = selectedBranch !== "all" && normalizeBranchKey(selectedBranch) === normalizeBranchKey(b.name);
+            return (
+              <TouchableOpacity
+                key={idx}
+                style={[
+                  styles.branchCard,
+                  isSelected && styles.branchCardSelected,
+                ]}
+                onPress={() => {
+                  if (isSelected) {
+                    setSelectedBranch("all");
+                  } else {
+                    setSelectedBranch(b.name);
+                  }
+                  setCurrentPage(1);
+                }}
+                activeOpacity={0.8}
+              >
               <View style={styles.branchCardTop}>
                 <View style={{ flex: 1, marginRight: 4 }}>
                   <Text style={styles.branchCardName} numberOfLines={1}>
@@ -794,7 +833,8 @@ export function MobileRevenueLedgerView({
               </View>
               <Text style={styles.branchCardAmt}>₹{b.amount.toLocaleString("en-IN")}</Text>
             </TouchableOpacity>
-          ))}
+          );
+        })}
         </View>
 
         {/* 5. TRANSACTION LEDGER TABLE (PAGE-WISE) */}
@@ -821,8 +861,11 @@ export function MobileRevenueLedgerView({
         ) : (
           <View style={styles.ledgerList}>
             {paginatedTransactions.map((tx) => {
-              const isUpi = tx.paymentMethod === "upi" || tx.displayPaymentMethod?.toLowerCase().includes("upi");
-              const isCash = tx.paymentMethod === "cash" || tx.displayPaymentMethod?.toLowerCase().includes("cash");
+              const disp = (tx.displayPaymentMethod || "").toLowerCase();
+              const isCounter = tx.paymentMethod === "counter_upi" || disp.includes("counter");
+              const isOnlineUpi = (tx.paymentMethod === "upi" || disp.includes("online") || disp.includes("qr")) && !isCounter;
+              const isCash = tx.paymentMethod === "cash" || disp.includes("cash");
+              const isCard = tx.paymentMethod === "card" || disp.includes("card");
               return (
                 <View key={tx.id} style={styles.txCard}>
                   <View style={styles.txCardLeft}>
@@ -854,13 +897,21 @@ export function MobileRevenueLedgerView({
                     <View
                       style={[
                         styles.txMethodBadge,
-                        isUpi ? styles.txMethodUpi : isCash ? styles.txMethodCash : styles.txMethodOther,
+                        isCounter
+                          ? styles.txMethodCounter
+                          : isOnlineUpi
+                          ? styles.txMethodUpi
+                          : isCash
+                          ? styles.txMethodCash
+                          : styles.txMethodOther,
                       ]}
                     >
                       <Text
                         style={[
                           styles.txMethodText,
-                          isUpi
+                          isCounter
+                            ? styles.txMethodTextCounter
+                            : isOnlineUpi
                             ? styles.txMethodTextUpi
                             : isCash
                             ? styles.txMethodTextCash
@@ -1386,6 +1437,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 3,
   },
+  txMethodCounter: { backgroundColor: "#e0e7ff" },
+  txMethodTextCounter: { color: "#4338ca" },
   txMethodUpi: { backgroundColor: "#dcfce7" },
   txMethodCash: { backgroundColor: "#fef3c7" },
   txMethodOther: { backgroundColor: "#e0f2fe" },

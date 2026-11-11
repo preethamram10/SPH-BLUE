@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
       : "Dr. Prashanth K Vaidya";
     const rawBranch = searchParams.get("branch") || undefined;
     const branch = (rawBranch && rawBranch !== "All Branches" && rawBranch !== "ALL") ? rawBranch : undefined;
-    const date = searchParams.get("date") || undefined;
+    const rawDate = searchParams.get("date");
+    const date = (rawDate && rawDate !== "ALL" && rawDate !== "All Dates" && rawDate.toLowerCase() !== "all") ? rawDate : undefined;
 
     // Fetch appointments strictly for this doctor only
     const appointments = await appointmentService.getAppointments(branch, date, doctorName);

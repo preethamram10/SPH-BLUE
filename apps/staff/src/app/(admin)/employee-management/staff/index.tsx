@@ -54,7 +54,7 @@ export default function AdminStaffManagementScreen() {
   // New Staff Form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [branch, setBranch] = useState("KPHB Branch");
+  const [branch, setBranch] = useState("Kphb Branch");
   const [role, setRole] = useState(ROLES[0]);
   const [shift, setShift] = useState("Full-Time (08:30 AM - 05:30 PM)");
 
@@ -272,7 +272,7 @@ export default function AdminStaffManagementScreen() {
                   <Text style={styles.label}>Branch</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="KPHB Branch"
+                    placeholder="Kphb Branch"
                     placeholderTextColor={COLORS.textLight}
                     value={branch}
                     onChangeText={setBranch}

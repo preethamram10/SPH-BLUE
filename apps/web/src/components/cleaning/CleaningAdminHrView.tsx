@@ -70,7 +70,7 @@ interface Props {
 }
 
 const DEFAULT_BRANCHES = [
-  "Kphb",
+  "Kphb Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
   "Nallagandla Branch",
@@ -89,6 +89,7 @@ const PRESET_AREAS = [
 
 export default function CleaningAdminHrView({ currentRole, currentUserName }: Props) {
   const [tasks, setTasks] = useState<CleaningTask[]>([]);
+  const [branchList, setBranchList] = useState<string[]>(DEFAULT_BRANCHES);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState("ALL");
   const [filterDate, setFilterDate] = useState("");
@@ -96,7 +97,7 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
 
   // Schedule Modal
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [newBranch, setNewBranch] = useState("Kphb");
+  const [newBranch, setNewBranch] = useState("Kphb Branch");
   const [newDateInput, setNewDateInput] = useState(""); // Hydrated in useEffect to prevent Next.js prerender date warning
   const [newFields, setNewFields] = useState<string[]>([
     "Bathroom / Restroom",
@@ -108,6 +109,20 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
 
   useEffect(() => {
     setNewDateInput(toYYYYMMDD(getTodayDDMMYYYY()));
+
+    // Fetch dynamic branches
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+          const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) {
+            setBranchList(names);
+            setNewBranch(names[0]);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Review Modal
@@ -362,7 +377,7 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                 className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
               >
                 <option value="ALL">All Branches</option>
-                {DEFAULT_BRANCHES.map((b) => (
+                {branchList.map((b) => (
                   <option key={b} value={b}>
                     {b}
                   </option>
@@ -589,7 +604,7 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                   onChange={(e) => setNewBranch(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 bg-slate-50 focus:bg-white"
                 >
-                  {DEFAULT_BRANCHES.map((b) => (
+                  {branchList.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>

@@ -125,7 +125,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
         isCollapsed ? "w-16" : "w-56"
       } bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-xs h-full z-20 select-none transition-all duration-300 ease-in-out`}
     >
-      <div className="flex flex-col h-[calc(100%-60px)]">
+      <div className="flex flex-col h-full overflow-hidden">
         {/* Logo Branding + Collapse Toggle */}
         <div
           className={`p-3 border-b border-slate-100 flex items-center ${
@@ -206,30 +206,20 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
               })}
             </div>
           ))}
-        </div>
-      </div>
 
-      {/* User Info & Logout Footer */}
-      <div className={`p-2.5 border-t border-slate-100 shrink-0 bg-white ${isCollapsed ? "flex flex-col items-center" : ""}`}>
-        <div className={`flex items-center ${isCollapsed ? "flex-col gap-2" : "justify-between"}`}>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-7 h-7 rounded-full bg-sky-100 text-[#0284c7] flex items-center justify-center font-bold text-[10px] shrink-0">
-              AD
-            </div>
-            {!isCollapsed && (
-              <div className="text-left overflow-hidden">
-                <p className="text-[11px] font-bold text-slate-800 leading-tight">Admin</p>
-                <p className="text-[9px] text-slate-400 truncate max-w-[110px]">admin@spiritualhomeo.com</p>
-              </div>
-            )}
+          {/* Sign Out (Inside side navigation, not fixed) */}
+          <div className="pt-2">
+            <button
+              onClick={handleLogout}
+              title={isCollapsed ? "Sign Out" : undefined}
+              className={`w-full flex items-center ${
+                isCollapsed ? "justify-center px-1.5 py-2" : "gap-2.5 px-2.5 py-1.5"
+              } rounded-xl text-[11px] font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer`}
+            >
+              <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
+              {!isCollapsed && <span className="truncate">Sign Out</span>}
+            </button>
           </div>
-          <button
-            onClick={handleLogout}
-            title="Sign Out"
-            className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors p-1.5 rounded-lg cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
     </aside>

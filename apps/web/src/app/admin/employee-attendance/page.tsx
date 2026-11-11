@@ -25,10 +25,29 @@ export default function EmployeeAttendancePage() {
   const [loading, setLoading] = useState(true);
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; location?: string } | null>(null);
 
-  const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilshuknagar Branch"];
+  const [branches, setBranches] = useState<string[]>([
+    "All Branches",
+    "Kphb Branch",
+    "Chandanagar Branch",
+    "Nallagandla Branch",
+    "Dilshuknagar Branch",
+  ]);
 
   useEffect(() => {
     setSelectedDate(new Date().toISOString().split("T")[0]);
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          if (names.length > 0) {
+            setBranches(["All Branches", ...Array.from(new Set(names))]);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const fetchAttendance = async () => {
@@ -56,7 +75,13 @@ export default function EmployeeAttendancePage() {
     const matchesSearch =
       (item.staffName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.branch || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesBranch = selectedBranch === "All Branches" || (item.branch || "").toLowerCase().includes(selectedBranch.toLowerCase());
+    const normSelected = selectedBranch.toLowerCase().replace(/\s+branch$/i, "").trim();
+    const normItemBranch = (item.branch || "").toLowerCase().replace(/\s+branch$/i, "").trim();
+    const matchesBranch =
+      selectedBranch === "All Branches" ||
+      normItemBranch === normSelected ||
+      normItemBranch.includes(normSelected) ||
+      normSelected.includes(normItemBranch);
     return matchesSearch && matchesBranch;
   });
 

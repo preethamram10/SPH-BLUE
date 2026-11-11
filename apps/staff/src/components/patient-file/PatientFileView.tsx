@@ -205,6 +205,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
             pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
+            status: pf.status || "WAITING",
           });
 
           // Also check live pending balance by phone
@@ -251,6 +252,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     patientData.activePackage.status === "ACTIVE" &&
     (!patientData.activePackage.endDate || new Date(patientData.activePackage.endDate).getTime() >= new Date().setHours(0, 0, 0, 0))
   );
+
+  const isCompleted = (patientData.status || "").toUpperCase() === "COMPLETED";
 
   // Register Package Handler
   const handleRegisterPackage = async () => {
@@ -1000,6 +1003,34 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             {/* TAB CONTENT: CLINICAL FORM */}
             {activeTab === "clinical" && (
               <>
+                {isCompleted && (
+                  <View style={styles.completedNoticeBanner}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                      <Ionicons name="lock-closed" size={18} color="#15803d" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.completedNoticeTitle}>Consultation Completed &amp; Locked</Text>
+                        <Text style={styles.completedNoticeSub}>
+                          Payment has been finalized. Clinical prescription and billing are locked for this visit.
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.completedViewHistoryBtn}
+                      onPress={() => {
+                        const regId = patientData.registrationId || "SPH-GEN";
+                        const name = encodeURIComponent(patientData.patientName || "");
+                        const phone = encodeURIComponent((patientData.phone || "").replace(/\D/g, "").slice(-10));
+                        const branch = encodeURIComponent(patientData.branch || "Clinic");
+                        const route = role === "DOCTOR" ? "/(doctor)/patient-history" : "/(reception)/patient-history";
+                        router.push(`${route}?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.completedViewHistoryBtnText}>View History</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {dietPlan ? (
                   <View style={[styles.sectionCard, { backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -1035,7 +1066,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 )}
               </View>
 
-              {/* Radio selection & Open Pad Button */}
+              {/* Radio selection & Open Pad Button (Disabled when completed) */}
+              {!isCompleted && (
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: 10, backgroundColor: "#f8fafc", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   {/* Radio 1: Digital Pad - ON means open pad */}
@@ -1084,6 +1116,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                   <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>Open Pad</Text>
                 </TouchableOpacity>
               </View>
+              )}
 
               {/* Uploaded / Drawn Prescriptions Thumbnails */}
               {uploadedImages.length > 0 ? (
@@ -1099,13 +1132,15 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                       activeOpacity={0.8}
                     >
                       <ExpoImage source={resolvePrescriptionImageUrl(uri)} style={styles.thumbnailImg} contentFit="cover" />
-                      <TouchableOpacity
-                        style={styles.removeImgBtn}
-                        onPress={() => handleRemoveImage(idx)}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Ionicons name="close" size={11} color="#ffffff" />
-                      </TouchableOpacity>
+                      {!isCompleted && (
+                        <TouchableOpacity
+                          style={styles.removeImgBtn}
+                          onPress={() => handleRemoveImage(idx)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Ionicons name="close" size={11} color="#ffffff" />
+                        </TouchableOpacity>
+                      )}
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -1196,25 +1231,33 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 keyboardType="numeric"
                 value={consultationFee}
                 onChangeText={setConsultationFee}
+                editable={!isCompleted}
               />
 
               {/* CORE CTA: Send to Reception & Collect Fee */}
-              <TouchableOpacity
-                style={[styles.sendToReceptionCta, isSubmitting && { opacity: 0.7 }]}
-                onPress={handleSendToReception}
-                disabled={isSubmitting}
-                activeOpacity={0.8}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <Text style={styles.sendToReceptionText}>
-                    {role === "RECEPTION"
-                      ? "Save & Collect Fee"
-                      : "Send to Reception"}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {isCompleted ? (
+                <View style={[styles.sendToReceptionCta, { backgroundColor: "#15803d", opacity: 0.95, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }]}>
+                  <Ionicons name="checkmark-done-circle" size={17} color="#ffffff" />
+                  <Text style={styles.sendToReceptionText}>Consultation Completed &amp; Locked</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.sendToReceptionCta, isSubmitting && { opacity: 0.7 }]}
+                  onPress={handleSendToReception}
+                  disabled={isSubmitting}
+                  activeOpacity={0.8}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.sendToReceptionText}>
+                      {role === "RECEPTION"
+                        ? "Save & Collect Fee"
+                        : "Send to Reception"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
@@ -1798,6 +1841,41 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#ffffff",
+  },
+  completedNoticeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  completedNoticeTitle: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#166534",
+  },
+  completedNoticeSub: {
+    fontSize: 10.5,
+    color: "#15803d",
+    marginTop: 1,
+  },
+  completedViewHistoryBtn: {
+    backgroundColor: "#16a34a",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    alignSelf: "center",
+  },
+  completedViewHistoryBtnText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   topHeader: {
     flexDirection: "row",

@@ -83,8 +83,7 @@ interface Props {
 }
 
 const DEFAULT_BRANCHES = [
-  "ALL",
-  "Kphb",
+  "Kphb Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
   "Nallagandla Branch",
@@ -110,13 +109,14 @@ function getTodayDDMMYYYY(): string {
 export default function CleaningAdminHrMobileView({ role, userName, onBack }: Props) {
   const router = useRouter();
   const [tasks, setTasks] = useState<CleaningTask[]>([]);
+  const [branchList, setBranchList] = useState<string[]>(DEFAULT_BRANCHES);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("ALL");
 
   // Schedule Modal
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [newBranch, setNewBranch] = useState("Kphb");
+  const [newBranch, setNewBranch] = useState("Kphb Branch");
   const [newDateStr, setNewDateStr] = useState(getTodayDDMMYYYY());
   const [newFields, setNewFields] = useState<string[]>([
     "Bathroom / Restroom",
@@ -170,6 +170,22 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
   useEffect(() => {
     fetchTasks();
   }, [selectedBranch]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/branches`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          if (names.length > 0) {
+            setBranchList(names);
+            setNewBranch(names[0]);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -362,7 +378,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
       {/* Branch Filter Chips */}
       <View style={styles.branchFilterContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchFilterScroll}>
-          {DEFAULT_BRANCHES.map((b) => {
+          {["ALL", ...branchList].map((b) => {
             const active = selectedBranch === b;
             return (
               <TouchableOpacity
@@ -588,7 +604,7 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
               <View>
                 <Text style={styles.inputLabel}>Clinic Branch</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
-                  {DEFAULT_BRANCHES.filter((b) => b !== "ALL").map((b) => (
+                  {branchList.map((b) => (
                     <TouchableOpacity
                       key={b}
                       onPress={() => setNewBranch(b)}

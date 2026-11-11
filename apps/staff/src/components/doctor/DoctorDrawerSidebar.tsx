@@ -36,7 +36,9 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
   const router = useRouter();
   const isHeadDoctor =
     doctorName.toLowerCase().includes("prashanth") ||
-    doctorName.toLowerCase().includes("head");
+    doctorName.toLowerCase().includes("head") ||
+    doctorName.toLowerCase().includes("vaidya") ||
+    doctorName.toLowerCase().includes("chief");
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -221,7 +223,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                   styles.menuItem,
                   activeRoute === "total-revenue" && styles.menuItemActive,
                 ]}
-                onPress={() => handleNavigate("/(admin)/total-revenue")}
+                onPress={() => handleNavigate("/(doctor)/total-revenue")}
                 activeOpacity={0.7}
               >
                 <Text
@@ -252,7 +254,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
             )}
 
             <TouchableOpacity
-              style={[styles.menuItem, { marginTop: 14, backgroundColor: "#fef2f2", borderLeftColor: "#ef4444", borderLeftWidth: 3 }]}
+              style={[styles.menuItem, { marginTop: 14, marginBottom: 28, backgroundColor: "#fef2f2", borderLeftColor: "#ef4444", borderLeftWidth: 3 }]}
               onPress={handleLogout}
               activeOpacity={0.7}
             >
@@ -262,17 +264,6 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               </Text>
             </TouchableOpacity>
           </ScrollView>
-
-          {/* Footer Area */}
-          <View style={styles.footerContainer}>
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={handleLogout}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.logoutText}>Sign Out</Text>
-            </TouchableOpacity>
-          </View>
         </Animated.View>
       </View>
     </Modal>

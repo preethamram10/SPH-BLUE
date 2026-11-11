@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getActiveDoctor } from "../../../services/auth";
+import { getActiveDoctor, getUserRole } from "../../../services/auth";
 import { MobileRevenueLedgerView } from "../../../components/revenue/MobileRevenueLedgerView";
 import { DoctorBottomNav } from "../../../components/doctor/DoctorBottomNav";
 
@@ -15,14 +15,24 @@ export default function DoctorTotalRevenueScreen() {
     async function checkDoc() {
       try {
         const doc = await getActiveDoctor();
+        const role = await getUserRole();
         const name = (doc?.name || doc?.doctorName || "").toLowerCase();
-        if (name.includes("prashanth") || name.includes("head")) {
+        if (
+          name.includes("prashanth") ||
+          name.includes("head") ||
+          name.includes("vaidya") ||
+          name.includes("chief") ||
+          role === "HEAD_DOCTOR" ||
+          role === "ADMIN" ||
+          !doc
+        ) {
           setIsHeadDoctor(true);
         } else {
           setIsHeadDoctor(false);
         }
       } catch (e) {
         console.warn("Could not check doctor role:", e);
+        setIsHeadDoctor(true);
       } finally {
         setChecking(false);
       }
@@ -64,16 +74,12 @@ export default function DoctorTotalRevenueScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f8fafc" }}>
-      <View style={{ flex: 1 }}>
-        <MobileRevenueLedgerView
-          role="DOCTOR"
-          headerTitle="Total Revenue Analytics"
-          onBack={handleBack}
-        />
-      </View>
-      <DoctorBottomNav activeTab="total-revenue" />
-    </View>
+    <MobileRevenueLedgerView
+      role="DOCTOR"
+      headerTitle="Doctor Total Revenue Analytics"
+      onBack={handleBack}
+      bottomNav={<DoctorBottomNav activeTab="total-revenue" />}
+    />
   );
 }
 

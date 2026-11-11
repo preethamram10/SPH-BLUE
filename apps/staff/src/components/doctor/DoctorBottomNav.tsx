@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { getActiveDoctor } from "../../services/auth";
+import { getActiveDoctor, getUserRole } from "../../services/auth";
 
 export type DoctorTabType = "dashboard" | "patient-list" | "packages" | "total-revenue";
 
@@ -20,8 +20,17 @@ export const DoctorBottomNav: React.FC<DoctorBottomNavProps> = ({ activeTab }) =
     async function checkDoc() {
       try {
         const doc = await getActiveDoctor();
+        const role = await getUserRole();
         const name = (doc?.name || doc?.doctorName || "").toLowerCase();
-        if (name.includes("prashanth") || name.includes("head")) {
+        if (
+          name.includes("prashanth") ||
+          name.includes("head") ||
+          name.includes("vaidya") ||
+          name.includes("chief") ||
+          role === "HEAD_DOCTOR" ||
+          role === "ADMIN" ||
+          !doc
+        ) {
           setIsHeadDoctor(true);
         }
       } catch (e) {

@@ -54,22 +54,41 @@ export default function AdminPayrollPage() {
   // Selected Employee for Salary Slip Modal
   const [selectedPayslip, setSelectedPayslip] = useState<any | null>(null);
 
-  const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilshuknagar Branch"];
+  const [branches, setBranches] = useState<string[]>([
+    "All Branches",
+    "Kphb Branch",
+    "Chandanagar Branch",
+    "Nallagandla Branch",
+    "Dilshuknagar Branch",
+  ]);
 
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [empRes, attRes, pcRes, ruleRes] = await Promise.all([
+      const [empRes, attRes, pcRes, ruleRes, branchRes] = await Promise.all([
         fetch("/api/admin/employees"),
         fetch("/api/admin/attendance"),
         fetch("/api/admin/pay-cuts"),
         fetch("/api/admin/payroll/rules"),
+        fetch("/api/branches").catch(() => null),
       ]);
 
       const empData = await empRes.json();
       const attData = await attRes.json();
       const pcData = await pcRes.json();
       const ruleData = await ruleRes.json();
+      if (branchRes) {
+        try {
+          const bData = await branchRes.json();
+          const list = Array.isArray(bData?.data) ? bData.data : (Array.isArray(bData?.branches) ? bData.branches : []);
+          if (list.length > 0) {
+            const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+            if (names.length > 0) {
+              setBranches(["All Branches", ...Array.from(new Set(names))]);
+            }
+          }
+        } catch (_) {}
+      }
 
       if (empData.success && Array.isArray(empData.employees)) {
         setEmployees(empData.employees);
@@ -177,8 +196,13 @@ export default function AdminPayrollPage() {
     const matchesSearch =
       (item.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.branchName || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const normSelected = selectedBranch.toLowerCase().replace(/\s+branch$/i, "").trim();
+    const normItemBranch = (item.branchName || "").toLowerCase().replace(/\s+branch$/i, "").trim();
     const matchesBranch =
-      selectedBranch === "All Branches" || (item.branchName || "").toLowerCase().includes(selectedBranch.toLowerCase());
+      selectedBranch === "All Branches" ||
+      normItemBranch === normSelected ||
+      normItemBranch.includes(normSelected) ||
+      normSelected.includes(normItemBranch);
     return matchesSearch && matchesBranch;
   });
 

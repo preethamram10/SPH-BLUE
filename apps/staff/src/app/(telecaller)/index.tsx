@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -21,16 +21,8 @@ import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBotto
 
 type TelecallerTab = "followups" | "log_call" | "book_appointment";
 
-const ALL_BRANCHES = [
-  "All Branches",
-  "KPHB Branch",
-  "Chandanagar Branch",
-  "Dilshuknagar Branch",
-  "Nallagandla Branch",
-];
-
-const BOOKING_BRANCHES = [
-  "KPHB Branch",
+const DEFAULT_BOOKING_BRANCHES = [
+  "Kphb Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
   "Nallagandla Branch",
@@ -98,6 +90,8 @@ export default function TelecallerPortalScreen() {
   const [followUpSearch, setFollowUpSearch] = useState("");
   const [followUpBranch, setFollowUpBranch] = useState("All Branches");
   const [followUpPeriod, setFollowUpPeriod] = useState("all");
+  const [bookingBranches, setBookingBranches] = useState<string[]>(DEFAULT_BOOKING_BRANCHES);
+  const allBranches = useMemo(() => ["All Branches", ...bookingBranches], [bookingBranches]);
 
   // Follow-Up Reschedule Modal State
   const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
@@ -133,6 +127,21 @@ export default function TelecallerPortalScreen() {
     { id: "1793864791243", name: "Dr. Padma Priya", branchName: "KPHB Branch" },
     { id: "1793864791244", name: "Dr. Ramakrishna Chanduri", branchName: "Dilshuknagar Branch" },
   ]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/branches`)
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          if (names.length > 0) {
+            setBookingBranches(Array.from(new Set(names)));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Load telecaller profile & assigned branch on mount
   useEffect(() => {
@@ -464,7 +473,7 @@ export default function TelecallerPortalScreen() {
                   </Text>
                 </View>
               ) : (
-                ALL_BRANCHES.map((b) => (
+                allBranches.map((b: string) => (
                   <TouchableOpacity
                     key={b}
                     style={[
@@ -665,7 +674,7 @@ export default function TelecallerPortalScreen() {
               Hospital Branch: <Text style={{ color: "#ef4444" }}>*</Text>
             </Text>
             <View style={styles.pillSelectorWrap}>
-              {BOOKING_BRANCHES.map((b) => (
+              {bookingBranches.map((b) => (
                 <TouchableOpacity
                   key={b}
                   style={[
@@ -827,7 +836,7 @@ export default function TelecallerPortalScreen() {
               Hospital Branch: <Text style={{ color: "#ef4444" }}>*</Text>
             </Text>
             <View style={styles.pillSelectorWrap}>
-              {BOOKING_BRANCHES.map((b) => (
+              {bookingBranches.map((b) => (
                 <TouchableOpacity
                   key={b}
                   style={[

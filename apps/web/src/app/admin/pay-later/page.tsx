@@ -39,18 +39,22 @@ interface PayLaterRecord {
   paymentMode?: string;
 }
 
-const BRANCHES = [
-  "All Branches",
-  "KPHB",
-  "Chandanagar",
-  "Dilshuknagar",
-  "Nallagandla",
-];
+// Helper to normalize branch names for reliable comparisons
+const normalizeBranchKey = (name: string): string => {
+  let c = (name || "")
+    .toLowerCase()
+    .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+  if (c === "kpb") c = "kphb";
+  return c;
+};
 
 type DateFilterPreset = "THIS_MONTH" | "LAST_MONTH" | "ALL_HISTORY" | "CUSTOM";
 
 export default function AdminPayLaterPage() {
   const [records, setRecords] = useState<PayLaterRecord[]>([]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "CLEARED">("PENDING");
@@ -109,7 +113,43 @@ export default function AdminPayLaterPage() {
 
   useEffect(() => {
     fetchPayLaterData();
+
+    // Load registered branches dynamically
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) setAvailableBranches(names);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Comprehensive branch list from registered branches + records
+  const dynamicBranches = useMemo(() => {
+    const map = new Map<string, string>();
+    availableBranches.forEach((b) => {
+      const k = normalizeBranchKey(b);
+      if (k) map.set(k, b);
+    });
+    records.forEach((r) => {
+      if (r.branch) {
+        const k = normalizeBranchKey(r.branch);
+        if (k && !map.has(k)) map.set(k, r.branch);
+      }
+    });
+    if (map.size === 0) {
+      ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => {
+        map.set(normalizeBranchKey(b), b);
+      });
+    }
+    return Array.from(map.values());
+  }, [availableBranches, records]);
+
+  const allBranchPills = useMemo(() => {
+    return ["All Branches", ...dynamicBranches];
+  }, [dynamicBranches]);
 
   // Filtered records
   const filteredRecords = useMemo(() => {
@@ -123,8 +163,9 @@ export default function AdminPayLaterPage() {
 
       // Branch filter
       if (selectedBranch !== "All Branches") {
-        const branchMatch = (r.branch || "").toLowerCase().includes(selectedBranch.toLowerCase());
-        if (!branchMatch) return false;
+        const targetK = normalizeBranchKey(selectedBranch);
+        const itemK = normalizeBranchKey(r.branch || "");
+        if (targetK !== itemK) return false;
       }
 
       // Status filter
@@ -408,14 +449,14 @@ export default function AdminPayLaterPage() {
               <span className="text-[10px] font-bold text-[#0284c7]">Click branch to filter</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              {["KPHB", "Chandanagar", "Dilshuknagar", "Nallagandla"].map((branch) => {
+              {dynamicBranches.map((branch) => {
                 const branchRecords = records.filter((r) => {
                   if (dateBounds.start || dateBounds.end) {
                     const d = new Date(r.createdAt);
                     if (dateBounds.start && d < dateBounds.start) return false;
                     if (dateBounds.end && d > dateBounds.end) return false;
                   }
-                  return (r.branch || "").toLowerCase().includes(branch.toLowerCase());
+                  return normalizeBranchKey(r.branch || "") === normalizeBranchKey(branch);
                 });
 
                 const branchPending = branchRecords
@@ -423,7 +464,7 @@ export default function AdminPayLaterPage() {
                   .reduce((sum, r) => sum + (Number(r.dueAmount) || 0), 0);
                 const count = branchRecords.filter((r) => r.status === "PENDING").length;
 
-                const isSelected = selectedBranch === branch;
+                const isSelected = selectedBranch !== "All Branches" && normalizeBranchKey(selectedBranch) === normalizeBranchKey(branch);
 
                 return (
                   <div
@@ -453,7 +494,7 @@ export default function AdminPayLaterPage() {
           <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2.5">
             {/* Branch Pills */}
             <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-              {BRANCHES.map((b) => (
+              {allBranchPills.map((b) => (
                 <button
                   key={b}
                   onClick={() => setSelectedBranch(b)}

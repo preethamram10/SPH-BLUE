@@ -23,10 +23,29 @@ export default function EmployeeDailyWorksPage() {
   const [reports, setReports] = useState<DailyWorkReport[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilshuknagar Branch"];
+  const [branches, setBranches] = useState<string[]>([
+    "All Branches",
+    "Kphb Branch",
+    "Chandanagar Branch",
+    "Nallagandla Branch",
+    "Dilshuknagar Branch",
+  ]);
 
   useEffect(() => {
     setSelectedDate(new Date().toISOString().split("T")[0]);
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          if (names.length > 0) {
+            setBranches(["All Branches", ...Array.from(new Set(names))]);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const fetchReports = async () => {
@@ -54,8 +73,13 @@ export default function EmployeeDailyWorksPage() {
     const matchesSearch =
       (item.staffName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.workNotes || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const normSelected = selectedBranch.toLowerCase().replace(/\s+branch$/i, "").trim();
+    const normItemBranch = (item.branch || "").toLowerCase().replace(/\s+branch$/i, "").trim();
     const matchesBranch =
-      selectedBranch === "All Branches" || (item.branch || "").toLowerCase().includes(selectedBranch.toLowerCase());
+      selectedBranch === "All Branches" ||
+      normItemBranch === normSelected ||
+      normItemBranch.includes(normSelected) ||
+      normSelected.includes(normItemBranch);
     return matchesSearch && matchesBranch;
   });
 

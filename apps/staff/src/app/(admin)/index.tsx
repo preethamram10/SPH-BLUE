@@ -287,10 +287,10 @@ export default function AdminDashboard() {
                     isInClinic
                       ? styles.statusInClinic
                       : isLate
-                      ? styles.statusLate
-                      : isOnLeave
-                      ? styles.statusLeave
-                      : styles.statusDefault,
+                        ? styles.statusLate
+                        : isOnLeave
+                          ? styles.statusLeave
+                          : styles.statusDefault,
                   ]}
                 >
                   <Text
@@ -299,10 +299,10 @@ export default function AdminDashboard() {
                       isInClinic
                         ? styles.statusTextInClinic
                         : isLate
-                        ? styles.statusTextLate
-                        : isOnLeave
-                        ? styles.statusTextLeave
-                        : styles.statusTextDefault,
+                          ? styles.statusTextLate
+                          : isOnLeave
+                            ? styles.statusTextLeave
+                            : styles.statusTextDefault,
                     ]}
                   >
                     {att.status}
@@ -492,8 +492,8 @@ export default function AdminDashboard() {
                 onPress={closeDrawer}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#0284c7" }]}>
-                  <Ionicons name="grid" size={16} color="#ffffff" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="grid" size={18} color="#0284c7" />
                 </View>
                 <Text style={[styles.drawerMenuText, { color: "#0284c7", fontWeight: "700" }]}>
                   Dashboard Overview
@@ -507,8 +507,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/branch-management")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="business-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="business-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>Branch Management</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -520,8 +520,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/branch-management/create")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
-                  <Ionicons name="add-circle-outline" size={16} color="#16a34a" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="add-circle-outline" size={18} color="#16a34a" />
                 </View>
                 <Text style={styles.drawerMenuText}>Add New Branch</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -533,8 +533,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/employee-management")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#ede9fe" }]}>
-                  <Ionicons name="people-outline" size={16} color="#7c3aed" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="people-outline" size={18} color="#7c3aed" />
                 </View>
                 <Text style={styles.drawerMenuText}>Employee Management</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -546,14 +546,14 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/doctor-timings")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#fef3c7" }]}>
-                  <Ionicons name="time-outline" size={16} color="#d97706" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="time-outline" size={18} color="#d97706" />
                 </View>
-                <Text style={styles.drawerMenuText}>Doctor Timings &amp; OPD</Text>
+                <Text style={styles.drawerMenuText}>Doctor Timings & OPD</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={styles.drawerSectionLabel}>FINANCE &amp; REVENUE</Text>
+              <Text style={styles.drawerSectionLabel}>FINANCE & REVENUE</Text>
 
               {/* Total Revenue */}
               <TouchableOpacity
@@ -561,8 +561,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/total-revenue")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
-                  <Ionicons name="cash-outline" size={16} color="#16a34a" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="cash-outline" size={18} color="#16a34a" />
                 </View>
                 <Text style={styles.drawerMenuText}>Total Revenue</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -574,8 +574,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/target-management")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="locate-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="locate-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>Target Management</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -587,8 +587,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/pay-later")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#ffedd5" }]}>
-                  <Ionicons name="wallet-outline" size={16} color="#ea580c" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="wallet-outline" size={18} color="#ea580c" />
                 </View>
                 <Text style={styles.drawerMenuText}>Pay Later Dues</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -600,8 +600,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/fee-requests")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="receipt-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="receipt-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>Fee Requests</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -613,14 +613,14 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/package-members")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#fef3c7" }]}>
-                  <Ionicons name="ribbon-outline" size={16} color="#d97706" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="ribbon-outline" size={18} color="#d97706" />
                 </View>
                 <Text style={styles.drawerMenuText}>Package Members</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={styles.drawerSectionLabel}>TELECALLING &amp; FOLLOW-UPS</Text>
+              <Text style={styles.drawerSectionLabel}>TELECALLING & FOLLOW-UPS</Text>
 
               {/* All Follow-Ups */}
               <TouchableOpacity
@@ -628,8 +628,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/all-follow-ups")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="calendar-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="calendar-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>All Follow-Ups</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -641,8 +641,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/telecaller-accounts")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#ccfbf1" }]}>
-                  <Ionicons name="headset-outline" size={16} color="#0d9488" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="headset-outline" size={18} color="#0d9488" />
                 </View>
                 <Text style={styles.drawerMenuText}>Telecaller Accounts</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -654,14 +654,14 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/telecaller-updates")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="call-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="call-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>Telecaller Updates</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={styles.drawerSectionLabel}>HR &amp; OPERATIONS</Text>
+              <Text style={styles.drawerSectionLabel}>HR & OPERATIONS</Text>
 
               {/* Leave Requests */}
               <TouchableOpacity
@@ -669,8 +669,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/leave-requests")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#fee2e2" }]}>
-                  <Ionicons name="calendar-clear-outline" size={16} color="#dc2626" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="calendar-clear-outline" size={18} color="#dc2626" />
                 </View>
                 <Text style={styles.drawerMenuText}>Leave Requests</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -682,8 +682,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/employee-attendance")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
-                  <Ionicons name="checkmark-done-circle-outline" size={16} color="#16a34a" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="checkmark-done-circle-outline" size={18} color="#16a34a" />
                 </View>
                 <Text style={styles.drawerMenuText}>Employee Attendance</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -695,8 +695,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/employee-daily-works")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#f3e8ff" }]}>
-                  <Ionicons name="briefcase-outline" size={16} color="#9333ea" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="briefcase-outline" size={18} color="#9333ea" />
                 </View>
                 <Text style={styles.drawerMenuText}>Employee Daily Works</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -708,14 +708,14 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/branch-cleaning")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#ccfbf1" }]}>
-                  <Ionicons name="sparkles-outline" size={16} color="#0d9488" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="sparkles-outline" size={18} color="#0d9488" />
                 </View>
                 <Text style={styles.drawerMenuText}>Branch Cleaning</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={styles.drawerSectionLabel}>SYSTEM &amp; REPORTS</Text>
+              <Text style={styles.drawerSectionLabel}>SYSTEM & REPORTS</Text>
 
               {/* Manage Banners */}
               <TouchableOpacity
@@ -723,8 +723,8 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/manage-banners")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
-                  <Ionicons name="image-outline" size={16} color="#0284c7" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="image-outline" size={18} color="#0284c7" />
                 </View>
                 <Text style={styles.drawerMenuText}>Manage Banners</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
@@ -736,10 +736,10 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/reports-analytics")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#ede9fe" }]}>
-                  <Ionicons name="analytics-outline" size={16} color="#7c3aed" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="analytics-outline" size={18} color="#7c3aed" />
                 </View>
-                <Text style={styles.drawerMenuText}>Reports &amp; Analytics</Text>
+                <Text style={styles.drawerMenuText}>Reports & Analytics</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
@@ -749,25 +749,28 @@ export default function AdminDashboard() {
                 onPress={() => handleNavigate("/(admin)/delete-profiles")}
                 activeOpacity={0.75}
               >
-                <View style={[styles.drawerIconBox, { backgroundColor: "#fee2e2" }]}>
-                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
                 </View>
                 <Text style={styles.drawerMenuText}>Delete Profiles (Phone)</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
-            </ScrollView>
 
-            {/* Drawer Footer with Logout */}
-            <View style={styles.drawerFooter}>
+              {/* Sign Out Navigation Item (Inside side navigation, not fixed) */}
               <TouchableOpacity
-                style={styles.logoutDrawerBtn}
+                style={[styles.drawerMenuItem, { marginTop: 16, marginBottom: 30 }]}
                 onPress={handleLogout}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="log-out-outline" size={18} color={COLORS.errorRed} />
-                <Text style={styles.logoutDrawerText}>Sign Out</Text>
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="log-out-outline" size={18} color={COLORS.errorRed} />
+                </View>
+                <Text style={[styles.drawerMenuText, { color: COLORS.errorRed, fontWeight: "700" }]}>
+                  Sign Out
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.errorRed} />
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </Animated.View>
         </View>
       )}
@@ -1122,6 +1125,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 10,
+    backgroundColor: "transparent",
   },
   drawerMenuText: {
     flex: 1,

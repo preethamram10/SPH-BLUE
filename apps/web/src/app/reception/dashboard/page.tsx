@@ -307,13 +307,37 @@ export default function ReceptionDashboardPage() {
     setTomorrowStr(tomorrow);
     setSelectedDate(today);
 
-    const saved = localStorage.getItem("branch_name");
-    if (saved) {
-      setBranchName(saved);
-      checkCleaningLockout(saved);
-    } else {
-      checkCleaningLockout("Kphb");
-    }
+    const saved = localStorage.getItem("branch_name") || "Kphb Branch";
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+          const allNames: string[] = data.data.map((b: any) => b.name);
+          const cleanSaved = (saved || "")
+            .toLowerCase()
+            .replace(/spiritual|homeopathy|branch/gi, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+          const matched = allNames.find((b) => {
+            const cb = b.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+            const isKpbMatch = (cleanSaved === "kpb" || cleanSaved === "kphb") && (cb === "kpb" || cb === "kphb");
+            return cb === cleanSaved || isKpbMatch;
+          });
+          const canonical = matched || allNames[0] || saved;
+          setBranchName(canonical);
+          try {
+            localStorage.setItem("branch_name", canonical);
+          } catch {}
+          checkCleaningLockout(canonical);
+        } else {
+          setBranchName(saved);
+          checkCleaningLockout(saved);
+        }
+      })
+      .catch(() => {
+        setBranchName(saved);
+        checkCleaningLockout(saved);
+      });
 
     const todayDate = new Date();
     setCurrentDate(
@@ -1008,10 +1032,6 @@ export default function ReceptionDashboardPage() {
                               </button>
                             ) : (status === "COLLECT_FEE" || appt.isSentToReception) ? (
                               <div className="flex items-center justify-end gap-2">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse"></span>
-                                  Ready to Collect Fee
-                                </span>
                                 <button
                                   type="button"
                                   onClick={() => {

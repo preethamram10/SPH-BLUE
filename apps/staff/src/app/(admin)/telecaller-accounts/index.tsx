@@ -15,9 +15,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../../config/api";
 
-const BRANCH_OPTIONS = [
+const DEFAULT_BRANCH_OPTIONS = [
   "All Branches",
-  "KPHB Branch",
+  "Kphb Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
   "Nallagandla Branch",
@@ -29,6 +29,7 @@ export default function MobileTelecallerAccountsScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [nextId, setNextId] = useState("TC01");
+  const [branchOptions, setBranchOptions] = useState<string[]>(DEFAULT_BRANCH_OPTIONS);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,7 +44,10 @@ export default function MobileTelecallerAccountsScreen() {
   const fetchTelecallers = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/employees?category=TELECALLER`);
+      const [res, branchRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/employees?category=TELECALLER`),
+        fetch(`${API_BASE_URL}/branches`).catch(() => null),
+      ]);
       const data = await res.json();
       if (data.success && Array.isArray(data.employees)) {
         setTelecallers(data.employees);
@@ -51,6 +55,18 @@ export default function MobileTelecallerAccountsScreen() {
           setNextId(data.nextTelecallerId);
           setFormId(data.nextTelecallerId);
         }
+      }
+      if (branchRes && branchRes.ok) {
+        try {
+          const bData = await branchRes.json();
+          const list = Array.isArray(bData.data) ? bData.data : (Array.isArray(bData.branches) ? bData.branches : []);
+          if (list.length > 0) {
+            const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+            if (names.length > 0) {
+              setBranchOptions(["All Branches", ...Array.from(new Set(names))]);
+            }
+          }
+        } catch (_) {}
       }
     } catch (e) {
       console.warn("Failed fetching mobile telecallers:", e);
@@ -297,7 +313,7 @@ export default function MobileTelecallerAccountsScreen() {
                 Assigned Hospital Branch <Text style={{ color: "#ef4444" }}>*</Text>
               </Text>
               <View style={styles.branchSelectWrap}>
-                {BRANCH_OPTIONS.map((b) => (
+                {branchOptions.map((b) => (
                   <TouchableOpacity
                     key={b}
                     style={[

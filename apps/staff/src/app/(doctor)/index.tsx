@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -39,10 +39,24 @@ export default function DoctorDashboard() {
   const [branchName, setBranchName] = useState("KPHB Branch");
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
+  const [yesterdayStr, setYesterdayStr] = useState("");
   const [tomorrowStr, setTomorrowStr] = useState("");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+
+  // Calendar Modal State
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const daysInMonth = useMemo(() => new Date(calYear, calMonth + 1, 0).getDate(), [calYear, calMonth]);
+  const firstDayOffset = useMemo(() => new Date(calYear, calMonth, 1).getDay(), [calYear, calMonth]);
 
   // Reception-Style Filter: ALL | UPCOMING | ACTIVE | SENT_TO_RECEPTION | COMPLETED
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "SENT_TO_RECEPTION" | "COMPLETED">("ALL");
@@ -63,6 +77,12 @@ export default function DoctorDashboard() {
     setTodayStr(t);
     setSelectedDate(t);
 
+    const yday = new Date(now.getTime() - 86400000);
+    const yd = String(yday.getDate()).padStart(2, "0");
+    const ym = String(yday.getMonth() + 1).padStart(2, "0");
+    const yy = yday.getFullYear();
+    setYesterdayStr(`${yd}-${ym}-${yy}`);
+
     const tmrw = new Date(now.getTime() + 86400000);
     const td = String(tmrw.getDate()).padStart(2, "0");
     const tm = String(tmrw.getMonth() + 1).padStart(2, "0");
@@ -79,6 +99,53 @@ export default function DoctorDashboard() {
     });
   }, []);
 
+  // Sync calendar year and month when selectedDate changes
+  useEffect(() => {
+    if (selectedDate && selectedDate !== "ALL") {
+      const parts = selectedDate.split("-");
+      if (parts.length === 3) {
+        setCalMonth(parseInt(parts[1], 10) - 1);
+        setCalYear(parseInt(parts[2], 10));
+      }
+    }
+  }, [selectedDate]);
+
+  const handlePrevDay = () => {
+    if (selectedDate === "ALL" || !selectedDate) {
+      setSelectedDate(yesterdayStr);
+      return;
+    }
+    const parts = selectedDate.split("-");
+    if (parts.length === 3) {
+      const cur = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      cur.setDate(cur.getDate() - 1);
+      const d = String(cur.getDate()).padStart(2, "0");
+      const m = String(cur.getMonth() + 1).padStart(2, "0");
+      const y = cur.getFullYear();
+      setSelectedDate(`${d}-${m}-${y}`);
+    } else {
+      setSelectedDate(yesterdayStr);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (selectedDate === "ALL" || !selectedDate) {
+      setSelectedDate(tomorrowStr);
+      return;
+    }
+    const parts = selectedDate.split("-");
+    if (parts.length === 3) {
+      const cur = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      cur.setDate(cur.getDate() + 1);
+      const d = String(cur.getDate()).padStart(2, "0");
+      const m = String(cur.getMonth() + 1).padStart(2, "0");
+      const y = cur.getFullYear();
+      setSelectedDate(`${d}-${m}-${y}`);
+    } else {
+      setSelectedDate(tomorrowStr);
+    }
+  };
+
   const fetchDoctorAppointments = async (dt: string, isSilent = false) => {
     if (!dt) return;
     if (!isSilent) setIsLoading(true);
@@ -87,8 +154,9 @@ export default function DoctorDashboard() {
       const branchQuery = cleanBranch && cleanBranch !== "All Branches" && cleanBranch.toLowerCase() !== "all"
         ? `&branch=${encodeURIComponent(cleanBranch)}`
         : "";
+      const dateParam = dt === "ALL" ? "&date=ALL" : `&date=${encodeURIComponent(dt)}`;
       const data = await apiFetch<any>(
-        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}&date=${encodeURIComponent(dt)}${branchQuery}`
+        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}${dateParam}${branchQuery}`
       );
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -133,6 +201,14 @@ export default function DoctorDashboard() {
         branch: branchName,
       },
     } as any);
+  };
+
+  const openPatientHistory = (appt: any) => {
+    const regId = appt.registrationId || appt.patientId || "SPH-GEN";
+    const name = encodeURIComponent(appt.patientName || appt.name || "");
+    const phone = encodeURIComponent((appt.phoneNumber || appt.phone || "").replace(/\D/g, "").slice(-10));
+    const branch = encodeURIComponent(appt.branch || branchName || "Clinic");
+    router.push(`/(doctor)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
   };
 
   const handleStatusClick = async (appt: any) => {
@@ -361,48 +437,136 @@ export default function DoctorDashboard() {
           />
         }
       >
-        {/* Reception-Style Date Navigation Bar */}
+        {/* Reception-Style Date Navigation Bar with Horizontal Scroll */}
         <View style={styles.dateBarRow}>
-          <TouchableOpacity
-            style={[
-              styles.datePill,
-              selectedDate === todayStr && styles.datePillActive,
-            ]}
-            onPress={() => setSelectedDate(todayStr)}
-            activeOpacity={0.7}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dateScrollContent}
           >
-            <Text
+            {/* All Dates / All Booked */}
+            <TouchableOpacity
               style={[
-                styles.datePillText,
-                selectedDate === todayStr && styles.datePillTextActive,
+                styles.datePill,
+                selectedDate === "ALL" && styles.datePillActive,
               ]}
+              onPress={() => setSelectedDate("ALL")}
+              activeOpacity={0.7}
             >
-              Today
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name="sparkles"
+                size={12}
+                color={selectedDate === "ALL" ? "#ffffff" : "#0284c7"}
+                style={{ marginRight: 3 }}
+              />
+              <Text
+                style={[
+                  styles.datePillText,
+                  selectedDate === "ALL" && styles.datePillTextActive,
+                ]}
+              >
+                All Dates
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.datePill,
-              selectedDate === tomorrowStr && styles.datePillActive,
-            ]}
-            onPress={() => setSelectedDate(tomorrowStr)}
-            activeOpacity={0.7}
-          >
-            <Text
+            {/* Yesterday */}
+            <TouchableOpacity
               style={[
-                styles.datePillText,
-                selectedDate === tomorrowStr && styles.datePillTextActive,
+                styles.datePill,
+                selectedDate === yesterdayStr && styles.datePillActive,
               ]}
+              onPress={() => setSelectedDate(yesterdayStr)}
+              activeOpacity={0.7}
             >
-              Tomorrow
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.datePillText,
+                  selectedDate === yesterdayStr && styles.datePillTextActive,
+                ]}
+              >
+                Yesterday
+              </Text>
+            </TouchableOpacity>
 
-          <View style={styles.currentDateBadge}>
-            <Ionicons name="calendar-outline" size={13} color="#0284c7" />
-            <Text style={styles.currentDateBadgeText}>{selectedDate}</Text>
-          </View>
+            {/* Today */}
+            <TouchableOpacity
+              style={[
+                styles.datePill,
+                selectedDate === todayStr && styles.datePillActive,
+              ]}
+              onPress={() => setSelectedDate(todayStr)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.datePillText,
+                  selectedDate === todayStr && styles.datePillTextActive,
+                ]}
+              >
+                Today
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tomorrow */}
+            <TouchableOpacity
+              style={[
+                styles.datePill,
+                selectedDate === tomorrowStr && styles.datePillActive,
+              ]}
+              onPress={() => setSelectedDate(tomorrowStr)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.datePillText,
+                  selectedDate === tomorrowStr && styles.datePillTextActive,
+                ]}
+              >
+                Tomorrow
+              </Text>
+            </TouchableOpacity>
+
+            {/* Step Prev Day (<) */}
+            <TouchableOpacity
+              style={styles.dateNavArrowBtn}
+              onPress={handlePrevDay}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={15} color="#0284c7" />
+            </TouchableOpacity>
+
+            {/* Interactive Calendar Badge (Clickable to open Calendar Modal) */}
+            <TouchableOpacity
+              style={[
+                styles.currentDateBadge,
+                selectedDate !== todayStr &&
+                  selectedDate !== tomorrowStr &&
+                  selectedDate !== yesterdayStr &&
+                  selectedDate !== "ALL" &&
+                  styles.currentDateBadgeHighlight,
+              ]}
+              onPress={() => setCalendarModalOpen(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar" size={13} color="#0284c7" />
+              <Text style={styles.currentDateBadgeText}>
+                {selectedDate === "ALL"
+                  ? "All Booked"
+                  : selectedDate === todayStr
+                  ? `Today (${selectedDate})`
+                  : selectedDate}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Step Next Day (>) */}
+            <TouchableOpacity
+              style={styles.dateNavArrowBtn}
+              onPress={handleNextDay}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-forward" size={15} color="#0284c7" />
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         {/* Reception-Style Filter Pills: All, Upcoming, Active, Completed */}
@@ -542,7 +706,13 @@ export default function DoctorDashboard() {
                   {/* Name & ID & Revisit Badge + Phone */}
                   <TouchableOpacity
                     style={{ flex: 1, marginLeft: 8, justifyContent: "center" }}
-                    onPress={() => openPatientFile(appt)}
+                    onPress={() => {
+                      if (isCompleted) {
+                        openPatientHistory(appt);
+                      } else {
+                        openPatientFile(appt);
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
@@ -554,13 +724,6 @@ export default function DoctorDashboard() {
                         </Text>
                       </View>
                       {renderVisitBadge(appt)}
-                      {isSentToReception && (
-                        <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
-                          <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
-                            Ready to Collect Fee
-                          </Text>
-                        </View>
-                      )}
                     </View>
                     <Text style={styles.apptPhoneText}>{displayPhone}</Text>
                   </TouchableOpacity>
@@ -571,9 +734,16 @@ export default function DoctorDashboard() {
                       styles.startConsultBtn,
                       isActive && { backgroundColor: "#16a34a" },
                       isSentToReception && { backgroundColor: "#f59e0b" },
-                      isCompleted && { backgroundColor: "#64748b" },
+                      isCompleted && { backgroundColor: "#64748b", opacity: 0.85 },
                     ]}
-                    onPress={() => handleStatusClick(appt)}
+                    onPress={() => {
+                      if (isCompleted) {
+                        openPatientHistory(appt);
+                      } else {
+                        handleStatusClick(appt);
+                      }
+                    }}
+                    disabled={isCompleted}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.startConsultBtnText}>
@@ -582,7 +752,7 @@ export default function DoctorDashboard() {
                         : isSentToReception
                         ? "SENT TO RECEPTION"
                         : isCompleted
-                        ? "COMPLETED"
+                        ? "✓ COMPLETED"
                         : "START PRESCRIPTION"}
                     </Text>
                   </TouchableOpacity>
@@ -601,6 +771,13 @@ export default function DoctorDashboard() {
                     <Ionicons name="time-outline" size={13} color="#64748b" />
                     <Text style={styles.infoItemText}>
                       {appt.timeSlot || appt.selectedTimeSlot || appt.slot || "Slot N/A"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.infoItem}>
+                    <Ionicons name="calendar-outline" size={13} color="#0284c7" />
+                    <Text style={[styles.infoItemText, { color: "#0284c7", fontWeight: "700" }]}>
+                      {appt.appointmentDate || selectedDate}
                     </Text>
                   </View>
 
@@ -753,6 +930,125 @@ export default function DoctorDashboard() {
         </View>
       </Modal>
 
+      {/* Interactive Calendar Modal */}
+      <Modal
+        visible={calendarModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setCalendarModalOpen(false)}
+        >
+          <View style={styles.calModalContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.calNavHeader}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 0) {
+                    setCalMonth(11);
+                    setCalYear((y) => y - 1);
+                  } else {
+                    setCalMonth((m) => m - 1);
+                  }
+                }}
+                style={{ padding: 6 }}
+              >
+                <Ionicons name="chevron-back" size={20} color="#0284c7" />
+              </TouchableOpacity>
+
+              <Text style={{ fontWeight: "800", fontSize: 16, color: "#0f172a" }}>
+                {monthNames[calMonth]} {calYear}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 11) {
+                    setCalMonth(0);
+                    setCalYear((y) => y + 1);
+                  } else {
+                    setCalMonth((m) => m + 1);
+                  }
+                }}
+                style={{ padding: 6 }}
+              >
+                <Ionicons name="chevron-forward" size={20} color="#0284c7" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekday Labels */}
+            <View style={styles.calWeekdaysRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <Text key={d} style={styles.calWeekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.calDaysGrid}>
+              {Array.from({ length: firstDayOffset }).map((_, i) => (
+                <View key={`empty-${i}`} style={styles.calDayCell} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
+                const isSelected = selectedDate === formatted;
+                const isToday = formatted === todayStr;
+
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    onPress={() => {
+                      setSelectedDate(formatted);
+                      setCalendarModalOpen(false);
+                    }}
+                    style={[
+                      styles.calDayCell,
+                      isSelected && styles.calDayCellSelected,
+                      isToday && !isSelected && styles.calDayCellToday,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.calDayText,
+                        isSelected && { color: "#ffffff", fontWeight: "800" },
+                        isToday && !isSelected && { color: "#0284c7", fontWeight: "800" },
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Quick Actions in Calendar Modal */}
+            <View style={styles.calModalFooter}>
+              <TouchableOpacity
+                style={styles.calFooterBtn}
+                onPress={() => {
+                  setSelectedDate("ALL");
+                  setCalendarModalOpen(false);
+                }}
+              >
+                <Ionicons name="sparkles" size={13} color="#0284c7" />
+                <Text style={styles.calFooterBtnText}>All Dates</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.calFooterBtn, { backgroundColor: "#0284c7" }]}
+                onPress={() => {
+                  setSelectedDate(todayStr);
+                  setCalendarModalOpen(false);
+                }}
+              >
+                <Text style={[styles.calFooterBtnText, { color: "#ffffff" }]}>Jump to Today</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Persistent Doctor Bottom Navigation */}
       <DoctorBottomNav activeTab="dashboard" />
     </SafeAreaView>
@@ -773,13 +1069,28 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   dateBarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     marginBottom: 10,
   },
+  dateScrollContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 2,
+  },
+  dateNavArrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   datePill: {
-    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "#ffffff",
@@ -809,7 +1120,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    marginLeft: "auto",
+  },
+  currentDateBadgeHighlight: {
+    backgroundColor: "#e0f2fe",
+    borderColor: "#0284c7",
   },
   currentDateBadgeText: {
     fontSize: 11.5,
@@ -1205,5 +1519,92 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "700",
     color: "#ffffff",
+  },
+
+  // Calendar Modal Styles
+  calModalContainer: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    width: "100%",
+    maxWidth: 340,
+    alignSelf: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  calNavHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  calWeekdaysRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+    paddingBottom: 6,
+  },
+  calWeekdayText: {
+    width: 38,
+    textAlign: "center",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94a3b8",
+  },
+  calDaysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+  },
+  calDayCell: {
+    width: "14.28%",
+    aspectRatio: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+    marginVertical: 2,
+  },
+  calDayCellSelected: {
+    backgroundColor: "#0284c7",
+  },
+  calDayCellToday: {
+    borderWidth: 1,
+    borderColor: "#0284c7",
+    backgroundColor: "#f0f9ff",
+  },
+  calDayText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  calModalFooter: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  calFooterBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  calFooterBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0284c7",
   },
 });

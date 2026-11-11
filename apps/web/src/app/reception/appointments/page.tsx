@@ -370,9 +370,25 @@ export default function ReceptionAppointmentsPage() {
       .then((data) => {
         if (data.success && Array.isArray(data.data) && data.data.length > 0) {
           const allBranchNames: string[] = data.data.map((b: any) => b.name);
-          const validBranch = assigned && allBranchNames.includes(assigned)
-            ? assigned
-            : assigned || allBranchNames[0];
+          const cleanAssigned = (assigned || "")
+            .toLowerCase()
+            .replace(/spiritual|homeopathy|branch/gi, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+          const matchedBranch = allBranchNames.find((b) => {
+            const cb = b.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+            const isKpbMatch = (cleanAssigned === "kpb" || cleanAssigned === "kphb") && (cb === "kpb" || cb === "kphb");
+            return cb === cleanAssigned || isKpbMatch;
+          });
+          const validBranch = matchedBranch || allBranchNames[0] || assigned || "Kphb Branch";
+
+          if (typeof window !== "undefined" && matchedBranch && matchedBranch !== assigned) {
+            try {
+              localStorage.setItem("user_assigned_branch", matchedBranch);
+              localStorage.setItem("user_branch", matchedBranch);
+              localStorage.setItem("branch_name", matchedBranch);
+            } catch {}
+          }
 
           setBranchName(validBranch);
 

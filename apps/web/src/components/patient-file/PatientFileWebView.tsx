@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import { DietPlanManager } from "./DietPlanManager";
@@ -220,6 +221,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
             pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
+            status: pf.status || "WAITING",
           });
 
           // Also check live pending balance by phone
@@ -267,6 +269,8 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
     patientData.activePackage.status === "ACTIVE" &&
     (!patientData.activePackage.endDate || new Date(patientData.activePackage.endDate).getTime() >= new Date().setHours(0, 0, 0, 0))
   );
+
+  const isCompleted = (patientData.status || "").toUpperCase() === "COMPLETED";
 
   const handleRegisterPackage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1015,6 +1019,28 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
 
               {activeTab === "clinical" && (
                 <>
+                  {isCompleted && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
+                          <CheckCircle className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-emerald-900">Consultation Completed &amp; Locked</p>
+                          <p className="text-[11px] text-emerald-700">Payment has been settled for this visit. Prescription records and billing are locked.</p>
+                        </div>
+                      </div>
+                      <Link
+                        href={role === "DOCTOR"
+                          ? `/doctor/patient-history?id=${encodeURIComponent(patientData.registrationId)}&phone=${encodeURIComponent(patientData.phone)}&name=${encodeURIComponent(patientData.patientName)}`
+                          : `/reception/patient-history?id=${encodeURIComponent(patientData.registrationId)}&phone=${encodeURIComponent(patientData.phone)}&name=${encodeURIComponent(patientData.patientName)}`
+                        }
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-2xs text-center shrink-0"
+                      >
+                        View Patient History
+                      </Link>
+                    </div>
+                  )}
                   {dietPlan ? (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-2xs">
                       <div className="flex items-center gap-2.5">
@@ -1084,6 +1110,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                 />
 
                 {/* Radio selection & Open Pad Button */}
+                {!isCompleted && (
                 <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
                   <div className="flex items-center gap-4">
                     {/* Radio: Digital Pad - ON means open pad */}
@@ -1151,6 +1178,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     <span>Open Pad</span>
                   </button>
                 </div>
+                )}
 
                 {/* Uploaded / Drawn Prescriptions Thumbnails */}
                 {uploadedImages.length > 0 ? (
@@ -1167,17 +1195,19 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                         }}
                       >
                         <img src={resolvePrescriptionImageUrl(src)} alt={`Rx ${idx + 1}`} className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveImage(idx);
-                          }}
-                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-xs cursor-pointer"
-                          title="Remove"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                        {!isCompleted && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveImage(idx);
+                            }}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 shadow-xs cursor-pointer"
+                            title="Remove"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1282,22 +1312,30 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     placeholder="Enter amount (optional)..."
                     value={consultationFee}
                     onChange={(e) => setConsultationFee(e.target.value)}
-                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold"
+                    disabled={isCompleted}
+                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-bold disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </div>
 
                 {/* Core CTA Button */}
-                <button
-                  onClick={handleSendToReception}
-                  disabled={isSubmitting}
-                  className="w-full py-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs transition-colors shadow-sm disabled:opacity-60 cursor-pointer"
-                >
-                  {isSubmitting
-                    ? "Submitting..."
-                    : role === "RECEPTION"
-                      ? "Save & Collect Fee"
-                      : "Send to Reception"}
-                </button>
+                {isCompleted ? (
+                  <div className="w-full py-3 rounded-lg bg-emerald-600 text-white font-extrabold text-xs text-center flex items-center justify-center gap-2 shadow-2xs select-none">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Consultation Completed &amp; Locked</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSendToReception}
+                    disabled={isSubmitting}
+                    className="w-full py-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs transition-colors shadow-sm disabled:opacity-60 cursor-pointer"
+                  >
+                    {isSubmitting
+                      ? "Submitting..."
+                      : role === "RECEPTION"
+                        ? "Save & Collect Fee"
+                        : "Send to Reception"}
+                  </button>
+                )}
               </div>
             </>
           )}

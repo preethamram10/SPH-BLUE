@@ -34,7 +34,7 @@ export interface TransactionRecord {
   packageFee: number;
   dietFee?: number;
   totalAmount: number;
-  paymentMethod: "cash" | "upi" | "card" | "split";
+  paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string;    // YYYY-MM-DD
@@ -76,6 +76,7 @@ export default function AdminTotalRevenuePage() {
   // Filters
   const [revenueSearch, setRevenueSearch] = useState("");
   const [revenueBranchId, setRevenueBranchId] = useState("all");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [revenueDate, setRevenueDate] = useState("");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
@@ -118,8 +119,23 @@ export default function AdminTotalRevenuePage() {
     }
   };
 
+  // Dynamic registered clinic branches
+  const fetchBranches = async () => {
+    try {
+      const res = await fetch("/api/branches");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+        if (names.length > 0) setAvailableBranches(names);
+      }
+    } catch (e) {
+      console.warn("Failed to load branches:", e);
+    }
+  };
+
   useEffect(() => {
     fetchRevenueData();
+    fetchBranches();
 
     // Auto-sync polling every 30s only when tab is visible
     const interval = setInterval(() => {
@@ -191,6 +207,16 @@ export default function AdminTotalRevenuePage() {
     }
   };
 
+  // Branch options computed dynamically from registered branches + recorded transactions
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    availableBranches.forEach((b) => set.add(b));
+    transactions.forEach((t) => {
+      if (t.branchName && t.branchName !== "Clinic Branch") set.add(t.branchName);
+    });
+    return Array.from(set);
+  }, [availableBranches, transactions]);
+
   // --- Filtering Engine ---
   const filteredTransactions = useMemo(() => {
     return transactions
@@ -207,7 +233,10 @@ export default function AdminTotalRevenuePage() {
 
         // Branch
         if (revenueBranchId !== "all") {
-          if (!t.branchName.toLowerCase().includes(revenueBranchId.toLowerCase())) return false;
+          const bTarget = revenueBranchId.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+          const bTx = t.branchName.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+          const isKpbMatch = (bTarget === "kpb" || bTarget === "kphb") && (bTx === "kpb" || bTx === "kphb");
+          if (!isKpbMatch && bTx !== bTarget && !bTx.includes(bTarget) && !bTarget.includes(bTx)) return false;
         }
 
         // Normalize timestamp for standard YYYY-MM-DD comparisons
@@ -257,18 +286,21 @@ export default function AdminTotalRevenuePage() {
         // Source
         if (revenueSource !== "all" && t.source !== revenueSource) return false;
 
-        // Payment Method (Counter UPI and UPI are unified as UPI in revenue)
+        // Payment Method Filter
         if (revenueMethod !== "all") {
-          if (revenueMethod === "upi") {
-            if (t.paymentMethod !== "upi") return false;
+          const disp = (t.displayPaymentMethod || "").toLowerCase();
+          if (revenueMethod === "cash") {
+            if (t.paymentMethod !== "cash" && !disp.includes("cash")) return false;
           } else if (revenueMethod === "counter_upi") {
-            const disp = (t.displayPaymentMethod || "").toLowerCase();
-            if (!disp.includes("counter")) return false;
-          } else if (revenueMethod === "online_upi") {
-            const disp = (t.displayPaymentMethod || "").toLowerCase();
-            if (disp.includes("counter") || t.paymentMethod !== "upi") return false;
-          } else if (t.paymentMethod !== revenueMethod) {
-            return false;
+            const isCounter = t.paymentMethod === "counter_upi" || disp.includes("counter");
+            if (!isCounter) return false;
+          } else if (revenueMethod === "online_upi" || revenueMethod === "upi") {
+            const isOnline = (t.paymentMethod === "upi" || disp.includes("online") || disp.includes("qr")) && !disp.includes("counter");
+            if (!isOnline) return false;
+          } else if (revenueMethod === "card") {
+            if (t.paymentMethod !== "card" && !disp.includes("card")) return false;
+          } else if (revenueMethod === "split") {
+            if (t.paymentMethod !== "split" && !disp.includes("split")) return false;
           }
         }
 
@@ -347,7 +379,8 @@ export default function AdminTotalRevenuePage() {
   const revenueSummary = useMemo(() => {
     let grandTotal = 0;
     let cashTotal = 0;
-    let upiTotal = 0;
+    let counterUpiTotal = 0;
+    let onlineUpiTotal = 0;
     let cardTotal = 0;
 
     let splitConsultation = 0;
@@ -360,19 +393,28 @@ export default function AdminTotalRevenuePage() {
     filteredTransactions.forEach((t) => {
       grandTotal += t.totalAmount;
 
-      // Mode Breakdown
-      if (t.paymentMethod === "cash") cashTotal += t.totalAmount;
-      else if (t.paymentMethod === "upi") upiTotal += t.totalAmount;
-      else if (t.paymentMethod === "card") cardTotal += t.totalAmount;
-      else if (t.paymentMethod === "split") {
+      // Mode Breakdown (Separate Counter UPI from Online UPI)
+      const disp = (t.displayPaymentMethod || "").toLowerCase();
+      if (t.paymentMethod === "cash") {
+        cashTotal += t.totalAmount;
+      } else if (t.paymentMethod === "counter_upi" || disp.includes("counter")) {
+        counterUpiTotal += t.totalAmount;
+      } else if (t.paymentMethod === "upi" || disp.includes("online") || disp.includes("qr")) {
+        onlineUpiTotal += t.totalAmount;
+      } else if (t.paymentMethod === "card") {
+        cardTotal += t.totalAmount;
+      } else if (t.paymentMethod === "split") {
         if (t.splitDetails) {
           cashTotal += t.splitDetails.cash || 0;
-          upiTotal += t.splitDetails.upi || 0;
+          onlineUpiTotal += t.splitDetails.upi || 0;
+          counterUpiTotal += (t.splitDetails as any).counterUpi || 0;
           cardTotal += (t.splitDetails as any).card || 0;
         } else {
           cashTotal += Math.round(t.totalAmount / 2);
-          upiTotal += Math.round(t.totalAmount / 2);
+          counterUpiTotal += Math.round(t.totalAmount / 2);
         }
+      } else {
+        counterUpiTotal += t.totalAmount;
       }
 
       // Split Breakdown
@@ -419,7 +461,8 @@ export default function AdminTotalRevenuePage() {
     return {
       grandTotal,
       cashTotal,
-      upiTotal,
+      counterUpiTotal,
+      onlineUpiTotal,
       cardTotal,
       splitConsultation,
       splitConsultationMed,
@@ -576,9 +619,15 @@ export default function AdminTotalRevenuePage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">UPI / Counter UPI:</span>
+                  <span className="text-slate-500">Counter UPI:</span>
+                  <span className="font-bold text-indigo-600">
+                    ₹{revenueSummary.counterUpiTotal.toLocaleString("en-IN")}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">UPI (Online / Razorpay):</span>
                   <span className="font-bold text-emerald-600">
-                    ₹{revenueSummary.upiTotal.toLocaleString("en-IN")}
+                    ₹{revenueSummary.onlineUpiTotal.toLocaleString("en-IN")}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -716,10 +765,11 @@ export default function AdminTotalRevenuePage() {
                   className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium"
                 >
                   <option value="all">All Branches</option>
-                  <option value="KPHB">KPHB Branch</option>
-                  <option value="Chandanagar">Chandanagar Branch</option>
-                  <option value="Dilshuknagar">Dilshuknagar Branch</option>
-                  <option value="Nallagandla">Nallagandla Branch</option>
+                  {branchOptions.map((br) => (
+                    <option key={br} value={br}>
+                      {br}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -850,9 +900,8 @@ export default function AdminTotalRevenuePage() {
                   className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium"
                 >
                   <option value="all">All Modes</option>
-                  <option value="upi">UPI / Counter UPI (All UPI)</option>
-                  <option value="counter_upi">Counter UPI Only</option>
-                  <option value="online_upi">Online UPI / QR Only</option>
+                  <option value="counter_upi">Counter UPI</option>
+                  <option value="online_upi">UPI / QR Code (Razorpay)</option>
                   <option value="cash">Cash</option>
                   <option value="card">Card</option>
                   <option value="split">Split Payment</option>

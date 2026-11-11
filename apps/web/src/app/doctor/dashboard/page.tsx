@@ -18,6 +18,9 @@ import {
   RotateCcw,
   FileText,
   Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
 } from "lucide-react";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -61,20 +64,57 @@ const renderVisitBadge = (appt: any) => {
   );
 };
 
-const ALL_BRANCHES = [
+const DEFAULT_BRANCHES = [
   "All Branches",
-  "KPHB Branch",
+  "Kphb Branch",
   "Chandanagar Branch",
-  "Dilsukhnagar Branch",
+  "Dilshuknagar Branch",
   "Nallagandla Branch",
-  "Suchitra Branch",
-  "Miyapur Branch",
 ];
+
+const toDDMMYYYY = (date: Date) => {
+  const d = String(date.getDate()).padStart(2, "0");
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const y = date.getFullYear();
+  return `${d}-${m}-${y}`;
+};
+
+const getYesterdayStr = () => {
+  const prev = new Date();
+  prev.setDate(prev.getDate() - 1);
+  return toDDMMYYYY(prev);
+};
+
+const getTomorrowStr = () => {
+  const next = new Date();
+  next.setDate(next.getDate() + 1);
+  return toDDMMYYYY(next);
+};
+
+const toISODate = (ddmmyyyy: string) => {
+  if (!ddmmyyyy || ddmmyyyy === "ALL") return "";
+  const parts = ddmmyyyy.split("-");
+  if (parts.length === 3) {
+    if (parts[0].length === 4) return ddmmyyyy;
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return "";
+};
+
+const fromISODate = (yyyymmdd: string) => {
+  if (!yyyymmdd) return "";
+  const parts = yyyymmdd.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return yyyymmdd;
+};
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
   const [branchName, setBranchName] = useState("All Branches");
+  const [branchesList, setBranchesList] = useState<string[]>(DEFAULT_BRANCHES);
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -85,10 +125,7 @@ export default function DoctorDashboardPage() {
   // Safe client-side date formatting
   useEffect(() => {
     const now = new Date();
-    const d = String(now.getDate()).padStart(2, "0");
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const y = now.getFullYear();
-    const dt = `${d}-${m}-${y}`;
+    const dt = toDDMMYYYY(now);
     setTodayStr(dt);
     setSelectedDate(dt);
 
@@ -96,7 +133,42 @@ export default function DoctorDashboardPage() {
     const savedBranch = localStorage.getItem("branch_name");
     if (savedDoc) setDoctorName(savedDoc);
     if (savedBranch) setBranchName(savedBranch);
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          if (names.length > 0) {
+            setBranchesList(["All Branches", ...Array.from(new Set(names))]);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handlePrevDay = () => {
+    if (selectedDate === "ALL" || !selectedDate) {
+      setSelectedDate(getYesterdayStr());
+      return;
+    }
+    const iso = toISODate(selectedDate);
+    const cur = iso ? new Date(iso) : new Date();
+    cur.setDate(cur.getDate() - 1);
+    setSelectedDate(toDDMMYYYY(cur));
+  };
+
+  const handleNextDay = () => {
+    if (selectedDate === "ALL" || !selectedDate) {
+      setSelectedDate(getTomorrowStr());
+      return;
+    }
+    const iso = toISODate(selectedDate);
+    const cur = iso ? new Date(iso) : new Date();
+    cur.setDate(cur.getDate() + 1);
+    setSelectedDate(toDDMMYYYY(cur));
+  };
 
   const fetchDoctorAppointments = async (dt: string, isSilent = false) => {
     if (!dt) return;
@@ -104,7 +176,8 @@ export default function DoctorDashboardPage() {
     try {
       const docParam = `doctorName=${encodeURIComponent(doctorName)}`;
       const branchParam = branchName && branchName !== "All Branches" ? `&branch=${encodeURIComponent(branchName)}` : "";
-      const res = await fetch(`/api/doctor/appointments?${docParam}${branchParam}&date=${encodeURIComponent(dt)}`);
+      const dateParam = dt === "ALL" ? "&date=ALL" : `&date=${encodeURIComponent(dt)}`;
+      const res = await fetch(`/api/doctor/appointments?${docParam}${branchParam}${dateParam}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -223,7 +296,7 @@ export default function DoctorDashboardPage() {
                 className="text-[11px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                 title="Filter by Branch"
               >
-                {ALL_BRANCHES.map((b) => (
+                {branchesList.map((b) => (
                   <option key={b} value={b}>
                     {b}
                   </option>
@@ -261,11 +334,127 @@ export default function DoctorDashboardPage() {
             </div>
           )}
 
+          {/* Interactive Date Navigation Section */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1">
+                <CalendarDays className="w-4 h-4 text-[#0284c7]" />
+                <span>Date:</span>
+              </span>
+
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10.5px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate("ALL")}
+                  className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 cursor-pointer ${
+                    selectedDate === "ALL"
+                      ? "bg-[#0284c7] text-white shadow-xs font-black"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>All Dates</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(getYesterdayStr())}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    selectedDate === getYesterdayStr()
+                      ? "bg-[#0284c7] text-white shadow-xs font-black"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
+                  }`}
+                >
+                  Yesterday
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    selectedDate === todayStr
+                      ? "bg-[#0284c7] text-white shadow-xs font-black"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
+                  }`}
+                >
+                  Today
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(getTomorrowStr())}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    selectedDate === getTomorrowStr()
+                      ? "bg-[#0284c7] text-white shadow-xs font-black"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
+                  }`}
+                >
+                  Tomorrow
+                </button>
+              </div>
+
+              {/* Day Step arrows & Date Picker input */}
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5">
+                <button
+                  type="button"
+                  onClick={handlePrevDay}
+                  title="Previous Day"
+                  className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+
+                <div className="relative flex items-center">
+                  <Calendar className="w-3.5 h-3.5 text-[#0284c7] mr-1 pointer-events-none" />
+                  <input
+                    type="date"
+                    value={toISODate(selectedDate)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setSelectedDate(fromISODate(e.target.value));
+                      }
+                    }}
+                    className={`py-0.5 px-1 rounded text-[11px] font-bold border-0 bg-transparent text-slate-800 cursor-pointer focus:ring-0 focus:outline-none`}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  title="Next Day"
+                  className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Active Date Label Pill */}
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1 rounded-lg bg-sky-50 border border-sky-200 text-[#0284c7] font-bold text-xs flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>
+                  {selectedDate === "ALL"
+                    ? "Showing: All Booked (All Dates)"
+                    : selectedDate === todayStr
+                    ? `Today: ${selectedDate}`
+                    : selectedDate === getTomorrowStr()
+                    ? `Tomorrow: ${selectedDate}`
+                    : selectedDate === getYesterdayStr()
+                    ? `Yesterday: ${selectedDate}`
+                    : `Date: ${selectedDate}`}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Quick Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Today&apos;s Booked</p>
+                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">
+                  {selectedDate === "ALL" ? "All Booked" : "Booked Patients"}
+                </p>
                 <Users className="w-3.5 h-3.5 text-[#0284c7]" />
               </div>
               <p className="text-lg font-black text-[#0284c7] mt-1">{appointments.length}</p>
@@ -427,9 +616,16 @@ export default function DoctorDashboardPage() {
                               <Clock className="w-3 h-3 text-slate-400" />
                               <span>{appt.timeSlot || appt.selectedTimeSlot}</span>
                             </div>
-                            <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 mt-0.5">
-                              {appt.consultationMode || "In-Clinic"}
-                            </span>
+                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                              <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600">
+                                {appt.consultationMode || "In-Clinic"}
+                              </span>
+                              {appt.appointmentDate && (
+                                <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100">
+                                  📅 {appt.appointmentDate}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-2 px-3">
@@ -477,9 +673,6 @@ export default function DoctorDashboardPage() {
 
                               {isSentToReception && (
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                                    Ready to Collect Fee
-                                  </span>
                                   <button
                                     type="button"
                                     onClick={() => openPatientFile(appt)}

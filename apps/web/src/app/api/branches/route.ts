@@ -4,6 +4,9 @@ import { branchService } from "@spiritualhomeo/database";
 // GET /api/branches
 export async function GET() {
   try {
+    // Run store synchronization to ensure existing records match canonical branch names
+    branchService.syncAllStoresToCanonicalBranches();
+
     const branches = await branchService.getAllBranches();
 
     return NextResponse.json(
@@ -11,6 +14,7 @@ export async function GET() {
         success: true,
         count: branches.length,
         data: branches,
+        branches: branches,
         timestamp: new Date().toISOString(),
       },
       {
@@ -21,7 +25,7 @@ export async function GET() {
     );
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch branches", data: [] },
+      { success: false, error: error.message || "Failed to fetch branches", data: [], branches: [] },
       { status: 500 }
     );
   }

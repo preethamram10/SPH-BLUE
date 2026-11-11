@@ -37,12 +37,19 @@ interface PayLaterRecord {
   notes?: string;
 }
 
-const BRANCHES = [
+function normalizeBranchKey(str: string): string {
+  if (!str) return "";
+  let c = str.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/branch/gi, "").trim();
+  if (c === "kpb" || c === "kphb") return "kphb";
+  return c;
+}
+
+const DEFAULT_BRANCHES = [
   "All",
-  "KPHB",
-  "Chandanagar",
-  "Dilshuknagar",
-  "Nallagandla",
+  "Kphb Branch",
+  "Chandanagar Branch",
+  "Dilshuknagar Branch",
+  "Nallagandla Branch",
 ];
 
 type DateFilterPreset = "THIS_MONTH" | "LAST_MONTH" | "ALL_HISTORY" | "CUSTOM";
@@ -51,6 +58,7 @@ export default function MobilePayLaterScreen() {
   const router = useRouter();
 
   const [records, setRecords] = useState<PayLaterRecord[]>([]);
+  const [dynamicBranches, setDynamicBranches] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("All");
@@ -76,9 +84,19 @@ export default function MobilePayLaterScreen() {
   const fetchPayLater = async () => {
     setIsLoading(true);
     try {
-      const recData = await apiFetch<any>("/pay-later");
+      const [recData, bData] = await Promise.all([
+        apiFetch<any>("/pay-later"),
+        apiFetch<any>("/branches").catch(() => null),
+      ]);
       if (recData && recData.success) {
         setRecords(recData.records || []);
+      }
+      if (bData) {
+        const list = Array.isArray(bData.data) ? bData.data : (Array.isArray(bData.branches) ? bData.branches : []);
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+          setDynamicBranches(names);
+        }
       }
     } catch (err) {
       console.error("Failed to load mobile pay later:", err);
@@ -87,6 +105,33 @@ export default function MobilePayLaterScreen() {
       setRefreshing(false);
     }
   };
+
+  const branchList = useMemo(() => {
+    const list: string[] = ["All"];
+    const seen = new Set<string>();
+
+    const addBranch = (b: string) => {
+      const trimmed = (b || "").trim();
+      if (!trimmed || trimmed === "All" || trimmed === "All Branches") return;
+      const key = normalizeBranchKey(trimmed);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(trimmed);
+      }
+    };
+
+    dynamicBranches.forEach(addBranch);
+    records.forEach((r) => {
+      if (r.branch) addBranch(r.branch);
+    });
+
+    if (!seen.has("kphb")) addBranch("Kphb Branch");
+    if (!seen.has("chandanagar")) addBranch("Chandanagar Branch");
+    if (!seen.has("dilshuknagar")) addBranch("Dilshuknagar Branch");
+    if (!seen.has("nallagandla")) addBranch("Nallagandla Branch");
+
+    return list;
+  }, [dynamicBranches, records]);
 
   useEffect(() => {
     fetchPayLater();
@@ -129,7 +174,12 @@ export default function MobilePayLaterScreen() {
 
       // Branch filter
       if (selectedBranch !== "All") {
-        const branchMatch = (r.branch || "").toLowerCase().includes(selectedBranch.toLowerCase());
+        const normSelected = normalizeBranchKey(selectedBranch);
+        const normItemBranch = normalizeBranchKey(r.branch || "");
+        const branchMatch =
+          normItemBranch === normSelected ||
+          normItemBranch.includes(normSelected) ||
+          normSelected.includes(normItemBranch);
         if (!branchMatch) return false;
       }
 
@@ -404,8 +454,10 @@ export default function MobilePayLaterScreen() {
           style={styles.branchScroll}
           contentContainerStyle={styles.branchScrollContent}
         >
-          {BRANCHES.map((b) => {
-            const isSelected = selectedBranch === b;
+          {branchList.map((b) => {
+            const isSelected =
+              selectedBranch === b ||
+              (selectedBranch !== "All" && normalizeBranchKey(selectedBranch) === normalizeBranchKey(b));
             return (
               <TouchableOpacity
                 key={b}

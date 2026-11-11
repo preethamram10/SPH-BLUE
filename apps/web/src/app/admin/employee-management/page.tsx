@@ -126,10 +126,11 @@ export default function StaffManagementPage() {
     try {
       const res = await fetch("/api/branches");
       const data = await res.json();
-      if (data.branches && Array.isArray(data.branches)) {
-        setBranches(data.branches);
-        if (data.branches.length > 0 && !formBranch) {
-          setFormBranch(data.branches[0].name.replace(/Spiritual Homeopathy/gi, "").replace(/Branch/gi, "").trim() || "KPHB");
+      const list = data.data || data.branches || [];
+      if (Array.isArray(list) && list.length > 0) {
+        setBranches(list);
+        if (!formBranch) {
+          setFormBranch(list[0].name.replace(/Spiritual Homeopathy/gi, "").replace(/Branch/gi, "").trim() || "KPHB");
         }
       }
     } catch (err) {

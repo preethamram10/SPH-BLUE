@@ -15,8 +15,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../../config/api";
 
-const BRANCH_LIST = [
-  "KPHB Branch",
+const DEFAULT_BRANCH_LIST = [
+  "Kphb Branch",
   "Chandanagar Branch",
   "Dilshuknagar Branch",
   "Nallagandla Branch",
@@ -38,6 +38,7 @@ export default function AdminDoctorTimingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [allDoctors, setAllDoctors] = useState<any[]>([]);
+  const [branchList, setBranchList] = useState<string[]>(DEFAULT_BRANCH_LIST);
 
   // Edit / Add Modal State
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -51,13 +52,28 @@ export default function AdminDoctorTimingsScreen() {
   const fetchDoctorTimings = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/admin/doctor-timings`);
+      const [res, branchRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/doctor-timings`),
+        fetch(`${API_BASE_URL}/branches`).catch(() => null),
+      ]);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
           if (Array.isArray(data.schedules)) setSchedules(data.schedules);
           if (Array.isArray(data.doctors)) setAllDoctors(data.doctors);
         }
+      }
+      if (branchRes && branchRes.ok) {
+        try {
+          const bData = await branchRes.json();
+          const list = Array.isArray(bData.data) ? bData.data : (Array.isArray(bData.branches) ? bData.branches : []);
+          if (list.length > 0) {
+            const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
+            if (names.length > 0) {
+              setBranchList(Array.from(new Set(names)));
+            }
+          }
+        } catch (_) {}
       }
     } catch (err) {
       console.warn("Failed to fetch doctor timings on mobile:", err);
@@ -311,7 +327,7 @@ export default function AdminDoctorTimingsScreen() {
               {/* Branch Selector */}
               <Text style={styles.fieldLabel}>Select Branch:</Text>
               <View style={styles.selectorWrap}>
-                {BRANCH_LIST.map((b) => (
+                {branchList.map((b) => (
                   <TouchableOpacity
                     key={b}
                     style={[

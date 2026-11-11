@@ -145,7 +145,7 @@ export default function ReceptionBookAppointmentScreen() {
   const [isSourceOpen, setIsSourceOpen] = useState(false);
   const [isDoctorOpen, setIsDoctorOpen] = useState(false);
   const [branchesList, setBranchesList] = useState<string[]>([
-    "KPHB Branch",
+    "Kphb Branch",
     "Chandanagar Branch",
     "Dilshuknagar Branch",
     "Nallagandla Branch",
@@ -355,7 +355,7 @@ export default function ReceptionBookAppointmentScreen() {
             }
           })
           .catch(() => {
-            const def = "KPHB Branch";
+            const def = "Kphb Branch";
             setActiveBranch({ name: def });
             setBranchesList([def]);
             fetchDoctorsAndNoShows(def, appointmentDate);
@@ -2584,14 +2584,22 @@ export default function ReceptionBookAppointmentScreen() {
                     <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
 
-              <View style={styles.drawerFooter}>
-                <TouchableOpacity style={styles.drawerLogoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-                  <Ionicons name="log-out-outline" size={18} color="#ef4444" />
-                  <Text style={styles.drawerLogoutText}>Sign Out from Reception</Text>
+                {/* Sign Out (Inside side navigation, not fixed) */}
+                <TouchableOpacity
+                  style={[styles.drawerMenuItem, { marginTop: 14, marginBottom: 28 }]}
+                  onPress={handleLogout}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.drawerIconBox}>
+                    <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+                  </View>
+                  <Text style={[styles.drawerMenuText, { color: "#ef4444", fontWeight: "700" }]}>
+                    Sign Out
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#ef4444" />
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </Animated.View>
           </View>
         )}

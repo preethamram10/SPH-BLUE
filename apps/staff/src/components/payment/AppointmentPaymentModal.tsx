@@ -160,6 +160,11 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [isRequestingDiscount, setIsRequestingDiscount] = useState(false);
 
+  // Card payment details state
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+
   // Selected Payment Method
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -170,6 +175,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const [splitUpi, setSplitUpi] = useState<number>(0);
   const [splitCash, setSplitCash] = useState<number>(0);
   const [splitCard, setSplitCard] = useState<number>(0);
+  const [splitCounterUpi, setSplitCounterUpi] = useState<number>(0);
+  const [showSplitRazorpayQr, setShowSplitRazorpayQr] = useState<boolean>(false);
+  // Opted split payment modes: "cash" | "counterUpi" | "upi" | "card"
+  const [optedSplitModes, setOptedSplitModes] = useState<string[]>(["cash", "upi"]);
+  const [isSplitUpiPaid, setIsSplitUpiPaid] = useState<boolean>(false);
+  const [splitUpiRef, setSplitUpiRef] = useState<string>("");
+  const [isSplitCardPaid, setIsSplitCardPaid] = useState<boolean>(false);
+  const [splitCardRef, setSplitCardRef] = useState<string>("");
 
   // Pay Later states
   const [isPayLater, setIsPayLater] = useState<boolean>(false);
@@ -328,6 +341,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       setSplitUpi(0);
       setSplitCash(0);
       setSplitCard(0);
+      setSplitCounterUpi(0);
+      setOptedSplitModes(["cash", "upi"]);
+      setIsSplitUpiPaid(false);
+      setSplitUpiRef("");
+      setIsSplitCardPaid(false);
+      setSplitCardRef("");
       setDiscountStatus(appointment.discountStatus || "NONE");
       setDiscountApprovedAmount(appointment.discountApproved || 0);
     }
@@ -613,12 +632,27 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     }
 
     if (selectedMethod === "Split") {
-      const splitAllocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+      const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
+      const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
+      const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
+      const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
+      const splitAllocated = activeCash + activeCounterUpi + activeUpi + activeCard;
+
       if (splitAllocated !== effectivePaidToday) {
         Alert.alert(
           "Split Amount Mismatch",
           `Split amounts (₹${splitAllocated}) must equal amount paid today (₹${effectivePaidToday}). Difference: ₹${Math.abs(effectivePaidToday - splitAllocated)}.`
         );
+        return;
+      }
+
+      if (optedSplitModes.includes("upi") && splitUpi > 0 && !isSplitUpiPaid) {
+        Alert.alert("Online UPI Pending", `Online UPI payment of ₹${splitUpi} has not been verified yet. Please scan QR or tap Mark Paid.`);
+        return;
+      }
+
+      if (optedSplitModes.includes("card") && splitCard > 0 && !isSplitCardPaid) {
+        Alert.alert("Card Payment Pending", `Card payment of ₹${splitCard} has not been confirmed yet. Please swipe on POS or tap Mark Card Paid.`);
         return;
       }
     }
@@ -656,9 +690,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         status: "COMPLETED",
         isFeeCollected: true,
         splitDetails: method === "Split" ? {
-          upi: splitUpi,
-          cash: splitCash,
-          card: splitCard,
+          upi: optedSplitModes.includes("upi") ? splitUpi : 0,
+          cash: optedSplitModes.includes("cash") ? splitCash : 0,
+          card: optedSplitModes.includes("card") ? splitCard : 0,
+          counterUpi: optedSplitModes.includes("counterUpi") ? splitCounterUpi : 0,
+          upiTxId: splitUpiRef || undefined,
+          cardTxId: splitCardRef || undefined,
         } : undefined,
         medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
         medicineDuration,
@@ -715,6 +752,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&allowAnyRecent=true${force ? "&forceVerify=true" : ""}`
       );
       if (res.success && res.isPaid) {
+        if (selectedMethod === "Split") {
+          setIsSplitUpiPaid(true);
+          setSplitUpiRef(res.payment?.id || `RZP-${Date.now().toString().slice(-4)}`);
+          Alert.alert(
+            "Split UPI Verified ✓",
+            `Online UPI payment of ₹${res.payment?.amount || splitUpi} verified via Razorpay! Now complete any remaining split payment.`
+          );
+          return;
+        }
         setIsUpiPaid(true);
         Alert.alert(
           "Payment Detected! ✓",
@@ -789,6 +835,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment?.id}&confirmManual=true`
       );
       if (res.success && res.isPaid) {
+        if (selectedMethod === "Split") {
+          setIsSplitUpiPaid(true);
+          setSplitUpiRef(res.payment?.id || `RZP-${Date.now().toString().slice(-4)}`);
+          Alert.alert(
+            "Split UPI Verified ✓",
+            `Online UPI payment of ₹${res.payment?.amount || splitUpi} verified via Razorpay! Now complete any remaining split payment.`
+          );
+          return;
+        }
         setIsUpiPaid(true);
         const method = selectedMethod || "Counter UPI";
         const payload = {
@@ -843,21 +898,91 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     }
   };
 
-  // Background polling for live payment detection on mobile
+  // Dedicated Card Payment Confirmation (Instantly completes appointment)
+  const handleManualConfirmCard = async () => {
+    if (selectedMethod === "Split") {
+      setIsSplitCardPaid(true);
+      setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
+      Alert.alert("Card Confirmed ✓", `Split Card payment of ₹${splitCard} marked as paid / swiped. Now complete any remaining split payment.`);
+      return;
+    }
+    if (!hasPrescription) {
+      Alert.alert(
+        "Prescription Required (Mandatory)",
+        "A prescription must be uploaded or written in the patient file before completing consultation."
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const targetAmount = isPayLater ? effectivePaidToday : totalAmountDue;
+      const payload = {
+        appointmentId: appointment?.id,
+        consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
+        medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
+        dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDiet ? dietFee : 0),
+        totalAmountDue,
+        totalPaid: effectivePaidToday,
+        payLaterAmount: calculatedPayLater,
+        payLaterNotes: isPayLater ? payLaterNotes : undefined,
+        previousDuePaid: previousDueAmount,
+        hasPackage: isPackageMode,
+        isRegularBilling: !isPackageMode,
+        skipPackagePayment: !isPackageMode,
+        packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
+        paymentMethod: "CARD",
+        paymentMode: "Card",
+        status: "COMPLETED",
+        isFeeCollected: true,
+        medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+        medicineDuration,
+        discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
+        discountNotes,
+        discountStatus,
+      };
+      const saveRes = await apiFetch<any>("/reception/payment", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const updated = saveRes?.appointment || {
+        ...appointment,
+        status: "COMPLETED",
+        isFeeCollected: true,
+        totalPaid: effectivePaidToday,
+        totalAmountDue,
+        payLaterAmount: calculatedPayLater,
+        previousDuePaid: previousDueAmount,
+        paymentMethod: "Card",
+        paymentMode: "Card",
+        paidAt: new Date().toISOString(),
+        invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+      };
+      setCompletedInvoice(updated);
+      setCurrentView("invoice_receipt");
+      onPaymentSuccess(updated);
+      Alert.alert("Card Payment Completed ✓", `Payment of ₹${targetAmount} recorded via Card. Consultation completed.`);
+    } catch (err: any) {
+      Alert.alert("Payment Error", err.message || "Failed to record card payment.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Background polling for live payment detection on mobile (UPI and Card)
   useEffect(() => {
     if (!visible || !appointment?.id || currentView !== "collect_fee" || isUpiPaid) return;
-    if (selectedMethod !== "Counter UPI" && selectedMethod !== "UPI / QR Code") return;
+    if (selectedMethod !== "UPI / QR Code" && selectedMethod !== "Card") return;
 
     let isMounted = true;
     const interval = setInterval(async () => {
       try {
         const upiTargetAmount = isPayLater ? effectivePaidToday : totalAmountDue;
         const res = await apiFetch<any>(
-          `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&allowAnyRecent=true`
+          `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&method=${selectedMethod === "Card" ? "card" : "upi"}&allowAnyRecent=true`
         );
         if (isMounted && res.success && res.isPaid) {
           setIsUpiPaid(true);
-          const method = selectedMethod || "Counter UPI";
+          const method = selectedMethod || "Card";
           const payload = {
             appointmentId: appointment.id,
             consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
@@ -872,7 +997,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             isRegularBilling: !isPackageMode,
             skipPackagePayment: !isPackageMode,
             packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
-            paymentMethod: method === "UPI / QR Code" ? "ONLINE_UPI" : "COUNTER_UPI",
+            paymentMethod: method === "Card" ? "CARD" : (method === "UPI / QR Code" ? "ONLINE_UPI" : "COUNTER_UPI"),
             paymentMode: method,
             status: "COMPLETED",
             isFeeCollected: true,
@@ -2116,8 +2241,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                       })}
                     </View>
 
-                    {/* RAZORPAY UPI QR CODE CARD (MOBILE APP) */}
-                    {(selectedMethod === "Counter UPI" || selectedMethod === "UPI / QR Code") && (
+                    {/* RAZORPAY UPI QR CODE CARD (MOBILE APP) - ONLY FOR UPI / QR CODE */}
+                    {selectedMethod === "UPI / QR Code" && (
                       <View style={{ marginTop: 14, backgroundColor: "#f0f9ff", borderWidth: 2, borderColor: "#38bdf8", borderRadius: 20, padding: 14, alignItems: "center" }}>
                         {/* Header */}
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 10 }}>
@@ -2212,184 +2337,702 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                       </View>
                     )}
 
+                    {/* COUNTER UPI (CLINIC DESK QR - SAME AS CASH) */}
+                    {selectedMethod === "Counter UPI" && (
+                      <View style={{ marginTop: 14, backgroundColor: "#f8fafc", borderWidth: 1.5, borderColor: "#cbd5e1", borderRadius: 18, padding: 14 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center" }}>
+                            <Ionicons name="storefront-outline" size={20} color="#ffffff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>Counter UPI (Clinic Desk QR)</Text>
+                            <Text style={{ fontSize: 11, color: "#64748b" }}>Handled same as Cash • Direct counter collection</Text>
+                          </View>
+                          <View style={{ backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338ca" }}>MANUAL DESK</Text>
+                          </View>
+                        </View>
+                        <View style={{ backgroundColor: "#eef2ff", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#c7d2fe" }}>
+                          <Text style={{ fontSize: 11.5, color: "#3730a3", fontWeight: "600", lineHeight: 18 }}>
+                            • Patient scans the clinic counter printed QR code directly.
+                            {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#1e1b4b" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
+                            {"\n"}• Tap "Complete Consultation & Collect Payment" below to record this payment.
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* CARD PAYMENT DETAILS (RAZORPAY CARD / POS) */}
+                    {selectedMethod === "Card" && (
+                      <View style={{ marginTop: 14, backgroundColor: "#fdf4ff", borderWidth: 1.5, borderColor: "#f0abfc", borderRadius: 18, padding: 14 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#c026d3", alignItems: "center", justifyContent: "center" }}>
+                              <Ionicons name="card-outline" size={18} color="#ffffff" />
+                            </View>
+                            <View>
+                              <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay Card / POS Payment</Text>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Enter card details or swipe on POS terminal</Text>
+                            </View>
+                          </View>
+                          <View style={{ backgroundColor: "#fae8ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 10, fontWeight: "800", color: "#a21caf" }}>CARD</Text>
+                          </View>
+                        </View>
+
+                        {/* Card Inputs */}
+                        <View style={{ gap: 8, marginBottom: 12 }}>
+                          <View>
+                            <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Card Number</Text>
+                            <TextInput
+                              value={cardNumber}
+                              onChangeText={(val) => {
+                                const clean = val.replace(/\D/g, "").slice(0, 16);
+                                const formatted = clean.match(/.{1,4}/g)?.join(" ") || clean;
+                                setCardNumber(formatted);
+                              }}
+                              placeholder="4532 •••• •••• ••••"
+                              placeholderTextColor="#94a3b8"
+                              keyboardType="numeric"
+                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                            />
+                          </View>
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Expiry (MM/YY)</Text>
+                              <TextInput
+                                value={cardExpiry}
+                                onChangeText={(val) => {
+                                  const clean = val.replace(/\D/g, "").slice(0, 4);
+                                  const formatted = clean.length > 2 ? `${clean.slice(0, 2)}/${clean.slice(2)}` : clean;
+                                  setCardExpiry(formatted);
+                                }}
+                                placeholder="MM/YY"
+                                placeholderTextColor="#94a3b8"
+                                keyboardType="numeric"
+                                style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>CVV</Text>
+                              <TextInput
+                                value={cardCvv}
+                                onChangeText={(val) => setCardCvv(val.replace(/\D/g, "").slice(0, 4))}
+                                placeholder="CVV"
+                                placeholderTextColor="#94a3b8"
+                                keyboardType="numeric"
+                                secureTextEntry
+                                style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                              />
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Card Action Buttons */}
+                        <View style={{ width: "100%", gap: 8, marginTop: 4 }}>
+                          {/* Open Razorpay Card Gateway Button */}
+                          <TouchableOpacity
+                            onPress={async () => {
+                              try {
+                                const amountToCharge = isPayLater ? effectivePaidToday : totalAmountDue;
+                                const res = await apiFetch<any>("/reception/razorpay/create-order", {
+                                  method: "POST",
+                                  body: JSON.stringify({
+                                    appointmentId: appointment?.id,
+                                    amount: amountToCharge,
+                                    patientName: appointment?.patientName,
+                                    phone: appointment?.phoneNumber || appointment?.phone,
+                                    description: `Card Payment for ${appointment?.patientName || "Patient"}`
+                                  })
+                                });
+                                if (res?.paymentLinkUrl) {
+                                  Linking.openURL(res.paymentLinkUrl);
+                                } else {
+                                  Alert.alert("Razorpay Card Gateway", `Card charge order created for ₹${amountToCharge}. Enter card details above or swipe on clinic POS machine and tap Complete Payment.`);
+                                }
+                              } catch (e: any) {
+                                Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above and tap Complete Consultation.");
+                              }
+                            }}
+                            style={{ backgroundColor: "#c026d3", borderRadius: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                          >
+                            <Ionicons name="card" size={15} color="#ffffff" />
+                            <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>Open Razorpay Card Gateway</Text>
+                          </TouchableOpacity>
+
+                          {/* Instant Card Payment Confirmation Button */}
+                          <TouchableOpacity
+                            onPress={handleManualConfirmCard}
+                            disabled={isSubmitting}
+                            style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                          >
+                            {isSubmitting ? (
+                              <ActivityIndicator size="small" color="#16a34a" />
+                            ) : (
+                              <Ionicons name="checkmark-circle" size={17} color="#16a34a" />
+                            )}
+                            <Text style={{ color: "#166534", fontWeight: "900", fontSize: 13 }}>
+                              {isSubmitting ? "Completing Consultation..." : "Card Paid / Complete Appointment"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        <Text style={{ fontSize: 10, color: "#86198f", textAlign: "center", fontWeight: "600", marginTop: 6 }}>
+                          Enter card details above or pay via Gateway/POS terminal, then tap Complete Appointment.
+                        </Text>
+                      </View>
+                    )}
+
                     {/* SPLIT PAYMENT BREAKDOWN (MOBILE APP) */}
                     {selectedMethod === "Split" && (
                       <View style={{ marginTop: 12, backgroundColor: "#f0f9ff", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 16, padding: 12 }}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
-                              <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>⚡</Text>
-                            </View>
-                            <View>
-                              <Text style={{ fontSize: 12, fontWeight: "800", color: "#0f172a" }}>Split Payment Breakdown</Text>
-                              <Text style={{ fontSize: 10, color: "#64748b" }}>
-                                {isPayLater ? `Paid Today: ₹${effectivePaidToday.toLocaleString()}` : `Total Due: ₹${totalAmountDue.toLocaleString()}`}
-                              </Text>
+                        {/* Header & Presets */}
+                        <View style={{ marginBottom: 10 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                                <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>⚡</Text>
+                              </View>
+                              <View>
+                                <Text style={{ fontSize: 12, fontWeight: "800", color: "#0f172a" }}>Split Payment Allocation</Text>
+                                <Text style={{ fontSize: 10, color: "#64748b" }}>
+                                  {isPayLater ? `Paid Today: ₹${effectivePaidToday.toLocaleString()}` : `Total Due: ₹${totalAmountDue.toLocaleString()}`}
+                                </Text>
+                              </View>
                             </View>
                           </View>
-                          <View style={{ flexDirection: "row", gap: 4 }}>
+
+                          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                             <TouchableOpacity
                               onPress={() => {
+                                setOptedSplitModes(["cash", "upi"]);
                                 const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
                                 const half = Math.round(targetToPay / 2);
                                 setSplitUpi(half);
                                 setSplitCash(targetToPay - half);
+                                setSplitCounterUpi(0);
                                 setSplitCard(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
                               }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
+                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
                             >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>50/50</Text>
+                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + UPI</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => {
+                                setOptedSplitModes(["cash", "card"]);
                                 const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                setSplitUpi(targetToPay);
-                                setSplitCash(0);
-                                setSplitCard(0);
-                              }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
-                            >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All UPI</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                const half = Math.round(targetToPay / 2);
+                                setSplitCard(half);
+                                setSplitCash(targetToPay - half);
                                 setSplitUpi(0);
-                                setSplitCash(targetToPay);
-                                setSplitCard(0);
+                                setSplitCounterUpi(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
                               }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 }}
+                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
                             >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All Cash</Text>
+                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Card</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setOptedSplitModes(["cash", "counterUpi"]);
+                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                const half = Math.round(targetToPay / 2);
+                                setSplitCounterUpi(half);
+                                setSplitCash(targetToPay - half);
+                                setSplitUpi(0);
+                                setSplitCard(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
+                              }}
+                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                            >
+                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Counter UPI</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setOptedSplitModes(["cash", "counterUpi", "upi", "card"]);
+                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                const quarter = Math.round(targetToPay / 4);
+                                setSplitCash(quarter);
+                                setSplitCounterUpi(quarter);
+                                setSplitUpi(quarter);
+                                setSplitCard(targetToPay - (quarter * 3));
+                              }}
+                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                            >
+                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All 4 Options</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
 
-                        {/* Inputs for UPI, Cash, Card */}
-                        <View style={{ gap: 8 }}>
-                          {/* UPI */}
-                          <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
-                            <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155", marginBottom: 4 }}>UPI / Counter UPI (₹)</Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
-                              <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
-                              <TextInput
-                                style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
-                                keyboardType="numeric"
-                                placeholder="0"
-                                value={splitUpi > 0 ? String(splitUpi) : ""}
-                                onChangeText={(txt) => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const val = Math.max(0, parseFloat(txt) || 0);
-                                  setSplitUpi(val);
-                                  const rem = Math.max(0, targetToPay - val - splitCard);
-                                  setSplitCash(rem);
-                                }}
-                              />
-                            </View>
+                        {/* Step 1: Opt-in Toggles */}
+                        <View style={{ backgroundColor: "#ffffff", borderRadius: 12, padding: 8, borderWidth: 1, borderColor: "#bae6fd", marginBottom: 8 }}>
+                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1", marginBottom: 6 }}>
+                            Step 1: Tap to Choose Split Modes
+                          </Text>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                            {[
+                              { id: "cash", label: "Cash", icon: "cash-outline" },
+                              { id: "counterUpi", label: "Counter UPI", icon: "storefront-outline" },
+                              { id: "upi", label: "Online UPI (QR)", icon: "qr-code-outline" },
+                              { id: "card", label: "Card / POS", icon: "card-outline" },
+                            ].map((opt) => {
+                              const isOpted = optedSplitModes.includes(opt.id);
+                              return (
+                                <TouchableOpacity
+                                  key={opt.id}
+                                  onPress={() => {
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    if (isOpted) {
+                                      if (optedSplitModes.length === 1) {
+                                        Alert.alert("Split Modes", "At least one payment mode must be selected in Split.");
+                                        return;
+                                      }
+                                      setOptedSplitModes(optedSplitModes.filter((m) => m !== opt.id));
+                                      if (opt.id === "cash") setSplitCash(0);
+                                      if (opt.id === "counterUpi") setSplitCounterUpi(0);
+                                      if (opt.id === "upi") { setSplitUpi(0); setIsSplitUpiPaid(false); setSplitUpiRef(""); }
+                                      if (opt.id === "card") { setSplitCard(0); setIsSplitCardPaid(false); setSplitCardRef(""); }
+                                    } else {
+                                      const newOpted = [...optedSplitModes, opt.id];
+                                      setOptedSplitModes(newOpted);
+                                      const currentSum =
+                                        (newOpted.includes("cash") ? splitCash : 0) +
+                                        (newOpted.includes("counterUpi") ? splitCounterUpi : 0) +
+                                        (newOpted.includes("upi") ? splitUpi : 0) +
+                                        (newOpted.includes("card") ? splitCard : 0);
+                                      const rem = Math.max(0, targetToPay - currentSum);
+                                      if (rem > 0) {
+                                        if (opt.id === "cash") setSplitCash(rem);
+                                        else if (opt.id === "counterUpi") setSplitCounterUpi(rem);
+                                        else if (opt.id === "upi") setSplitUpi(rem);
+                                        else if (opt.id === "card") setSplitCard(rem);
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: 5,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 5,
+                                    borderRadius: 8,
+                                    backgroundColor: isOpted ? "#e0f2fe" : "#f8fafc",
+                                    borderWidth: 1,
+                                    borderColor: isOpted ? "#0284c7" : "#e2e8f0",
+                                  }}
+                                >
+                                  <Ionicons name={opt.icon as any} size={12} color={isOpted ? "#0284c7" : "#64748b"} />
+                                  <Text style={{ fontSize: 10, fontWeight: "800", color: isOpted ? "#0369a1" : "#64748b" }}>
+                                    {opt.label}
+                                  </Text>
+                                  {isOpted && <Text style={{ fontSize: 10, fontWeight: "900", color: "#0284c7" }}>✓</Text>}
+                                </TouchableOpacity>
+                              );
+                            })}
                           </View>
+                        </View>
 
-                          {/* Cash */}
-                          <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                              <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155" }}>Cash Amount (₹)</Text>
-                              {(() => {
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                return targetToPay - (splitUpi + splitCash + splitCard) !== 0 && (
+                        {/* Step 2: Opted Inputs */}
+                        <View style={{ gap: 8 }}>
+                          {/* 1. Cash (if opted) */}
+                          {optedSplitModes.includes("cash") && (
+                            <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                  <Ionicons name="cash-outline" size={14} color="#16a34a" />
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Cash Amount (₹)</Text>
+                                </View>
+                                {(() => {
+                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                  return targetToPay - currentTotal !== 0 && (
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const rem = targetToPay - splitUpi - splitCard - splitCounterUpi;
+                                        setSplitCash(Math.max(0, rem));
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })()}
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                                <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                                <TextInput
+                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                                  keyboardType="numeric"
+                                  placeholder="0"
+                                  value={splitCash > 0 ? String(splitCash) : ""}
+                                  onChangeText={(txt) => setSplitCash(Math.max(0, parseFloat(txt) || 0))}
+                                />
+                              </View>
+                              <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Physical cash collected at counter desk</Text>
+                            </View>
+                          )}
+
+                          {/* 2. Counter UPI (if opted) */}
+                          {optedSplitModes.includes("counterUpi") && (
+                            <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                  <Ionicons name="storefront-outline" size={14} color="#4f46e5" />
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Counter UPI (Desk QR) (₹)</Text>
+                                </View>
+                                {(() => {
+                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                  return targetToPay - currentTotal !== 0 && (
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const rem = targetToPay - splitUpi - splitCard - splitCash;
+                                        setSplitCounterUpi(Math.max(0, rem));
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })()}
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                                <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                                <TextInput
+                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                                  keyboardType="numeric"
+                                  placeholder="0"
+                                  value={splitCounterUpi > 0 ? String(splitCounterUpi) : ""}
+                                  onChangeText={(txt) => setSplitCounterUpi(Math.max(0, parseFloat(txt) || 0))}
+                                />
+                              </View>
+                              <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Patient scans printed counter QR directly (Same as Cash)</Text>
+                            </View>
+                          )}
+
+                          {/* 3. Online UPI / QR Code (if opted) */}
+                          {optedSplitModes.includes("upi") && (
+                            <View style={{ backgroundColor: isSplitUpiPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitUpiPaid ? "#86efac" : "#bae6fd", padding: 8 }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                  <Ionicons name="qr-code" size={14} color="#0284c7" />
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#0369a1" }}>Online UPI (Razorpay QR) (₹)</Text>
+                                </View>
+                                {!isSplitUpiPaid && (() => {
+                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                  return targetToPay - currentTotal !== 0 && (
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const rem = targetToPay - splitCash - splitCard - splitCounterUpi;
+                                        setSplitUpi(Math.max(0, rem));
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })()}
+                              </View>
+
+                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f0f9ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#bae6fd" }}>
+                                <Text style={{ fontWeight: "700", color: "#0284c7", marginRight: 4 }}>₹</Text>
+                                <TextInput
+                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0369a1" }}
+                                  keyboardType="numeric"
+                                  placeholder="0"
+                                  editable={!isSplitUpiPaid}
+                                  value={splitUpi > 0 ? String(splitUpi) : ""}
+                                  onChangeText={(txt) => setSplitUpi(Math.max(0, parseFloat(txt) || 0))}
+                                />
+                              </View>
+
+                              {/* Status / Actions for Online UPI */}
+                              {isSplitUpiPaid ? (
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                    <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
+                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
+                                      ✓ ₹{splitUpi} UPI Paid {splitUpiRef ? `(${splitUpiRef.slice(-6)})` : ""}
+                                    </Text>
+                                  </View>
+                                  <TouchableOpacity
+                                    onPress={() => { setIsSplitUpiPaid(false); setSplitUpiRef(""); }}
+                                  >
+                                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ) : splitUpi > 0 ? (
+                                <View style={{ gap: 6, marginTop: 6 }}>
+                                  <TouchableOpacity
+                                    onPress={() => setShowSplitRazorpayQr(!showSplitRazorpayQr)}
+                                    style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                  >
+                                    <Ionicons name="qr-code" size={14} color="#ffffff" />
+                                    <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
+                                      {showSplitRazorpayQr ? "Hide Razorpay QR" : `Show Razorpay QR for ₹${splitUpi.toLocaleString()}`}
+                                    </Text>
+                                  </TouchableOpacity>
+
+                                  <View style={{ flexDirection: "row", gap: 6 }}>
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        setIsSplitUpiPaid(true);
+                                        setSplitUpiRef(`MANUAL-${Date.now().toString().slice(-4)}`);
+                                        Alert.alert("Marked Paid", `Online UPI of ₹${splitUpi} marked as paid.`);
+                                      }}
+                                      style={{ flex: 1, backgroundColor: "#f1f5f9", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
+                                    >
+                                      <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155" }}>Mark Paid ✓</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                                        const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                                        const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},
+Please pay ₹${splitUpi} (Split UPI portion) using this link:
+${upiUri}`);
+                                        Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`);
+                                      }}
+                                      style={{ backgroundColor: "#16a34a", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 5 }}
+                                    >
+                                      <Ionicons name="logo-whatsapp" size={13} color="#ffffff" />
+                                      <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>WA Link</Text>
+                                    </TouchableOpacity>
+                                  </View>
+
+                                  {showSplitRazorpayQr && (
+                                    <View style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12, padding: 10, alignItems: "center", marginTop: 4 }}>
+                                      <Image
+                                        source={{
+                                          uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=6&data=${encodeURIComponent(
+                                            `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`
+                                          )}`,
+                                        }}
+                                        style={{ width: 170, height: 170, borderRadius: 6, marginBottom: 8 }}
+                                        resizeMode="contain"
+                                      />
+                                      <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1", marginBottom: 6 }}>
+                                        Auto-Detecting ₹{splitUpi.toLocaleString()} via Razorpay...
+                                      </Text>
+                                      <TouchableOpacity
+                                        onPress={() => handleCheckUpiStatus(true)}
+                                        style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+                                      >
+                                        <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 10.5 }}>Check Status Now ⚡</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
+                                </View>
+                              ) : null}
+                            </View>
+                          )}
+
+                          {/* 4. Card / POS (if opted) */}
+                          {optedSplitModes.includes("card") && (
+                            <View style={{ backgroundColor: isSplitCardPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitCardPaid ? "#86efac" : "#f0abfc", padding: 8 }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                  <Ionicons name="card-outline" size={14} color="#c026d3" />
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#a21caf" }}>Card / POS (Razorpay) (₹)</Text>
+                                </View>
+                                {!isSplitCardPaid && (() => {
+                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                  return targetToPay - currentTotal !== 0 && (
+                                    <TouchableOpacity
+                                      onPress={() => {
+                                        const rem = targetToPay - splitCash - splitUpi - splitCounterUpi;
+                                        setSplitCard(Math.max(0, rem));
+                                      }}
+                                    >
+                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#c026d3" }}>Fill Remaining</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })()}
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#fdf4ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#f0abfc" }}>
+                                <Text style={{ fontWeight: "700", color: "#a21caf", marginRight: 4 }}>₹</Text>
+                                <TextInput
+                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#701a75" }}
+                                  keyboardType="numeric"
+                                  placeholder="0"
+                                  editable={!isSplitCardPaid}
+                                  value={splitCard > 0 ? String(splitCard) : ""}
+                                  onChangeText={(txt) => setSplitCard(Math.max(0, parseFloat(txt) || 0))}
+                                />
+                              </View>
+
+                              {/* Status / Actions for Card */}
+                              {isSplitCardPaid ? (
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                    <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
+                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
+                                      ✓ ₹{splitCard} Card Paid / Swiped {splitCardRef ? `(${splitCardRef.slice(-6)})` : ""}
+                                    </Text>
+                                  </View>
+                                  <TouchableOpacity
+                                    onPress={() => { setIsSplitCardPaid(false); setSplitCardRef(""); }}
+                                  >
+                                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ) : splitCard > 0 ? (
+                                <View style={{ gap: 6, marginTop: 6 }}>
+                                  <TouchableOpacity
+                                    onPress={async () => {
+                                      try {
+                                        const res = await apiFetch<any>("/reception/razorpay/create-order", {
+                                          method: "POST",
+                                          body: JSON.stringify({
+                                            appointmentId: appointment?.id,
+                                            amount: splitCard,
+                                            patientName: appointment?.patientName,
+                                            phone: appointment?.phoneNumber || appointment?.phone,
+                                            description: `Split Card Payment (₹${splitCard}) for ${appointment?.patientName || "Patient"}`
+                                          })
+                                        });
+                                        if (res?.paymentLinkUrl) {
+                                          Linking.openURL(res?.paymentLinkUrl);
+                                        } else {
+                                          Alert.alert("Razorpay Card Gateway", `Card charge order of ₹${splitCard} created. Enter card details or swipe on POS terminal.`);
+                                        }
+                                      } catch (e: any) {
+                                        Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above.");
+                                      }
+                                    }}
+                                    style={{ backgroundColor: "#c026d3", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                  >
+                                    <Ionicons name="card" size={14} color="#ffffff" />
+                                    <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
+                                      Pay ₹{splitCard.toLocaleString()} via Razorpay Card Gateway
+                                    </Text>
+                                  </TouchableOpacity>
+
                                   <TouchableOpacity
                                     onPress={() => {
-                                      const rem = targetToPay - splitUpi - splitCard;
-                                      setSplitCash(Math.max(0, rem));
+                                      setIsSplitCardPaid(true);
+                                      setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
+                                      Alert.alert("Card Confirmed", `Split Card payment of ₹${splitCard} marked as paid.`);
                                     }}
+                                    style={{ backgroundColor: "#fdf4ff", borderWidth: 1, borderColor: "#f0abfc", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
                                   >
-                                    <Text style={{ fontSize: 9.5, fontWeight: "700", color: "#0284c7" }}>Fill Remaining</Text>
+                                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#a21caf" }}>Swipe on POS / Mark Card Paid ✓</Text>
                                   </TouchableOpacity>
-                                );
-                              })()}
+                                </View>
+                              ) : null}
                             </View>
-                            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
-                              <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
-                              <TextInput
-                                style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
-                                keyboardType="numeric"
-                                placeholder="0"
-                                value={splitCash > 0 ? String(splitCash) : ""}
-                                onChangeText={(txt) => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const val = Math.max(0, parseFloat(txt) || 0);
-                                  setSplitCash(val);
-                                  const rem = Math.max(0, targetToPay - val - splitCard);
-                                  setSplitUpi(rem);
-                                }}
-                              />
-                            </View>
-                          </View>
-
-                          {/* Card */}
-                          <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
-                            <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Card / POS (₹)</Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
-                              <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
-                              <TextInput
-                                style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
-                                keyboardType="numeric"
-                                placeholder="0"
-                                value={splitCard > 0 ? String(splitCard) : ""}
-                                onChangeText={(txt) => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const val = Math.max(0, parseFloat(txt) || 0);
-                                  setSplitCard(val);
-                                  const rem = Math.max(0, targetToPay - splitUpi - val);
-                                  setSplitCash(rem);
-                                }}
-                              />
-                            </View>
-                          </View>
+                          )}
                         </View>
 
-                        {/* Status Bar */}
+                        {/* Status Bar & Completion Button */}
                         {(() => {
                           const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                          const allocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
+                          const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
+                          const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
+                          const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
+                          const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
+                          const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
                           const isMatch = allocated === targetToPay;
                           const diff = targetToPay - allocated;
 
+                          const isUpiSatisfied = !optedSplitModes.includes("upi") || activeUpi === 0 || isSplitUpiPaid;
+                          const isCardSatisfied = !optedSplitModes.includes("card") || activeCard === 0 || isSplitCardPaid;
+                          const canComplete = isMatch && isUpiSatisfied && isCardSatisfied;
+
+                          const parts: string[] = [];
+                          if (activeCash > 0) parts.push(`Cash ₹${activeCash}`);
+                          if (activeCounterUpi > 0) parts.push(`Counter UPI ₹${activeCounterUpi}`);
+                          if (activeUpi > 0) parts.push(`Online UPI ₹${activeUpi}${isSplitUpiPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+                          if (activeCard > 0) parts.push(`Card ₹${activeCard}${isSplitCardPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+
                           return (
-                            <View
-                              style={{
-                                marginTop: 8,
-                                padding: 8,
-                                borderRadius: 8,
-                                backgroundColor: isMatch ? "#ecfdf5" : diff > 0 ? "#fffbeb" : "#fff1f2",
-                                borderWidth: 1,
-                                borderColor: isMatch ? "#a7f3d0" : diff > 0 ? "#fde68a" : "#fecdd3",
-                                flexDirection: "row",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                              }}
-                            >
-                              <Text
+                            <View style={{ marginTop: 10 }}>
+                              <View
                                 style={{
-                                  fontSize: 10.5,
-                                  fontWeight: "700",
-                                  color: isMatch ? "#065f46" : diff > 0 ? "#92400e" : "#9f1239",
-                                  flex: 1,
+                                  padding: 8,
+                                  borderRadius: 8,
+                                  backgroundColor: isMatch ? "#ecfdf5" : diff > 0 ? "#fffbeb" : "#fff1f2",
+                                  borderWidth: 1,
+                                  borderColor: isMatch ? "#a7f3d0" : diff > 0 ? "#fde68a" : "#fecdd3",
+                                  flexDirection: "row",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  marginBottom: isMatch ? 8 : 0,
                                 }}
                               >
-                                {isMatch
-                                  ? `✓ Perfectly Split: UPI ₹${splitUpi} + Cash ₹${splitCash}${splitCard > 0 ? ` + Card ₹${splitCard}` : ""}`
-                                  : diff > 0
-                                    ? `⚠️ ₹${diff} remaining to allocate`
-                                    : `⚠️ Exceeds total by ₹${Math.abs(diff)}`}
-                              </Text>
-                              {!isMatch && (
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    const rem = targetToPay - splitUpi - splitCard;
-                                    setSplitCash(Math.max(0, rem));
+                                <Text
+                                  style={{
+                                    fontSize: 10.5,
+                                    fontWeight: "700",
+                                    color: isMatch ? "#065f46" : diff > 0 ? "#92400e" : "#9f1239",
+                                    flex: 1,
                                   }}
-                                  style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}
                                 >
-                                  <Text style={{ fontSize: 9, fontWeight: "800", color: "#78350f" }}>Auto-Balance Cash</Text>
+                                  {isMatch
+                                    ? `✓ Split Matched: ${parts.join(" + ")}`
+                                    : diff > 0
+                                      ? `⚠️ ₹${diff} remaining to allocate (Allocated: ₹${allocated} / ₹${targetToPay})`
+                                      : `⚠️ Exceeds total by ₹${Math.abs(diff)}`}
+                                </Text>
+                                {!isMatch && (
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      const firstMode = optedSplitModes[0] || "cash";
+                                      if (firstMode === "cash") {
+                                        const rem = targetToPay - activeCounterUpi - activeUpi - activeCard;
+                                        setSplitCash(Math.max(0, rem));
+                                      } else if (firstMode === "counterUpi") {
+                                        const rem = targetToPay - activeCash - activeUpi - activeCard;
+                                        setSplitCounterUpi(Math.max(0, rem));
+                                      } else if (firstMode === "upi") {
+                                        const rem = targetToPay - activeCash - activeCounterUpi - activeCard;
+                                        setSplitUpi(Math.max(0, rem));
+                                      } else if (firstMode === "card") {
+                                        const rem = targetToPay - activeCash - activeCounterUpi - activeUpi;
+                                        setSplitCard(Math.max(0, rem));
+                                      }
+                                    }}
+                                    style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}
+                                  >
+                                    <Text style={{ fontSize: 9, fontWeight: "800", color: "#78350f" }}>Auto-Balance</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+
+                              {/* Direct Complete Split Consultation Button */}
+                              {isMatch && (
+                                <TouchableOpacity
+                                  onPress={handleConfirmPayment}
+                                  disabled={isSubmitting || !canComplete}
+                                  style={{
+                                    backgroundColor: canComplete ? "#16a34a" : "#f59e0b",
+                                    borderRadius: 10,
+                                    paddingVertical: 10,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexDirection: "row",
+                                    gap: 6,
+                                    opacity: canComplete ? 1 : 0.8,
+                                  }}
+                                >
+                                  {isSubmitting ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                  ) : (
+                                    <Ionicons name={canComplete ? "checkmark-circle" : "time-outline"} size={16} color="#ffffff" />
+                                  )}
+                                  <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 12 }}>
+                                    {isSubmitting
+                                      ? "Completing..."
+                                      : !isUpiSatisfied
+                                      ? `Awaiting Online UPI (Pay ₹${activeUpi} via QR)`
+                                      : !isCardSatisfied
+                                      ? `Awaiting Card (Pay ₹${activeCard} or Swipe POS)`
+                                      : "Complete Consultation & Record Split ✓"}
+                                  </Text>
                                 </TouchableOpacity>
                               )}
                             </View>

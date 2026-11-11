@@ -15,7 +15,7 @@ export interface TransactionRecord {
   packageFee: number;
   dietFee: number;
   totalAmount: number;
-  paymentMethod: "cash" | "upi" | "card" | "split";
+  paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string; // YYYY-MM-DD
@@ -112,17 +112,21 @@ export async function GET(req: Request) {
         split = "Consultation";
       }
 
-      let method: "cash" | "upi" | "card" | "split" = "upi";
+      let method: "cash" | "upi" | "card" | "split" | "counter_upi" = "upi";
       const rawMethod = (a.paymentMethod || (a as any).paymentMode || "").toUpperCase();
-      if (rawMethod.includes("CASH")) method = "cash";
-      else if (rawMethod.includes("CARD")) method = "card";
-      else if (rawMethod.includes("SPLIT")) method = "split";
-      else if (
+      if (rawMethod.includes("COUNTER")) {
+        method = "counter_upi";
+      } else if (rawMethod.includes("CASH")) {
+        method = "cash";
+      } else if (rawMethod.includes("CARD")) {
+        method = "card";
+      } else if (rawMethod.includes("SPLIT")) {
+        method = "split";
+      } else if (
         rawMethod.includes("UPI") ||
         rawMethod.includes("ONLINE") ||
-        rawMethod.includes("COUNTER")
+        rawMethod.includes("QR")
       ) {
-        // Counter UPI and UPI are unified into the same UPI revenue category
         method = "upi";
       }
 
@@ -139,8 +143,9 @@ export async function GET(req: Request) {
         displayMethod = "Split";
         if ((a as any).splitDetails) {
           const parts: string[] = [];
-          if ((a as any).splitDetails.upi) parts.push(`UPI ₹${(a as any).splitDetails.upi}`);
           if ((a as any).splitDetails.cash) parts.push(`Cash ₹${(a as any).splitDetails.cash}`);
+          if ((a as any).splitDetails.counterUpi) parts.push(`Counter UPI ₹${(a as any).splitDetails.counterUpi}`);
+          if ((a as any).splitDetails.upi) parts.push(`UPI ₹${(a as any).splitDetails.upi}`);
           if ((a as any).splitDetails.card) parts.push(`Card ₹${(a as any).splitDetails.card}`);
           if (parts.length > 0) {
             displayMethod = `Split (${parts.join(" + ")})`;

@@ -123,7 +123,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
         isCollapsed ? "w-16" : "w-56"
       } bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 shadow-xs h-full z-20 select-none transition-all duration-300 ease-in-out`}
     >
-      <div className="flex flex-col h-[calc(100%-60px)]">
+      <div className="flex flex-col h-full overflow-hidden">
         {/* Logo Branding + Collapse Toggle */}
         <div
           className={`p-3 border-b border-slate-100 flex items-center ${
@@ -203,21 +203,21 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
               })}
             </div>
           ))}
-        </div>
-      </div>
 
-      {/* Logout Footer */}
-      <div className="p-2 border-t border-slate-100 shrink-0">
-        <button
-          onClick={handleLogout}
-          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer ${
-            isCollapsed ? "justify-center px-0" : ""
-          }`}
-          title={isCollapsed ? "Sign Out" : undefined}
-        >
-          <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
-          {!isCollapsed && <span>Sign Out</span>}
-        </button>
+          {/* Sign Out (Inside side navigation, not fixed) */}
+          <div className="pt-2">
+            <button
+              onClick={handleLogout}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer ${
+                isCollapsed ? "justify-center px-0" : ""
+              }`}
+              title={isCollapsed ? "Sign Out" : undefined}
+            >
+              <LogOut className="w-4 h-4 shrink-0 text-rose-500" />
+              {!isCollapsed && <span>Sign Out</span>}
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
   );

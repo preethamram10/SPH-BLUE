@@ -15,9 +15,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../../config/api";
 
+const normalizeBranchKey = (name: string): string => {
+  let c = (name || "")
+    .toLowerCase()
+    .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+  if (c === "kpb") c = "kphb";
+  return c;
+};
+
 export default function MobilePackageMembersScreen() {
   const router = useRouter();
   const [members, setMembers] = useState<any[]>([]);
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,13 +50,29 @@ export default function MobilePackageMembersScreen() {
     }
   };
 
+  const fetchBranches = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/branches`);
+      if (res.ok) {
+        const json = await res.json();
+        const list = json.data || json.branches || [];
+        if (Array.isArray(list)) {
+          const names = list.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) setAvailableBranches(names);
+        }
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     fetchMembers();
+    fetchBranches();
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchMembers();
+    fetchBranches();
   }, []);
 
   const handleDial = (phone: string) => {
@@ -53,6 +80,26 @@ export default function MobilePackageMembersScreen() {
     const clean = phone.replace(/\D/g, "");
     Linking.openURL(`tel:${clean}`);
   };
+
+  const branchOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    availableBranches.forEach((b) => {
+      const k = normalizeBranchKey(b);
+      if (k) map.set(k, b);
+    });
+    members.forEach((m) => {
+      if (m.branch) {
+        const k = normalizeBranchKey(m.branch);
+        if (k && !map.has(k)) map.set(k, m.branch);
+      }
+    });
+    if (map.size === 0) {
+      ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => {
+        map.set(normalizeBranchKey(b), b);
+      });
+    }
+    return ["All", ...Array.from(map.values())];
+  }, [availableBranches, members]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -67,7 +114,7 @@ export default function MobilePackageMembersScreen() {
 
       const matchesBranch =
         branchFilter === "All" ||
-        (m.branch || "").toLowerCase().includes(branchFilter.toLowerCase());
+        normalizeBranchKey(m.branch || "") === normalizeBranchKey(branchFilter);
 
       return matchesSearch && matchesBranch;
     });
@@ -153,27 +200,30 @@ export default function MobilePackageMembersScreen() {
         </View>
 
         {/* Branch Filter Selector */}
-        <View style={styles.branchFilterRow}>
-          {["All", "KPHB", "Chandanagar", "Dilshuknagar", "Nallagandla"].map((b) => (
-            <TouchableOpacity
-              key={b}
-              style={[
-                styles.branchChip,
-                branchFilter === b && styles.branchChipActive,
-              ]}
-              onPress={() => setBranchFilter(b)}
-            >
-              <Text
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.branchFilterRow}>
+          {branchOptions.map((b) => {
+            const isSel = b === "All" ? branchFilter === "All" : normalizeBranchKey(branchFilter) === normalizeBranchKey(b);
+            return (
+              <TouchableOpacity
+                key={b}
                 style={[
-                  styles.branchChipText,
-                  branchFilter === b && styles.branchChipTextActive,
+                  styles.branchChip,
+                  isSel && styles.branchChipActive,
                 ]}
+                onPress={() => setBranchFilter(b)}
               >
-                {b}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+                <Text
+                  style={[
+                    styles.branchChipText,
+                    isSel && styles.branchChipTextActive,
+                  ]}
+                >
+                  {b}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         {/* Cards List */}
         {loading && !refreshing ? (

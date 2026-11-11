@@ -49,7 +49,7 @@ export default function AdminDoctorsManagementScreen() {
   const [name, setName] = useState("");
   const [qualification, setQualification] = useState("");
   const [specialty, setSpecialty] = useState("");
-  const [branch, setBranch] = useState("KPHB Branch");
+  const [branch, setBranch] = useState("Kphb Branch");
   const [phone, setPhone] = useState("");
   const [timing, setTiming] = useState("10:00 AM - 02:00 PM");
 

@@ -213,21 +213,19 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
               </Link>
             );
           })}
-        </nav>
-      </div>
 
-      {/* Logout Footer */}
-      <div className="p-2">
-        <button
-          onClick={handleLogout}
-          title={isCollapsed ? "Sign Out" : undefined}
-          className={`w-full flex items-center ${
-            isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
-          } py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer`}
-        >
-          <LogOut className="w-3.5 h-3.5 shrink-0" />
-          {!isCollapsed && <span>Sign Out</span>}
-        </button>
+          {/* Sign Out (Inside side navigation, not fixed) */}
+          <button
+            onClick={handleLogout}
+            title={isCollapsed ? "Sign Out" : undefined}
+            className={`w-full flex items-center ${
+              isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
+            } py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/60 transition-colors cursor-pointer mt-2`}
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            {!isCollapsed && <span>Sign Out</span>}
+          </button>
+        </nav>
       </div>
     </aside>
   );

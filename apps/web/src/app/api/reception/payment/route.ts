@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
       otherCharges: typeof otherCharges === "number" ? otherCharges : parseFloat(otherCharges) || 0,
       totalAmountDue: typeof totalAmountDue === "number" ? totalAmountDue : parseFloat(totalAmountDue) || 0,
       paymentMethod: finalMethod,
+      paymentMode: finalMethod,
       medicinesList: effectiveMedicines,
       medicineDuration: medicineDuration || "1 Month",
       discount: effectiveDiscount,

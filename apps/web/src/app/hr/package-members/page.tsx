@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import HRSidebar from "@/components/HRSidebar";
 import {
   Crown,
@@ -18,11 +18,10 @@ import {
 export default function PackageMembersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
-
-  const branches = ["All Branches", "KPHB Branch", "Chandanagar Branch", "Nallagandla Branch", "Dilsukhnagar Branch"];
 
   useEffect(() => {
     setIsLoading(true);
@@ -35,7 +34,29 @@ export default function PackageMembersPage() {
       })
       .catch((err) => console.error("Error loading admin package members:", err))
       .finally(() => setIsLoading(false));
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) setAvailableBranches(names);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    availableBranches.forEach((b) => set.add(b));
+    members.forEach((m) => {
+      if (m.branch) set.add(m.branch);
+    });
+    if (set.size === 0) {
+      ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => set.add(b));
+    }
+    return ["All Branches", ...Array.from(set)];
+  }, [availableBranches, members]);
 
   const filtered = members.filter((m) => {
     const q = searchTerm.toLowerCase();
@@ -44,9 +65,9 @@ export default function PackageMembersPage() {
       (m.phone || "").includes(q) ||
       (m.registrationId || "").toLowerCase().includes(q) ||
       (m.packageName || "").toLowerCase().includes(q);
-    const matchesBranch =
-      selectedBranch === "All Branches" ||
-      (m.branch || "").toLowerCase().includes(selectedBranch.toLowerCase().replace("branch", "").trim());
+    const mNorm = (m.branch || "").toLowerCase().replace(/spiritual|homeopathy|clinic|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+    const sNorm = selectedBranch.toLowerCase().replace(/spiritual|homeopathy|clinic|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+    const matchesBranch = selectedBranch === "All Branches" || mNorm === sNorm || (mNorm === "kpb" && sNorm === "kphb") || (mNorm === "kphb" && sNorm === "kpb");
     return matchesSearch && matchesBranch;
   });
 
@@ -91,7 +112,7 @@ export default function PackageMembersPage() {
                 onChange={(e) => setSelectedBranch(e.target.value)}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white"
               >
-                {branches.map((b) => (
+                {branchOptions.map((b: string) => (
                   <option key={b} value={b}>
                     {b}
                   </option>

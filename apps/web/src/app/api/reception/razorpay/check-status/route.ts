@@ -7,6 +7,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const qrId = searchParams.get("qrId") || "";
     const paymentLinkId = searchParams.get("paymentLinkId") || "";
+    const orderId = searchParams.get("orderId") || "";
+    const methodParam = searchParams.get("method") || "";
     const appointmentId = searchParams.get("appointmentId") || "";
     const amount = parseFloat(searchParams.get("amount") || "0");
     const forceVerify = searchParams.get("forceVerify") === "true";
@@ -19,13 +21,37 @@ export async function GET(req: NextRequest) {
     // 0. Manual confirmation by reception staff (instant guarantee)
     if (confirmManual) {
       isPaid = true;
+      const isCardManual = methodParam.toLowerCase() === "card";
       paymentRecord = {
         id: `pay_manual_${Date.now().toString().slice(-8)}`,
         amount: amount || 500,
-        method: "UPI",
+        method: isCardManual ? "CARD" : "UPI",
         status: "captured",
         source: "staff_confirmed",
       };
+    }
+
+    // 0B. Check Razorpay Order payments if orderId exists
+    if (!isPaid && orderId && orderId.startsWith("order_")) {
+      try {
+        const orderRes = await fetch(`https://api.razorpay.com/v1/orders/${orderId}/payments`, {
+          headers: { Authorization: getRazorpayAuthHeader() },
+        });
+        const orderPayments = await orderRes.json();
+        const captured = (orderPayments.items || []).find((p: any) => p.status === "captured");
+        if (captured) {
+          isPaid = true;
+          paymentRecord = {
+            id: captured.id,
+            amount: captured.amount / 100,
+            method: (captured.method || "card").toUpperCase(),
+            status: "captured",
+            createdAt: captured.created_at,
+          };
+        }
+      } catch (orderErr) {
+        console.warn("Check order payments error:", orderErr);
+      }
     }
 
     // 1. Check Razorpay payment_links if paymentLinkId exists
@@ -86,14 +112,18 @@ export async function GET(req: NextRequest) {
         const nowSec = Math.floor(Date.now() / 1000);
         const targetPaise = Math.round(amount * 100);
 
-        // Priority 3A: UPI payment matching target amount in the last 45 minutes
+        const isCardSearch = methodParam.toLowerCase() === "card";
+
+        // Priority 3A: Payment matching target amount in the last 45 minutes
         let matched = items.find((p: any) => {
           if (p.status !== "captured") return false;
-          const isUpiOrQr = p.method === "upi" || p.method === "qr" || p.description?.includes("QR");
+          const isTargetType = isCardSearch
+            ? p.method === "card"
+            : (p.method === "upi" || p.method === "qr" || p.method === "card" || p.description?.includes("QR"));
           const createdSec = p.created_at || 0;
           const isRecent = createdSec >= (nowSec - 2700); // 45 mins
           const isAmountMatch = targetPaise > 0 ? p.amount === targetPaise : true;
-          return isUpiOrQr && isRecent && isAmountMatch;
+          return isTargetType && isRecent && isAmountMatch;
         });
 
         // Priority 3B: If test payment (e.g. ₹1) or allowAnyRecent or forceVerify
@@ -102,7 +132,7 @@ export async function GET(req: NextRequest) {
             if (p.status !== "captured") return false;
             const createdSec = p.created_at || 0;
             const isRecent = createdSec >= (nowSec - 2700);
-            return isRecent && (p.method === "upi" || p.method === "qr" || p.description?.includes("QR"));
+            return isRecent && (p.method === "upi" || p.method === "qr" || p.method === "card" || p.description?.includes("QR"));
           });
         }
 
@@ -120,9 +150,9 @@ export async function GET(req: NextRequest) {
           paymentRecord = {
             id: matched.id,
             amount: matched.amount / 100,
-            method: matched.method?.toUpperCase() || "UPI",
+            method: (matched.method || (isCardSearch ? "card" : "upi")).toUpperCase(),
             status: "captured",
-            vpa: matched.vpa || matched.upi?.vpa || "Razorpay UPI",
+            vpa: matched.vpa || matched.upi?.vpa || (matched.method === "card" ? "Razorpay Card" : "Razorpay UPI"),
             createdAt: matched.created_at,
           };
         }
@@ -137,12 +167,17 @@ export async function GET(req: NextRequest) {
       try {
         const appt = await appointmentService.getAppointmentById(appointmentId);
         if (appt && !appt.isFeeCollected && appt.status !== "COMPLETED") {
+          const isCardPayment =
+            (paymentRecord?.method || "").toUpperCase() === "CARD" ||
+            methodParam.toLowerCase() === "card";
           const paidAmount = paymentRecord?.amount || amount || appt.totalAmountDue || 500;
           updatedAppointment = await appointmentService.recordAppointmentPayment(appointmentId, {
             totalPaid: paidAmount,
             totalAmountDue: paidAmount,
-            paymentMethod: "COUNTER_UPI",
-            paymentMode: "Counter UPI",
+            paymentMethod: isCardPayment ? "CARD" : "ONLINE_UPI",
+            paymentMode: isCardPayment ? "Card" : "UPI / QR Code",
+            status: "COMPLETED",
+            isFeeCollected: true,
             paidAt: new Date().toISOString(),
             invoiceId: `INV-${Date.now().toString().slice(-6)}`,
           } as any);

@@ -1147,13 +1147,6 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
-                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
-                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
-                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
-                                        Ready to Collect Fee
-                                      </Text>
-                                    </View>
-                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1319,13 +1312,6 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
-                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
-                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
-                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
-                                        Ready to Collect Fee
-                                      </Text>
-                                    </View>
-                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1474,13 +1460,6 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
-                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
-                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
-                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
-                                        Ready to Collect Fee
-                                      </Text>
-                                    </View>
-                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1634,13 +1613,6 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
-                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
-                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
-                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
-                                        Ready to Collect Fee
-                                      </Text>
-                                    </View>
-                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1850,19 +1822,22 @@ export default function ReceptionDashboard() {
                   <Ionicons name="chevron-forward" size={16} color={COLORS.textLight} />
                 </TouchableOpacity>
               ))}
-            </ScrollView>
 
-            {/* Drawer Footer with Logout */}
-            <View style={styles.drawerFooter}>
+              {/* Sign Out (Inside side navigation, not fixed) */}
               <TouchableOpacity
-                style={styles.logoutDrawerBtn}
+                style={[styles.drawerMenuItem, { marginTop: 14, marginBottom: 28 }]}
                 onPress={handleLogout}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="log-out-outline" size={20} color={COLORS.errorRed} />
-                <Text style={styles.logoutDrawerText}>Sign Out</Text>
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="log-out-outline" size={20} color={COLORS.errorRed} />
+                </View>
+                <Text style={[styles.drawerMenuText, { color: COLORS.errorRed, fontWeight: "700" }]}>
+                  Sign Out
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.errorRed} />
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </Animated.View>
         </View>
       )}

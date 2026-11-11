@@ -32,7 +32,7 @@ export interface TransactionRecord {
   packageFee: number;
   totalAmount: number;
   paymentMethod: "cash" | "upi" | "card" | "split";
-  splitDetails?: { cash: number; upi: number };
+  splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
   timestamp: string;
   dateTime: string;
   status: "PAID" | "PENDING" | "COMPLETED";

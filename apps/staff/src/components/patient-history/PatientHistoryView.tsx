@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../services/auth";
+import { resolvePrescriptionImageUrl } from "../patient-file/PatientFileView";
 import { PrescriptionViewerModal } from "../patient-file/PrescriptionViewerModal";
 import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
 
@@ -659,10 +660,10 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                               </Text>
                               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
                                 {rxImages.map((imgUri: string, imgIdx: number) => (
-                                  <TouchableOpacity
+                                    <TouchableOpacity
                                     key={imgIdx}
                                     style={styles.attachedImgCard}
-                                    onPress={() => handleOpenViewer(rxImages, imgIdx)}
+                                    onPress={() => handleOpenViewer(rxImages.map(resolvePrescriptionImageUrl), imgIdx)}
                                     activeOpacity={0.8}
                                   >
                                     <View style={styles.imgTagBadge}>
@@ -675,7 +676,12 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                                     >
                                       <Ionicons name="trash" size={12} color="#dc2626" />
                                     </TouchableOpacity>
-                                    <ExpoImage source={{ uri: imgUri }} style={styles.attachedImgThumb} contentFit="cover" />
+                                    <ExpoImage
+                                      source={resolvePrescriptionImageUrl(imgUri)}
+                                      style={styles.attachedImgThumb}
+                                      contentFit="cover"
+                                      transition={200}
+                                    />
                                   </TouchableOpacity>
                                 ))}
                               </ScrollView>
@@ -773,10 +779,15 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                         {/* Image Preview */}
                         <TouchableOpacity
                           style={styles.galleryImgWrapper}
-                          onPress={() => handleOpenViewer(allImages.map((i) => i.url), idx)}
+                          onPress={() => handleOpenViewer(allImages.map((i) => resolvePrescriptionImageUrl(i.url)), idx)}
                           activeOpacity={0.85}
                         >
-                          <ExpoImage source={{ uri: imgItem.url }} style={styles.galleryImg} contentFit="cover" />
+                          <ExpoImage
+                            source={resolvePrescriptionImageUrl(imgItem.url)}
+                            style={styles.galleryImg}
+                            contentFit="cover"
+                            transition={200}
+                          />
                           <View style={styles.expandIconPill}>
                             <Ionicons name="scan-outline" size={13} color="#ffffff" />
                           </View>
@@ -1459,7 +1470,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginRight: 8,
     position: "relative",
-    backgroundColor: "#000000",
+    backgroundColor: "#f1f5f9",
   },
   attachedImgThumb: {
     width: "100%",
@@ -1582,7 +1593,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: "hidden",
     position: "relative",
-    backgroundColor: "#0f172a",
+    backgroundColor: "#f1f5f9",
   },
   galleryImg: {
     width: "100%",
