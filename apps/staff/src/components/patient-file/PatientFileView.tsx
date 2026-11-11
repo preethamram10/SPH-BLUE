@@ -136,12 +136,6 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   // Form Fields & Prescriptions
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [prescriptionText, setPrescriptionText] = useState("");
-  const [isAddRemedyModalOpen, setIsAddRemedyModalOpen] = useState(false);
-  const [selectedRemedy, setSelectedRemedy] = useState("");
-  const [selectedPotency, setSelectedPotency] = useState("30C");
-  const [selectedForm, setSelectedForm] = useState("Pills");
-  const [selectedTiming, setSelectedTiming] = useState("M - N - N");
-  const [selectedFoodTiming, setSelectedFoodTiming] = useState("After Food");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -162,7 +156,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
   const [dietPlan, setDietPlan] = useState("");
-  const [dietPlanFee, setDietPlanFee] = useState<number>(500);
+  const [dietPlanFee, setDietPlanFee] = useState<number>(0);
 
   // Calendar Modal State
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
@@ -231,8 +225,14 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
           if (pf.consultationFee) setConsultationFee(String(pf.consultationFee));
           if (pf.dietPlan) setDietPlan(pf.dietPlan);
-          if (pf.dietPlanFee) setDietPlanFee(Number(pf.dietPlanFee));
-          else if (pf.dietFee) setDietPlanFee(Number(pf.dietFee));
+          const hasLoadedDiet = Boolean(pf.dietPlan && String(pf.dietPlan).trim().length > 0);
+          if (hasLoadedDiet) {
+            if (pf.dietPlanFee) setDietPlanFee(Number(pf.dietPlanFee));
+            else if (pf.dietFee) setDietPlanFee(Number(pf.dietFee));
+            else setDietPlanFee(500);
+          } else {
+            setDietPlanFee(0);
+          }
           if (pf.history) setPatientHistory(pf.history);
           if (pf.totalPaid) setTotalPaid(pf.totalPaid);
         }
@@ -380,8 +380,9 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           onPress={() => {
             const dayStr = String(d).padStart(2, "0");
             const monthStr = String(month + 1).padStart(2, "0");
-            setFollowUpDate(`${dayStr}-${monthStr}-${year}`);
-            setFollowUpInterval("Custom Date");
+            const pickedDate = `${dayStr}-${monthStr}-${year}`;
+            setFollowUpDate(pickedDate);
+            setFollowUpInterval(pickedDate);
             setIsCalendarModalOpen(false);
           }}
           activeOpacity={0.7}
@@ -441,7 +442,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.7, // Smart compression: keeps handwriting razor sharp while keeping file size small
         base64: true,
       });
@@ -475,7 +476,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.7, // Smart compression
         base64: true,
       });
@@ -519,12 +520,12 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Send to Reception & Collect Fee (Core CTA)
   const handleSendToReception = async () => {
-    // 1. Mandatory Prescription check for OPD patients
+    // 1. Mandatory Prescription check for OPD patients (Doctor only)
     const hasRxImages = uploadedImages.length > 0;
     const hasRxText = Boolean(prescriptionText && prescriptionText.trim().length > 0);
     const isOpd = patientData.consultationMode !== "ONLINE";
 
-    if (isOpd && !hasRxImages && !hasRxText) {
+    if (role === "DOCTOR" && isOpd && !hasRxImages && !hasRxText) {
       Alert.alert(
         "Prescription Required",
         "⚠️ Prescription is mandatory for OPD patients!\n\nPlease draw on the Digital Pad, capture a photo, or enter prescription remedies before sending to reception."
@@ -535,15 +536,21 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     setIsSubmitting(true);
     try {
       const targetId = appointmentId || "temp-appt-id";
+      const hasDiet = Boolean(dietPlan && dietPlan.trim().length > 0);
+      const effectiveDietFee = hasDiet ? (Number(dietPlanFee) || 0) : 0;
+      const effectiveInterval =
+        (!followUpInterval || followUpInterval === "Custom Date" || (followUpInterval === "No Follow-up" && followUpDate))
+          ? (followUpDate || "1 Month")
+          : followUpInterval;
       const payload = {
         id: targetId,
         prescriptionImages: uploadedImages,
         prescriptionText,
-        followUpInterval,
+        followUpInterval: effectiveInterval,
         followUpDate,
         consultationFee: parseFloat(consultationFee) || 0,
-        dietPlan,
-        dietPlanFee: Number(dietPlanFee) || 0,
+        dietPlan: hasDiet ? dietPlan : "",
+        dietPlanFee: effectiveDietFee,
         sendToReception: true,
       };
 
@@ -568,8 +575,9 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             appointmentDate: patientData.appointmentDate || new Date().toISOString().split("T")[0],
             timeSlot: patientData.timeSlot || "02:30 PM",
             consultationFee: parseFloat(consultationFee) || 0,
-            dietPlanFee: Number(dietPlanFee) || 0,
-            dietFee: Number(dietPlanFee) || 0,
+            dietPlan: hasDiet ? dietPlan : "",
+            dietPlanFee: effectiveDietFee,
+            dietFee: effectiveDietFee,
             prescriptionImages: uploadedImages,
             hasPackage: patientData.hasPackage,
             packageName: patientData.packageName || patientData.activePackage?.packageName,
@@ -578,6 +586,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             packagePendingAmount: patientData.activePackage?.pendingAmount,
             packageDurationMonths: patientData.activePackage?.durationMonths,
             packageEndDate: patientData.activePackage?.endDate,
+            activePackage: patientData.activePackage,
             status: "COLLECT_FEE",
           });
           setIsPaymentModalOpen(true);
@@ -615,11 +624,15 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     setIsSubmitting(true);
     try {
       const targetId = appointmentId || "temp-appt-id";
+      const effectiveInterval =
+        (!followUpInterval || followUpInterval === "Custom Date" || (followUpInterval === "No Follow-up" && followUpDate))
+          ? (followUpDate || "1 Month")
+          : followUpInterval;
       const payload = {
         id: targetId,
         prescriptionImages: uploadedImages,
         prescriptionText,
-        followUpInterval,
+        followUpInterval: effectiveInterval,
         followUpDate,
         consultationFee: parseFloat(consultationFee) || 0,
         dietPlan: updatedPlan,
@@ -652,6 +665,12 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
               prescriptionImages: uploadedImages,
               hasPackage: patientData.hasPackage,
               packageName: patientData.packageName || patientData.activePackage?.packageName,
+              packageTotalAmount: patientData.activePackage?.totalAmount,
+              packagePaidAmount: patientData.activePackage?.paidAmount,
+              packagePendingAmount: patientData.activePackage?.pendingAmount,
+              packageDurationMonths: patientData.activePackage?.durationMonths,
+              packageEndDate: patientData.activePackage?.endDate,
+              activePackage: patientData.activePackage,
               status: "COLLECT_FEE",
             });
             setIsPaymentModalOpen(true);
@@ -693,10 +712,54 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           </Text>
         </View>
 
-        <View style={styles.headerAvatar}>
-          <Text style={styles.headerAvatarText}>
-            {(patientData.patientName || "P").slice(0, 1).toUpperCase()}
-          </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {role === "RECEPTION" ? (
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#f59e0b",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+              onPress={handleSendToReception}
+              disabled={isSubmitting}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="card" size={13} color="#ffffff" />
+              <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>
+                {isSubmitting ? "..." : "Collect Fee"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={{
+                backgroundColor: "#0284c7",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+              onPress={handleSendToReception}
+              disabled={isSubmitting}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="paper-plane" size={13} color="#ffffff" />
+              <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>
+                {isSubmitting ? "..." : "Send"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.headerAvatar}>
+            <Text style={styles.headerAvatarText}>
+              {(patientData.patientName || "P").slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -1052,23 +1115,15 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 </Text>
               )}
 
-              {/* Prescription Remedies & Text Instructions (M - N - N) */}
+              {/* Prescription Remedies & Text Instructions */}
               <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#f1f5f9" }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <View style={{ marginBottom: 6 }}>
                   <Text style={styles.fieldLabel}>Prescription Remedies & Notes</Text>
-                  <TouchableOpacity
-                    style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#f0f9ff", borderWidth: 1, borderColor: "#bae6fd", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
-                    onPress={() => setIsAddRemedyModalOpen(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="add" size={13} color="#0284c7" />
-                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#0284c7" }}>+ Add Remedy (M - N - N)</Text>
-                  </TouchableOpacity>
                 </View>
                 <TextInput
                   style={[styles.textInputArea, { minHeight: 140, height: 140, textAlignVertical: "top", fontSize: 12.5, lineHeight: 18 }]}
                   multiline
-                  placeholder="Type remedies, dosage, or tap '+ Add Remedy' to insert with timing (M - N - N)..."
+                  placeholder="Type remedies, dosage, and instructions here..."
                   placeholderTextColor="#94a3b8"
                   value={prescriptionText}
                   onChangeText={setPrescriptionText}
@@ -1529,181 +1584,6 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             </View>
           </View>
         </View>
-      </Modal>
-
-      {/* ADD REMEDY / SCRIPT MODAL (M - N - N) */}
-      <Modal
-        visible={isAddRemedyModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsAddRemedyModalOpen(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "center", alignItems: "center", padding: 16 }}
-        >
-          <View style={{ backgroundColor: "#ffffff", borderRadius: 18, width: "100%", maxWidth: 360, padding: 18, maxHeight: "90%" }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ fontSize: 16 }}>💊</Text>
-                <Text style={{ fontSize: 14, fontWeight: "900", color: "#0f172a" }}>Add Remedy to Prescription</Text>
-              </View>
-              <TouchableOpacity onPress={() => setIsAddRemedyModalOpen(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close" size={20} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Remedy Input */}
-              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>
-                Remedy / Medicine Name <Text style={{ color: "#ef4444" }}>*</Text>
-              </Text>
-              <TextInput
-                style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, fontWeight: "700", color: "#0f172a", marginBottom: 8 }}
-                placeholder="Type remedy (e.g. Arnica Montana)..."
-                placeholderTextColor="#94a3b8"
-                value={selectedRemedy}
-                onChangeText={setSelectedRemedy}
-              />
-
-              {/* Popular quick chips */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
-                {POPULAR_HOMEOPATHY_REMEDIES.slice(0, 10).map((r) => (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => setSelectedRemedy(r)}
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: selectedRemedy === r ? "#0284c7" : "#cbd5e1",
-                      backgroundColor: selectedRemedy === r ? "#e0f2fe" : "#ffffff",
-                      marginRight: 6,
-                    }}
-                  >
-                    <Text style={{ fontSize: 10, fontWeight: "700", color: selectedRemedy === r ? "#0284c7" : "#475569" }}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Potency */}
-              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Potency</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
-                {["30C", "200C", "1M", "10M", "6X", "12X", "Q / Tincture"].map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    onPress={() => setSelectedPotency(p)}
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: selectedPotency === p ? "#0284c7" : "#cbd5e1",
-                      backgroundColor: selectedPotency === p ? "#0284c7" : "#ffffff",
-                      marginRight: 6,
-                    }}
-                  >
-                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: selectedPotency === p ? "#ffffff" : "#475569" }}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Form */}
-              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Form</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row", marginBottom: 10 }}>
-                {["Pills", "Drops", "Dilution", "Syrup", "Tablet"].map((f) => (
-                  <TouchableOpacity
-                    key={f}
-                    onPress={() => setSelectedForm(f)}
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      borderWidth: 1,
-                      borderColor: selectedForm === f ? "#0284c7" : "#cbd5e1",
-                      backgroundColor: selectedForm === f ? "#0284c7" : "#ffffff",
-                      marginRight: 6,
-                    }}
-                  >
-                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: selectedForm === f ? "#ffffff" : "#475569" }}>{f}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {/* Timing (M - N - N, M - A - N, etc.) */}
-              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>
-                Dosage Timing <Text style={{ color: "#ef4444" }}>*</Text>
-              </Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                {["M - N - N", "M - A - N", "M - N", "1 - 0 - 1", "1 - 1 - 1", "M only", "N only", "SOS"].map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    onPress={() => setSelectedTiming(t)}
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: selectedTiming === t ? "#0284c7" : "#cbd5e1",
-                      backgroundColor: selectedTiming === t ? "#0284c7" : "#ffffff",
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: "800", color: selectedTiming === t ? "#ffffff" : "#334155" }}>{t}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Food relation */}
-              <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155", marginBottom: 4 }}>Food Relation</Text>
-              <View style={{ flexDirection: "row", gap: 6, marginBottom: 14 }}>
-                {["After Food", "Before Food", "Empty Stomach"].map((food) => (
-                  <TouchableOpacity
-                    key={food}
-                    onPress={() => setSelectedFoodTiming(food)}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: selectedFoodTiming === food ? "#16a34a" : "#cbd5e1",
-                      backgroundColor: selectedFoodTiming === food ? "#16a34a" : "#ffffff",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 10, fontWeight: "700", color: selectedFoodTiming === food ? "#ffffff" : "#475569" }}>{food}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            {/* Actions */}
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8, borderTopWidth: 1, borderTopColor: "#f1f5f9", paddingTop: 10 }}>
-              <TouchableOpacity
-                onPress={() => setIsAddRemedyModalOpen(false)}
-                style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "700", color: "#64748b" }}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  if (!selectedRemedy.trim()) {
-                    Alert.alert("Required", "Please select or enter a remedy name.");
-                    return;
-                  }
-                  const line = `• ${selectedRemedy.trim()} ${selectedPotency} (${selectedForm}) — Timing: ${selectedTiming} (${selectedFoodTiming})`;
-                  setPrescriptionText((prev) => (prev ? `${prev}\n${line}` : line));
-                  setIsAddRemedyModalOpen(false);
-                  setSelectedRemedy("");
-                }}
-                style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: "#0284c7" }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>+ Insert into Rx</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* FULL-SCREEN INTERACTIVE PRESCRIPTION VIEWER (SLIDER, ROTATE, ZOOM) */}

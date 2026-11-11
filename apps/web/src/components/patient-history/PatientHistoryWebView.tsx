@@ -655,7 +655,9 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
               ) : (
                 sortedAppointments.map((item, idx) => {
                   const isPaid = item.isFeeCollected || item.status === "COMPLETED";
-                  const fee = item.totalAmountDue || item.consultationFee || 0;
+                  const actualPaid = typeof item.totalPaid === "number" && item.totalPaid > 0
+                    ? item.totalPaid
+                    : (isPaid ? (item.totalAmountDue || item.consultationFee || 0) : 0);
                   const rxImages = item.prescriptionImages || [];
 
                   return (
@@ -702,7 +704,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
 
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
                           <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Fee: ₹{fee} ({item.paymentMethod || "Cash"})</span>
+                          <span>Paid: ₹{actualPaid} ({item.paymentMethod || "Cash"})</span>
                         </div>
                       </div>
 
@@ -719,7 +721,19 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         <div className="flex items-center gap-2 text-xs font-bold text-sky-700 bg-sky-50/70 p-2 rounded-lg border border-sky-100">
                           <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
                           <span>
-                            Recommended Follow-up: {item.followUpInterval || "Scheduled"} • {item.followUpDate || "Date TBA"}
+                            Recommended Follow-up:{" "}
+                            {item.followUpDate
+                              ? item.followUpInterval &&
+                                item.followUpInterval !== "Custom Date" &&
+                                item.followUpInterval !== "No Follow-up" &&
+                                item.followUpInterval !== item.followUpDate
+                                ? `${item.followUpInterval} (${item.followUpDate})`
+                                : item.followUpDate
+                              : item.followUpInterval &&
+                                item.followUpInterval !== "Custom Date" &&
+                                item.followUpInterval !== "No Follow-up"
+                              ? item.followUpInterval
+                              : "Scheduled"}
                           </span>
                         </div>
                       )}
@@ -894,7 +908,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                       <tbody className="divide-y divide-slate-100">
                         {appointments.map((a, i) => {
                           const isPaid = a.isFeeCollected || a.status === "COMPLETED";
-                          const fee = a.totalAmountDue || a.consultationFee || 0;
+                          const actualPaid = typeof a.totalPaid === "number" && a.totalPaid > 0
+                            ? a.totalPaid
+                            : (isPaid ? (a.totalAmountDue || a.consultationFee || 0) : 0);
+                          const pendingDue = Number(a.payLaterAmount || a.pendingBalance || 0);
 
                           return (
                             <tr key={a.id || i} className="hover:bg-slate-50/70 transition-colors">
@@ -918,7 +935,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                                 {a.paymentMethod || "Cash / Counter"}
                               </td>
                               <td className="py-3 px-4 text-right font-black text-slate-900">
-                                ₹{fee.toLocaleString("en-IN")}
+                                <div>₹{actualPaid.toLocaleString("en-IN")}</div>
+                                {pendingDue > 0 && (
+                                  <div className="text-[10px] text-rose-600 font-bold">Due: ₹{pendingDue}</div>
+                                )}
                               </td>
                               <td className="py-3 px-4 text-center">
                                 <button

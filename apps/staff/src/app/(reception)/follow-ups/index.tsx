@@ -34,13 +34,14 @@ interface FollowUpItem {
   dueYear?: number;
   isOverdue?: boolean;
   isDueToday?: boolean;
+  isDueTomorrow?: boolean;
   isThisMonth?: boolean;
   isNextMonth?: boolean;
   followUpInterval: string;
   consultationFee?: number;
   notes?: string;
   prescriptionImages?: string[];
-  status: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed" | string;
+  status: "Due Today" | "Due Tomorrow" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed" | string;
 }
 
 const STANDARD_TIME_SLOTS = [
@@ -132,6 +133,58 @@ function minutesToTimeString(minutes: number): string {
   return `${hStr}:${mStr} ${ap}`;
 }
 
+function isDateInPast(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split("-");
+  let y: number, m: number, d: number;
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else {
+      y = parseInt(parts[2], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[0], 10);
+    }
+    const target = new Date(y, m, d);
+    target.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return target.getTime() < today.getTime();
+  }
+  return false;
+}
+
+function isDateToday(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split("-");
+  let y: number, m: number, d: number;
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else {
+      y = parseInt(parts[2], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[0], 10);
+    }
+    const today = new Date();
+    return y === today.getFullYear() && m === today.getMonth() && d === today.getDate();
+  }
+  return false;
+}
+
+function isSlotTimePassed(timeStr: string, dateStr: string): boolean {
+  if (isDateInPast(dateStr)) return true;
+  if (!isDateToday(dateStr)) return false;
+  const slotMinutes = parseTimeToMinutes(timeStr);
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return slotMinutes < currentMinutes;
+}
+
 function generateSlotsFromRanges(ranges: any[]): string[] {
   if (!ranges || ranges.length === 0) {
     return STANDARD_TIME_SLOTS;
@@ -197,10 +250,10 @@ export default function ReceptionFollowUpsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
 
-  // Period Filters matching Web portal exactly (Default to 'this_month' so opening loads only this month)
+  // Period Filters: Today, Tomorrow, Overdue, Next Month, Custom Month, Custom Date, This Month, All
   const [periodFilter, setPeriodFilter] = useState<
-    "this_month" | "next_month" | "due_today" | "overdue" | "all" | "month" | "range"
-  >("this_month");
+    "due_today" | "due_tomorrow" | "overdue" | "next_month" | "month" | "range" | "this_month" | "all"
+  >("due_today");
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
@@ -213,10 +266,11 @@ export default function ReceptionFollowUpsScreen() {
   // Aggregate Stats matching Web
   const [stats, setStats] = useState({
     total: 0,
-    overdue: 0,
     dueToday: 0,
-    thisMonth: 0,
+    dueTomorrow: 0,
+    overdue: 0,
     nextMonth: 0,
+    thisMonth: 0,
     completed: 0,
   });
 
@@ -345,7 +399,11 @@ export default function ReceptionFollowUpsScreen() {
   const openRescheduleModal = (item: FollowUpItem) => {
     setRescheduleItem(item);
     setNewDueDate(item.dueDate || todayStr);
-    setNewInterval(item.followUpInterval || "1 Month");
+    const cleanIntv =
+      !item.followUpInterval || item.followUpInterval === "Custom Date" || item.followUpInterval === "No Follow-up"
+        ? item.dueDate || "1 Month"
+        : item.followUpInterval;
+    setNewInterval(cleanIntv);
     setRescheduleNotes(item.notes || "");
   };
 
@@ -622,19 +680,21 @@ export default function ReceptionFollowUpsScreen() {
         endMin = startMin + 180;
       }
 
-      const sessionSlots: { time: string; bookedCount: number; maxCapacity: number; isFull: boolean; isNoShow: boolean }[] = [];
+      const sessionSlots: { time: string; bookedCount: number; maxCapacity: number; isFull: boolean; isNoShow: boolean; isPast: boolean }[] = [];
 
       for (let cur = startMin; cur < endMin; cur += 15) {
         const timeStr = minutesToTimeString(cur);
         const isNoShow = checkIsSlotNoShow(cur);
         const bookedCount = getSlotBookedCount(timeStr);
-        const isFull = isNoShow || bookedCount >= 3;
+        const isPast = isSlotTimePassed(timeStr, bookDate);
+        const isFull = isNoShow || bookedCount >= 3 || isPast;
         sessionSlots.push({
           time: timeStr,
           bookedCount,
           maxCapacity: 3,
           isFull,
           isNoShow,
+          isPast,
         });
       }
 
@@ -647,11 +707,21 @@ export default function ReceptionFollowUpsScreen() {
         slots: sessionSlots,
       };
     });
-  }, [bookingAvailableDoctors, bookDoctorId, bookMode, activeBookingNoShows, bookedAppointments]);
+  }, [bookingAvailableDoctors, bookDoctorId, bookMode, activeBookingNoShows, bookedAppointments, bookDate]);
 
   // Submit Booking (calls POST /reception/follow-ups)
   const handleConfirmBooking = async () => {
     if (!bookingItem || !bookDate || !bookTimeSlot) return;
+
+    if (isDateInPast(bookDate)) {
+      Alert.alert("Invalid Date", "Cannot book appointments for past dates.");
+      return;
+    }
+    if (isSlotTimePassed(bookTimeSlot, bookDate)) {
+      Alert.alert("Invalid Slot", `Time slot ${bookTimeSlot} has already passed for today. Please select an upcoming slot.`);
+      return;
+    }
+
     setSavingBooking(true);
     try {
       const res = await apiFetch<any>("/reception/follow-ups", {
@@ -752,43 +822,79 @@ export default function ReceptionFollowUpsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.periodScrollContent}
         >
-          {/* This Month (FIRST & DEFAULT) */}
+          {/* 1. Today */}
           <TouchableOpacity
-            style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
-            onPress={() => setPeriodFilter("this_month")}
+            style={[styles.periodChip, periodFilter === "due_today" && styles.periodChipActiveAmber]}
+            onPress={() => setPeriodFilter("due_today")}
             activeOpacity={0.75}
           >
             <Ionicons
-              name="calendar"
+              name="time"
               size={12}
-              color={periodFilter === "this_month" ? "#ffffff" : "#0284c7"}
+              color={periodFilter === "due_today" ? "#ffffff" : "#d97706"}
             />
             <Text
               style={[
                 styles.periodChipText,
-                periodFilter === "this_month" && styles.periodChipTextActive,
+                periodFilter === "due_today" && styles.periodChipTextActive,
               ]}
             >
-              This Month
+              Today
             </Text>
             <View
               style={[
                 styles.countBadge,
-                periodFilter === "this_month" ? styles.countBadgeActiveWhite : styles.countBadgeSky,
+                periodFilter === "due_today" ? styles.countBadgeActiveWhite : styles.countBadgeAmber,
               ]}
             >
               <Text
                 style={[
                   styles.countBadgeText,
-                  periodFilter === "this_month" ? styles.countBadgeTextSky : styles.countBadgeTextSkyDark,
+                  periodFilter === "due_today" ? styles.countBadgeTextAmber : styles.countBadgeTextAmberDark,
                 ]}
               >
-                {stats.thisMonth}
+                {stats.dueToday}
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Next Month */}
+          {/* 2. Tomorrow */}
+          <TouchableOpacity
+            style={[styles.periodChip, periodFilter === "due_tomorrow" && styles.periodChipActiveEmerald]}
+            onPress={() => setPeriodFilter("due_tomorrow")}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="time-outline"
+              size={12}
+              color={periodFilter === "due_tomorrow" ? "#ffffff" : "#059669"}
+            />
+            <Text
+              style={[
+                styles.periodChipText,
+                periodFilter === "due_tomorrow" && styles.periodChipTextActive,
+              ]}
+            >
+              Tomorrow
+            </Text>
+            <View
+              style={[
+                styles.countBadge,
+                periodFilter === "due_tomorrow" ? styles.countBadgeActiveWhite : styles.countBadgeEmerald,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.countBadgeText,
+                  periodFilter === "due_tomorrow" ? styles.countBadgeTextEmerald : styles.countBadgeTextEmeraldDark,
+                ]}
+              >
+                {stats.dueTomorrow}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 3. Next Month */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "next_month" && styles.periodChipActiveIndigo]}
             onPress={() => setPeriodFilter("next_month")}
@@ -824,43 +930,7 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Due Today */}
-          <TouchableOpacity
-            style={[styles.periodChip, periodFilter === "due_today" && styles.periodChipActiveAmber]}
-            onPress={() => setPeriodFilter("due_today")}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name="time"
-              size={12}
-              color={periodFilter === "due_today" ? "#ffffff" : "#d97706"}
-            />
-            <Text
-              style={[
-                styles.periodChipText,
-                periodFilter === "due_today" && styles.periodChipTextActive,
-              ]}
-            >
-              Due Today
-            </Text>
-            <View
-              style={[
-                styles.countBadge,
-                periodFilter === "due_today" ? styles.countBadgeActiveWhite : styles.countBadgeAmber,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.countBadgeText,
-                  periodFilter === "due_today" ? styles.countBadgeTextAmber : styles.countBadgeTextAmberDark,
-                ]}
-              >
-                {stats.dueToday}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Overdue */}
+          {/* 4. Overdue */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "overdue" && styles.periodChipActiveRose]}
             onPress={() => setPeriodFilter("overdue")}
@@ -896,7 +966,7 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Choose Month Picker Button */}
+          {/* 5. Custom Month Picker Button */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "month" && styles.periodChipActiveSky]}
             onPress={() => setShowMonthModal(true)}
@@ -913,7 +983,7 @@ export default function ReceptionFollowUpsScreen() {
                 periodFilter === "month" && styles.periodChipTextActive,
               ]}
             >
-              {periodFilter === "month" && selectedMonth ? selectedMonth : "Choose Month"}
+              {periodFilter === "month" && selectedMonth ? selectedMonth : "Custom Month"}
             </Text>
             <Ionicons
               name="chevron-down"
@@ -922,7 +992,7 @@ export default function ReceptionFollowUpsScreen() {
             />
           </TouchableOpacity>
 
-          {/* Date Range Picker Button */}
+          {/* 6. Custom Date Picker Button */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "range" && styles.periodChipActiveSky]}
             onPress={() => setShowRangeModal(true)}
@@ -941,7 +1011,7 @@ export default function ReceptionFollowUpsScreen() {
             >
               {periodFilter === "range" && startDate && endDate
                 ? `${startDate.slice(0, 5)} - ${endDate.slice(0, 5)}`
-                : "Date Range"}
+                : "Custom Date"}
             </Text>
             <Ionicons
               name="chevron-down"
@@ -950,7 +1020,43 @@ export default function ReceptionFollowUpsScreen() {
             />
           </TouchableOpacity>
 
-          {/* All Follow-Ups (MOVED TO LAST) */}
+          {/* 7. This Month */}
+          <TouchableOpacity
+            style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
+            onPress={() => setPeriodFilter("this_month")}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="calendar"
+              size={12}
+              color={periodFilter === "this_month" ? "#ffffff" : "#0284c7"}
+            />
+            <Text
+              style={[
+                styles.periodChipText,
+                periodFilter === "this_month" && styles.periodChipTextActive,
+              ]}
+            >
+              This Month
+            </Text>
+            <View
+              style={[
+                styles.countBadge,
+                periodFilter === "this_month" ? styles.countBadgeActiveWhite : styles.countBadgeSky,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.countBadgeText,
+                  periodFilter === "this_month" ? styles.countBadgeTextSky : styles.countBadgeTextSkyDark,
+                ]}
+              >
+                {stats.thisMonth}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 8. All Follow-Ups (MOVED TO LAST) */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "all" && styles.periodChipActiveDark]}
             onPress={() => setPeriodFilter("all")}
@@ -1020,6 +1126,7 @@ export default function ReceptionFollowUpsScreen() {
             {followUps.map((item, index) => {
               const cleanPhone = (item.phone || "").replace(/\D/g, "").slice(-10);
               const isToday = item.dueDate === todayStr || item.isDueToday;
+              const isTomorrow = Boolean(item.isDueTomorrow || item.status === "Due Tomorrow");
               const isOverdue = item.isOverdue || item.status === "Overdue";
 
               return (
@@ -1045,13 +1152,31 @@ export default function ReceptionFollowUpsScreen() {
                           ? styles.statusOverdue
                           : isToday
                           ? styles.statusToday
+                          : isTomorrow
+                          ? styles.statusTomorrow
                           : styles.statusUpcoming,
                       ]}
                     >
                       <Ionicons
-                        name={isOverdue ? "alert-circle" : isToday ? "time" : "calendar-outline"}
+                        name={
+                          isOverdue
+                            ? "alert-circle"
+                            : isToday
+                            ? "time"
+                            : isTomorrow
+                            ? "time-outline"
+                            : "calendar-outline"
+                        }
                         size={10}
-                        color={isOverdue ? "#e11d48" : isToday ? "#b45309" : "#0369a1"}
+                        color={
+                          isOverdue
+                            ? "#e11d48"
+                            : isToday
+                            ? "#b45309"
+                            : isTomorrow
+                            ? "#047857"
+                            : "#0369a1"
+                        }
                       />
                       <Text
                         style={[
@@ -1060,10 +1185,12 @@ export default function ReceptionFollowUpsScreen() {
                             ? styles.statusTextOverdue
                             : isToday
                             ? styles.statusTextToday
+                            : isTomorrow
+                            ? styles.statusTextTomorrow
                             : styles.statusTextUpcoming,
                         ]}
                       >
-                        {isOverdue ? "Overdue" : isToday ? "Due Today" : item.dueDate}
+                        {isOverdue ? "Overdue" : isToday ? "Due Today" : isTomorrow ? "Due Tomorrow" : item.dueDate}
                       </Text>
                     </View>
                   </View>
@@ -1078,7 +1205,13 @@ export default function ReceptionFollowUpsScreen() {
                     </View>
 
                     <View style={styles.intervalChipSmall}>
-                      <Text style={styles.intervalChipSmallText}>{item.followUpInterval || "1 Month"}</Text>
+                      <Text style={styles.intervalChipSmallText}>
+                        {!item.followUpInterval ||
+                        item.followUpInterval === "Custom Date" ||
+                        item.followUpInterval === "No Follow-up"
+                          ? item.dueDate || "1 Month"
+                          : item.followUpInterval}
+                      </Text>
                     </View>
 
                     <Text style={styles.metaBranchText} numberOfLines={1}>
@@ -1422,23 +1555,34 @@ export default function ReceptionFollowUpsScreen() {
                             <View style={styles.slotsGrid}>
                               {session.slots.map((slot: any) => {
                                 const isSelected = bookTimeSlot === slot.time;
-                                const disabled = slot.isFull || slot.isNoShow;
+                                const isPast = Boolean(slot.isPast);
+                                const disabled = slot.isFull || slot.isNoShow || isPast;
                                 return (
                                   <View key={slot.time} style={{ width: "23.5%", marginBottom: 6 }}>
                                     <TouchableOpacity
                                       disabled={disabled}
-                                      onPress={() => setBookTimeSlot(slot.time)}
+                                      onPress={() => {
+                                        if (isPast) {
+                                          Alert.alert("Notice", `Time slot ${slot.time} has already completed. Please select an upcoming slot.`);
+                                          return;
+                                        }
+                                        setBookTimeSlot(slot.time);
+                                      }}
                                       style={[
                                         styles.slotItem,
                                         isSelected && styles.slotItemSelected,
-                                        disabled && { backgroundColor: "#fee2e2", borderColor: "#fca5a5", opacity: 0.8 },
+                                        disabled && {
+                                          backgroundColor: isPast ? "#f1f5f9" : "#fee2e2",
+                                          borderColor: isPast ? "#e2e8f0" : "#fca5a5",
+                                          opacity: isPast ? 0.65 : 0.8,
+                                        },
                                       ]}
                                     >
                                       <Text
                                         style={[
                                           styles.slotItemText,
                                           isSelected && { color: "#ffffff", fontWeight: "800" },
-                                          disabled && { color: "#b91c1c" },
+                                          disabled && { color: isPast ? "#94a3b8" : "#b91c1c", textDecorationLine: isPast ? "line-through" : "none" },
                                         ]}
                                       >
                                         {slot.time}
@@ -1446,6 +1590,10 @@ export default function ReceptionFollowUpsScreen() {
                                       {slot.isNoShow ? (
                                         <View style={{ backgroundColor: "#e11d48", paddingHorizontal: 2.5, paddingVertical: 0.5, borderRadius: 2, marginTop: 1 }}>
                                           <Text style={{ fontSize: 6.5, fontWeight: "800", color: "#ffffff" }}>NO-SHOW</Text>
+                                        </View>
+                                      ) : isPast ? (
+                                        <View style={{ backgroundColor: "#94a3b8", paddingHorizontal: 2.5, paddingVertical: 0.5, borderRadius: 2, marginTop: 1 }}>
+                                          <Text style={{ fontSize: 6.5, fontWeight: "800", color: "#ffffff" }}>PASSED</Text>
                                         </View>
                                       ) : slot.isFull ? (
                                         <View style={{ backgroundColor: "#ef4444", paddingHorizontal: 2.5, paddingVertical: 0.5, borderRadius: 2, marginTop: 1 }}>
@@ -1692,10 +1840,21 @@ export default function ReceptionFollowUpsScreen() {
                     ? newDueDate === formatted
                     : bookDate === formatted;
 
+                const isPastDate = (() => {
+                  if (calTarget !== "booking") return false;
+                  const t = new Date();
+                  t.setHours(0, 0, 0, 0);
+                  const cellDate = new Date(calYear, calMonth, day);
+                  cellDate.setHours(0, 0, 0, 0);
+                  return cellDate.getTime() < t.getTime();
+                })();
+
                 return (
                   <TouchableOpacity
                     key={day}
+                    disabled={isPastDate}
                     onPress={() => {
+                      if (isPastDate) return;
                       if (calTarget === "from") {
                         setStartDate(formatted);
                       } else if (calTarget === "to") {
@@ -1707,9 +1866,19 @@ export default function ReceptionFollowUpsScreen() {
                       }
                       setShowCalendarModal(false);
                     }}
-                    style={[styles.calDayCell, isSelected && styles.calDayCellSelected]}
+                    style={[
+                      styles.calDayCell,
+                      isSelected && styles.calDayCellSelected,
+                      isPastDate && { opacity: 0.35, backgroundColor: "#f8fafc" },
+                    ]}
                   >
-                    <Text style={[styles.calDayText, isSelected && styles.calDayTextSelected]}>
+                    <Text
+                      style={[
+                        styles.calDayText,
+                        isSelected && styles.calDayTextSelected,
+                        isPastDate && { color: "#94a3b8", textDecorationLine: "line-through" },
+                      ]}
+                    >
                       {day}
                     </Text>
                   </TouchableOpacity>
@@ -1813,6 +1982,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#4f46e5",
     borderColor: "#4f46e5",
   },
+  periodChipActiveEmerald: {
+    backgroundColor: "#059669",
+    borderColor: "#059669",
+  },
   periodChipActiveAmber: {
     backgroundColor: "#d97706",
     borderColor: "#d97706",
@@ -1850,6 +2023,9 @@ const styles = StyleSheet.create({
   countBadgeIndigo: {
     backgroundColor: "#e0e7ff",
   },
+  countBadgeEmerald: {
+    backgroundColor: "#d1fae5",
+  },
   countBadgeAmber: {
     backgroundColor: "#fef3c7",
   },
@@ -1874,6 +2050,12 @@ const styles = StyleSheet.create({
   },
   countBadgeTextIndigoDark: {
     color: "#4f46e5",
+  },
+  countBadgeTextEmerald: {
+    color: "#ffffff",
+  },
+  countBadgeTextEmeraldDark: {
+    color: "#059669",
   },
   countBadgeTextAmber: {
     color: "#ffffff",
@@ -1985,6 +2167,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#fde68a",
   },
+  statusTomorrow: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+  },
   statusOverdue: {
     backgroundColor: "#ffe4e6",
     borderWidth: 1,
@@ -2001,6 +2188,9 @@ const styles = StyleSheet.create({
   },
   statusTextToday: {
     color: "#b45309",
+  },
+  statusTextTomorrow: {
+    color: "#047857",
   },
   statusTextOverdue: {
     color: "#e11d48",

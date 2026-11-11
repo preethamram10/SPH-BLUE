@@ -44,8 +44,8 @@ export default function DoctorDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  // Reception-Style Filter: ALL | UPCOMING | ACTIVE | COMPLETED
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COMPLETED">("ALL");
+  // Reception-Style Filter: ALL | UPCOMING | ACTIVE | SENT_TO_RECEPTION | COMPLETED
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "SENT_TO_RECEPTION" | "COMPLETED">("ALL");
 
   // Reschedule Modal State
   const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
@@ -84,8 +84,11 @@ export default function DoctorDashboard() {
     if (!isSilent) setIsLoading(true);
     try {
       const cleanBranch = branchName.replace(/Spiritual Homeopathy/gi, "").trim();
+      const branchQuery = cleanBranch && cleanBranch !== "All Branches" && cleanBranch.toLowerCase() !== "all"
+        ? `&branch=${encodeURIComponent(cleanBranch)}`
+        : "";
       const data = await apiFetch<any>(
-        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}&date=${encodeURIComponent(dt)}&branch=${encodeURIComponent(cleanBranch)}`
+        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}&date=${encodeURIComponent(dt)}${branchQuery}`
       );
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -146,7 +149,7 @@ export default function DoctorDashboard() {
         console.error("Status update error:", err);
         openPatientFile(appt);
       }
-    } else if (status === "IN_CONSULTATION") {
+    } else if (status === "IN_CONSULTATION" || status === "COLLECT_FEE" || appt.isSentToReception) {
       openPatientFile(appt);
     }
   };
@@ -296,6 +299,7 @@ export default function DoctorDashboard() {
     const st = (a.status || "WAITING").toUpperCase();
     if (activeFilter === "UPCOMING") return st === "WAITING" || st === "SCHEDULED";
     if (activeFilter === "ACTIVE") return st === "IN_CONSULTATION";
+    if (activeFilter === "SENT_TO_RECEPTION") return st === "COLLECT_FEE" || !!a.isSentToReception;
     if (activeFilter === "COMPLETED") return st === "COMPLETED";
     return true;
   });
@@ -317,6 +321,7 @@ export default function DoctorDashboard() {
   const totalCount = appointments.length;
   const upcomingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
   const activeCount = appointments.filter((a) => a.status === "IN_CONSULTATION").length;
+  const sentCount = appointments.filter((a) => (a.status || "").toUpperCase() === "COLLECT_FEE" || !!a.isSentToReception).length;
   const completedCount = appointments.filter((a) => a.status === "COMPLETED").length;
 
   return (
@@ -433,6 +438,16 @@ export default function DoctorDashboard() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.filterChip, activeFilter === "SENT_TO_RECEPTION" && styles.filterChipActive]}
+            onPress={() => setActiveFilter("SENT_TO_RECEPTION")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.filterChipText, activeFilter === "SENT_TO_RECEPTION" && styles.filterChipTextActive]}>
+              Sent ({sentCount})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.filterChip, activeFilter === "COMPLETED" && styles.filterChipActive]}
             onPress={() => setActiveFilter("COMPLETED")}
             activeOpacity={0.7}
@@ -443,9 +458,19 @@ export default function DoctorDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Section Heading: Upcoming Appointments */}
+        {/* Section Heading */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Upcoming Appointments</Text>
+          <Text style={styles.sectionTitle}>
+            {activeFilter === "UPCOMING"
+              ? "Upcoming Appointments"
+              : activeFilter === "ACTIVE"
+              ? "Active Consultations"
+              : activeFilter === "SENT_TO_RECEPTION"
+              ? "Sent to Reception"
+              : activeFilter === "COMPLETED"
+              ? "Completed Consultations"
+              : "All Appointments Queue"}
+          </Text>
           <Text style={styles.sectionBadge}>
             {filtered.length} {filtered.length === 1 ? "Patient" : "Patients"}
           </Text>
@@ -470,6 +495,7 @@ export default function DoctorDashboard() {
           filtered.map((appt, index) => {
             const status = (appt.status || "WAITING").toUpperCase();
             const isActive = status === "IN_CONSULTATION";
+            const isSentToReception = status === "COLLECT_FEE" || !!appt.isSentToReception;
             const isCompleted = status === "COMPLETED";
 
             const patientName = appt.name || appt.patientName || "Patient";
@@ -496,14 +522,16 @@ export default function DoctorDashboard() {
                     style={[
                       styles.queueBox,
                       isActive && { backgroundColor: "#cffafe", borderColor: "#06b6d4" },
+                      isSentToReception && { backgroundColor: "#fef3c7", borderColor: "#fcd34d" },
                       isCompleted && { backgroundColor: "#dcfce7", borderColor: "#86efac" },
                     ]}
                   >
-                    <Text style={styles.queueBoxLabel}>Q</Text>
+                    <Text style={[styles.queueBoxLabel, isSentToReception && { color: "#b45309" }]}>Q</Text>
                     <Text
                       style={[
                         styles.queueBoxNum,
                         isActive && { color: "#0891b2" },
+                        isSentToReception && { color: "#b45309" },
                         isCompleted && { color: "#16a34a" },
                       ]}
                     >
@@ -526,22 +554,36 @@ export default function DoctorDashboard() {
                         </Text>
                       </View>
                       {renderVisitBadge(appt)}
+                      {isSentToReception && (
+                        <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
+                          <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
+                            Ready to Collect Fee
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     <Text style={styles.apptPhoneText}>{displayPhone}</Text>
                   </TouchableOpacity>
 
-                  {/* START CONSULTATION / IN CONSULTATION / COMPLETED Button */}
+                  {/* START CONSULTATION / IN CONSULTATION / SENT TO RECEPTION / COMPLETED Button */}
                   <TouchableOpacity
                     style={[
                       styles.startConsultBtn,
                       isActive && { backgroundColor: "#16a34a" },
+                      isSentToReception && { backgroundColor: "#f59e0b" },
                       isCompleted && { backgroundColor: "#64748b" },
                     ]}
                     onPress={() => handleStatusClick(appt)}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.startConsultBtnText}>
-                      {isActive ? "IN CONSULTATION" : isCompleted ? "COMPLETED" : "START PRESCRIPTION"}
+                      {isActive
+                        ? "IN CONSULTATION"
+                        : isSentToReception
+                        ? "SENT TO RECEPTION"
+                        : isCompleted
+                        ? "COMPLETED"
+                        : "START PRESCRIPTION"}
                     </Text>
                   </TouchableOpacity>
                 </View>

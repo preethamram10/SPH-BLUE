@@ -209,7 +209,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
         }
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
+          allowsEditing: false,
           quality: 0.7,
           base64: true,
         });
@@ -221,7 +221,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
         }
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
+          allowsEditing: false,
           quality: 0.7,
           base64: true,
         });
@@ -544,7 +544,11 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                 ) : (
                   sortedAppointments.map((item, idx) => {
                     const isPaid = item.isFeeCollected;
-                    const fee = item.totalAmountDue || item.consultationFee || 0;
+                    const actualPaid = typeof item.totalPaid === "number" && item.totalPaid > 0
+                      ? item.totalPaid
+                      : (isPaid ? (item.totalAmountDue || item.consultationFee || 0) : 0);
+                    const billAmount = item.totalAmountDue || item.consultationFee || actualPaid;
+                    const pendingDue = Number(item.payLaterAmount || item.pendingBalance || 0);
                     const rxImages = item.prescriptionImages || [];
 
                     return (
@@ -587,7 +591,12 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           <View style={styles.paymentBoxTopRow}>
                             <View>
                               <Text style={styles.innerBoxLabel}>AMOUNT PAID</Text>
-                              <Text style={styles.innerBoxAmount}>₹{fee}</Text>
+                              <Text style={styles.innerBoxAmount}>₹{actualPaid}</Text>
+                              {pendingDue > 0 && (
+                                <Text style={{ fontSize: 9.5, color: "#dc2626", fontWeight: "700", marginTop: 2 }}>
+                                  Pending: ₹{pendingDue} (Total: ₹{billAmount})
+                                </Text>
+                              )}
                             </View>
 
                             <View style={{ alignItems: "flex-end" }}>
@@ -821,13 +830,16 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                   {/* Quick Pills Row */}
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickPillsScroll}>
                     {sortedAppointments.map((appt, i) => {
-                      const fee = appt.totalAmountDue || appt.consultationFee || 0;
+                      const isP = appt.isFeeCollected;
+                      const paidVal = typeof appt.totalPaid === "number" && appt.totalPaid > 0
+                        ? appt.totalPaid
+                        : (isP ? (appt.totalAmountDue || appt.consultationFee || 0) : 0);
                       const method = appt.paymentMethod || "Cash";
                       return (
                         <View key={i} style={styles.quickVisitPill}>
                           <Text style={styles.quickVisitPillText}>
                             Visit #{appt.visitNumber || sortedAppointments.length - i}:{" "}
-                            <Text style={{ fontWeight: "800", color: "#16a34a" }}>₹{fee}</Text> ({method})
+                            <Text style={{ fontWeight: "800", color: "#16a34a" }}>₹{paidVal}</Text> ({method})
                           </Text>
                         </View>
                       );
@@ -838,7 +850,11 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                 {/* Individual Payment Cards */}
                 {sortedAppointments.map((item, idx) => {
                   const isPaid = item.isFeeCollected;
-                  const fee = item.totalAmountDue || item.consultationFee || 0;
+                  const actualPaid = typeof item.totalPaid === "number" && item.totalPaid > 0
+                    ? item.totalPaid
+                    : (isPaid ? (item.totalAmountDue || item.consultationFee || 0) : 0);
+                  const billAmount = item.totalAmountDue || item.consultationFee || actualPaid;
+                  const pendingDue = Number(item.payLaterAmount || item.pendingBalance || 0);
 
                   return (
                     <View key={item.id || idx} style={styles.paymentRecordCard}>
@@ -881,7 +897,12 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                             <Text style={styles.innerBoxLabel}>
                               VISIT #{item.visitNumber || sortedAppointments.length - idx} AMOUNT PAID
                             </Text>
-                            <Text style={styles.innerBoxAmount}>₹{fee}</Text>
+                            <Text style={styles.innerBoxAmount}>₹{actualPaid}</Text>
+                            {pendingDue > 0 && (
+                              <Text style={{ fontSize: 9.5, color: "#dc2626", fontWeight: "700", marginTop: 2 }}>
+                                Pending: ₹{pendingDue} (Total: ₹{billAmount})
+                              </Text>
+                            )}
                           </View>
 
                           <View style={{ alignItems: "flex-end" }}>

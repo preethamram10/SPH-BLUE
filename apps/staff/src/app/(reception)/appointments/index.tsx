@@ -58,6 +58,7 @@ export interface GeneratedSlot {
   maxCapacity: number;
   isFull: boolean;
   isNoShow?: boolean;
+  isPast?: boolean;
   isTemporary?: boolean;
 }
 
@@ -132,6 +133,7 @@ export default function ReceptionBookAppointmentScreen() {
   const [editingNameVal, setEditingNameVal] = useState("");
   const [mergingSourceProfile, setMergingSourceProfile] = useState<any | null>(null);
   const [mergingTargetRegId, setMergingTargetRegId] = useState("");
+  const [modalSearchInput, setModalSearchInput] = useState("");
 
   // Success Modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -210,6 +212,58 @@ export default function ReceptionBookAppointmentScreen() {
     h = h % 12;
     if (h === 0) h = 12;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ap}`;
+  };
+
+  const isDateInPast = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const parts = dateStr.split("-");
+    let y: number, m: number, d: number;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        y = parseInt(parts[2], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0], 10);
+      }
+      const target = new Date(y, m, d);
+      target.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return target.getTime() < today.getTime();
+    }
+    return false;
+  };
+
+  const isDateToday = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const parts = dateStr.split("-");
+    let y: number, m: number, d: number;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        y = parseInt(parts[2], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0], 10);
+      }
+      const today = new Date();
+      return y === today.getFullYear() && m === today.getMonth() && d === today.getDate();
+    }
+    return false;
+  };
+
+  const isSlotTimePassed = (timeStr: string, dateStr: string): boolean => {
+    if (isDateInPast(dateStr)) return true;
+    if (!isDateToday(dateStr)) return false;
+    const slotMinutes = parseTimeToMinutes(timeStr);
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return slotMinutes < currentMinutes;
   };
 
   // Fetch real doctors and no-shows from API for this branch and date
@@ -490,13 +544,15 @@ export default function ReceptionBookAppointmentScreen() {
         const timeStr = formatMinutesToTime(cur);
         const isNoShow = checkIsSlotNoShow(cur);
         const bookedCount = getSlotBookedCount(timeStr);
-        const isFull = isNoShow || bookedCount >= 3;
+        const isPast = isSlotTimePassed(timeStr, appointmentDate);
+        const isFull = isNoShow || bookedCount >= 3 || isPast;
         sessionSlots.push({
           time: timeStr,
           bookedCount,
           maxCapacity: 3,
           isFull,
           isNoShow,
+          isPast,
           isTemporary: false,
         });
       }
@@ -517,13 +573,15 @@ export default function ReceptionBookAppointmentScreen() {
           const curMin = parseTimeToMinutes(tTime);
           const isNoShow = checkIsSlotNoShow(curMin);
           const bookedCount = getSlotBookedCount(tTime);
-          const isFull = isNoShow || bookedCount >= 3;
+          const isPast = isSlotTimePassed(tTime, appointmentDate);
+          const isFull = isNoShow || bookedCount >= 3 || isPast;
           sessionSlots.push({
             time: tTime,
             bookedCount,
             maxCapacity: 3,
             isFull,
             isNoShow,
+            isPast,
             isTemporary: true,
           });
         }
@@ -556,7 +614,7 @@ export default function ReceptionBookAppointmentScreen() {
         suggestedAfterTime,
       };
     });
-  }, [selectedDoctor, activeNoShows, temporarySlots, bookedAppointments]);
+  }, [selectedDoctor, activeNoShows, temporarySlots, bookedAppointments, appointmentDate]);
 
   // Flat list of all available slots across all sessions for validation
   const generatedSlots = useMemo((): GeneratedSlot[] => {
@@ -693,12 +751,12 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   // Profiles Multi-Account Helpers (Check Profiles, 10-Digit Auto-Popup, Edit Name, Merge, Delete)
-  const fetchAndOpenProfiles = async (phone: string, autoOpen = true) => {
-    const clean = phone.replace(/\D/g, "");
-    if (clean.length < 10) return;
+  const fetchAndOpenProfiles = async (phoneOrQuery: string, autoOpen = true) => {
+    const raw = phoneOrQuery.trim();
+    if (!raw) return;
     setIsLoadingProfiles(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/reception/patients/by-phone?phone=${encodeURIComponent(clean)}`);
+      const res = await fetch(`${API_BASE_URL}/reception/patients/by-phone?query=${encodeURIComponent(raw)}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.profiles)) {
         setPhoneProfiles(data.profiles);
@@ -724,20 +782,29 @@ export default function ReceptionBookAppointmentScreen() {
     const clean = val.replace(/\D/g, "").slice(0, 10);
     setPhoneNumber(clean);
     if (clean.length === 10) {
+      setModalSearchInput(clean);
       fetchAndOpenProfiles(clean, true);
     }
   };
 
   const handleCheckProfiles = () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert("Notice", "Please enter a valid 10-digit mobile number first.");
-      return;
+    const query = phoneNumber || modalSearchInput || "";
+    setModalSearchInput(query);
+    setIsProfilesModalOpen(true);
+    if (query.replace(/\D/g, "").length === 10 || /[a-zA-Z]/.test(query)) {
+      fetchAndOpenProfiles(query, false);
+    } else {
+      setPhoneProfiles([]);
     }
-    fetchAndOpenProfiles(phoneNumber, false);
   };
 
   const handleSelectProfile = (profile: any) => {
     setPatientName(profile.name);
+    if (profile.phone) {
+      const clean = profile.phone.replace(/\D/g, "").slice(-10);
+      setPhoneNumber(clean);
+      setModalSearchInput(clean);
+    }
     setFoundProfile(profile);
     setIsRebackMode(true);
     setManualRegId(profile.regId);
@@ -748,6 +815,12 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   const handleCreateNewProfileForNumber = () => {
+    if (modalSearchInput) {
+      const cleanDigits = modalSearchInput.replace(/\D/g, "").slice(-10);
+      if (cleanDigits.length === 10) {
+        setPhoneNumber(cleanDigits);
+      }
+    }
     setPatientName("");
     setFoundProfile(null);
     setIsRebackMode(false);
@@ -894,6 +967,16 @@ export default function ReceptionBookAppointmentScreen() {
           ? "Please select a consultation time on the clock."
           : "Please select an available consultation slot."
       );
+      return;
+    }
+
+    if (isDateInPast(appointmentDate)) {
+      Alert.alert("Invalid Date", "Cannot book appointments for past dates. For historical records, please use Old Patient RX.");
+      return;
+    }
+
+    if (isSlotTimePassed(selectedSlot, appointmentDate)) {
+      Alert.alert("Invalid Slot", `Time slot ${selectedSlot} has already passed for today. Please select an upcoming consultation time slot.`);
       return;
     }
 
@@ -1518,11 +1601,19 @@ export default function ReceptionBookAppointmentScreen() {
                       <View style={styles.slotsGrid}>
                         {session.slots.map((slot) => {
                           const selected = selectedSlot === slot.time;
+                          const isPast = Boolean(slot.isPast);
+                          const disabled = slot.isFull || slot.isNoShow || isPast;
                           return (
                             <View key={slot.time} style={{ width: "23.5%", marginBottom: 8, position: "relative" }}>
                               <TouchableOpacity
-                                disabled={slot.isFull || slot.isNoShow}
-                                onPress={() => !slot.isNoShow && setSelectedSlot(slot.time)}
+                                disabled={disabled}
+                                onPress={() => {
+                                  if (isPast) {
+                                    Alert.alert("Notice", `Time slot ${slot.time} has already completed. Please select an upcoming slot.`);
+                                    return;
+                                  }
+                                  if (!slot.isNoShow && !slot.isFull) setSelectedSlot(slot.time);
+                                }}
                                 style={[
                                   styles.slotItem,
                                   { width: "100%" },
@@ -1536,6 +1627,11 @@ export default function ReceptionBookAppointmentScreen() {
                                     borderColor: "#fca5a5",
                                     opacity: 0.85,
                                   },
+                                  isPast && {
+                                    backgroundColor: "#f1f5f9",
+                                    borderColor: "#e2e8f0",
+                                    opacity: 0.65,
+                                  },
                                 ]}
                               >
                                 <Text
@@ -1543,6 +1639,7 @@ export default function ReceptionBookAppointmentScreen() {
                                     styles.slotItemText,
                                     selected && { color: "#ffffff", fontWeight: "800" },
                                     (slot.isFull || slot.isNoShow) && { color: "#b91c1c" },
+                                    isPast && { color: "#94a3b8", textDecorationLine: "line-through" },
                                   ]}
                                 >
                                   {slot.time}
@@ -1558,6 +1655,18 @@ export default function ReceptionBookAppointmentScreen() {
                                     }}
                                   >
                                     <Text style={{ fontSize: 7, fontWeight: "800", color: "#ffffff" }}>NO-SHOW</Text>
+                                  </View>
+                                ) : isPast ? (
+                                  <View
+                                    style={{
+                                      backgroundColor: "#94a3b8",
+                                      paddingHorizontal: 3,
+                                      paddingVertical: 0.5,
+                                      borderRadius: 2,
+                                      marginTop: 1,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 7, fontWeight: "800", color: "#ffffff" }}>PASSED</Text>
                                   </View>
                                 ) : slot.isFull ? (
                                   <View
@@ -1816,18 +1925,29 @@ export default function ReceptionBookAppointmentScreen() {
           >
             <View style={styles.modalContainer} onStartShouldSetResponder={() => true}>
               <View style={styles.calNavHeader}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (calMonth === 0) {
-                      setCalMonth(11);
-                      setCalYear((y) => y - 1);
-                    } else {
-                      setCalMonth((m) => m - 1);
-                    }
-                  }}
-                >
-                  <Feather name="chevron-left" size={20} color="#0284c7" />
-                </TouchableOpacity>
+                {(() => {
+                  const now = new Date();
+                  const isCurrentMonthOrPast =
+                    calYear < now.getFullYear() ||
+                    (calYear === now.getFullYear() && calMonth <= now.getMonth());
+                  return (
+                    <TouchableOpacity
+                      disabled={isCurrentMonthOrPast}
+                      onPress={() => {
+                        if (isCurrentMonthOrPast) return;
+                        if (calMonth === 0) {
+                          setCalMonth(11);
+                          setCalYear((y) => y - 1);
+                        } else {
+                          setCalMonth((m) => m - 1);
+                        }
+                      }}
+                      style={{ padding: 4, opacity: isCurrentMonthOrPast ? 0.25 : 1 }}
+                    >
+                      <Feather name="chevron-left" size={20} color={isCurrentMonthOrPast ? "#94a3b8" : "#0284c7"} />
+                    </TouchableOpacity>
+                  );
+                })()}
 
                 <Text style={{ fontWeight: "800", fontSize: 16, color: "#0f172a" }}>
                   {monthNames[calMonth]} {calYear}
@@ -1842,6 +1962,7 @@ export default function ReceptionBookAppointmentScreen() {
                       setCalMonth((m) => m + 1);
                     }
                   }}
+                  style={{ padding: 4 }}
                 >
                   <Feather name="chevron-right" size={20} color="#0284c7" />
                 </TouchableOpacity>
@@ -1863,17 +1984,36 @@ export default function ReceptionBookAppointmentScreen() {
                   const day = i + 1;
                   const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
                   const isSelected = appointmentDate === formatted;
+                  const isPastDate = (() => {
+                    const t = new Date();
+                    t.setHours(0, 0, 0, 0);
+                    const cellDate = new Date(calYear, calMonth, day);
+                    cellDate.setHours(0, 0, 0, 0);
+                    return cellDate.getTime() < t.getTime();
+                  })();
 
                   return (
                     <TouchableOpacity
                       key={day}
+                      disabled={isPastDate}
                       onPress={() => {
+                        if (isPastDate) return;
                         setAppointmentDate(formatted);
                         setCalendarModalOpen(false);
                       }}
-                      style={[styles.calDayCell, isSelected && styles.calDayCellSelected]}
+                      style={[
+                        styles.calDayCell,
+                        isSelected && styles.calDayCellSelected,
+                        isPastDate && { opacity: 0.35, backgroundColor: "#f8fafc" },
+                      ]}
                     >
-                      <Text style={[styles.calDayText, isSelected && { color: "#ffffff", fontWeight: "800" }]}>
+                      <Text
+                        style={[
+                          styles.calDayText,
+                          isSelected && { color: "#ffffff", fontWeight: "800" },
+                          isPastDate && { color: "#94a3b8", textDecorationLine: "line-through" },
+                        ]}
+                      >
                         {day}
                       </Text>
                     </TouchableOpacity>
@@ -2000,7 +2140,7 @@ export default function ReceptionBookAppointmentScreen() {
                   </View>
                   <View>
                     <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>
-                      Profiles (+91 {phoneNumber})
+                      Profiles {modalSearchInput ? `(${modalSearchInput})` : ""}
                     </Text>
                     <Text style={{ fontSize: 10.5, color: "#64748b" }}>
                       {phoneProfiles.length} registered {phoneProfiles.length === 1 ? "profile" : "profiles"} found
@@ -2027,6 +2167,56 @@ export default function ReceptionBookAppointmentScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Search/Enter input inside popup box */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#f0f9ff",
+                  borderWidth: 1,
+                  borderColor: "#bae6fd",
+                  borderRadius: 14,
+                  paddingHorizontal: 10,
+                  paddingVertical: 2,
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="call-outline" size={16} color="#0284c7" />
+                <TextInput
+                  placeholder="Enter 10-digit Phone or Patient ID..."
+                  placeholderTextColor="#94a3b8"
+                  value={modalSearchInput}
+                  onChangeText={(val) => {
+                    setModalSearchInput(val);
+                    const clean = val.replace(/\D/g, "");
+                    if (clean.length === 10) {
+                      fetchAndOpenProfiles(clean, true);
+                    }
+                  }}
+                  onSubmitEditing={() => fetchAndOpenProfiles(modalSearchInput, true)}
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    fontWeight: "700",
+                    color: "#0f172a",
+                    paddingVertical: 6,
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => fetchAndOpenProfiles(modalSearchInput, true)}
+                  disabled={!modalSearchInput.trim() || isLoadingProfiles}
+                  style={{
+                    backgroundColor: "#0284c7",
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 10,
+                    opacity: !modalSearchInput.trim() || isLoadingProfiles ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#ffffff" }}>Search</Text>
+                </TouchableOpacity>
+              </View>
+
               {/* Body: Profiles List or Merge Mode */}
               <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
                 {isLoadingProfiles ? (
@@ -2049,10 +2239,10 @@ export default function ReceptionBookAppointmentScreen() {
                   >
                     <Ionicons name="person-outline" size={28} color="#94a3b8" />
                     <Text style={{ fontSize: 12.5, fontWeight: "700", color: "#334155", marginTop: 6 }}>
-                      No existing profiles found
+                      {modalSearchInput.trim() ? `No profiles found for "${modalSearchInput}"` : "Enter Mobile or Patient ID above"}
                     </Text>
                     <Text style={{ fontSize: 11, color: "#64748b", textAlign: "center", marginTop: 2 }}>
-                      Create a new profile. A new sequential ID (e.g. SPH-KPB-0001) will be assigned.
+                      You can search another number or create a new profile using the button below.
                     </Text>
                   </View>
                 ) : mergingSourceProfile ? (

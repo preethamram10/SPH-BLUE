@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import HRSidebar from "@/components/HRSidebar";
+import { getBranchPhone } from "@/app/reception/medical-requests/pdf";
 import {
   Clock,
   Search,
@@ -228,7 +229,7 @@ export default function AdminPayLaterPage() {
       `Paid at Clinic: ₹${r.paidAmount.toLocaleString()}\n` +
       `Pending Pay Later Due: ₹${r.dueAmount.toLocaleString()}\n\n` +
       `You may clear this balance at your next visit or via UPI to sseomni9k9v0j291124pos@mairtel.\n\n` +
-      `Thank you,\nSpiritual Homeopathy Clinics\nSupport: +91 9030176176`
+      `Thank you,\nSpiritual Homeopathy Clinics (${r.branch || "Clinic"})\nBranch Contact: ${getBranchPhone(r.branch)}`
     );
     window.open(`https://wa.me/91${cleanPhone}?text=${msg}`, "_blank");
   };

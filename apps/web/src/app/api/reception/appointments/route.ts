@@ -18,6 +18,18 @@ export async function GET(req: NextRequest) {
   }
 }
 
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return 0;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const period = match[3] ? match[3].toUpperCase() : null;
+  if (period === "PM" && hours < 12) hours += 12;
+  if (period === "AM" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -43,6 +55,34 @@ export async function POST(req: NextRequest) {
         { success: false, error: "Missing required fields (patientName, phoneNumber, appointmentDate, selectedTimeSlot)" },
         { status: 400 }
       );
+    }
+
+    // Past dates & past time slots validation (Old Entry / Old Patient RX is used for historical records)
+    const now = new Date();
+    const todayYYYYMMDD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dateParts = String(appointmentDate).split("-");
+    const normalizedAptDate = dateParts.length === 3
+      ? dateParts[0].length === 4
+        ? `${dateParts[0]}-${dateParts[1].padStart(2, "0")}-${dateParts[2].padStart(2, "0")}`
+        : `${dateParts[2]}-${dateParts[1].padStart(2, "0")}-${dateParts[0].padStart(2, "0")}`
+      : String(appointmentDate);
+
+    if (normalizedAptDate < todayYYYYMMDD) {
+      return NextResponse.json(
+        { success: false, error: "Cannot book appointments for past dates. For historical patient records, please use Old Patient RX." },
+        { status: 400 }
+      );
+    }
+
+    if (normalizedAptDate === todayYYYYMMDD && selectedTimeSlot) {
+      const slotMin = parseTimeToMinutes(selectedTimeSlot);
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      if (slotMin > 0 && slotMin < currentMin) {
+        return NextResponse.json(
+          { success: false, error: `Time slot ${selectedTimeSlot} has already passed for today. Please select an upcoming slot.` },
+          { status: 400 }
+        );
+      }
     }
 
     const finalRegId =

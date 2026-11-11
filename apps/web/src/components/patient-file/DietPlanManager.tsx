@@ -56,7 +56,7 @@ export function DietPlanManager({
   appointmentId,
   patientData,
   initialDietPlan = "",
-  initialDietFee = 500,
+  initialDietFee = 0,
   onSavePlan,
   isSaving = false,
 }: DietPlanManagerProps) {
@@ -71,7 +71,7 @@ export function DietPlanManager({
   const [showBMIInfoModal, setShowBMIInfoModal] = useState(false);
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
 
-  const [dietFee, setDietFee] = useState<number>(initialDietFee || 0);
+  const [dietFee, setDietFee] = useState<number>(initialDietFee || (initialDietPlan ? 500 : 0));
   const [planText, setPlanText] = useState<string>(initialDietPlan || "");
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [copied, setCopied] = useState(false);

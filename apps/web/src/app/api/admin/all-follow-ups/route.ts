@@ -75,15 +75,38 @@ export async function GET(req: NextRequest) {
     const todayDDMMYYYY = `${String(now.getDate()).padStart(2, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${currentYear}`;
     const todayTime = new Date(currentYear, currentMonth, now.getDate()).getTime();
 
+    const tomorrow = new Date(now.getTime() + 86400000);
+    const tomorrowDDMMYYYY = `${String(tomorrow.getDate()).padStart(2, "0")}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${tomorrow.getFullYear()}`;
+    const tomorrowTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate()).getTime();
+
     // Map all appointments into follow-up records
     const followUpsList = allAppts
       .filter((a) => !a.isDeleted && a.status !== "CANCELLED")
       .map((a, idx) => {
-        const cleanBranch = String(a.branch || "KPHB Branch");
-        branchSet.add(cleanBranch);
+        const normA = (a.branch || "")
+          .toLowerCase()
+          .replace(/spiritual\s*homeopathy/gi, "")
+          .replace(/\bbranch\b/gi, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+        const matchedBranch = rawBranches.find((rb) => {
+          const normRb = (rb.name || "")
+            .toLowerCase()
+            .replace(/spiritual\s*homeopathy/gi, "")
+            .replace(/\bbranch\b/gi, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+          return (
+            normRb === normA ||
+            (normRb.length >= 3 &&
+              normA.length >= 3 &&
+              (normRb.startsWith(normA) || normA.startsWith(normRb)))
+          );
+        });
+        const cleanBranch = matchedBranch ? matchedBranch.name : String(a.branch || "Kphb Branch");
 
         let dueDate = "";
-        let interval = String(a.followUpInterval || "1 Month");
+        let interval = String(a.followUpInterval || "").trim();
 
         if (a.followUpDate) {
           dueDate = normalizeToDDMMYYYY(a.followUpDate);
@@ -102,6 +125,11 @@ export async function GET(req: NextRequest) {
           dueDate = todayDDMMYYYY;
         }
 
+        // If interval is empty, "Custom Date" or "No Follow-up", display the actual date
+        if (!interval || interval === "Custom Date" || interval === "No Follow-up") {
+          interval = dueDate || "1 Month";
+        }
+
         const dueTime = parseDDMMYYYYToTime(dueDate);
 
         // Date breakdown for month filtering
@@ -118,6 +146,7 @@ export async function GET(req: NextRequest) {
 
         const isOverdue = dueTime > 0 && dueTime < todayTime && a.status !== "COMPLETED";
         const isDueToday = dueDate === todayDDMMYYYY || dueTime === todayTime;
+        const isDueTomorrow = dueDate === tomorrowDDMMYYYY || dueTime === tomorrowTime;
         const isThisMonth = dueYear === currentYear && dueMonth === currentMonth;
         const isNextMonth = dueYear === nextMonthYear && dueMonth === nextMonth;
 
@@ -125,6 +154,8 @@ export async function GET(req: NextRequest) {
           computedStatus = "Completed";
         } else if (isDueToday) {
           computedStatus = "Due Today";
+        } else if (isDueTomorrow) {
+          computedStatus = "Due Tomorrow" as any;
         } else if (isOverdue) {
           computedStatus = "Overdue";
         } else if ((a.status as string) === "CONFIRMED" || a.status === "WAITING") {
@@ -153,6 +184,7 @@ export async function GET(req: NextRequest) {
           dueYear,
           isOverdue,
           isDueToday,
+          isDueTomorrow,
           isThisMonth,
           isNextMonth,
           followUpInterval: interval,
@@ -166,31 +198,34 @@ export async function GET(req: NextRequest) {
     // Compute aggregate stats across all live records
     const stats = {
       total: followUpsList.length,
-      overdue: followUpsList.filter((f) => f.isOverdue).length,
       dueToday: followUpsList.filter((f) => f.isDueToday).length,
-      thisMonth: followUpsList.filter((f) => f.isThisMonth).length,
+      dueTomorrow: followUpsList.filter((f) => f.isDueTomorrow).length,
+      overdue: followUpsList.filter((f) => f.isOverdue).length,
       nextMonth: followUpsList.filter((f) => f.isNextMonth).length,
+      thisMonth: followUpsList.filter((f) => f.isThisMonth).length,
       completed: followUpsList.filter((f) => f.status === "Completed").length,
     };
 
     // Filter
     let filtered = followUpsList;
 
-    // Period / Month / Range filter: all, overdue, this_month, next_month, due_today, month, range
-    if (periodFilter === "overdue") {
+    // Period / Month / Range filter: due_today, due_tomorrow, overdue, next_month, this_month, month, range, all
+    if (periodFilter === "due_today" || periodFilter === "today") {
+      filtered = filtered.filter((f) => f.isDueToday);
+    } else if (periodFilter === "due_tomorrow" || periodFilter === "tomorrow") {
+      filtered = filtered.filter((f) => f.isDueTomorrow);
+    } else if (periodFilter === "overdue" || periodFilter === "over_due") {
       filtered = filtered.filter((f) => f.isOverdue);
-    } else if (periodFilter === "this_month") {
-      filtered = filtered.filter((f) => f.isThisMonth);
     } else if (periodFilter === "next_month") {
       filtered = filtered.filter((f) => f.isNextMonth);
-    } else if (periodFilter === "due_today") {
-      filtered = filtered.filter((f) => f.isDueToday);
+    } else if (periodFilter === "this_month") {
+      filtered = filtered.filter((f) => f.isThisMonth);
     } else if (periodFilter === "month" && selectedMonth) {
       const [sYear, sMonth] = selectedMonth.split("-").map(Number);
       filtered = filtered.filter(
         (f) => f.dueYear === sYear && f.dueMonth === sMonth - 1
       );
-    } else if (periodFilter === "range" || (startDate && endDate)) {
+    } else if (periodFilter === "range" || periodFilter === "custom_date" || (startDate && endDate)) {
       const startTime = startDate ? parseDDMMYYYYToTime(startDate) : 0;
       const endTime = endDate ? parseDDMMYYYYToTime(endDate) + 86399999 : Infinity;
       filtered = filtered.filter((f) => f.dueTime >= startTime && f.dueTime <= endTime);
@@ -198,9 +233,21 @@ export async function GET(req: NextRequest) {
 
     // Branch filter
     if (branchFilter && branchFilter !== "All Branches") {
-      filtered = filtered.filter((f) =>
-        f.branch.toLowerCase().includes(branchFilter.toLowerCase())
-      );
+      const normFilter = branchFilter
+        .toLowerCase()
+        .replace(/spiritual\s*homeopathy/gi, "")
+        .replace(/\bbranch\b/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+      filtered = filtered.filter((f) => {
+        const normF = f.branch
+          .toLowerCase()
+          .replace(/spiritual\s*homeopathy/gi, "")
+          .replace(/\bbranch\b/gi, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
+      });
     }
 
     // Status filter
@@ -245,7 +292,7 @@ export async function GET(req: NextRequest) {
       ? filtered
       : filtered.slice(startIndex, startIndex + pageSize);
 
-    const branchesList = ["All Branches", ...Array.from(branchSet).sort()];
+    const branchesList = ["All Branches", ...Array.from(new Set(rawBranches.map((b) => b.name).filter(Boolean)))];
 
     return NextResponse.json({
       success: true,

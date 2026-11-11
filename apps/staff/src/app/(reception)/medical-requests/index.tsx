@@ -322,7 +322,7 @@ export default function MedicalRequestsScreen() {
       `${notesBlock}` +
       `*Prescribed Remedies:*\n\n${medsList}\n\n` +
       `--------------------------------\n` +
-      `Spiritual Homeopathy Clinics\nHelpline: 9030176176 | spiritualhomeoclinic.com`
+      `Spiritual Homeopathy Clinics (${sharePopupData.branchName || "Clinic"})\nHelpline: ${getBranchPhone(sharePopupData.branchName)} | spiritualhomeoclinic.com`
     );
 
     Linking.openURL(`https://wa.me/91${cleanP}?text=${text}`).catch(() => {

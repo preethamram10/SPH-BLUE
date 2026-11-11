@@ -40,10 +40,11 @@ export interface FollowUpItem {
   dueYear: number;
   isOverdue: boolean;
   isDueToday: boolean;
+  isDueTomorrow?: boolean;
   isThisMonth: boolean;
   isNextMonth: boolean;
   followUpInterval: string;
-  status: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed";
+  status: "Due Today" | "Due Tomorrow" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed";
   notes: string;
   consultationFee: number;
   prescriptionImages?: string[];
@@ -120,6 +121,58 @@ function minutesToTimeString(minutes: number): string {
   return `${hStr}:${mStr} ${ap}`;
 }
 
+function isDateInPast(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split("-");
+  let y: number, m: number, d: number;
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else {
+      y = parseInt(parts[2], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[0], 10);
+    }
+    const target = new Date(y, m, d);
+    target.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return target.getTime() < today.getTime();
+  }
+  return false;
+}
+
+function isDateToday(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const parts = dateStr.split("-");
+  let y: number, m: number, d: number;
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      y = parseInt(parts[0], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[2], 10);
+    } else {
+      y = parseInt(parts[2], 10);
+      m = parseInt(parts[1], 10) - 1;
+      d = parseInt(parts[0], 10);
+    }
+    const today = new Date();
+    return y === today.getFullYear() && m === today.getMonth() && d === today.getDate();
+  }
+  return false;
+}
+
+function isSlotTimePassed(timeStr: string, dateStr: string): boolean {
+  if (isDateInPast(dateStr)) return true;
+  if (!isDateToday(dateStr)) return false;
+  const slotMinutes = parseTimeToMinutes(timeStr);
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return slotMinutes < currentMinutes;
+}
+
 function generateSlotsFromRanges(ranges: any[]): string[] {
   if (!ranges || ranges.length === 0) {
     return STANDARD_TIME_SLOTS;
@@ -192,8 +245,8 @@ function ReceptionFollowUpsContent() {
   const [selectedBranch, setSelectedBranch] = useState("KPHB Branch");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "month", "range"
-  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range">("this_month");
+  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "due_tomorrow", "month", "range"
+  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today" | "due_tomorrow" | "month" | "range">("due_today");
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -245,6 +298,7 @@ function ReceptionFollowUpsContent() {
     total: 0,
     overdue: 0,
     dueToday: 0,
+    dueTomorrow: 0,
     thisMonth: 0,
     nextMonth: 0,
     completed: 0,
@@ -337,7 +391,7 @@ function ReceptionFollowUpsContent() {
     setCurrentPage(1);
   };
 
-  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range") => {
+  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today" | "due_tomorrow" | "month" | "range") => {
     setPeriodFilter(period);
     setCurrentPage(1);
   };
@@ -357,7 +411,11 @@ function ReceptionFollowUpsContent() {
     } else {
       setNewDueDate(new Date().toISOString().slice(0, 10));
     }
-    setNewInterval(item.followUpInterval || "1 Month");
+    const cleanIntv =
+      !item.followUpInterval || item.followUpInterval === "Custom Date" || item.followUpInterval === "No Follow-up"
+        ? item.dueDate || "1 Month"
+        : item.followUpInterval;
+    setNewInterval(cleanIntv);
     setRescheduleNotes(item.notes || "");
   };
 
@@ -661,19 +719,21 @@ function ReceptionFollowUpsContent() {
         endMin = startMin + 180;
       }
 
-      const sessionSlots: { time: string; bookedCount: number; maxCapacity: number; isFull: boolean; isNoShow: boolean }[] = [];
+      const sessionSlots: { time: string; bookedCount: number; maxCapacity: number; isFull: boolean; isNoShow: boolean; isPast: boolean }[] = [];
 
       for (let cur = startMin; cur < endMin; cur += 15) {
         const timeStr = minutesToTimeString(cur);
         const isNoShow = checkIsSlotNoShow(cur);
         const bookedCount = getSlotBookedCount(timeStr);
-        const isFull = isNoShow || bookedCount >= 3;
+        const isPast = isSlotTimePassed(timeStr, bookDate);
+        const isFull = isNoShow || bookedCount >= 3 || isPast;
         sessionSlots.push({
           time: timeStr,
           bookedCount,
           maxCapacity: 3,
           isFull,
           isNoShow,
+          isPast,
         });
       }
 
@@ -686,11 +746,21 @@ function ReceptionFollowUpsContent() {
         slots: sessionSlots,
       };
     });
-  }, [bookingAvailableDoctors, bookDoctorId, bookMode, activeBookingNoShows, bookedAppointments]);
+  }, [bookingAvailableDoctors, bookDoctorId, bookMode, activeBookingNoShows, bookedAppointments, bookDate]);
 
   // Submit Book Appointment
   const handleConfirmBooking = async () => {
     if (!bookingItem || !bookDate || !bookTimeSlot) return;
+
+    if (isDateInPast(bookDate)) {
+      alert("Cannot book appointments for past dates.");
+      return;
+    }
+    if (isSlotTimePassed(bookTimeSlot, bookDate)) {
+      alert(`Time slot ${bookTimeSlot} has already passed for today. Please select an upcoming slot.`);
+      return;
+    }
+
     setSavingBooking(true);
     try {
       let dtFormatted = bookDate;
@@ -780,7 +850,7 @@ function ReceptionFollowUpsContent() {
         `"${f.doctorName.replace(/"/g, '""')}"`,
         `"${f.branch}"`,
         `"${f.dueDate}"`,
-        `"${f.followUpInterval}"`,
+        `"${!f.followUpInterval || f.followUpInterval === "Custom Date" || f.followUpInterval === "No Follow-up" ? f.dueDate : f.followUpInterval}"`,
         `"${f.status}"`,
       ]);
 
@@ -928,79 +998,87 @@ function ReceptionFollowUpsContent() {
                 Period Filter:
               </span>
 
-              {/* This Month (FIRST & DEFAULT) */}
-              <button
-                onClick={() => handlePeriodChange("this_month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "this_month"
-                    ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
-                    : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
-                  }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>This Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
-                    }`}
-                >
-                  {stats.thisMonth}
-                </span>
-              </button>
-
-              {/* Next Month */}
-              <button
-                onClick={() => handlePeriodChange("next_month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "next_month"
-                    ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
-                    : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
-                  }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Next Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
-                    }`}
-                >
-                  {stats.nextMonth}
-                </span>
-              </button>
-
-              {/* Due Today */}
+              {/* 1. Today */}
               <button
                 onClick={() => handlePeriodChange("due_today")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "due_today"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "due_today"
                     ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
                     : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
-                  }`}
+                }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>Due Today</span>
+                <span>Today</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
-                    }`}
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
+                  }`}
                 >
                   {stats.dueToday}
                 </span>
               </button>
 
-              {/* Overdue (Follow-up date passed) */}
+              {/* 2. Tomorrow */}
+              <button
+                onClick={() => handlePeriodChange("due_tomorrow")}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "due_tomorrow"
+                    ? "bg-emerald-600 text-white shadow-2xs shadow-emerald-200"
+                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Tomorrow</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "due_tomorrow" ? "bg-white/25 text-white" : "bg-emerald-200 text-emerald-900"
+                  }`}
+                >
+                  {stats.dueTomorrow}
+                </span>
+              </button>
+
+              {/* 3. Next Month */}
+              <button
+                onClick={() => handlePeriodChange("next_month")}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "next_month"
+                    ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
+                    : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Next Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
+                  }`}
+                >
+                  {stats.nextMonth}
+                </span>
+              </button>
+
+              {/* 4. Overdue */}
               <button
                 onClick={() => handlePeriodChange("overdue")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "overdue"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "overdue"
                     ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
                     : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
-                  }`}
+                }`}
               >
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span>Overdue (Date Passed)</span>
+                <span>Overdue</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
-                    }`}
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
+                  }`}
                 >
                   {stats.overdue}
                 </span>
               </button>
 
-              {/* Choose Month */}
+              {/* 5. Custom Month */}
               <button
                 onClick={() => handlePeriodChange("month")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1010,7 +1088,7 @@ function ReceptionFollowUpsContent() {
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Choose Month</span>
+                <span>Custom Month</span>
                 {periodFilter === "month" && selectedMonth && (
                   <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-purple-800 text-white font-mono">
                     {selectedMonth}
@@ -1018,7 +1096,7 @@ function ReceptionFollowUpsContent() {
                 )}
               </button>
 
-              {/* Date Range */}
+              {/* 6. Custom Date */}
               <button
                 onClick={() => handlePeriodChange("range")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1028,7 +1106,7 @@ function ReceptionFollowUpsContent() {
                 }`}
               >
                 <CalendarPlus className="w-3.5 h-3.5" />
-                <span>Date Range</span>
+                <span>Custom Date</span>
                 {periodFilter === "range" && (startDate || endDate) && (
                   <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-teal-800 text-white">
                     Active
@@ -1036,13 +1114,34 @@ function ReceptionFollowUpsContent() {
                 )}
               </button>
 
-              {/* All Follow-Ups (MOVED TO LAST) */}
+              {/* 7. This Month */}
+              <button
+                onClick={() => handlePeriodChange("this_month")}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "this_month"
+                    ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
+                    : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>This Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
+                  }`}
+                >
+                  {stats.thisMonth}
+                </span>
+              </button>
+
+              {/* 8. All Follow-Ups (MOVED TO LAST) */}
               <button
                 onClick={() => handlePeriodChange("all")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${periodFilter === "all"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "all"
                     ? "bg-slate-900 text-white shadow-2xs"
                     : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                  }`}
+                }`}
               >
                 <span>All Follow-Ups</span>
                 <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-white/20 text-current font-extrabold">
@@ -1238,8 +1337,18 @@ function ReceptionFollowUpsContent() {
 
                           {/* Follow-Up Due Date */}
                           <td className="py-2 px-2.5 text-center">
-                            <div className="inline-flex items-center gap-1 font-mono font-bold text-slate-900 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 text-[10.5px]">
-                              <Calendar className="w-2.5 h-2.5 text-slate-500" />
+                            <div
+                              className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-[10.5px] ${
+                                item.isOverdue
+                                  ? "bg-rose-50 border-rose-200 text-rose-700"
+                                  : item.isDueToday
+                                  ? "bg-amber-50 border-amber-200 text-amber-800"
+                                  : item.isDueTomorrow
+                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                  : "bg-slate-50 border-slate-200 text-slate-900"
+                              }`}
+                            >
+                              <Calendar className="w-2.5 h-2.5 text-current opacity-70" />
                               <span>{item.dueDate}</span>
                             </div>
                           </td>
@@ -1527,6 +1636,7 @@ function ReceptionFollowUpsContent() {
                   </label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     value={bookDate}
                     onChange={(e) => setBookDate(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -1579,27 +1689,40 @@ function ReceptionFollowUpsContent() {
                           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
                             {session.slots.map((slot: any) => {
                               const isSelected = bookTimeSlot === slot.time;
-                              const disabled = slot.isFull || slot.isNoShow;
+                              const isPast = Boolean(slot.isPast);
+                              const disabled = slot.isFull || slot.isNoShow || isPast;
                               return (
                                 <button
                                   key={slot.time}
                                   type="button"
                                   disabled={disabled}
-                                  onClick={() => setBookTimeSlot(slot.time)}
+                                  onClick={() => {
+                                    if (isPast) {
+                                      alert(`Time slot ${slot.time} has already completed. Please select an upcoming slot.`);
+                                      return;
+                                    }
+                                    setBookTimeSlot(slot.time);
+                                  }}
                                   className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-lg text-center transition-all border ${
-                                    disabled
+                                    isPast
+                                      ? "bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed"
+                                      : disabled
                                       ? "bg-red-50 border-red-200 text-red-600 opacity-60 cursor-not-allowed"
                                       : isSelected
                                       ? "bg-sky-600 border-sky-600 text-white shadow-2xs"
                                       : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300 cursor-pointer"
                                   }`}
                                 >
-                                  <span className={`text-[10.5px] font-bold ${isSelected ? "text-white" : ""}`}>
+                                  <span className={`text-[10.5px] font-bold ${isSelected ? "text-white" : isPast ? "text-slate-400 line-through" : ""}`}>
                                     {slot.time}
                                   </span>
                                   {slot.isNoShow ? (
                                     <span className="text-[7.5px] font-extrabold uppercase px-1 rounded bg-red-600 text-white mt-0.5">
                                       NO-SHOW
+                                    </span>
+                                  ) : isPast ? (
+                                    <span className="text-[7.5px] font-extrabold uppercase px-1 rounded bg-slate-400 text-white mt-0.5">
+                                      PASSED
                                     </span>
                                   ) : slot.isFull ? (
                                     <span className="text-[7.5px] font-extrabold uppercase px-1 rounded bg-red-500 text-white mt-0.5">

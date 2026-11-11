@@ -55,6 +55,7 @@ export interface GeneratedSlot {
   maxCapacity: number;
   isFull: boolean;
   isNoShow?: boolean;
+  isPast?: boolean;
   isTemporary?: boolean;
 }
 export interface SlotSession {
@@ -134,6 +135,7 @@ export default function ReceptionAppointmentsPage() {
   const [mergingSourceProfile, setMergingSourceProfile] = useState<any | null>(null);
   const [mergingTargetRegId, setMergingTargetRegId] = useState("");
   const [modalFeedback, setModalFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [modalSearchInput, setModalSearchInput] = useState("");
 
   const MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -219,6 +221,58 @@ export default function ReceptionAppointmentsPage() {
     h = h % 12;
     if (h === 0) h = 12;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ap}`;
+  };
+
+  const isDateInPast = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const parts = dateStr.split("-");
+    let y: number, m: number, d: number;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        y = parseInt(parts[2], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0], 10);
+      }
+      const target = new Date(y, m, d);
+      target.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return target.getTime() < today.getTime();
+    }
+    return false;
+  };
+
+  const isDateToday = (dateStr: string): boolean => {
+    if (!dateStr) return false;
+    const parts = dateStr.split("-");
+    let y: number, m: number, d: number;
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        y = parseInt(parts[2], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0], 10);
+      }
+      const today = new Date();
+      return y === today.getFullYear() && m === today.getMonth() && d === today.getDate();
+    }
+    return false;
+  };
+
+  const isSlotTimePassed = (timeStr: string, dateStr: string): boolean => {
+    if (isDateInPast(dateStr)) return true;
+    if (!isDateToday(dateStr)) return false;
+    const slotMinutes = parseTimeToMinutes(timeStr);
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return slotMinutes < currentMinutes;
   };
 
   // Fetch doctors and active no-shows for this branch and date
@@ -557,13 +611,15 @@ export default function ReceptionAppointmentsPage() {
         const timeStr = formatMinutesToTime(cur);
         const isNoShow = checkIsSlotNoShow(cur);
         const bookedCount = getSlotBookedCount(timeStr);
-        const isFull = isNoShow || bookedCount >= 3;
+        const isPast = isSlotTimePassed(timeStr, appointmentDate);
+        const isFull = isNoShow || bookedCount >= 3 || isPast;
         sessionSlots.push({
           time: timeStr,
           bookedCount,
           maxCapacity: 3,
           isFull,
           isNoShow,
+          isPast,
           isTemporary: false,
         });
       }
@@ -584,13 +640,15 @@ export default function ReceptionAppointmentsPage() {
           const curMin = parseTimeToMinutes(tTime);
           const isNoShow = checkIsSlotNoShow(curMin);
           const bookedCount = getSlotBookedCount(tTime);
-          const isFull = isNoShow || bookedCount >= 3;
+          const isPast = isSlotTimePassed(tTime, appointmentDate);
+          const isFull = isNoShow || bookedCount >= 3 || isPast;
           sessionSlots.push({
             time: tTime,
             bookedCount,
             maxCapacity: 3,
             isFull,
             isNoShow,
+            isPast,
             isTemporary: true,
           });
         }
@@ -623,7 +681,7 @@ export default function ReceptionAppointmentsPage() {
         suggestedAfterTime,
       };
     });
-  }, [selectedDoctor, activeNoShows, temporarySlots, bookedAppointments]);
+  }, [selectedDoctor, activeNoShows, temporarySlots, bookedAppointments, appointmentDate]);
 
   // Flat list of all available slots across all sessions for validation
   const generatedSlots = useMemo((): GeneratedSlot[] => {
@@ -723,13 +781,13 @@ export default function ReceptionAppointmentsPage() {
   };
 
   // Profiles Multi-Account Helpers (Check Profiles, 10-Digit Auto-Popup, Edit Name, Merge, Delete)
-  const fetchAndOpenProfiles = async (phone: string, autoOpen = true) => {
-    const clean = phone.replace(/\D/g, "");
-    if (clean.length < 10) return;
+  const fetchAndOpenProfiles = async (phoneOrQuery: string, autoOpen = true) => {
+    const raw = phoneOrQuery.trim();
+    if (!raw) return;
     setIsLoadingProfiles(true);
     setModalFeedback(null);
     try {
-      const res = await fetch(`/api/reception/patients/by-phone?phone=${encodeURIComponent(clean)}`);
+      const res = await fetch(`/api/reception/patients/by-phone?query=${encodeURIComponent(raw)}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.profiles)) {
         setPhoneProfiles(data.profiles);
@@ -755,20 +813,29 @@ export default function ReceptionAppointmentsPage() {
     const clean = val.replace(/\D/g, "").slice(0, 10);
     setPhoneNumber(clean);
     if (clean.length === 10) {
+      setModalSearchInput(clean);
       fetchAndOpenProfiles(clean, true);
     }
   };
 
   const handleCheckProfiles = () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      alert("Please enter a valid 10-digit mobile number first.");
-      return;
+    const query = phoneNumber || modalSearchInput || "";
+    setModalSearchInput(query);
+    setIsProfilesModalOpen(true);
+    if (query.replace(/\D/g, "").length === 10 || /[a-zA-Z]/.test(query)) {
+      fetchAndOpenProfiles(query, false);
+    } else {
+      setPhoneProfiles([]);
     }
-    fetchAndOpenProfiles(phoneNumber, false);
   };
 
   const handleSelectProfile = (profile: any) => {
     setPatientName(profile.name);
+    if (profile.phone) {
+      const cleanPhone = profile.phone.replace(/\D/g, "").slice(-10);
+      setPhoneNumber(cleanPhone);
+      setModalSearchInput(cleanPhone);
+    }
     setFoundProfile(profile);
     setIsRebackMode(true);
     setManualRegId(profile.regId);
@@ -779,6 +846,12 @@ export default function ReceptionAppointmentsPage() {
   };
 
   const handleCreateNewProfileForNumber = () => {
+    if (modalSearchInput) {
+      const cleanDigits = modalSearchInput.replace(/\D/g, "").slice(-10);
+      if (cleanDigits.length === 10) {
+        setPhoneNumber(cleanDigits);
+      }
+    }
     setPatientName("");
     setFoundProfile(null);
     setIsRebackMode(false);
@@ -936,6 +1009,16 @@ export default function ReceptionAppointmentsPage() {
     }
     if (!selectedSlot) {
       alert(consultationMode === "Online" ? "Please select a consultation time on the analog clock." : "Please select a 15-minute consultation time slot.");
+      return;
+    }
+
+    if (isDateInPast(appointmentDate)) {
+      alert("Cannot book appointments for past dates. For historical records, please use Old Patient RX.");
+      return;
+    }
+
+    if (isSlotTimePassed(selectedSlot, appointmentDate)) {
+      alert(`Time slot ${selectedSlot} has already passed for today. Please select an upcoming consultation time slot.`);
       return;
     }
 
@@ -1509,16 +1592,25 @@ export default function ReceptionAppointmentsPage() {
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                             {session.slots.map((slot) => {
                               const isSelected = selectedSlot === slot.time;
-                              const disabled = slot.isFull || slot.isNoShow;
+                              const isPast = Boolean(slot.isPast);
+                              const disabled = slot.isFull || slot.isNoShow || isPast;
 
                               return (
                                 <div key={slot.time} className="relative group">
                                   <button
                                     type="button"
                                     disabled={disabled}
-                                    onClick={() => setSelectedSlot(slot.time)}
+                                    onClick={() => {
+                                      if (isPast) {
+                                        alert(`Time slot ${slot.time} has already completed. Please select an upcoming slot.`);
+                                        return;
+                                      }
+                                      if (!disabled) setSelectedSlot(slot.time);
+                                    }}
                                     className={`w-full flex flex-col items-center justify-center py-2 px-1 rounded-xl text-center transition-all border ${
-                                      disabled
+                                      isPast
+                                        ? "bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed"
+                                        : disabled
                                         ? "bg-red-50 border-red-200 text-red-600 opacity-60 cursor-not-allowed"
                                         : isSelected
                                         ? "bg-[#0284c7] border-[#0284c7] text-white shadow-md shadow-sky-500/20"
@@ -1527,12 +1619,16 @@ export default function ReceptionAppointmentsPage() {
                                         : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300 cursor-pointer"
                                     }`}
                                   >
-                                    <span className={`text-xs font-bold ${isSelected ? "text-white" : ""}`}>
+                                    <span className={`text-xs font-bold ${isSelected ? "text-white" : isPast ? "text-slate-400 line-through" : ""}`}>
                                       {slot.time}
                                     </span>
                                     {slot.isNoShow ? (
                                       <span className="text-[9px] font-extrabold uppercase px-1 py-0.5 rounded bg-red-600 text-white mt-1">
                                         NO-SHOW
+                                      </span>
+                                    ) : isPast ? (
+                                      <span className="text-[9px] font-extrabold uppercase px-1 py-0.5 rounded bg-slate-400 text-white mt-1">
+                                        PASSED
                                       </span>
                                     ) : slot.isFull ? (
                                       <span className="text-[9px] font-extrabold uppercase px-1 py-0.5 rounded bg-red-500 text-white mt-1">
@@ -1712,20 +1808,35 @@ export default function ReceptionAppointmentsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (calMonth === 0) {
-                      setCalMonth(11);
-                      setCalYear((y) => y - 1);
-                    } else {
-                      setCalMonth((m) => m - 1);
-                    }
-                  }}
-                  className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+                {(() => {
+                  const now = new Date();
+                  const isCurrentMonthOrPast =
+                    calYear < now.getFullYear() ||
+                    (calYear === now.getFullYear() && calMonth <= now.getMonth());
+                  return (
+                    <button
+                      type="button"
+                      disabled={isCurrentMonthOrPast}
+                      onClick={() => {
+                        if (isCurrentMonthOrPast) return;
+                        if (calMonth === 0) {
+                          setCalMonth(11);
+                          setCalYear((y) => y - 1);
+                        } else {
+                          setCalMonth((m) => m - 1);
+                        }
+                      }}
+                      className={`w-7 h-7 rounded-lg text-slate-600 flex items-center justify-center transition-colors ${
+                        isCurrentMonthOrPast
+                          ? "opacity-25 cursor-not-allowed text-slate-300"
+                          : "hover:bg-slate-100 cursor-pointer"
+                      }`}
+                      title={isCurrentMonthOrPast ? "Past months cannot be selected" : "Previous Month"}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={() => {
@@ -1772,21 +1883,33 @@ export default function ReceptionAppointmentsPage() {
                   const t = new Date();
                   return day === t.getDate() && calMonth === t.getMonth() && calYear === t.getFullYear();
                 })();
+                const isPastDate = (() => {
+                  const t = new Date();
+                  t.setHours(0, 0, 0, 0);
+                  const cellDate = new Date(calYear, calMonth, day);
+                  cellDate.setHours(0, 0, 0, 0);
+                  return cellDate.getTime() < t.getTime();
+                })();
 
                 return (
                   <button
                     key={day}
                     type="button"
+                    disabled={isPastDate}
                     onClick={() => {
+                      if (isPastDate) return;
                       setAppointmentDate(formatted);
                       setIsCalendarOpen(false);
                     }}
-                    className={`h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
-                      isSelected
-                        ? "bg-[#0284c7] text-white shadow-md shadow-sky-500/30 font-extrabold scale-105"
+                    title={isPastDate ? "Past dates cannot be booked (use Old Patient RX)" : formatted}
+                    className={`h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center ${
+                      isPastDate
+                        ? "text-slate-300 bg-slate-50/50 cursor-not-allowed line-through opacity-50"
+                        : isSelected
+                        ? "bg-[#0284c7] text-white shadow-md shadow-sky-500/30 font-extrabold scale-105 cursor-pointer"
                         : isToday
-                        ? "border-2 border-[#0284c7] text-[#0284c7] font-extrabold hover:bg-sky-50"
-                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                        ? "border-2 border-[#0284c7] text-[#0284c7] font-extrabold hover:bg-sky-50 cursor-pointer"
+                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
                     }`}
                   >
                     {day}
@@ -1837,7 +1960,7 @@ export default function ReceptionAppointmentsPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">
-                    Patient Profiles for +91 {phoneNumber}
+                    Patient Profiles {modalSearchInput ? `(${modalSearchInput})` : ""}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {phoneProfiles.length} registered {phoneProfiles.length === 1 ? "profile" : "profiles"} found. Multiple family members can share this number.
@@ -1855,6 +1978,42 @@ export default function ReceptionAppointmentsPage() {
                 className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* INPUT BOX INSIDE PROFILE CHECK POPUP (Enter 10-digit mobile or Patient ID) */}
+            <div className="bg-sky-50/70 border border-sky-200/80 rounded-2xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="relative flex-1">
+                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Enter 10-digit mobile number or Patient ID (e.g. SPH-KPB-0001)..."
+                  value={modalSearchInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setModalSearchInput(val);
+                    const clean = val.replace(/\D/g, "");
+                    if (clean.length === 10) {
+                      fetchAndOpenProfiles(clean, true);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      fetchAndOpenProfiles(modalSearchInput, true);
+                    }
+                  }}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchAndOpenProfiles(modalSearchInput, true)}
+                disabled={!modalSearchInput.trim() || isLoadingProfiles}
+                className="px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Search</span>
               </button>
             </div>
 
@@ -1887,7 +2046,11 @@ export default function ReceptionAppointmentsPage() {
               ) : phoneProfiles.length === 0 ? (
                 <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
                   <User className="w-7 h-7 text-slate-300 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700">No existing profiles found for this phone number</p>
+                  <p className="text-xs font-bold text-slate-700">
+                    {modalSearchInput.trim()
+                      ? `No existing profiles found for "${modalSearchInput}"`
+                      : "Enter a 10-digit mobile number or Patient ID above"}
+                  </p>
                   <p className="text-[11px] text-slate-400">
                     You can create a new profile. A new sequential ID (e.g. SPH-KPB-0001) will be assigned automatically.
                   </p>

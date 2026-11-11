@@ -1147,6 +1147,13 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
+                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
+                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
+                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
+                                        Ready to Collect Fee
+                                      </Text>
+                                    </View>
+                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1312,6 +1319,13 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
+                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
+                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
+                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
+                                        Ready to Collect Fee
+                                      </Text>
+                                    </View>
+                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1460,6 +1474,13 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
+                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
+                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
+                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
+                                        Ready to Collect Fee
+                                      </Text>
+                                    </View>
+                                  )}
                                 </View>
                               </TouchableOpacity>
 
@@ -1613,6 +1634,13 @@ export default function ReceptionDashboard() {
                                       {appt.registrationId || appt.patientId || "ID: N/A"}
                                     </Text>
                                   </View>
+                                  {(appt.status === "COLLECT_FEE" || !!appt.isSentToReception) && (
+                                    <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4, borderWidth: 1, borderColor: "#fde68a" }}>
+                                      <Text style={{ color: "#92400e", fontSize: 9.5, fontWeight: "900" }}>
+                                        Ready to Collect Fee
+                                      </Text>
+                                    </View>
+                                  )}
                                 </View>
                               </TouchableOpacity>
 

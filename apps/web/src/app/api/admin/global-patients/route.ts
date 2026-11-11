@@ -41,8 +41,6 @@ export async function GET(req: NextRequest) {
         if (!apptsByPhone.has(ph)) apptsByPhone.set(ph, []);
         apptsByPhone.get(ph)!.push(a);
       }
-
-      if (a.branch) branchSet.add(String(a.branch));
     });
 
     // 3. Aggregate unique patients map
@@ -60,8 +58,13 @@ export async function GET(req: NextRequest) {
       );
       const latest = sortedAppts[0];
 
-      const cleanBranch = String(p.branch || latest?.branch || "KPHB Branch");
-      branchSet.add(cleanBranch);
+      const rawB = String(p.branch || latest?.branch || "Kphb Branch");
+      const normB = rawB.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+      const matchedB = rawBranches.find((rb) => {
+        const normRb = (rb.name || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+        return normRb === normB || (normRb.length >= 3 && normB.length >= 3 && (normRb.startsWith(normB) || normB.startsWith(normRb)));
+      });
+      const cleanBranch = matchedB ? matchedB.name : rawB;
 
       patientMap.set(reg, {
         id: String(p.id || reg),
@@ -96,8 +99,13 @@ export async function GET(req: NextRequest) {
         );
         const latest = sortedAppts[0] || a;
 
-        const cleanBranch = String(a.branch || "KPHB Branch");
-        branchSet.add(cleanBranch);
+        const rawB = String(a.branch || "Kphb Branch");
+        const normB = rawB.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+        const matchedB = rawBranches.find((rb) => {
+          const normRb = (rb.name || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+          return normRb === normB || (normRb.length >= 3 && normB.length >= 3 && (normRb.startsWith(normB) || normB.startsWith(normRb)));
+        });
+        const cleanBranch = matchedB ? matchedB.name : rawB;
 
         patientMap.set(key, {
           id: String(a.id || key),
@@ -138,7 +146,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const branchesList = ["All Branches", ...Array.from(branchSet).sort()];
+    const branchesList = ["All Branches", ...Array.from(new Set(rawBranches.map((b) => b.name).filter(Boolean)))];
 
     const totalCount = allPatients.length;
     const totalPages = Math.ceil(totalCount / pageSize) || 1;

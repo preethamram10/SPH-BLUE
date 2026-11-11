@@ -16,7 +16,6 @@ import {
   User,
   Phone,
   FileText,
-  Percent,
   Plus,
   Trash2,
   Clock,
@@ -25,10 +24,12 @@ import {
   Mail,
   Globe,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
 import { generate30DayDietSchedule, DayDietPlan } from "../patient-file/dietPlanData";
+import { getBranchPhone } from "../../app/reception/medical-requests/pdf/generateMedicineRequestPDF";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -83,6 +84,9 @@ export interface PatientAppointment {
   pendingBalance?: number;
   previousDuePaid?: number;
   prescriptionText?: string;
+  prescriptionPdfUrl?: string;
+  consultationDetails?: any;
+  diagnosis?: string;
   dietPlan?: string;
 }
 
@@ -119,6 +123,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     },
   ]);
 
+  const [includeDietFee, setIncludeDietFee] = useState<boolean>(false);
   const [dietFee, setDietFee] = useState<number>(0);
   const [otherCharges, setOtherCharges] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
@@ -137,7 +142,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const [isRazorpayQROpen, setIsRazorpayQROpen] = useState(false);
   const [razorpayQRAmount, setRazorpayQRAmount] = useState(0);
 
-  // Package member installment state
+  // Package member installment state - strictly based on Patient File registration
   const isPackageMember = Boolean(
     appointment?.hasPackage ||
     (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
@@ -153,9 +158,36 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const pkgName = appointment?.packageName || (appointment as any)?.activePackage?.packageName || `${appointment?.packageDurationMonths || 3} Months Treatment Package`;
   const pkgEndDate = appointment?.packageEndDate || (appointment as any)?.activePackage?.endDate || "N/A";
 
-  const [billingMode, setBillingMode] = useState<"package" | "regular">("package");
+  const [billingMode, setBillingMode] = useState<"package" | "regular">("regular");
   const isPackageMode = isPackageMember && billingMode === "package";
   const [packageInstallmentAmount, setPackageInstallmentAmount] = useState<number>(0);
+
+  // Diet plan state from patient file - Diet Fee is ONLY enabled if prescribed in Patient File
+  const hasPrescribedDiet = Boolean(
+    (appointment?.dietPlan &&
+      typeof appointment.dietPlan === "string" &&
+      appointment.dietPlan.trim().length > 0) ||
+    Number(appointment?.dietPlanFee || (appointment as any)?.dietFee || 0) > 0
+  );
+  const rawDietFee = Number(appointment?.dietPlanFee ?? (appointment as any)?.dietFee ?? 0);
+  const canChargeDiet = hasPrescribedDiet && rawDietFee > 0;
+
+  // Target Total Amount & Payment Type Mode (Matching Mobile App)
+  const [targetAmount, setTargetAmount] = useState<number>(0);
+  const [paymentType, setPaymentType] = useState<"consultation" | "consult_and_med" | "split" | "package">("split");
+  const [showDetailedMedicines, setShowDetailedMedicines] = useState<boolean>(false);
+
+  // Mandatory Prescription Check
+  const rxImages = appointment?.prescriptionImages || [];
+  const hasPrescription =
+    rxImages.length > 0 ||
+    Boolean(appointment?.hasPackage) ||
+    Boolean(appointment?.prescriptionText) ||
+    Boolean(appointment?.medicinesList && appointment.medicinesList.length > 0) ||
+    Boolean(appointment?.medicines && appointment.medicines.length > 0) ||
+    Boolean(appointment?.prescriptionPdfUrl) ||
+    Boolean(appointment?.consultationDetails) ||
+    Boolean(appointment?.diagnosis);
 
   // --- PAY LATER STATES ---
   const [isPayLater, setIsPayLater] = useState<boolean>(false);
@@ -179,16 +211,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setCurrentStep(isPaid ? "invoice_receipt" : "collect_fee");
 
       const consult = typeof appointment.consultationFee === "number" ? appointment.consultationFee : 500;
-      setConsultationFee(consult);
-      setIncludeConsultFee(consult > 0);
-
       const medFee = typeof appointment.medicineFee === "number" ? appointment.medicineFee : 0;
+      const initialTarget = (consult > 0 ? consult : 500) + medFee;
+      setTargetAmount(initialTarget);
       setMedicineDuration(appointment.medicineDuration || "1 Month");
 
       const meds = appointment.medicines || appointment.medicinesList || [];
       if (meds.length > 0) {
         setMedicineItems(meds);
         setIncludeMedicineFee(true);
+        setShowDetailedMedicines(true);
       } else if (appointment.prescriptionText && typeof appointment.prescriptionText === "string") {
         const remedyLines = appointment.prescriptionText
           .split("\n")
@@ -219,6 +251,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           });
           setMedicineItems(parsed);
           setIncludeMedicineFee(true);
+          setShowDetailedMedicines(true);
         } else {
           setMedicineItems([
             {
@@ -230,6 +263,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             },
           ]);
           setIncludeMedicineFee(medFee > 0);
+          setShowDetailedMedicines(false);
         }
       } else {
         setMedicineItems([
@@ -242,9 +276,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           },
         ]);
         setIncludeMedicineFee(medFee > 0);
+        setShowDetailedMedicines(false);
       }
 
-      setDietFee(appointment.dietFee ?? appointment.dietPlanFee ?? 0);
+      // Diet plan fee: ONLY enable and prefill if entered and saved in Patient File
+      if (canChargeDiet) {
+        setDietFee(rawDietFee);
+        setIncludeDietFee(true);
+      } else {
+        setDietFee(0);
+        setIncludeDietFee(false);
+      }
       setOtherCharges(appointment.otherCharges ?? 0);
       setDiscount(appointment.discount ?? 0);
       setDiscountReason(appointment.discountReason || "");
@@ -272,15 +314,157 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
       if (isPackageMember) {
         setBillingMode("package");
+        setPaymentType("package");
         setIncludeConsultFee(false);
         setConsultationFee(0);
         setIncludeMedicineFee(false);
+        setIncludeDietFee(false);
         setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
       } else {
         setBillingMode("regular");
+        setPaymentType("split");
+        const half = Math.round(initialTarget / 2);
+        setConsultationFee(half);
+        setIncludeConsultFee(true);
+        setIncludeMedicineFee(true);
+        if (meds.length <= 1) {
+          setMedicineItems([
+            {
+              id: "1",
+              name: (meds[0] && meds[0].name) || "",
+              type: (meds[0] && meds[0].type) || "Pills",
+              timing: (meds[0] && meds[0].timing) || "M - N - N",
+              amount: initialTarget - half,
+            },
+          ]);
+        }
       }
     }
   }, [isOpen, appointment]);
+
+  // Adjust Fees Based on Target Amount change
+  const handleTargetAmountChange = (val: number) => {
+    setTargetAmount(val);
+    if (paymentType === "consultation" || paymentType === "consult_and_med") {
+      setConsultationFee(val);
+      setIncludeConsultFee(true);
+      setIncludeMedicineFee(false);
+    } else if (paymentType === "split") {
+      const half = Math.round(val / 2);
+      setConsultationFee(half);
+      setIncludeConsultFee(true);
+      setIncludeMedicineFee(true);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...medicineItems[0], amount: val - half }]);
+      }
+    }
+  };
+
+  // Adjust Fees Based on Payment Type
+  const handlePaymentTypeChange = (type: "consultation" | "consult_and_med" | "split" | "package") => {
+    if (type === "package" && !isPackageMember) return;
+    setPaymentType(type);
+    if (type === "package") {
+      setBillingMode("package");
+      setIncludeConsultFee(false);
+      setConsultationFee(0);
+      setIncludeMedicineFee(false);
+      setIncludeDietFee(false);
+      if (!packageInstallmentAmount) {
+        setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
+      }
+      return;
+    }
+
+    setBillingMode("regular");
+    const target = targetAmount || 0;
+    if (type === "consultation") {
+      setIncludeConsultFee(true);
+      setConsultationFee(target);
+      setIncludeMedicineFee(false);
+    } else if (type === "consult_and_med") {
+      setIncludeConsultFee(true);
+      setConsultationFee(target);
+      setIncludeMedicineFee(false);
+    } else if (type === "split") {
+      setIncludeConsultFee(true);
+      setIncludeMedicineFee(true);
+      const half = Math.round(target / 2);
+      setConsultationFee(half);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...medicineItems[0], amount: target - half }]);
+      }
+    }
+  };
+
+  const handleConsultFeeChange = (val: number) => {
+    setConsultationFee(val);
+    if (paymentType === "split") {
+      const target = targetAmount || 0;
+      const remaining = Math.max(0, target - val);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: remaining }]);
+      }
+    }
+  };
+
+  const handleMedicineFeeInputChange = (val: number) => {
+    if (medicineItems.length <= 1) {
+      setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: val }]);
+    } else {
+      const diff = val - totalMedicineAmount;
+      setMedicineItems((prev) =>
+        prev.map((m, idx) => (idx === 0 ? { ...m, amount: Math.max(0, (Number(m.amount) || 0) + diff) } : m))
+      );
+    }
+  };
+
+  // Toggling Consultation checkbox
+  const handleToggleConsult = (checked: boolean) => {
+    setIncludeConsultFee(checked);
+    const target = targetAmount || 0;
+    if (!checked) {
+      setConsultationFee(0);
+      if (includeMedicineFee) {
+        if (medicineItems.length <= 1) {
+          setMedicineItems([{ ...medicineItems[0], amount: target }]);
+        }
+      }
+    } else {
+      if (includeMedicineFee) {
+        const half = Math.round(target / 2);
+        setConsultationFee(half);
+        if (medicineItems.length <= 1) {
+          setMedicineItems([{ ...medicineItems[0], amount: target - half }]);
+        }
+      } else {
+        setConsultationFee(target);
+      }
+    }
+  };
+
+  // Toggling Medicine checkbox
+  const handleToggleMedicine = (checked: boolean) => {
+    setIncludeMedicineFee(checked);
+    const target = targetAmount || 0;
+    if (!checked) {
+      if (includeConsultFee) {
+        setConsultationFee(target);
+      }
+    } else {
+      if (includeConsultFee) {
+        const half = Math.round(target / 2);
+        setConsultationFee(half);
+        if (medicineItems.length <= 1) {
+          setMedicineItems([{ ...medicineItems[0], amount: target - half }]);
+        }
+      } else {
+        if (medicineItems.length <= 1) {
+          setMedicineItems([{ ...medicineItems[0], amount: target }]);
+        }
+      }
+    }
+  };
 
   // --- DURATION OPTIONS ---
   const DURATION_OPTIONS = ["15 Days", "1 Month", "2 Months", "3 Months", "6 Months", "1 Year"];
@@ -294,11 +478,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const subTotalAmount = useMemo(() => {
     const cFee = includeConsultFee ? Number(consultationFee) || 0 : 0;
     const mFee = totalMedicineAmount;
-    const dFee = Number(dietFee) || 0;
+    const dFee = (!isPackageMode && canChargeDiet && includeDietFee) ? Number(dietFee) || 0 : 0;
     const oFee = Number(otherCharges) || 0;
     const prevFee = includePreviousDue ? Number(previousPendingBalance) || 0 : 0;
     return cFee + mFee + dFee + oFee + prevFee;
-  }, [includeConsultFee, consultationFee, totalMedicineAmount, dietFee, otherCharges, includePreviousDue, previousPendingBalance]);
+  }, [includeConsultFee, consultationFee, totalMedicineAmount, canChargeDiet, includeDietFee, dietFee, isPackageMode, otherCharges, includePreviousDue, previousPendingBalance]);
 
   const grandTotalDue = useMemo(() => {
     if (isPackageMode) {
@@ -345,6 +529,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const handleConfirmPayment = async () => {
     if (!appointment) return;
 
+    if (!hasPrescription) {
+      alert("Prescription is mandatory to collect fee. Please upload or save the prescription in the patient file first.");
+      return;
+    }
+
     const calculatedPreviousDue = includePreviousDue ? Number(previousPendingBalance) || 0 : 0;
 
     if (paymentMode === "Split") {
@@ -376,11 +565,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         timeSlot: appointment.timeSlot || "02:30 PM",
         consultationFee: isPackageMode ? 0 : (includeConsultFee ? Number(consultationFee) || 0 : 0),
         medicineFee: isPackageMode ? 0 : totalMedicineAmount,
-        medicineDuration: (!isPackageMode && includeMedicineFee) ? medicineDuration : undefined,
-        medicines: (!isPackageMode && includeMedicineFee) ? medicineItems : [],
-        medicinesList: (!isPackageMode && includeMedicineFee) ? medicineItems : [],
-        dietFee: Number(dietFee) || 0,
-        dietPlanFee: Number(dietFee) || 0,
+        medicineDuration: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineDuration : undefined,
+        medicines: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineItems : [],
+        medicinesList: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineItems : [],
+        dietFee: isPackageMode ? 0 : (canChargeDiet && includeDietFee ? (Number(dietFee) || 0) : 0),
+        dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDietFee ? (Number(dietFee) || 0) : 0),
         otherCharges: Number(otherCharges) || 0,
         discount: (!isPackageMode) ? (Number(discount) || 0) : 0,
         discountReason: (!isPackageMode) ? (discountReason || undefined) : undefined,
@@ -456,6 +645,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     const dateStr = activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10);
     const timeStr = activeInvoice.timeSlot ? ` at ${activeInvoice.timeSlot}` : "";
 
+    const targetBranch = activeInvoice.branch || appointment?.branch || "KPHB Branch";
+    const branchPhone = getBranchPhone(targetBranch);
+
     const message = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
       `--------------------------------\n` +
@@ -463,7 +655,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       `Patient Name: ${activeInvoice.patientName}\n` +
       `Phone: +91 ${phone}\n` +
       `Doctor: ${activeInvoice.doctorName || "Dr. Prashanth K Vaidya"}\n` +
-      `Branch: ${activeInvoice.branch || "KPHB Branch"}\n` +
+      `Branch: ${targetBranch}\n` +
       `Schedule: ${dateStr}${timeStr}\n` +
       `Specialty: Homeopathy\n` +
       `--------------------------------\n` +
@@ -494,7 +686,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         ? `• Discount Applied: -₹${Number(activeInvoice.discount).toFixed(2)}\n`
         : "") +
       `--------------------------------\n` +
-      `Helpline: 9030176176 | spiritualhomeo.com\n` +
+      `Branch Helpline: ${branchPhone} | spiritualhomeo.com\n` +
       `This is a computer-generated bill. No signature is required.`
     );
 
@@ -566,10 +758,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
               </div>
               <div>
                 <h2 className="text-sm font-black text-slate-900">
-                  {currentStep === "collect_fee" ? "Collect Consultation & Medicine Fee" : "Payment Receipt & Tax Invoice"}
+                  {currentStep === "collect_fee" ? "Appointment Payment" : "Payment Receipt & Tax Invoice"}
                 </h2>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {appointment.patientName} • {appointment.registrationId || appointment.patientId || "SPH-REC"} • {appointment.branch || "KPHB Branch"}
+                  {currentStep === "collect_fee" ? "Review and complete payment • " : ""}{appointment.patientName} • {appointment.doctorName || "Dr. Prashanth K Vaidya"} • {appointment.appointmentDate || ""}
                 </p>
               </div>
             </div>
@@ -615,44 +807,124 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
               {/* PREVIOUS PENDING BALANCE ALERT (Orange Box) */}
               {previousPendingBalance > 0 && (
-                <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 shadow-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
-                        <span>Previous Visit Pending Balance</span>
-                        <span className="px-1.5 py-0.5 rounded bg-amber-200/80 text-[10px] font-black text-amber-900">
-                          PAY LATER DUE
-                        </span>
+                <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 shadow-xs space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-xs">
+                        <Clock className="w-4 h-4" />
                       </div>
-                      <div className="text-sm font-extrabold text-amber-900 mt-0.5">
-                        Outstanding Due: <span className="text-rose-600 font-black">₹{previousPendingBalance.toLocaleString()}</span>
-                      </div>
-                      <div className="text-[11px] text-amber-800 font-medium">
-                        {includePreviousDue
-                          ? "✓ Added as a separate line item into today's invoice (cleared on payment)"
-                          : "Left pending for a future visit"}
+                      <div>
+                        <div className="text-[11px] font-black text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                          <span>Previous Visit Pending Balance</span>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-200/80 text-[10px] font-black text-amber-900">
+                            UNPAID DUE
+                          </span>
+                        </div>
+                        <div className="text-sm font-extrabold text-amber-900 mt-0.5">
+                          Outstanding Due: <span className="text-rose-600 font-black">₹{previousPendingBalance.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <p className="text-xs text-amber-900/90">
+                    This patient has an unpaid balance from a previous visit. Choose whether to add it to this bill or leave it for next visit:
+                  </p>
+
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setIncludePreviousDue(!includePreviousDue)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer shadow-xs whitespace-nowrap ${
+                      onClick={() => setIncludePreviousDue(true)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
                         includePreviousDue
-                          ? "bg-amber-600 hover:bg-amber-700 text-white"
-                          : "bg-white hover:bg-amber-100 text-amber-900 border border-amber-300"
+                          ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
-                      {includePreviousDue ? "✓ Added to Bill (+₹" + previousPendingBalance + ")" : "+ Add to Today's Bill"}
+                      <span>{includePreviousDue ? "✓" : "○"}</span>
+                      <span>Add to Current Bill (+₹{previousPendingBalance.toLocaleString()})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIncludePreviousDue(false)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer border flex items-center gap-1.5 ${
+                        !includePreviousDue
+                          ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>{!includePreviousDue ? "✓" : "○"}</span>
+                      <span>Leave for Next Visit</span>
                     </button>
                   </div>
                 </div>
               )}
+
+              {/* 1. TARGET AMOUNT BOX */}
+              <div className={`rounded-xl border-2 p-3.5 flex items-center justify-between gap-4 transition-all ${isPackageMode ? "bg-slate-50 border-slate-200 opacity-70" : "bg-sky-50/70 border-sky-300"
+                }`}>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-extrabold text-sky-950">Target Amount (Consultation + Medicine):</span>
+                    {isPackageMode && (
+                      <span className="bg-sky-100 text-sky-700 text-[10px] font-extrabold px-2 py-0.5 rounded">
+                        Covered Under Package
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-sky-700 mt-0.5 font-medium">
+                    {isPackageMode
+                      ? "Disabled: Covered by package installment. Tap 'Regular Visit' below to activate target amount."
+                      : "Split & presets calculate strictly within this target"}
+                  </p>
+                </div>
+                <div className={`flex items-center gap-1.5 px-3 rounded-xl border-2 bg-white ${isPackageMode ? "border-slate-300 bg-slate-100" : "border-sky-500 shadow-2xs"
+                  }`} style={{ height: "46px", minWidth: "125px" }}>
+                  <span className="text-lg font-black text-sky-600">₹</span>
+                  <input
+                    type="number"
+                    disabled={isPackageMode}
+                    value={isPackageMode ? 0 : (targetAmount || "")}
+                    onChange={(e) => handleTargetAmountChange(Math.max(0, Number(e.target.value)))}
+                    placeholder="0"
+                    className="w-24 text-right text-lg font-black text-slate-800 bg-transparent focus:outline-none disabled:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              {/* 2. PAYMENT TYPE TABS */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {(
+                  (isPackageMember
+                    ? [
+                      { id: "consultation", label: "Consultation" },
+                      { id: "consult_and_med", label: "Consultation & Medicine" },
+                      { id: "split", label: "Split" },
+                      { id: "package", label: "Package" },
+                    ]
+                    : [
+                      { id: "consultation", label: "Consultation" },
+                      { id: "consult_and_med", label: "Consultation & Medicine" },
+                      { id: "split", label: "Split" },
+                    ]
+                  ) as Array<{ id: "consultation" | "consult_and_med" | "split" | "package"; label: string }>
+                ).map((t) => {
+                  const isSelected = paymentType === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handlePaymentTypeChange(t.id)}
+                      className={`min-h-[40px] px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border flex items-center justify-center text-center ${isSelected
+                          ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                        }`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
 
               {/* PACKAGE MEMBER BANNER & INSTALLMENT INPUT */}
               {isPackageMember && (
@@ -680,13 +952,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         setIncludeConsultFee(false);
                         setConsultationFee(0);
                         setIncludeMedicineFee(false);
+                        setIncludeDietFee(false);
                         if (!packageInstallmentAmount) {
                           setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
                         }
                       }}
                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${billingMode === "package"
-                          ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
-                          : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                        ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                        : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
                         }`}
                     >
                       <span>✓</span>
@@ -701,8 +974,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         setIncludeMedicineFee(true);
                       }}
                       className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center justify-center gap-1.5 ${billingMode === "regular"
-                          ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
-                          : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
+                        ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                        : "bg-white text-sky-800 border-sky-200 hover:bg-sky-50"
                         }`}
                     >
                       <span>⚡</span>
@@ -768,175 +1041,367 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 </div>
               )}
 
-              {/* 1. CONSULTATION FEE */}
-              <div className={`rounded-xl border border-slate-200 p-4 transition-all ${isPackageMode ? "bg-slate-100/60 opacity-60" : "bg-slate-50/50"}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="incConsult"
-                      disabled={isPackageMode}
-                      checked={!isPackageMode && includeConsultFee}
-                      onChange={(e) => setIncludeConsultFee(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                    <label htmlFor="incConsult" className="text-xs font-black text-slate-800 cursor-pointer">
-                      Include Consultation Fee
-                    </label>
-                    {isPackageMode && (
-                      <span className="text-[10px] bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded">
-                        Covered under Package
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-slate-400">₹</span>
-                    <input
-                      type="number"
-                      disabled={isPackageMode || !includeConsultFee}
-                      value={isPackageMode ? 0 : consultationFee}
-                      onChange={(e) => setConsultationFee(Math.max(0, Number(e.target.value)))}
-                      className="w-24 rounded-lg border border-slate-300 px-2.5 py-1 text-right text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. MEDICINE FEE & DURATION */}
-              <div className={`rounded-xl border border-slate-200 p-4 transition-all ${isPackageMode ? "bg-slate-100/60 opacity-60" : "bg-slate-50/50"}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="incMed"
-                      disabled={isPackageMode}
-                      checked={!isPackageMode && includeMedicineFee}
-                      onChange={(e) => setIncludeMedicineFee(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                    <label htmlFor="incMed" className="text-xs font-black text-slate-800 cursor-pointer">
-                      Prescribed Homeopathy Medicines
-                    </label>
-                    {isPackageMode && (
-                      <span className="text-[10px] bg-sky-100 text-sky-700 font-bold px-2 py-0.5 rounded">
-                        Covered under Package
-                      </span>
-                    )}
-                  </div>
-
-                  {!isPackageMode && includeMedicineFee && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-slate-500">Duration:</span>
-                      <select
-                        value={medicineDuration}
-                        onChange={(e) => setMedicineDuration(e.target.value)}
-                        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700"
-                      >
-                        {DURATION_OPTIONS.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {includeMedicineFee && (
-                  <div className="space-y-2 pt-2 border-t border-slate-200">
-                    {medicineItems.map((item, idx) => (
-                      <div key={item.id || idx} className="flex items-center gap-2">
+              {!isPackageMode && (
+                <>
+                  {/* 3. CONSULTATION FEE CARD (or Consultation & Medicine Fee) */}
+                  <div className={`rounded-xl border p-4 transition-all ${includeConsultFee ? "border-sky-300 bg-sky-50/30" : "border-slate-200 bg-slate-50/50"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
                         <input
-                          list="web-remedy-datalist"
-                          type="text"
-                          placeholder="Medicine Name (e.g. Arnica)"
-                          value={item.name}
-                          onChange={(e) => handleUpdateMedicine(item.id, "name", e.target.value)}
-                          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm text-slate-800 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          type="checkbox"
+                          id="incConsult"
+                          checked={includeConsultFee}
+                          onChange={(e) => handleToggleConsult(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
-                        <select
-                          value={item.type || "Pills"}
-                          onChange={(e) => handleUpdateMedicine(item.id, "type", e.target.value)}
-                          className="w-24 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm text-slate-700 font-medium"
-                        >
-                          <option value="Pills">Pills</option>
-                          <option value="Drops">Drops</option>
-                          <option value="Dilution">Dilution</option>
-                          <option value="Tincture">Tincture</option>
-                          <option value="Syrup">Syrup</option>
-                          <option value="Kit">Kit</option>
-                          <option value="Tablet">Tablet</option>
-                          <option value="Other">Other</option>
-                        </select>
-                        <select
-                          value={item.timing || "M - N - N"}
-                          onChange={(e) => handleUpdateMedicine(item.id, "timing", e.target.value)}
-                          className="w-28 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm font-bold text-slate-700"
-                        >
-                          <option value="M - N - N">M - N - N</option>
-                          <option value="M - A - N">M - A - N</option>
-                          <option value="M - N">M - N</option>
-                          <option value="1 - 0 - 1">1 - 0 - 1</option>
-                          <option value="1 - 1 - 1">1 - 1 - 1</option>
-                          <option value="M only">M only</option>
-                          <option value="N only">N only</option>
-                          <option value="SOS">SOS</option>
-                        </select>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400 font-bold">₹</span>
-                          <input
-                            type="number"
-                            value={item.amount}
-                            onChange={(e) =>
-                              handleUpdateMedicine(item.id, "amount", Math.max(0, Number(e.target.value)))
-                            }
-                            className="w-20 rounded-xl border border-slate-300 px-2.5 py-2 text-right text-xs md:text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                          />
+                        <div>
+                          <label htmlFor="incConsult" className="text-xs font-black text-slate-800 cursor-pointer block">
+                            {paymentType === "consult_and_med" ? "Consultation & Medicine Fee" : "Consultation Fee"}
+                          </label>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {paymentType === "consult_and_med"
+                              ? "Combined Doctor Consultation & Prescribed Remedies Fee"
+                              : "Doctor Requested Consultation Fee"}
+                          </p>
                         </div>
-                        {medicineItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMedicineRow(item.id)}
-                            className="p-1 text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white shadow-2xs">
+                        <span className="text-xs font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          disabled={!includeConsultFee}
+                          value={consultationFee > 0 ? consultationFee : ""}
+                          onChange={(e) => handleConsultFeeChange(Math.max(0, Number(e.target.value)))}
+                          placeholder="0"
+                          className="w-24 text-right text-xs md:text-sm font-black text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 bg-transparent focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* MEDICINE DURATION & DETAILS FOR COMBINED CONSULTATION & MEDICINE */}
+                    {paymentType === "consult_and_med" && includeConsultFee && (
+                      <div className="mt-4 pt-3 border-t border-sky-200/80">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Prescription Duration:</span>
+                            <select
+                              value={medicineDuration}
+                              onChange={(e) => setMedicineDuration(e.target.value)}
+                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700"
+                            >
+                              {DURATION_OPTIONS.map((d) => (
+                                <option key={d} value={d}>
+                                  {d}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {!showDetailedMedicines ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowDetailedMedicines(true)}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                            >
+                              <Plus size={13} /> Add Medicine Items
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleAddMedicineRow}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                            >
+                              <Plus size={13} /> Add Medicine Item
+                            </button>
+                          )}
+                        </div>
+
+                        {showDetailedMedicines && (
+                          <div className="space-y-2">
+                            {medicineItems.map((item, idx) => (
+                              <div key={item.id || idx} className="flex items-center gap-2">
+                                <input
+                                  list="web-remedy-datalist"
+                                  type="text"
+                                  placeholder="Medicine Name (e.g. Arnica)"
+                                  value={item.name}
+                                  onChange={(e) => handleUpdateMedicine(item.id, "name", e.target.value)}
+                                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm text-slate-800 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                />
+                                <select
+                                  value={item.type || "Pills"}
+                                  onChange={(e) => handleUpdateMedicine(item.id, "type", e.target.value)}
+                                  className="w-24 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm text-slate-700 font-medium"
+                                >
+                                  <option value="Pills">Pills</option>
+                                  <option value="Drops">Drops</option>
+                                  <option value="Dilution">Dilution</option>
+                                  <option value="Tincture">Tincture</option>
+                                  <option value="Syrup">Syrup</option>
+                                  <option value="Kit">Kit</option>
+                                  <option value="Tablet">Tablet</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                                <select
+                                  value={item.timing || "M - N - N"}
+                                  onChange={(e) => handleUpdateMedicine(item.id, "timing", e.target.value)}
+                                  className="w-28 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm font-bold text-slate-700"
+                                >
+                                  <option value="M - N - N">M - N - N</option>
+                                  <option value="M - A - N">M - A - N</option>
+                                  <option value="M - N">M - N</option>
+                                  <option value="1 - 0 - 1">1 - 0 - 1</option>
+                                  <option value="1 - 1 - 1">1 - 1 - 1</option>
+                                  <option value="M only">M only</option>
+                                  <option value="N only">N only</option>
+                                  <option value="SOS">SOS</option>
+                                </select>
+                                {medicineItems.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveMedicineRow(item.id)}
+                                    className="p-1 text-red-500 hover:text-red-700"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+
+                            <div className="flex justify-between items-center pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setShowDetailedMedicines(false)}
+                                className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                              >
+                                Hide Medicine Details
+                              </button>
+                              <span className="text-xs text-slate-500 italic">
+                                Fee is included in Consultation & Medicine total
+                              </span>
+                            </div>
+                          </div>
                         )}
                       </div>
-                    ))}
-                    <datalist id="web-remedy-datalist">
-                      {POPULAR_HOMEOPATHY_REMEDIES.map((r) => (
-                        <option key={r} value={r} />
-                      ))}
-                    </datalist>
-
-                    <div className="flex justify-between items-center pt-2">
-                      <button
-                        type="button"
-                        onClick={handleAddMedicineRow}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
-                      >
-                        <Plus size={13} /> Add Medicine Item
-                      </button>
-                      <span className="text-xs font-extrabold text-slate-700">
-                        Total Medicines: ₹{totalMedicineAmount}
-                      </span>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+
+                  {/* 4. PRESCRIBED MEDICINES CARD */}
+                  {paymentType !== "consult_and_med" && (
+                    <div className={`rounded-xl border p-4 transition-all ${includeMedicineFee ? "border-sky-300 bg-sky-50/30" : "border-slate-200 bg-slate-50/50"}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            id="incMed"
+                            checked={includeMedicineFee}
+                            onChange={(e) => handleToggleMedicine(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          />
+                          <div>
+                            <label htmlFor="incMed" className="text-xs font-black text-slate-800 cursor-pointer block">
+                              Prescribed Homeopathy Medicines
+                            </label>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              Prescribed Remedies / Pharmacy Fee
+                            </p>
+                          </div>
+                        </div>
+
+                        {includeMedicineFee && (
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-bold text-slate-500">Duration:</span>
+                              <select
+                                value={medicineDuration}
+                                onChange={(e) => setMedicineDuration(e.target.value)}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700"
+                              >
+                                {DURATION_OPTIONS.map((d) => (
+                                  <option key={d} value={d}>
+                                    {d}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white shadow-2xs">
+                              <span className="text-xs font-bold text-slate-400">₹</span>
+                              <input
+                                type="number"
+                                value={totalMedicineAmount > 0 ? totalMedicineAmount : ""}
+                                onChange={(e) => handleMedicineFeeInputChange(Math.max(0, Number(e.target.value)))}
+                                placeholder="0"
+                                className="w-24 text-right text-xs md:text-sm font-black text-slate-800 bg-transparent focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* PRESCRIBED MEDICINE DETAILS / EXPANSION */}
+                      {includeMedicineFee && (
+                        <div className="mt-3 pt-3 border-t border-slate-200">
+                          {showDetailedMedicines ? (
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-bold text-slate-700">
+                                  Detailed Medicine Items ({medicineItems.length})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleAddMedicineRow}
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                                >
+                                  <Plus size={13} /> Add Medicine Item
+                                </button>
+                              </div>
+
+                              {medicineItems.map((item, idx) => (
+                                <div key={item.id || idx} className="flex items-center gap-2">
+                                  <input
+                                    list="web-remedy-datalist"
+                                    type="text"
+                                    placeholder="Medicine Name (e.g. Arnica)"
+                                    value={item.name}
+                                    onChange={(e) => handleUpdateMedicine(item.id, "name", e.target.value)}
+                                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm text-slate-800 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                  />
+                                  <select
+                                    value={item.type || "Pills"}
+                                    onChange={(e) => handleUpdateMedicine(item.id, "type", e.target.value)}
+                                    className="w-24 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm text-slate-700 font-medium"
+                                  >
+                                    <option value="Pills">Pills</option>
+                                    <option value="Drops">Drops</option>
+                                    <option value="Dilution">Dilution</option>
+                                    <option value="Tincture">Tincture</option>
+                                    <option value="Syrup">Syrup</option>
+                                    <option value="Kit">Kit</option>
+                                    <option value="Tablet">Tablet</option>
+                                    <option value="Other">Other</option>
+                                  </select>
+                                  <select
+                                    value={item.timing || "M - N - N"}
+                                    onChange={(e) => handleUpdateMedicine(item.id, "timing", e.target.value)}
+                                    className="w-28 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm font-bold text-slate-700"
+                                  >
+                                    <option value="M - N - N">M - N - N</option>
+                                    <option value="M - A - N">M - A - N</option>
+                                    <option value="M - N">M - N</option>
+                                    <option value="1 - 0 - 1">1 - 0 - 1</option>
+                                    <option value="1 - 1 - 1">1 - 1 - 1</option>
+                                    <option value="M only">M only</option>
+                                    <option value="N only">N only</option>
+                                    <option value="SOS">SOS</option>
+                                  </select>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-xs text-slate-500 font-bold">₹</span>
+                                    <input
+                                      type="number"
+                                      value={item.amount}
+                                      onChange={(e) =>
+                                        handleUpdateMedicine(item.id, "amount", Math.max(0, Number(e.target.value)))
+                                      }
+                                      className="w-24 min-w-[80px] rounded-xl border border-slate-300 px-2.5 py-2 text-right text-xs md:text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                    />
+                                  </div>
+                                  {medicineItems.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveMedicineRow(item.id)}
+                                      className="p-1 text-red-500 hover:text-red-700"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <datalist id="web-remedy-datalist">
+                                {POPULAR_HOMEOPATHY_REMEDIES.map((r) => (
+                                  <option key={r} value={r} />
+                                ))}
+                              </datalist>
+
+                              <div className="flex justify-between items-center pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowDetailedMedicines(false)}
+                                  className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                                >
+                                  Hide Medicine Item Details
+                                </button>
+                                <span className="text-xs font-extrabold text-slate-700">
+                                  Total Medicines: ₹{totalMedicineAmount}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-slate-500">
+                                {medicineItems.some((m) => m.name)
+                                  ? `${medicineItems.filter((m) => m.name).length} remedies loaded`
+                                  : "Standard prescription remedies"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setShowDetailedMedicines(true)}
+                                className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                              >
+                                <Plus size={13} /> Add Detailed Medicine Items
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* 3. DIET, OTHER CHARGES, AND DISCOUNT */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-slate-200 p-3 bg-white flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700">Diet & Nutrition Fee</span>
+                <div
+                  className={`rounded-xl border p-3 flex items-center justify-between transition-colors ${!canChargeDiet || isPackageMode
+                      ? "border-slate-200 bg-slate-50/80 opacity-60"
+                      : !isPackageMode && includeDietFee
+                        ? "border-[#0284c7] bg-sky-50/40"
+                        : "border-slate-200 bg-white"
+                    }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!isPackageMode && canChargeDiet && includeDietFee}
+                      onChange={(e) => {
+                        if (!canChargeDiet || isPackageMode) return;
+                        const checked = e.target.checked;
+                        setIncludeDietFee(checked);
+                        if (checked) {
+                          setDietFee(rawDietFee);
+                        }
+                      }}
+                      disabled={isPackageMode || !canChargeDiet}
+                      className={`rounded text-[#0284c7] focus:ring-[#0284c7] w-4 h-4 ${canChargeDiet && !isPackageMode ? "cursor-pointer" : "cursor-not-allowed"
+                        }`}
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-slate-700 block">Diet & Nutrition Fee</span>
+                      <span className="text-[10px] text-slate-400">
+                        {canChargeDiet
+                          ? "Prescribed in Patient File"
+                          : "Disabled (Must be prescribed in Patient File)"}
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-1">
                     <span className="text-xs text-slate-400">₹</span>
                     <input
                       type="number"
-                      value={dietFee}
-                      onChange={(e) => setDietFee(Math.max(0, Number(e.target.value)))}
-                      className="w-24 rounded-lg border border-slate-300 px-2.5 py-1 text-right text-xs font-bold text-slate-800"
+                      disabled={isPackageMode || !canChargeDiet || !includeDietFee}
+                      value={canChargeDiet && includeDietFee ? dietFee : 0}
+                      readOnly
+                      className="w-24 rounded-lg border border-slate-300 px-2.5 py-1 text-right text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400"
                     />
                   </div>
                 </div>
@@ -955,35 +1420,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 </div>
               </div>
 
-              {/* DISCOUNT ROW */}
-              <div className="rounded-xl border border-dashed border-red-200 bg-red-50/50 p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Percent size={15} className="text-red-600" />
-                  <span className="text-xs font-bold text-red-700">Special Discount (₹)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Reason (Optional)"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                    className="w-36 rounded-lg border border-red-200 px-2 py-1 text-xs text-slate-700 bg-white"
-                  />
-                  <input
-                    type="number"
-                    value={discount}
-                    onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))}
-                    className="w-20 rounded-lg border border-red-300 px-2 py-1 text-right text-xs font-bold text-red-700 bg-white"
-                  />
-                </div>
-              </div>
-
               {/* 3B. PAY LATER (PARTIAL PAYMENT) - SMALL BUTTON & TRIGGER */}
               <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${
-                    isPayLater ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-500"
-                  }`}>
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold ${isPayLater ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-500"
+                    }`}>
                     <Clock size={14} />
                   </div>
                   <div>
@@ -1006,22 +1447,37 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     }
                     setIsPayLaterModalOpen(true);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    isPayLater
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${isPayLater
                       ? "bg-amber-500 hover:bg-amber-600 text-white shadow-2xs"
                       : "border border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900"
-                  }`}
+                    }`}
                 >
                   <Clock size={12} />
                   <span>{isPayLater ? "Edit Pay Later" : "+ Pay Later"}</span>
                 </button>
               </div>
 
+              {/* MANDATORY PRESCRIPTION CHECK BANNER */}
+              {!hasPrescription && (
+                <div className="rounded-xl bg-amber-500 text-white p-3.5 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider block">UPLOAD PRESCRIPTION REQUIRED</span>
+                      <span className="text-[11px] opacity-90">Upload prescription in Patient File to collect fee (Mandatory)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 4. PAYMENT MODE SELECTION */}
               <div>
-                <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
-                  Select Payment Mode
-                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                    Select Payment Method
+                  </label>
+                  <span className="text-[11px] font-bold text-rose-500">* (Mandatory)</span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                   {[
                     { id: "Counter UPI", label: "Counter UPI", icon: Smartphone },
@@ -1040,20 +1496,20 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         onClick={() => {
                           setPaymentMode(mode.id);
                           if (mode.id === "UPI / QR Code" || mode.id === "Counter UPI") {
-                            setRazorpayQRAmount(grandTotalDue);
+                            setRazorpayQRAmount(effectivePaidToday);
                             setIsRazorpayQROpen(true);
                           } else if (mode.id === "Split") {
                             if (splitUpi === 0 && splitCash === 0 && splitCard === 0) {
-                              const half = Math.round(grandTotalDue / 2);
+                              const half = Math.round(effectivePaidToday / 2);
                               setSplitUpi(half);
-                              setSplitCash(grandTotalDue - half);
+                              setSplitCash(effectivePaidToday - half);
                               setSplitCard(0);
                             }
                           }
                         }}
                         className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${active
-                            ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs ring-2 ring-sky-500"
-                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                          ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs ring-2 ring-sky-500"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                           }`}
                       >
                         <Icon size={17} className={active ? "text-sky-600" : "text-slate-400"} />
@@ -1076,14 +1532,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                             Razorpay Dynamic UPI QR Code
                           </span>
                           <span className="text-[10.5px] text-slate-500 font-medium">
-                            Amount: <strong className="text-slate-900">₹{grandTotalDue.toLocaleString()}</strong> • Auto-detects payment when scanned
+                            Amount: <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> • Auto-detects payment when scanned
                           </span>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
-                          setRazorpayQRAmount(grandTotalDue);
+                          setRazorpayQRAmount(effectivePaidToday);
                           setIsRazorpayQROpen(true);
                         }}
                         className="py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
@@ -1098,7 +1554,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=4&data=${encodeURIComponent(
-                          `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${grandTotalDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
+                          `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${effectivePaidToday.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
                         )}`}
                         alt="Razorpay UPI QR"
                         className="w-32 h-32 object-contain rounded-lg border border-slate-200 shadow-2xs"
@@ -1109,13 +1565,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <span>Ready to scan with any UPI app</span>
                         </div>
                         <p className="text-[11px] text-slate-600">
-                          Scan using <strong>Google Pay, PhonePe, Paytm, CRED</strong> to pay <strong>₹{grandTotalDue.toLocaleString()}</strong>.
+                          Scan using <strong>Google Pay, PhonePe, Paytm, CRED</strong> to pay <strong>₹{effectivePaidToday.toLocaleString()}</strong>.
                         </p>
                         <div className="flex items-center gap-2 pt-1">
                           <button
                             type="button"
                             onClick={() => {
-                              setRazorpayQRAmount(grandTotalDue);
+                              setRazorpayQRAmount(effectivePaidToday);
                               setIsRazorpayQROpen(true);
                             }}
                             className="py-1 px-2.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
@@ -1127,8 +1583,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                             type="button"
                             onClick={() => {
                               const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
-                              const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${grandTotalDue.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
-                              const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${grandTotalDue} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
+                              const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${effectivePaidToday.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                              const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${effectivePaidToday} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
                               window.open(`https://wa.me/91${cleanPh}?text=${msg}`, "_blank");
                             }}
                             className="py-1 px-2.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
@@ -1155,7 +1611,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                             Split Payment Allocation
                           </span>
                           <span className="text-[10px] text-slate-500">
-                            Total Due: <strong className="text-slate-900">₹{grandTotalDue.toLocaleString()}</strong> — Allocate UPI &amp; remaining in Cash / Card
+                            Amount to Pay Today: <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> — Allocate UPI &amp; remaining in Cash / Card
                           </span>
                         </div>
                       </div>
@@ -1163,9 +1619,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const half = Math.round(grandTotalDue / 2);
+                            const half = Math.round(effectivePaidToday / 2);
                             setSplitUpi(half);
-                            setSplitCash(grandTotalDue - half);
+                            setSplitCash(effectivePaidToday - half);
                             setSplitCard(0);
                           }}
                           className="text-[10px] font-extrabold px-2 py-1 rounded bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
@@ -1175,7 +1631,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            setSplitUpi(grandTotalDue);
+                            setSplitUpi(effectivePaidToday);
                             setSplitCash(0);
                             setSplitCard(0);
                           }}
@@ -1187,7 +1643,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           type="button"
                           onClick={() => {
                             setSplitUpi(0);
-                            setSplitCash(grandTotalDue);
+                            setSplitCash(effectivePaidToday);
                             setSplitCard(0);
                           }}
                           className="text-[10px] font-extrabold px-2 py-1 rounded bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
@@ -1223,12 +1679,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <input
                             type="number"
                             min="0"
-                            max={grandTotalDue}
+                            max={effectivePaidToday}
                             value={splitUpi || ""}
                             onChange={(e) => {
                               const val = Math.max(0, parseFloat(e.target.value) || 0);
                               setSplitUpi(val);
-                              const rem = Math.max(0, grandTotalDue - val - splitCard);
+                              const rem = Math.max(0, effectivePaidToday - val - splitCard);
                               setSplitCash(rem);
                             }}
                             placeholder="0"
@@ -1246,11 +1702,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
                             <Banknote className="w-3.5 h-3.5 text-emerald-600" /> Cash
                           </label>
-                          {grandTotalDue - (splitUpi + splitCash + splitCard) !== 0 && (
+                          {effectivePaidToday - (splitUpi + splitCash + splitCard) !== 0 && (
                             <button
                               type="button"
                               onClick={() => {
-                                const rem = grandTotalDue - splitUpi - splitCard;
+                                const rem = effectivePaidToday - splitUpi - splitCard;
                                 setSplitCash(Math.max(0, rem));
                               }}
                               className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
@@ -1264,12 +1720,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <input
                             type="number"
                             min="0"
-                            max={grandTotalDue}
+                            max={effectivePaidToday}
                             value={splitCash || ""}
                             onChange={(e) => {
                               const val = Math.max(0, parseFloat(e.target.value) || 0);
                               setSplitCash(val);
-                              const rem = Math.max(0, grandTotalDue - val - splitCard);
+                              const rem = Math.max(0, effectivePaidToday - val - splitCard);
                               setSplitUpi(rem);
                             }}
                             placeholder="0"
@@ -1293,12 +1749,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <input
                             type="number"
                             min="0"
-                            max={grandTotalDue}
+                            max={effectivePaidToday}
                             value={splitCard || ""}
                             onChange={(e) => {
                               const val = Math.max(0, parseFloat(e.target.value) || 0);
                               setSplitCard(val);
-                              const rem = Math.max(0, grandTotalDue - splitUpi - val);
+                              const rem = Math.max(0, effectivePaidToday - splitUpi - val);
                               setSplitCash(rem);
                             }}
                             placeholder="0"
@@ -1314,33 +1770,33 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     {/* Status badge */}
                     {(() => {
                       const allocated = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0);
-                      const isMatch = allocated === grandTotalDue;
-                      const diff = grandTotalDue - allocated;
+                      const isMatch = allocated === effectivePaidToday;
+                      const diff = effectivePaidToday - allocated;
 
                       return (
                         <div
                           className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${isMatch
-                              ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                              : diff > 0
-                                ? "bg-amber-50 border-amber-300 text-amber-900"
-                                : "bg-rose-50 border-rose-300 text-rose-900"
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                            : diff > 0
+                              ? "bg-amber-50 border-amber-300 text-amber-900"
+                              : "bg-rose-50 border-rose-300 text-rose-900"
                             }`}
                         >
                           <div className="flex items-center gap-2">
                             <span>{isMatch ? "✓" : "⚠️"}</span>
                             <span>
                               {isMatch
-                                ? `Split matches total (₹${grandTotalDue.toLocaleString()}): UPI ₹${(splitUpi || 0).toLocaleString()} + Cash ₹${(splitCash || 0).toLocaleString()}${splitCard > 0 ? ` + Card ₹${splitCard.toLocaleString()}` : ""}`
+                                ? `Split matches amount to pay today (₹${effectivePaidToday.toLocaleString()}): UPI ₹${(splitUpi || 0).toLocaleString()} + Cash ₹${(splitCash || 0).toLocaleString()}${splitCard > 0 ? ` + Card ₹${splitCard.toLocaleString()}` : ""}`
                                 : diff > 0
-                                  ? `₹${diff.toLocaleString()} remaining to allocate (Total due: ₹${grandTotalDue.toLocaleString()})`
-                                  : `Split exceeds total due by ₹${Math.abs(diff).toLocaleString()}`}
+                                  ? `₹${diff.toLocaleString()} remaining to allocate (Amount to pay today: ₹${effectivePaidToday.toLocaleString()})`
+                                  : `Split exceeds amount to pay today by ₹${Math.abs(diff).toLocaleString()}`}
                             </span>
                           </div>
                           {!isMatch && (
                             <button
                               type="button"
                               onClick={() => {
-                                const rem = grandTotalDue - splitUpi - splitCard;
+                                const rem = effectivePaidToday - splitUpi - splitCard;
                                 setSplitCash(Math.max(0, rem));
                               }}
                               className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[10px] font-black cursor-pointer shadow-2xs"
@@ -1359,12 +1815,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
               <div className="rounded-2xl bg-slate-900 text-white p-4 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">
-                    Total Amount Due
+                    {isPayLater ? "Amount to Pay Today (Partial)" : "Total Amount Due"}
                   </span>
                   <span className="text-2xl font-black text-emerald-400">
-                    ₹{grandTotalDue.toFixed(2)}
+                    ₹{effectivePaidToday.toFixed(2)}
                   </span>
-                  {discount > 0 && (
+                  {isPayLater && (
+                    <span className="text-[11px] text-amber-300 font-bold block">
+                      Pay Later Active • ₹{calculatedPayLater.toLocaleString()} remaining
+                    </span>
+                  )}
+                  {!isPayLater && discount > 0 && (
                     <span className="text-[11px] text-red-300 block">
                       (₹{discount} discount applied)
                     </span>
@@ -1374,8 +1835,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmPayment}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition disabled:opacity-50 cursor-pointer"
+                  disabled={
+                    isSubmitting ||
+                    !hasPrescription ||
+                    (paymentMode === "Split" && (splitUpi + splitCash + splitCard) !== effectivePaidToday)
+                  }
+                  className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <CheckCircle2 size={16} />
                   <span>{isSubmitting ? "Recording..." : "Confirm & Generate Bill"}</span>
@@ -1711,7 +2176,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 <div className="rounded-lg bg-[#84cc16] px-4 py-2 text-white flex flex-wrap items-center justify-between text-[11px] font-extrabold tracking-tight">
                   <div className="flex items-center gap-1.5">
                     <Phone size={12} className="fill-white" />
-                    <span>9030176176</span>
+                    <span>{getBranchPhone(activeInvoice.branch || appointment?.branch || "KPHB Branch")}</span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -1726,7 +2191,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                   <div className="flex items-center gap-1.5 uppercase">
                     <MapPin size={12} />
-                    <span>{activeInvoice.branch || "KPHB BRANCH"}</span>
+                    <span>{(activeInvoice.branch || appointment?.branch || "KPHB Branch").toUpperCase()}</span>
                   </div>
                 </div>
 
@@ -2015,8 +2480,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
               appointmentId: appointment?.id,
               consultationFee: includeConsultFee ? consultationFee : 0,
               medicineFee: includeMedicineFee ? totalMedicineAmount : 0,
-              medicinesList: includeMedicineFee ? medicineItems : [],
-              medicineDuration: includeMedicineFee ? medicineDuration : "",
+              medicinesList: (includeMedicineFee || paymentType === "consult_and_med") ? medicineItems : [],
+              medicineDuration: (includeMedicineFee || paymentType === "consult_and_med") ? medicineDuration : "",
               dietPlanFee: dietFee,
               otherCharges,
               discount,

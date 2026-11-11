@@ -242,6 +242,7 @@ export default function HRDashboard() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickStripScroll}>
           <View style={styles.quickStrip}>
             {[
+              { label: "Follow-Ups", route: "/(hr)/all-follow-ups", icon: "calendar" },
               { label: "Staff Mgmt", route: "/(hr)/employee-management", icon: "people" },
               { label: "Doctor Timings", route: "/(hr)/doctor-timings", icon: "time" },
               { label: "Total Revenue", route: "/(hr)/total-revenue", icon: "cash" },
@@ -731,7 +732,7 @@ export default function HRDashboard() {
 
               <TouchableOpacity
                 style={styles.drawerMenuItem}
-                onPress={() => handleNavigate("/(admin)/all-follow-ups")}
+                onPress={() => handleNavigate("/(hr)/all-follow-ups")}
                 activeOpacity={0.75}
               >
                 <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>

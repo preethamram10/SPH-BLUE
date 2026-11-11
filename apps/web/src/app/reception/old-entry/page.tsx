@@ -21,11 +21,24 @@ import {
   Building2,
   DollarSign,
   ChevronRight,
+  ChevronLeft,
   ExternalLink,
   Sparkles,
   Maximize2,
   UserCheck,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  X,
+  Stethoscope,
 } from "lucide-react";
+
+const DEFAULT_DOCTORS = [
+  { id: "doc-1", name: "Dr. Prashanth K Vaidya" },
+  { id: "doc-2", name: "Dr. S. Radhika" },
+  { id: "doc-3", name: "Dr. B. K. Sharma" },
+  { id: "doc-4", name: "Dr. Ananya Rao" },
+];
 
 // Client-side image compression
 async function compressImageFile(file: File, maxWidth = 1600, quality = 0.75): Promise<File> {
@@ -94,6 +107,7 @@ function OldPrescriptionEntryContent() {
   const [isCheckingId, setIsCheckingId] = useState(false);
   const [idStatus, setIdStatus] = useState<"IDLE" | "EXISTS" | "NEW">("IDLE");
   const [existingPatientData, setExistingPatientData] = useState<any>(null);
+  const [hasGeneratedId, setHasGeneratedId] = useState(false);
 
   const [phone, setPhone] = useState("");
   const [familyProfiles, setFamilyProfiles] = useState<any[]>([]);
@@ -102,10 +116,21 @@ function OldPrescriptionEntryContent() {
   const [patientName, setPatientName] = useState("");
   const [visitDate, setVisitDate] = useState("");
 
+  // Doctor state
+  const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>(DEFAULT_DOCTORS);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(DEFAULT_DOCTORS[0].id);
+  const [selectedDoctorName, setSelectedDoctorName] = useState<string>(DEFAULT_DOCTORS[0].name);
+
   // Prescription Scans (S3)
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fullscreen Prescription Viewer Modal (< and > navigation)
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [viewerRotation, setViewerRotation] = useState<number>(0);
+  const [viewerZoom, setViewerZoom] = useState<number>(1);
 
   // Submission States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -116,13 +141,54 @@ function OldPrescriptionEntryContent() {
   const [recentEntries, setRecentEntries] = useState<any[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("branch_name");
+    const saved = localStorage.getItem("branch_name") || localStorage.getItem("branch");
     if (saved) setBranchName(saved);
 
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     setVisitDate(today);
+
+    // Fetch doctors from API
+    fetch("/api/admin/employees?category=DOCTOR")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = data.employees || data;
+        if (Array.isArray(list) && list.length > 0) {
+          const docList = list.map((d: any) => ({
+            id: d.id || `doc-${d.name}`,
+            name: d.name,
+          }));
+          setDoctors(docList);
+          setSelectedDoctorId(docList[0].id);
+          setSelectedDoctorName(docList[0].name);
+        }
+      })
+      .catch(() => {
+        // Fallback to DEFAULT_DOCTORS
+      });
   }, []);
+
+  // Keyboard navigation for viewer modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (viewerIndex === null) return;
+      if (e.key === "ArrowLeft") {
+        setViewerIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
+        setViewerRotation(0);
+        setViewerZoom(1);
+      } else if (e.key === "ArrowRight") {
+        setViewerIndex((prev) =>
+          prev !== null && prev < uploadedImages.length - 1 ? prev + 1 : prev
+        );
+        setViewerRotation(0);
+        setViewerZoom(1);
+      } else if (e.key === "Escape") {
+        setViewerIndex(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewerIndex, uploadedImages.length]);
 
   // 1. Auto-Capitalize MRN on Change & Check
   const handleRegIdChange = (val: string) => {
@@ -130,6 +196,7 @@ function OldPrescriptionEntryContent() {
     setRegId(upper);
     setIdStatus("IDLE");
     setExistingPatientData(null);
+    setHasGeneratedId(false);
   };
 
   const checkPatientId = useCallback(async (targetId?: string) => {
@@ -155,16 +222,25 @@ function OldPrescriptionEntryContent() {
     }
   }, [regId]);
 
-  // Auto-Generate New Monotonic ID (no collision with regular booking)
+  // Auto-Generate New Monotonic ID with collision guard
   const handleGenerateId = async () => {
+    if (hasGeneratedId && regId.trim()) {
+      const confirmDiscard = window.confirm(
+        `You currently have '${regId}' reserved for this patient. Generating another ID will advance the sequence. Are you sure you want to generate a new one?`
+      );
+      if (!confirmDiscard) return;
+    }
+
     try {
       setIsCheckingId(true);
       const res = await fetch(`/api/patients/generate-id?branch=${encodeURIComponent(branchName)}`);
       const data = await res.json();
       if (data.success && data.registrationId) {
-        setRegId(data.registrationId.toUpperCase());
+        const nextId = data.registrationId.toUpperCase();
+        setRegId(nextId);
         setIdStatus("NEW");
         setExistingPatientData(null);
+        setHasGeneratedId(true);
       } else {
         alert("Failed to generate new ID from sequence.");
       }
@@ -182,6 +258,8 @@ function OldPrescriptionEntryContent() {
     setPatientName(p.name || "");
     if (p.phone) setPhone((p.phone || "").replace(/\D/g, "").slice(-10));
     if (p.branch) setBranchName(p.branch);
+    setIdStatus("EXISTS");
+    setExistingPatientData(p);
   };
 
   // 2. Phone Number & Family Profiles Detection
@@ -216,6 +294,7 @@ function OldPrescriptionEntryContent() {
 
     try {
       setIsUploadingImages(true);
+      setUploadSuccessMsg(null);
       const newUrls: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
@@ -238,6 +317,8 @@ function OldPrescriptionEntryContent() {
       }
 
       setUploadedImages((prev) => [...prev, ...newUrls]);
+      setUploadSuccessMsg(`✓ Successfully uploaded ${newUrls.length} prescription scan(s) to AWS S3!`);
+      setTimeout(() => setUploadSuccessMsg(null), 5000);
     } catch {
       alert("Failed to upload prescription scans.");
     } finally {
@@ -248,6 +329,32 @@ function OldPrescriptionEntryContent() {
 
   const handleRemoveImage = (indexToRemove: number) => {
     setUploadedImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    if (viewerIndex !== null) {
+      if (uploadedImages.length <= 1) {
+        setViewerIndex(null);
+      } else if (viewerIndex >= indexToRemove && viewerIndex > 0) {
+        setViewerIndex(viewerIndex - 1);
+      }
+    }
+  };
+
+  // Quick past date helper
+  const setQuickDateDays = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    setVisitDate(d.toISOString().slice(0, 10));
+  };
+
+  const setQuickDateMonths = (monthsAgo: number) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo);
+    setVisitDate(d.toISOString().slice(0, 10));
+  };
+
+  const setQuickDateYears = (yearsAgo: number) => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - yearsAgo);
+    setVisitDate(d.toISOString().slice(0, 10));
   };
 
   // 4. Submit & Save Old Entry into Database
@@ -280,7 +387,8 @@ function OldPrescriptionEntryContent() {
           phone: phone.trim(),
           branch: branchName,
           visitDate,
-          doctorName: "Dr. Prashanth K Vaidya",
+          doctorName: selectedDoctorName,
+          doctorId: selectedDoctorId,
           consultationFee: 0,
           prescriptionImages: uploadedImages,
         }),
@@ -291,7 +399,7 @@ function OldPrescriptionEntryContent() {
       if (data.success) {
         setFeedback({
           type: "success",
-          message: `Old record successfully saved! Patient ${data.patient?.name} (${data.patient?.regId}) is now active in database.`,
+          message: `Old record successfully saved! Patient ${data.patient?.name} (${data.patient?.regId}) assigned to ${selectedDoctorName} is now active in database.`,
         });
 
         const entrySummary = {
@@ -300,7 +408,7 @@ function OldPrescriptionEntryContent() {
           phone,
           visitDate,
           imagesCount: uploadedImages.length,
-          doctorName: "Dr. Prashanth K Vaidya",
+          doctorName: selectedDoctorName,
           createdAt: new Date().toLocaleTimeString(),
         };
 
@@ -315,6 +423,7 @@ function OldPrescriptionEntryContent() {
         setIdStatus("IDLE");
         setExistingPatientData(null);
         setFamilyProfiles([]);
+        setHasGeneratedId(false);
       } else {
         setFeedback({
           type: "error",
@@ -405,11 +514,11 @@ function OldPrescriptionEntryContent() {
                 <FileText className="w-4 h-4 text-[#0284c7]" />
                 <h2 className="text-sm font-extrabold text-slate-900">Enter Historical Patient Record &amp; Prescription</h2>
               </div>
-              <span className="text-xs text-slate-400 font-semibold">* All fields auto-save to regular database</span>
+              <span className="text-xs text-slate-400 font-semibold">* Historical records bypass capacity limits</span>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* SECTION 1: Patient MRN ID Auto-Capitalize & Verification */}
+              {/* SECTION 1: Patient MRN ID Auto-Capitalize & Monotonic Reservation */}
               <div className="bg-slate-50/60 rounded-xl p-4 border border-slate-200 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
@@ -417,7 +526,7 @@ function OldPrescriptionEntryContent() {
                       Patient Registration ID / MRN *
                     </label>
                     <p className="text-[11px] text-slate-400">
-                      Letters capitalize automatically. System checks for existing records to prevent duplicates.
+                      Sequential ID reservation ensures unique allocation without collisions.
                     </p>
                   </div>
 
@@ -435,10 +544,14 @@ function OldPrescriptionEntryContent() {
                       type="button"
                       onClick={handleGenerateId}
                       disabled={isCheckingId}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 border border-sky-200 text-[#0284c7] font-bold text-xs hover:bg-sky-100 transition-colors shadow-2xs cursor-pointer"
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-2xs cursor-pointer transition-colors ${
+                        hasGeneratedId
+                          ? "bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                          : "bg-sky-50 border border-sky-200 text-[#0284c7] hover:bg-sky-100"
+                      }`}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Generate New ID</span>
+                      <span>{hasGeneratedId ? "ID Reserved" : "Generate New ID"}</span>
                     </button>
                   </div>
                 </div>
@@ -455,17 +568,22 @@ function OldPrescriptionEntryContent() {
                   />
                 </div>
 
-                {/* Status Badges */}
+                {/* Status Badges - DISPLAYING MRN ID & PHONE FIRST */}
                 {idStatus === "EXISTS" && existingPatientData && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs animate-in fade-in duration-200">
                     <div className="flex items-center gap-2">
                       <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
                       <div>
-                        <span className="font-black text-amber-900">
-                          Existing Patient Found: {existingPatientData.name} ({existingPatientData.regId})
-                        </span>
-                        <p className="text-[11px] text-amber-700">
-                          Mobile: {existingPatientData.phone} • {existingPatientData.branch}
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-amber-900">
+                            [{existingPatientData.regId}]
+                          </span>
+                          <span className="font-bold text-amber-800">
+                            📞 {existingPatientData.phone || "No phone"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          Name: <strong className="text-amber-950">{existingPatientData.name}</strong> • Branch: {existingPatientData.branch || branchName}
                         </p>
                       </div>
                     </div>
@@ -487,8 +605,9 @@ function OldPrescriptionEntryContent() {
                 )}
               </div>
 
-              {/* SECTION 2: Mobile Number, Patient Name & Visit Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* SECTION 2: Mobile Number, Patient Name, Doctor Selection & Visit Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Mobile Phone */}
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
                     Mobile Phone Number *
@@ -506,7 +625,7 @@ function OldPrescriptionEntryContent() {
                     />
                   </div>
 
-                  {/* Sibling / Family Profiles sharing this phone */}
+                  {/* Family Profiles sharing this phone - MATCHED BY MRN ID & PHONE */}
                   {familyProfiles.length > 0 && (
                     <div className="mt-2 p-2.5 bg-sky-50/70 border border-sky-100 rounded-xl space-y-1.5">
                       <span className="text-[10px] font-black uppercase text-sky-800 block">
@@ -518,10 +637,12 @@ function OldPrescriptionEntryContent() {
                             key={prof.regId}
                             type="button"
                             onClick={() => applyExistingPatient(prof)}
-                            className="px-2.5 py-1 bg-white border border-sky-200 hover:bg-sky-100 rounded-lg text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            className="px-2.5 py-1.5 bg-white border border-sky-200 hover:bg-sky-100 rounded-lg text-xs text-left shadow-2xs cursor-pointer flex flex-col"
                           >
-                            <span>{prof.name}</span>
-                            <span className="text-[10px] text-sky-600 font-mono">({prof.regId})</span>
+                            <span className="font-mono font-black text-sky-700 text-[11px]">
+                              [{prof.regId}]
+                            </span>
+                            <span className="font-bold text-slate-800 text-[11px]">{prof.name}</span>
                           </button>
                         ))}
                       </div>
@@ -529,6 +650,7 @@ function OldPrescriptionEntryContent() {
                   )}
                 </div>
 
+                {/* Patient Full Name */}
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
                     Patient Full Name *
@@ -543,6 +665,33 @@ function OldPrescriptionEntryContent() {
                   />
                 </div>
 
+                {/* Attending Doctor Dropdown */}
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Attending Doctor *
+                  </label>
+                  <div className="relative">
+                    <Stethoscope className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <select
+                      value={selectedDoctorId}
+                      onChange={(e) => {
+                        const docId = e.target.value;
+                        setSelectedDoctorId(docId);
+                        const matched = doctors.find((d) => d.id === docId);
+                        if (matched) setSelectedDoctorName(matched.name);
+                      }}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] font-bold shadow-2xs text-slate-800"
+                    >
+                      {doctors.map((doc) => (
+                        <option key={doc.id} value={doc.id}>
+                          {doc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Date of Visit (Calendar & Quick Selectors) */}
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
                     Date of Visit (Prescription Date) *
@@ -557,10 +706,56 @@ function OldPrescriptionEntryContent() {
                       className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] font-semibold shadow-2xs"
                     />
                   </div>
+
+                  {/* Quick Select Pills */}
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateDays(0)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateDays(1)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      Yesterday
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateDays(7)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      1 Wk Ago
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateMonths(1)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      1 Mo Ago
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateMonths(6)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      6 Mo Ago
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDateYears(1)}
+                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold"
+                    >
+                      1 Yr Ago
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* SECTION 5: Upload Prescription Scans to AWS S3 (Compressed) */}
+              {/* SECTION 5: Upload Prescription Scans to AWS S3 (Compressed, with Success Toast & Viewer) */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
@@ -568,7 +763,7 @@ function OldPrescriptionEntryContent() {
                       Upload Prescription Scan Images (AWS S3)
                     </label>
                     <p className="text-[11px] text-slate-400">
-                      Multiple pages supported. Photos are auto-compressed and saved permanently into AWS S3 bucket.
+                      Multiple pages supported. Click any scan thumbnail to view fullscreen with &lt; &gt; navigation and zoom.
                     </p>
                   </div>
 
@@ -587,22 +782,50 @@ function OldPrescriptionEntryContent() {
                   </label>
                 </div>
 
+                {/* Upload Success Banner */}
+                {uploadSuccessMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-bold animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>{uploadSuccessMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadSuccessMsg(null)}
+                      className="text-emerald-700 hover:underline cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
                 {/* Uploaded Images List */}
                 {uploadedImages.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 pt-2">
                     {uploadedImages.map((url, idx) => (
                       <div
                         key={idx}
-                        className="group relative aspect-square rounded-xl border border-slate-200 bg-slate-100 overflow-hidden shadow-2xs flex flex-col justify-between"
+                        className="group relative aspect-square rounded-xl border border-slate-200 bg-slate-100 overflow-hidden shadow-2xs cursor-pointer hover:ring-2 hover:ring-[#0284c7] transition-all"
+                        onClick={() => {
+                          setViewerIndex(idx);
+                          setViewerRotation(0);
+                          setViewerZoom(1);
+                        }}
                       >
                         <img src={url} alt={`Scan ${idx + 1}`} className="w-full h-full object-cover" />
-                        <span className="absolute top-1.5 left-1.5 bg-slate-900/80 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs">
+                        <span className="absolute bottom-1.5 left-1.5 bg-slate-900/80 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs">
                           Page {idx + 1}
                         </span>
+                        <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Maximize2 className="w-5 h-5 text-white drop-shadow-md" />
+                        </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveImage(idx)}
-                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md bg-rose-600/90 hover:bg-rose-600 text-white flex items-center justify-center transition-colors shadow-xs cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveImage(idx);
+                          }}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md bg-rose-600/90 hover:bg-rose-600 text-white flex items-center justify-center transition-colors shadow-xs cursor-pointer z-10"
                           title="Remove this scan"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -633,6 +856,7 @@ function OldPrescriptionEntryContent() {
                     setIdStatus("IDLE");
                     setExistingPatientData(null);
                     setFamilyProfiles([]);
+                    setHasGeneratedId(false);
                   }}
                   className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-colors shadow-2xs"
                 >
@@ -667,10 +891,10 @@ function OldPrescriptionEntryContent() {
                 <div>
                   <span className="text-[10px] font-black uppercase text-emerald-700">RECORD SAVED CONFIRMATION</span>
                   <h3 className="text-base font-black text-emerald-950 mt-0.5">
-                    {submittedResult.name} • {submittedResult.regId}
+                    [{submittedResult.regId}] • {submittedResult.name}
                   </h3>
                   <p className="text-xs text-emerald-800 mt-1">
-                    Historical visit for {submittedResult.visitDate} with {submittedResult.imagesCount} prescription scan(s) is now part of the active clinic database!
+                    Historical visit on {submittedResult.visitDate} under {submittedResult.doctorName} with {submittedResult.imagesCount} prescription scan(s) is now part of the active clinic database!
                   </p>
                 </div>
 
@@ -686,7 +910,7 @@ function OldPrescriptionEntryContent() {
                   <button
                     type="button"
                     onClick={() => setSubmittedResult(null)}
-                    className="px-3 py-2 bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-colors"
+                    className="px-3 py-2 bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
                     Enter Another
                   </button>
@@ -712,9 +936,10 @@ function OldPrescriptionEntryContent() {
                 {recentEntries.map((rec, i) => (
                   <div key={i} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50/60 transition-colors">
                     <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-xs text-[#0284c7]">{rec.regId}</span>
+                      <span className="font-mono font-bold text-xs text-[#0284c7]">[{rec.regId}]</span>
                       <span className="font-black text-xs text-slate-900">{rec.name}</span>
                       <span className="text-xs text-slate-500 font-medium">📞 {rec.phone}</span>
+                      <span className="text-xs text-slate-400">• Dr: {rec.doctorName}</span>
                       <span className="text-xs text-slate-400">• Visit: {rec.visitDate}</span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
                         {rec.imagesCount} Rx Scans
@@ -735,6 +960,139 @@ function OldPrescriptionEntryContent() {
           )}
         </main>
       </div>
+
+      {/* FULLSCREEN PRESCRIPTION VIEWER MODAL (< and > Navigation) */}
+      {viewerIndex !== null && uploadedImages[viewerIndex] && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-between p-4 animate-in fade-in duration-200">
+          {/* Top Bar */}
+          <div className="w-full max-w-5xl flex items-center justify-between text-white py-2">
+            <div className="flex items-center gap-3">
+              <span className="bg-sky-500/20 text-sky-300 font-mono font-bold text-xs px-3 py-1 rounded-full border border-sky-500/30">
+                Page {viewerIndex + 1} of {uploadedImages.length}
+              </span>
+              <span className="text-xs text-slate-400 hidden sm:inline">
+                (Use &larr; &rarr; keys to browse)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewerZoom((z) => (z < 2.5 ? z + 0.25 : 1))}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewerZoom((z) => (z > 0.75 ? z - 0.25 : 1))}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewerRotation((r) => (r + 90) % 360)}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Rotate 90°"
+              >
+                <RotateCw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemoveImage(viewerIndex)}
+                className="p-2 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white transition-colors cursor-pointer"
+                title="Delete this image"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewerIndex(null)}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer ml-2"
+                title="Close Viewer (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Image with Left and Right Navigation Controls */}
+          <div className="relative flex-1 w-full max-w-5xl flex items-center justify-center overflow-hidden my-2">
+            {/* Previous Button (<) */}
+            <button
+              type="button"
+              disabled={viewerIndex <= 0}
+              onClick={() => {
+                if (viewerIndex > 0) {
+                  setViewerIndex(viewerIndex - 1);
+                  setViewerRotation(0);
+                  setViewerZoom(1);
+                }
+              }}
+              className="absolute left-2 z-10 w-11 h-11 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white border border-white/20 flex items-center justify-center transition-all disabled:opacity-20 disabled:pointer-events-none cursor-pointer shadow-lg"
+              title="Previous Page (Left Arrow)"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+
+            {/* Display Image */}
+            <div className="max-w-full max-h-[75vh] flex items-center justify-center overflow-hidden">
+              <img
+                src={uploadedImages[viewerIndex]}
+                alt={`Prescription Page ${viewerIndex + 1}`}
+                style={{
+                  transform: `rotate(${viewerRotation}deg) scale(${viewerZoom})`,
+                  transition: "transform 0.2s ease-out",
+                }}
+                className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+
+            {/* Next Button (>) */}
+            <button
+              type="button"
+              disabled={viewerIndex >= uploadedImages.length - 1}
+              onClick={() => {
+                if (viewerIndex < uploadedImages.length - 1) {
+                  setViewerIndex(viewerIndex + 1);
+                  setViewerRotation(0);
+                  setViewerZoom(1);
+                }
+              }}
+              className="absolute right-2 z-10 w-11 h-11 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white border border-white/20 flex items-center justify-center transition-all disabled:opacity-20 disabled:pointer-events-none cursor-pointer shadow-lg"
+              title="Next Page (Right Arrow)"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Bottom Thumbnails Strip */}
+          <div className="w-full max-w-3xl flex items-center justify-center gap-2 overflow-x-auto py-2">
+            {uploadedImages.map((imgUrl, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setViewerIndex(i);
+                  setViewerRotation(0);
+                  setViewerZoom(1);
+                }}
+                className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
+                  i === viewerIndex ? "border-sky-400 scale-105 shadow-md" : "border-white/20 opacity-60 hover:opacity-100"
+                }`}
+              >
+                <img src={imgUrl} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover" />
+                <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] font-bold text-center text-white">
+                  {i + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -746,4 +1104,3 @@ export default function OldPrescriptionEntryPage() {
     </Suspense>
   );
 }
-

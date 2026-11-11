@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch } from "../../../services/auth";
+import { getBranchPhone } from "../../(reception)/medical-requests/pdf/generateMedicineRequestPDF";
 
 interface PayLaterRecord {
   id: string;
@@ -234,7 +235,7 @@ export default function MobilePayLaterScreen() {
       `Paid at Clinic: ₹${r.paidAmount.toLocaleString()}\n` +
       `Pending Pay Later Due: ₹${r.dueAmount.toLocaleString()}\n\n` +
       `You may clear this balance at your next visit or via UPI to sseomni9k9v0j291124pos@mairtel.\n\n` +
-      `Spiritual Homeopathy Clinics\nSupport: +91 9030176176`
+      `Spiritual Homeopathy Clinics (${r.branch || "Clinic"})\nBranch Contact: ${getBranchPhone(r.branch)}`
     );
 
     Linking.openURL(`https://wa.me/91${cleanPhone}?text=${msg}`).catch(() => {

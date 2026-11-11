@@ -26,6 +26,13 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
   </svg>
 );
 
+const CreditCardIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="20" height="14" x="2" y="5" rx="2" />
+    <line x1="2" x2="22" y1="10" y2="10" />
+  </svg>
+);
+
 const renderVisitBadge = (appt: any) => {
   const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
   return (
@@ -54,15 +61,25 @@ const renderVisitBadge = (appt: any) => {
   );
 };
 
+const ALL_BRANCHES = [
+  "All Branches",
+  "KPHB Branch",
+  "Chandanagar Branch",
+  "Dilsukhnagar Branch",
+  "Nallagandla Branch",
+  "Suchitra Branch",
+  "Miyapur Branch",
+];
+
 export default function DoctorDashboardPage() {
   const router = useRouter();
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
-  const [branchName, setBranchName] = useState("KPHB Branch");
+  const [branchName, setBranchName] = useState("All Branches");
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "WAITING" | "IN_CONSULTATION" | "COMPLETED">("ALL");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "SENT_TO_RECEPTION" | "COMPLETED">("ALL");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // Safe client-side date formatting
@@ -85,9 +102,9 @@ export default function DoctorDashboardPage() {
     if (!dt) return;
     if (!isSilent) setIsLoading(true);
     try {
-      const res = await fetch(
-        `/api/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}&date=${encodeURIComponent(dt)}&branch=${encodeURIComponent(branchName)}`
-      );
+      const docParam = `doctorName=${encodeURIComponent(doctorName)}`;
+      const branchParam = branchName && branchName !== "All Branches" ? `&branch=${encodeURIComponent(branchName)}` : "";
+      const res = await fetch(`/api/doctor/appointments?${docParam}${branchParam}&date=${encodeURIComponent(dt)}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -120,8 +137,8 @@ export default function DoctorDashboardPage() {
     );
   };
 
-  // Consultation Actions
-  const handleUpdateStatus = async (id: string, action: "START_CONSULTATION" | "COMPLETE_CONSULTATION", appt?: any) => {
+  // Consultation Actions: Doctor only starts consultation (completion is done via Send to Reception)
+  const handleUpdateStatus = async (id: string, action: "START_CONSULTATION", appt?: any) => {
     try {
       if (action === "START_CONSULTATION" && appt) {
         openPatientFile(appt);
@@ -151,11 +168,14 @@ export default function DoctorDashboardPage() {
 
   const filteredAppointments = useMemo(() => {
     if (activeFilter === "ALL") return appointments;
-    if (activeFilter === "WAITING") {
+    if (activeFilter === "UPCOMING") {
       return appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED");
     }
-    if (activeFilter === "IN_CONSULTATION") {
+    if (activeFilter === "ACTIVE") {
       return appointments.filter((a) => a.status === "IN_CONSULTATION");
+    }
+    if (activeFilter === "SENT_TO_RECEPTION") {
+      return appointments.filter((a) => a.status === "COLLECT_FEE" || a.isSentToReception);
     }
     if (activeFilter === "COMPLETED") {
       return appointments.filter((a) => a.status === "COMPLETED");
@@ -163,8 +183,9 @@ export default function DoctorDashboardPage() {
     return appointments;
   }, [appointments, activeFilter]);
 
-  const waitingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
+  const upcomingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
   const activeCount = appointments.filter((a) => a.status === "IN_CONSULTATION").length;
+  const sentCount = appointments.filter((a) => a.status === "COLLECT_FEE" || a.isSentToReception).length;
   const completedCount = appointments.filter((a) => a.status === "COMPLETED").length;
 
   return (
@@ -188,6 +209,27 @@ export default function DoctorDashboardPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-50 border border-sky-200 text-[#0284c7] font-extrabold text-[11px]">
+                <Stethoscope className="w-3.5 h-3.5" />
+                <span>{doctorName}</span>
+              </div>
+
+              <select
+                value={branchName}
+                onChange={(e) => {
+                  setBranchName(e.target.value);
+                  localStorage.setItem("branch_name", e.target.value);
+                }}
+                className="text-[11px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                title="Filter by Branch"
+              >
+                {ALL_BRANCHES.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+
               <button
                 onClick={() => fetchDoctorAppointments(selectedDate, false)}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10.5px] font-bold text-[#0284c7] bg-sky-50 hover:bg-sky-100 border border-sky-200 transition-colors cursor-pointer"
@@ -220,10 +262,10 @@ export default function DoctorDashboardPage() {
           )}
 
           {/* Quick Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Today&apos;s Booked Patients</p>
+                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Today&apos;s Booked</p>
                 <Users className="w-3.5 h-3.5 text-[#0284c7]" />
               </div>
               <p className="text-lg font-black text-[#0284c7] mt-1">{appointments.length}</p>
@@ -231,15 +273,15 @@ export default function DoctorDashboardPage() {
 
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Waiting Outside</p>
+                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Upcoming</p>
                 <Clock className="w-3.5 h-3.5 text-amber-500" />
               </div>
-              <p className="text-lg font-black text-amber-600 mt-1">{waitingCount}</p>
+              <p className="text-lg font-black text-amber-600 mt-1">{upcomingCount}</p>
             </div>
 
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">In Cabin Now</p>
+                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Active (In Cabin)</p>
                 <Stethoscope className="w-3.5 h-3.5 text-[#0284c7]" />
               </div>
               <p className="text-lg font-black text-[#0284c7] mt-1">{activeCount}</p>
@@ -247,7 +289,15 @@ export default function DoctorDashboardPage() {
 
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Completed Consultations</p>
+                <p className="text-[9.5px] font-bold text-amber-600 uppercase tracking-wider">Sent to Reception</p>
+                <CreditCardIcon className="w-3.5 h-3.5 text-amber-500" />
+              </div>
+              <p className="text-lg font-black text-amber-600 mt-1">{sentCount}</p>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <p className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">Completed</p>
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               </div>
               <p className="text-lg font-black text-emerald-600 mt-1">{completedCount}</p>
@@ -265,7 +315,7 @@ export default function DoctorDashboardPage() {
               </div>
 
               {/* Status Filter Tabs */}
-              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10.5px] font-bold">
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10.5px] font-bold flex-wrap">
                 <button
                   type="button"
                   onClick={() => setActiveFilter("ALL")}
@@ -275,24 +325,31 @@ export default function DoctorDashboardPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveFilter("WAITING")}
-                  className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "WAITING" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                  onClick={() => setActiveFilter("UPCOMING")}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "UPCOMING" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  Waiting ({waitingCount})
+                  Upcoming ({upcomingCount})
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveFilter("IN_CONSULTATION")}
-                  className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "IN_CONSULTATION" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                  onClick={() => setActiveFilter("ACTIVE")}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "ACTIVE" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  In Cabin ({activeCount})
+                  Active ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("SENT_TO_RECEPTION")}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "SENT_TO_RECEPTION" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  Sent to Reception ({sentCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveFilter("COMPLETED")}
                   className={`px-2 py-0.5 rounded-md transition-all ${activeFilter === "COMPLETED" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  Done ({completedCount})
+                  Completed ({completedCount})
                 </button>
               </div>
             </div>
@@ -327,6 +384,7 @@ export default function DoctorDashboardPage() {
                       const status = (appt.status || "WAITING").toUpperCase();
                       const isWaiting = status === "WAITING" || status === "SCHEDULED";
                       const isActive = status === "IN_CONSULTATION";
+                      const isSentToReception = status === "COLLECT_FEE" || !!appt.isSentToReception;
                       const isCompleted = status === "COMPLETED";
                       const isRevisit = !!appt.isReback;
                       const cleanPhone = (appt.phone || appt.phoneNumber || "").replace(/\D/g, "").slice(-10);
@@ -381,12 +439,14 @@ export default function DoctorDashboardPage() {
                                   ? "bg-amber-50 text-amber-700 border border-amber-200"
                                   : isActive
                                   ? "bg-sky-50 text-[#0284c7] border border-sky-200"
+                                  : isSentToReception
+                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
                                   : isCompleted
                                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                   : "bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {status.replace("_", " ")}
+                              {isSentToReception ? "Sent to Reception" : status.replace("_", " ")}
                             </span>
                           </td>
 
@@ -413,6 +473,23 @@ export default function DoctorDashboardPage() {
                                   <FileText className="w-3 h-3" />
                                   <span>Patient File</span>
                                 </button>
+                              )}
+
+                              {isSentToReception && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                    Ready to Collect Fee
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openPatientFile(appt)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all cursor-pointer"
+                                    title="View Prescription & File"
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    <span>View File</span>
+                                  </button>
+                                </div>
                               )}
 
                               {isCompleted && (

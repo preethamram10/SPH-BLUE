@@ -25,16 +25,34 @@ export interface MedicineRequest {
 // Branch phone directory mapping
 export const BRANCH_PHONES: Record<string, string> = {
   kphb: "+91 90301 76176",
-  chandanagar: "+91 95531 76176",
-  dilshuknagar: "+91 96761 76176",
+  chandanagar: "+91 99031 19766",
+  dilshuknagar: "+91 94908 08582",
   nallagandla: "+91 80961 76176",
+  banjara: "+91 81252 60176",
 };
 
-export const getBranchPhone = (branchName: string = ""): string => {
-  const lower = branchName.toLowerCase();
+export const getBranchPhone = (branchName: string = "", branchesList?: any[]): string => {
+  const lower = (branchName || "").toLowerCase().trim();
+
+  // 1. Check loaded branches list first if provided
+  if (Array.isArray(branchesList) && branchesList.length > 0) {
+    const match = branchesList.find((b: any) => {
+      const bName = (b.name || "").toLowerCase().trim();
+      const bId = (b.id || "").toLowerCase().trim();
+      return bName === lower || bName.includes(lower) || lower.includes(bName) || bId === lower;
+    });
+    if (match && match.phone && String(match.phone).trim()) {
+      return String(match.phone).trim();
+    }
+  }
+
+  // 2. Directory fallback based on known branch names & aliases
+  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return BRANCH_PHONES.chandanagar;
+  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return BRANCH_PHONES.dilshuknagar;
   if (lower.includes("nalla") || lower.includes("nlg")) return BRANCH_PHONES.nallagandla;
-  if (lower.includes("chanda") || lower.includes("cngr")) return BRANCH_PHONES.chandanagar;
-  if (lower.includes("dilshuk") || lower.includes("dsnr")) return BRANCH_PHONES.dilshuknagar;
+  if (lower.includes("banjara") || lower.includes("bjh")) return BRANCH_PHONES.banjara;
+  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return BRANCH_PHONES.kphb;
+
   return BRANCH_PHONES.kphb;
 };
 

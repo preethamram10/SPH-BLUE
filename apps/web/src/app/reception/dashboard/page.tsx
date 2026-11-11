@@ -1006,19 +1006,25 @@ export default function ReceptionDashboardPage() {
                                 <Activity className="w-3 h-3 text-white" />
                                 <span>In Consultation</span>
                               </button>
-                            ) : status === "COLLECT_FEE" ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPaymentAppt(appt);
-                                  setIsPaymentModalOpen(true);
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-amber-500 hover:bg-amber-600 shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
-                                title="Collect Fee & Complete Consultation"
-                              >
-                                <CreditCard className="w-3 h-3" />
-                                <span>COLLECT FEE</span>
-                              </button>
+                            ) : (status === "COLLECT_FEE" || appt.isSentToReception) ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse"></span>
+                                  Ready to Collect Fee
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPaymentAppt(appt);
+                                    setIsPaymentModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[10.5px] font-black text-white bg-amber-500 hover:bg-amber-600 shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                                  title="Collect Fee & Complete Consultation"
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  <span>COLLECT FEE</span>
+                                </button>
+                              </div>
                             ) : isCompleted ? (
                               <button
                                 type="button"

@@ -42,10 +42,11 @@ export interface FollowUpItem {
   dueYear: number;
   isOverdue: boolean;
   isDueToday: boolean;
+  isDueTomorrow?: boolean;
   isThisMonth: boolean;
   isNextMonth: boolean;
   followUpInterval: string;
-  status: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed";
+  status: "Due Today" | "Due Tomorrow" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed";
   notes: string;
   consultationFee: number;
   prescriptionImages?: string[];
@@ -80,7 +81,7 @@ function AllFollowUpsContent() {
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [branches, setBranches] = useState<string[]>([
     "All Branches",
-    "KPHB Branch",
+    "Kphb Branch",
     "Chandanagar Branch",
     "Nallagandla Branch",
     "Dilshuknagar Branch",
@@ -89,8 +90,8 @@ function AllFollowUpsContent() {
   const [selectedBranch, setSelectedBranch] = useState("All Branches");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "month", "range"
-  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range">("this_month");
+  // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "due_tomorrow", "month", "range"
+  const [periodFilter, setPeriodFilter] = useState<"all" | "overdue" | "this_month" | "next_month" | "due_today" | "due_tomorrow" | "month" | "range">("due_today");
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -137,6 +138,7 @@ function AllFollowUpsContent() {
     total: 0,
     overdue: 0,
     dueToday: 0,
+    dueTomorrow: 0,
     thisMonth: 0,
     nextMonth: 0,
     completed: 0,
@@ -194,7 +196,7 @@ function AllFollowUpsContent() {
     fetchFollowUps();
   }, [fetchFollowUps]);
 
-  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today" | "month" | "range") => {
+  const handlePeriodChange = (period: "all" | "overdue" | "this_month" | "next_month" | "due_today" | "due_tomorrow" | "month" | "range") => {
     setPeriodFilter(period);
     setCurrentPage(1);
   };
@@ -230,7 +232,11 @@ function AllFollowUpsContent() {
       const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       setNewDueDate(tomorrow);
     }
-    setNewInterval(item.followUpInterval || "1 Month");
+    const cleanIntv =
+      !item.followUpInterval || item.followUpInterval === "Custom Date" || item.followUpInterval === "No Follow-up"
+        ? item.dueDate || "1 Month"
+        : item.followUpInterval;
+    setNewInterval(cleanIntv);
     setRescheduleNotes(item.notes || "");
   };
 
@@ -370,7 +376,7 @@ function AllFollowUpsContent() {
         `"${f.doctorName.replace(/"/g, '""')}"`,
         `"${f.branch}"`,
         `"${f.dueDate}"`,
-        `"${f.followUpInterval}"`,
+        `"${!f.followUpInterval || f.followUpInterval === "Custom Date" || f.followUpInterval === "No Follow-up" ? f.dueDate : f.followUpInterval}"`,
         `"${f.status}"`,
       ]);
 
@@ -512,81 +518,73 @@ function AllFollowUpsContent() {
                 Filter Period:
               </span>
 
-              {/* This Month (FIRST & DEFAULT) */}
-              <button
-                onClick={() => handlePeriodChange("this_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "this_month"
-                    ? "bg-[#0284c7] text-white shadow-xs"
-                    : "bg-sky-50 text-sky-700 border border-sky-200/80 hover:bg-sky-100"
-                  }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>This Month</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "this_month" ? "bg-sky-800 text-white" : "bg-white text-sky-700 border border-sky-200"}`}>
-                  {stats.thisMonth}
-                </span>
-              </button>
-
-              {/* Next Month */}
-              <button
-                onClick={() => handlePeriodChange("next_month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "next_month"
-                    ? "bg-purple-600 text-white shadow-xs"
-                    : "bg-purple-50 text-purple-700 border border-purple-200/80 hover:bg-purple-100"
-                  }`}
-              >
-                <Clock3 className="w-3.5 h-3.5" />
-                <span>Next Month</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "next_month" ? "bg-purple-800 text-white" : "bg-white text-purple-700 border border-purple-200"}`}>
-                  {stats.nextMonth}
-                </span>
-              </button>
-
-              {/* Due Today */}
+              {/* 1. Today */}
               <button
                 onClick={() => handlePeriodChange("due_today")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "due_today"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100"
-                  }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "due_today"
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "bg-amber-50 text-amber-700 border border-amber-200/80 hover:bg-amber-100"
+                }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>Due Today</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "due_today" ? "bg-emerald-800 text-white" : "bg-white text-emerald-700 border border-emerald-200"}`}>
+                <span>Today</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "due_today"
+                      ? "bg-amber-800 text-white"
+                      : "bg-white text-amber-700 border border-amber-200"
+                  }`}
+                >
                   {stats.dueToday}
                 </span>
               </button>
 
-              {/* Overdue (Passes the follow-up date) */}
+              {/* 2. Tomorrow */}
               <button
-                onClick={() => handlePeriodChange("overdue")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "overdue"
-                    ? "bg-rose-600 text-white shadow-xs"
-                    : "bg-rose-50 text-rose-700 border border-rose-200/80 hover:bg-rose-100"
-                  }`}
+                onClick={() => handlePeriodChange("due_tomorrow")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "due_tomorrow"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100"
+                }`}
               >
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>Overdue (Date Passed)</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "overdue" ? "bg-rose-800 text-white" : "bg-white text-rose-700 border border-rose-200"}`}>
-                  {stats.overdue}
+                <Clock3 className="w-3.5 h-3.5" />
+                <span>Tomorrow</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "due_tomorrow"
+                      ? "bg-emerald-800 text-white"
+                      : "bg-white text-emerald-700 border border-emerald-200"
+                  }`}
+                >
+                  {stats.dueTomorrow}
                 </span>
               </button>
 
-              {/* All Follow-Ups */}
+              {/* 3. Next Month */}
               <button
-                onClick={() => handlePeriodChange("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "all"
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  }`}
+                onClick={() => handlePeriodChange("next_month")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "next_month"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "bg-purple-50 text-purple-700 border border-purple-200/80 hover:bg-purple-100"
+                }`}
               >
-                <span>All Follow-Ups</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-white text-slate-600"}`}>
-                  {stats.total}
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Next Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "next_month"
+                      ? "bg-purple-800 text-white"
+                      : "bg-white text-purple-700 border border-purple-200"
+                  }`}
+                >
+                  {stats.nextMonth}
                 </span>
               </button>
 
-              {/* Overdue (Passes the follow-up date) */}
+              {/* 4. Overdue */}
               <button
                 onClick={() => handlePeriodChange("overdue")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
@@ -596,13 +594,77 @@ function AllFollowUpsContent() {
                 }`}
               >
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span>Overdue (Date Passed)</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "overdue" ? "bg-rose-800 text-white" : "bg-white text-rose-700 border border-rose-200"}`}>
+                <span>Overdue</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "overdue"
+                      ? "bg-rose-800 text-white"
+                      : "bg-white text-rose-700 border border-rose-200"
+                  }`}
+                >
                   {stats.overdue}
                 </span>
               </button>
 
-              {/* All Follow-Ups */}
+              {/* 5. Custom Month */}
+              <button
+                onClick={() => handlePeriodChange("month")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "month"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Custom Month</span>
+                {periodFilter === "month" && selectedMonth && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-800 text-white font-mono">
+                    {selectedMonth}
+                  </span>
+                )}
+              </button>
+
+              {/* 6. Custom Date */}
+              <button
+                onClick={() => handlePeriodChange("range")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "range"
+                    ? "bg-teal-600 text-white shadow-xs"
+                    : "bg-teal-50 text-teal-700 border border-teal-200/80 hover:bg-teal-100"
+                }`}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>Custom Date</span>
+                {periodFilter === "range" && (startDate || endDate) && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-800 text-white">
+                    Active
+                  </span>
+                )}
+              </button>
+
+              {/* 7. This Month */}
+              <button
+                onClick={() => handlePeriodChange("this_month")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  periodFilter === "this_month"
+                    ? "bg-[#0284c7] text-white shadow-xs"
+                    : "bg-sky-50 text-sky-700 border border-sky-200/80 hover:bg-sky-100"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>This Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "this_month"
+                      ? "bg-sky-800 text-white"
+                      : "bg-white text-sky-700 border border-sky-200"
+                  }`}
+                >
+                  {stats.thisMonth}
+                </span>
+              </button>
+
+              {/* 8. All Follow-Ups */}
               <button
                 onClick={() => handlePeriodChange("all")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
@@ -612,43 +674,13 @@ function AllFollowUpsContent() {
                 }`}
               >
                 <span>All Follow-Ups</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${periodFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-white text-slate-600"}`}>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    periodFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-white text-slate-600"
+                  }`}
+                >
                   {stats.total}
                 </span>
-              </button>
-
-              {/* Choose Month */}
-              <button
-                onClick={() => handlePeriodChange("month")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "month"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100"
-                  }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Choose Month</span>
-                {periodFilter === "month" && selectedMonth && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-800 text-white font-mono">
-                    {selectedMonth}
-                  </span>
-                )}
-              </button>
-
-              {/* Date Range */}
-              <button
-                onClick={() => handlePeriodChange("range")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${periodFilter === "range"
-                    ? "bg-teal-600 text-white shadow-xs"
-                    : "bg-teal-50 text-teal-700 border border-teal-200/80 hover:bg-teal-100"
-                  }`}
-              >
-                <CalendarPlus className="w-3.5 h-3.5" />
-                <span>Date Range</span>
-                {periodFilter === "range" && (startDate || endDate) && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-teal-800 text-white">
-                    Active
-                  </span>
-                )}
               </button>
             </div>
 
@@ -819,7 +851,17 @@ function AllFollowUpsContent() {
                           <td className="py-3 px-4 font-semibold text-slate-700">
                             <div className="flex items-center gap-1 text-[11px]">
                               <Calendar className="w-3 h-3 text-slate-400" />
-                              <span className={`font-bold ${item.isOverdue ? "text-rose-600" : item.isDueToday ? "text-emerald-700" : "text-slate-800"}`}>
+                              <span
+                                className={`font-bold ${
+                                  item.isOverdue
+                                    ? "text-rose-600"
+                                    : item.isDueToday
+                                    ? "text-amber-700"
+                                    : item.isDueTomorrow
+                                    ? "text-emerald-700"
+                                    : "text-slate-800"
+                                }`}
+                              >
                                 {item.dueDate}
                               </span>
                             </div>
@@ -828,25 +870,38 @@ function AllFollowUpsContent() {
                           {/* Interval */}
                           <td className="py-3 px-3 text-center">
                             <span className="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[10.5px]">
-                              {item.followUpInterval}
+                              {!item.followUpInterval ||
+                              item.followUpInterval === "Custom Date" ||
+                              item.followUpInterval === "No Follow-up"
+                                ? item.dueDate || "1 Month"
+                                : item.followUpInterval}
                             </span>
                           </td>
 
                           {/* Status */}
                           <td className="py-3 px-4 text-center">
                             <span
-                              className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-black border inline-block ${item.status === "Due Today"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 animate-pulse"
-                                  : item.status === "Overdue"
-                                    ? "bg-rose-50 text-rose-700 border-rose-300"
-                                    : item.status === "Confirmed"
-                                      ? "bg-sky-50 text-sky-700 border-sky-300"
-                                      : item.status === "Completed"
-                                        ? "bg-slate-100 text-slate-700 border-slate-200"
-                                        : "bg-amber-50 text-amber-700 border-amber-300"
-                                }`}
+                              className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-black border inline-block ${
+                                item.status === "Due Today" || item.isDueToday
+                                  ? "bg-amber-50 text-amber-700 border-amber-300 animate-pulse"
+                                  : item.status === "Due Tomorrow" || item.isDueTomorrow
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                                  : item.status === "Overdue" || item.isOverdue
+                                  ? "bg-rose-50 text-rose-700 border-rose-300"
+                                  : item.status === "Confirmed"
+                                  ? "bg-sky-50 text-sky-700 border-sky-300"
+                                  : item.status === "Completed"
+                                  ? "bg-slate-100 text-slate-700 border-slate-200"
+                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}
                             >
-                              {item.status}
+                              {item.status === "Due Today" || item.isDueToday
+                                ? "Due Today"
+                                : item.status === "Due Tomorrow" || item.isDueTomorrow
+                                ? "Due Tomorrow"
+                                : item.isOverdue
+                                ? "Overdue"
+                                : item.status}
                             </span>
                           </td>
 
