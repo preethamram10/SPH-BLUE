@@ -377,7 +377,7 @@ export const branchService = {
         orderBy: { createdAt: "desc" },
       });
       if (dbBranches && dbBranches.length > 0) {
-        branches = dbBranches.map((b) => ({
+        branches = dbBranches.map((b: any) => ({
           ...b,
           photoName: b.photoName || undefined,
           photoUrl: b.photoUrl || "",
@@ -605,7 +605,7 @@ export const branchService = {
       const branches = await prisma.branch.findMany({
         where: { isActive: true },
       });
-      const found = branches.find((b) => normalizePhone(b.phone) === cleanSearch);
+      const found = branches.find((b: any) => normalizePhone(b.phone) === cleanSearch);
       if (found) {
         return {
           ...found,
