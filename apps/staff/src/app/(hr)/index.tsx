@@ -672,6 +672,28 @@ export default function HRDashboard() {
                 <Text style={styles.drawerMenuText}>Branch Cleaning</Text>
               </TouchableOpacity>
 
+              <Text style={[styles.drawerSectionLabel, { marginTop: 14 }]}>TELECALLING DESK</Text>
+
+              {/* Telecaller Accounts */}
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(admin)/telecaller-accounts")}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="headset-outline" size={20} color="#0284c7" style={styles.drawerMenuIcon} />
+                <Text style={styles.drawerMenuText}>Telecaller Accounts</Text>
+              </TouchableOpacity>
+
+              {/* Telecaller Updates */}
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(admin)/telecaller-updates")}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="call-outline" size={20} color="#0284c7" style={styles.drawerMenuIcon} />
+                <Text style={styles.drawerMenuText}>Telecaller Updates</Text>
+              </TouchableOpacity>
+
               <View style={styles.drawerDivider} />
 
               <TouchableOpacity

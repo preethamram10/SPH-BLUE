@@ -325,6 +325,8 @@ export async function POST(req: NextRequest) {
       consultationMode,
       diseases,
       notes,
+      bookedByTelecallerId,
+      bookedByTelecallerName,
     } = body;
 
     if (!patientName || !phoneNumber || !appointmentDate || !selectedTimeSlot) {
@@ -356,6 +358,8 @@ export async function POST(req: NextRequest) {
       branch: branch || "KPHB Branch",
       isReback: true,
       notes: notes || "Booked from follow-up queue",
+      bookedByTelecallerId: bookedByTelecallerId || undefined,
+      bookedByTelecallerName: bookedByTelecallerName || undefined,
     });
 
     return NextResponse.json({

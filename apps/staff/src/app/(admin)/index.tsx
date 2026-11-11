@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
+import { AdminBottomNav } from "../../components/admin/AdminBottomNav";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -190,7 +191,7 @@ export default function AdminDashboard() {
 
           <TouchableOpacity
             style={styles.card}
-            onPress={() => router.push("/(admin)/global-patients" as any)}
+            onPress={() => router.push("/(admin)/all-follow-ups" as any)}
             activeOpacity={0.8}
           >
             <View style={styles.cardIconBoxGreen}>
