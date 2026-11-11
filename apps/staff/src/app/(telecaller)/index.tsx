@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken, clearAllAuthData, getAssignedBranch } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
+import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBottomNav";
 
 type TelecallerTab = "followups" | "log_call" | "book_appointment";
 
@@ -448,56 +449,8 @@ export default function TelecallerPortalScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 3-Section Segmented Navigation Bar */}
-      <View style={styles.navBar}>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === "followups" && styles.navItemActive]}
-          onPress={() => setActiveTab("followups")}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="call"
-            size={14}
-            color={activeTab === "followups" ? "#0284c7" : "#64748b"}
-          />
-          <Text style={[styles.navText, activeTab === "followups" && styles.navTextActive]}>
-            Follow-Ups
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === "log_call" && styles.navItemActive]}
-          onPress={() => setActiveTab("log_call")}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="create"
-            size={14}
-            color={activeTab === "log_call" ? "#0284c7" : "#64748b"}
-          />
-          <Text style={[styles.navText, activeTab === "log_call" && styles.navTextActive]}>
-            Log Update
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === "book_appointment" && styles.navItemActive]}
-          onPress={() => setActiveTab("book_appointment")}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="calendar"
-            size={14}
-            color={activeTab === "book_appointment" ? "#0284c7" : "#64748b"}
-          />
-          <Text style={[styles.navText, activeTab === "book_appointment" && styles.navTextActive]}>
-            Book Appt
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {/* ========================================================================= */}
-      {/* SECTION 1: FOLLOW-UPS (BRANCH-WISE) */}
+      {/* SECTION 1: FOLLOW-UPS (BRANCH-WISE & RECEPTION STYLE FILTERS) */}
       {/* ========================================================================= */}
       {activeTab === "followups" && (
         <View style={{ flex: 1 }}>
@@ -532,6 +485,30 @@ export default function TelecallerPortalScreen() {
                 ))
               )}
             </ScrollView>
+          </View>
+
+          {/* Period Filter Pills (Reception Style: All, Today, Week, Month) */}
+          <View style={styles.periodFilterBar}>
+            {[
+              { id: "all", label: "All" },
+              { id: "today", label: "Today" },
+              { id: "week", label: "This Week" },
+              { id: "month", label: "This Month" },
+            ].map((p) => {
+              const isSel = followUpPeriod === p.id;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.periodChip, isSel && styles.periodChipActive]}
+                  onPress={() => setFollowUpPeriod(p.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.periodChipText, isSel && styles.periodChipTextActive]}>
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {/* Search Bar */}
@@ -1098,6 +1075,9 @@ export default function TelecallerPortalScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Persistent Bottom Navigation Bar */}
+      <TelecallerBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </SafeAreaView>
   );
 }
@@ -1179,6 +1159,33 @@ const styles = StyleSheet.create({
   branchFilterChipActive: { backgroundColor: "#0284c7", borderColor: "#0284c7" },
   branchFilterText: { fontSize: 11, fontWeight: "700", color: "#64748b" },
   branchFilterTextActive: { color: "#ffffff" },
+  periodFilterBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  periodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  periodChipActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  periodChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  periodChipTextActive: {
+    color: "#ffffff",
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",

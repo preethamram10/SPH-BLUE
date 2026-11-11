@@ -16,3 +16,4 @@ export async function POST(
     return NextResponse.json({ error: err.message || "Failed to approve leave" }, { status: 500 });
   }
 }
+

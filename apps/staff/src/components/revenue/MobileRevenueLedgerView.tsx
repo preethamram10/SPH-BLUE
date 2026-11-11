@@ -69,6 +69,7 @@ interface MobileRevenueLedgerViewProps {
   doctorFilterName?: string;
   onBack?: () => void;
   headerTitle?: string;
+  bottomNav?: React.ReactNode;
 }
 
 export function MobileRevenueLedgerView({
@@ -76,6 +77,7 @@ export function MobileRevenueLedgerView({
   doctorFilterName,
   onBack,
   headerTitle = "Total Revenue",
+  bottomNav,
 }: MobileRevenueLedgerViewProps) {
   const router = useRouter();
 
@@ -914,6 +916,7 @@ export function MobileRevenueLedgerView({
           </View>
         )}
       </ScrollView>
+      {bottomNav}
     </SafeAreaView>
   );
 }

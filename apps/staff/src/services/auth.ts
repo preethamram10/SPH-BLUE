@@ -5,6 +5,7 @@ const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
 const ASSIGNED_BRANCH_KEY = "spiritualhomeo_user_assigned_branch";
 const ACTIVE_DOCTOR_KEY = "spiritualhomeo_active_doctor";
+const ACTIVE_STAFF_KEY = "spiritualhomeo_active_staff";
 const USER_ROLE_KEY = "spiritualhomeo_user_role";
 
 /**
@@ -41,6 +42,30 @@ export async function clearAllAuthData(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(ACTIVE_DOCTOR_KEY);
   } catch {}
+  try {
+    await SecureStore.deleteItemAsync(ACTIVE_STAFF_KEY);
+  } catch {}
+}
+
+/**
+ * Save active staff details
+ */
+export async function saveActiveStaff(staff: any): Promise<void> {
+  await SecureStore.setItemAsync(ACTIVE_STAFF_KEY, JSON.stringify(staff));
+}
+
+export async function getActiveStaff(): Promise<any | null> {
+  const raw = await SecureStore.getItemAsync(ACTIVE_STAFF_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function removeActiveStaff(): Promise<void> {
+  await SecureStore.deleteItemAsync(ACTIVE_STAFF_KEY);
 }
 
 /**

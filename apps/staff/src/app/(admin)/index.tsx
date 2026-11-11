@@ -422,6 +422,9 @@ export default function AdminDashboard() {
         </View>
       </ScrollView>
 
+      {/* Admin Bottom Navigation */}
+      <AdminBottomNav activeTab="dashboard" />
+
       {/* ===================== SIDE NAVIGATION DRAWER ===================== */}
       {isDrawerOpen && (
         <View style={StyleSheet.absoluteFill}>
@@ -440,7 +443,7 @@ export default function AdminDashboard() {
               },
             ]}
           >
-            {/* Drawer Header with Logo & Admin Info */}
+            {/* Drawer Header with Logo & Role info */}
             <View style={styles.drawerHeader}>
               <View style={styles.drawerLogoRow}>
                 <Image
@@ -448,29 +451,30 @@ export default function AdminDashboard() {
                   style={styles.drawerLogo}
                   resizeMode="contain"
                 />
+                <View style={styles.drawerTitleBox}>
+                  <Text style={styles.drawerClinicName}>Spiritual Homeopathy</Text>
+                  <View style={styles.drawerRoleBadge}>
+                    <Text style={styles.drawerRoleText}>ADMIN PORTAL</Text>
+                  </View>
+                </View>
                 <TouchableOpacity
                   style={styles.closeDrawerBtn}
                   onPress={closeDrawer}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="close" size={22} color={COLORS.white} />
+                  <Ionicons name="close" size={20} color="#64748b" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.drawerClinicName}>Spiritual Homeopathy</Text>
-              <Text style={styles.drawerClinicSub}>Executive Administration</Text>
-
-              {/* Admin Profile Chip */}
-              <View style={styles.adminProfileChip}>
-                <View style={styles.adminAvatar}>
-                  <Text style={styles.adminAvatarText}>AD</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.adminProfileName}>Administrator</Text>
-                  <Text style={styles.adminProfileEmail} numberOfLines={1}>
-                    admin@spiritualhomeo.com
+              {/* Active Admin Office Info */}
+              <View style={styles.drawerBranchBox}>
+                <View style={styles.drawerBranchTop}>
+                  <View style={styles.pulseDot} />
+                  <Text style={styles.drawerBranchName} numberOfLines={1}>
+                    Executive Administration
                   </Text>
                 </View>
+                <Text style={styles.drawerBranchPhone}>admin@spiritualhomeo.com</Text>
               </View>
             </View>
 
@@ -480,268 +484,276 @@ export default function AdminDashboard() {
               contentContainerStyle={styles.drawerMenuContent}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.drawerSectionLabel}>NAVIGATION MENU</Text>
+              <Text style={styles.drawerSectionLabel}>MAIN NAVIGATION</Text>
 
               {/* Item 1: Dashboard */}
               <TouchableOpacity
                 style={[styles.drawerMenuItem, styles.drawerMenuItemActive]}
                 onPress={closeDrawer}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="grid" size={20} color={COLORS.white} style={styles.drawerMenuIcon} />
-                <Text style={[styles.drawerMenuText, styles.drawerMenuTextActive]}>
+                <View style={[styles.drawerIconBox, { backgroundColor: "#0284c7" }]}>
+                  <Ionicons name="grid" size={16} color="#ffffff" />
+                </View>
+                <Text style={[styles.drawerMenuText, { color: "#0284c7", fontWeight: "700" }]}>
                   Dashboard Overview
                 </Text>
+                <Ionicons name="chevron-forward" size={16} color="#0284c7" />
               </TouchableOpacity>
 
-              {/* Item 2: Branch Management (KEY FEATURE) */}
+              {/* Item 2: Branch Management */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/branch-management")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons
-                  name="business-outline"
-                  size={20}
-                  color={COLORS.blue}
-                  style={styles.drawerMenuIcon}
-                />
-                <Text style={styles.drawerMenuText}>Branch Management</Text>
-                <View style={styles.badgeNew}>
-                  <Text style={styles.badgeNewText}>NEW</Text>
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="business-outline" size={16} color="#0284c7" />
                 </View>
+                <Text style={styles.drawerMenuText}>Branch Management</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              {/* Item 3: Add New Branch Direct Link */}
+              {/* Item 3: Add New Branch */}
               <TouchableOpacity
-                style={styles.drawerSubMenuItem}
+                style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/branch-management/create")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons
-                  name="add-circle-outline"
-                  size={18}
-                  color={COLORS.green}
-                  style={styles.drawerMenuIcon}
-                />
-                <Text style={styles.drawerSubMenuText}>+ Add New Branch</Text>
+                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
+                  <Ionicons name="add-circle-outline" size={16} color="#16a34a" />
+                </View>
+                <Text style={styles.drawerMenuText}>Add New Branch</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Item 4: Doctors & Staff (Employee Management) */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/employee-management")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons
-                  name="people-outline"
-                  size={20}
-                  color={COLORS.blue}
-                  style={styles.drawerMenuIcon}
-                />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#ede9fe" }]}>
+                  <Ionicons name="people-outline" size={16} color="#7c3aed" />
+                </View>
                 <Text style={styles.drawerMenuText}>Employee Management</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              {/* Item 4b: Doctor Timings & Master Schedules */}
+              {/* Item 5: Doctor Timings & Master Schedules */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/doctor-timings")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons
-                  name="time-outline"
-                  size={20}
-                  color={COLORS.blue}
-                  style={styles.drawerMenuIcon}
-                />
-                <Text style={styles.drawerMenuText}>Doctor Timings &amp; Schedules</Text>
+                <View style={[styles.drawerIconBox, { backgroundColor: "#fef3c7" }]}>
+                  <Ionicons name="time-outline" size={16} color="#d97706" />
+                </View>
+                <Text style={styles.drawerMenuText}>Doctor Timings &amp; OPD</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              {/* Item 5: Global Patients */}
-              <TouchableOpacity
-                style={styles.drawerMenuItem}
-                onPress={() => handleNavigate("/(admin)/global-patients")}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name="globe-outline"
-                  size={20}
-                  color={COLORS.blue}
-                  style={styles.drawerMenuIcon}
-                />
-                <Text style={styles.drawerMenuText}>Global Patients List</Text>
-              </TouchableOpacity>
-
-              <Text style={[styles.drawerSectionLabel, { marginTop: 14 }]}>FINANCE &amp; BILLING</Text>
+              <Text style={styles.drawerSectionLabel}>FINANCE &amp; REVENUE</Text>
 
               {/* Total Revenue */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/total-revenue")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="cash-outline" size={20} color="#16a34a" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
+                  <Ionicons name="cash-outline" size={16} color="#16a34a" />
+                </View>
                 <Text style={styles.drawerMenuText}>Total Revenue</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Target Management */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/target-management")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="locate-outline" size={20} color="#0284c7" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="locate-outline" size={16} color="#0284c7" />
+                </View>
                 <Text style={styles.drawerMenuText}>Target Management</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Pay Later Dues */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/pay-later")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="time-outline" size={20} color="#0284c7" style={styles.drawerMenuIcon} />
-                <Text style={styles.drawerMenuText}>Pay Later Dues</Text>
-                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
-                  <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>DUES</Text>
+                <View style={[styles.drawerIconBox, { backgroundColor: "#ffedd5" }]}>
+                  <Ionicons name="wallet-outline" size={16} color="#ea580c" />
                 </View>
+                <Text style={styles.drawerMenuText}>Pay Later Dues</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Fee Requests */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/fee-requests")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="receipt-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="receipt-outline" size={16} color="#0284c7" />
+                </View>
                 <Text style={styles.drawerMenuText}>Fee Requests</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Package Members */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/package-members")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="ribbon-outline" size={20} color="#d97706" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#fef3c7" }]}>
+                  <Ionicons name="ribbon-outline" size={16} color="#d97706" />
+                </View>
                 <Text style={styles.drawerMenuText}>Package Members</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={[styles.drawerSectionLabel, { marginTop: 14 }]}>TELECALLING &amp; FOLLOW-UPS</Text>
+              <Text style={styles.drawerSectionLabel}>TELECALLING &amp; FOLLOW-UPS</Text>
 
               {/* All Follow-Ups */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/all-follow-ups")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="calendar-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="calendar-outline" size={16} color="#0284c7" />
+                </View>
                 <Text style={styles.drawerMenuText}>All Follow-Ups</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Telecaller Accounts */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/telecaller-accounts")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="headset-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#ccfbf1" }]}>
+                  <Ionicons name="headset-outline" size={16} color="#0d9488" />
+                </View>
                 <Text style={styles.drawerMenuText}>Telecaller Accounts</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Telecaller Updates */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/telecaller-updates")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="call-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="call-outline" size={16} color="#0284c7" />
+                </View>
                 <Text style={styles.drawerMenuText}>Telecaller Updates</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={[styles.drawerSectionLabel, { marginTop: 14 }]}>HR &amp; OPERATIONS</Text>
+              <Text style={styles.drawerSectionLabel}>HR &amp; OPERATIONS</Text>
 
               {/* Leave Requests */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/leave-requests")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="calendar-clear-outline" size={20} color="#dc2626" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#fee2e2" }]}>
+                  <Ionicons name="calendar-clear-outline" size={16} color="#dc2626" />
+                </View>
                 <Text style={styles.drawerMenuText}>Leave Requests</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Attendance */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/employee-attendance")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="checkmark-done-circle-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#dcfce7" }]}>
+                  <Ionicons name="checkmark-done-circle-outline" size={16} color="#16a34a" />
+                </View>
                 <Text style={styles.drawerMenuText}>Employee Attendance</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Daily Works */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/employee-daily-works")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="briefcase-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#f3e8ff" }]}>
+                  <Ionicons name="briefcase-outline" size={16} color="#9333ea" />
+                </View>
                 <Text style={styles.drawerMenuText}>Employee Daily Works</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Branch Cleaning */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/branch-cleaning")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="sparkles-outline" size={20} color="#0d9488" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#ccfbf1" }]}>
+                  <Ionicons name="sparkles-outline" size={16} color="#0d9488" />
+                </View>
                 <Text style={styles.drawerMenuText}>Branch Cleaning</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
-              <Text style={[styles.drawerSectionLabel, { marginTop: 14 }]}>MEDIA &amp; SYSTEM</Text>
+              <Text style={styles.drawerSectionLabel}>SYSTEM &amp; REPORTS</Text>
 
               {/* Manage Banners */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/manage-banners")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="image-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="image-outline" size={16} color="#0284c7" />
+                </View>
                 <Text style={styles.drawerMenuText}>Manage Banners</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Reports & Analytics */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/reports-analytics")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="analytics-outline" size={20} color={COLORS.blue} style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#ede9fe" }]}>
+                  <Ionicons name="analytics-outline" size={16} color="#7c3aed" />
+                </View>
                 <Text style={styles.drawerMenuText}>Reports &amp; Analytics</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               {/* Delete Profiles */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
                 onPress={() => handleNavigate("/(admin)/delete-profiles")}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
               >
-                <Ionicons name="trash-outline" size={20} color="#dc2626" style={styles.drawerMenuIcon} />
+                <View style={[styles.drawerIconBox, { backgroundColor: "#fee2e2" }]}>
+                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                </View>
                 <Text style={styles.drawerMenuText}>Delete Profiles (Phone)</Text>
-              </TouchableOpacity>
-
-              {/* Item 7: Master Settings */}
-              <TouchableOpacity style={styles.drawerMenuItem} activeOpacity={0.8}>
-                <Ionicons
-                  name="settings-outline"
-                  size={20}
-                  color={COLORS.textDark}
-                  style={styles.drawerMenuIcon}
-                />
-                <Text style={styles.drawerMenuText}>Clinic Settings</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
             </ScrollView>
 
@@ -752,7 +764,7 @@ export default function AdminDashboard() {
                 onPress={handleLogout}
                 activeOpacity={0.8}
               >
-                <Ionicons name="log-out-outline" size={20} color={COLORS.errorRed} />
+                <Ionicons name="log-out-outline" size={18} color={COLORS.errorRed} />
                 <Text style={styles.logoutDrawerText}>Sign Out</Text>
               </TouchableOpacity>
             </View>
@@ -974,14 +986,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* ================= DRAWER STYLES ================= */
+  /* ================= DRAWER STYLES (RECEPTION THEME) ================= */
   backdrop: {
     position: "absolute",
     left: 0,
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
     zIndex: 99,
   },
   drawerContainer: {
@@ -996,152 +1008,146 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 16,
     flexDirection: "column",
+    justifyContent: "space-between",
   },
   drawerHeader: {
-    backgroundColor: COLORS.blue,
-    paddingHorizontal: 18,
-    paddingTop: 24,
-    paddingBottom: 20,
+    padding: 18,
+    paddingTop: 36,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
   drawerLogoRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
   drawerLogo: {
-    width: 44,
-    height: 44,
-  },
-  closeDrawerBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  drawerClinicName: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  drawerClinicSub: {
-    color: "rgba(255, 255, 255, 0.8)",
-    fontSize: 12,
-    marginTop: 1,
-  },
-  adminProfileChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 14,
-  },
-  adminAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: COLORS.white,
-    justifyContent: "center",
-    alignItems: "center",
+    width: 36,
+    height: 36,
     marginRight: 10,
   },
-  adminAvatarText: {
-    color: COLORS.blue,
-    fontSize: 13,
+  drawerTitleBox: {
+    flex: 1,
+  },
+  drawerClinicName: {
+    fontSize: 13.5,
     fontWeight: "800",
+    color: "#0f172a",
   },
-  adminProfileName: {
+  drawerRoleBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+    marginTop: 3,
+  },
+  drawerRoleText: {
+    fontSize: 8.5,
+    fontWeight: "800",
     color: COLORS.white,
-    fontSize: 13,
-    fontWeight: "700",
+    letterSpacing: 0.5,
   },
-  adminProfileEmail: {
-    color: "rgba(255, 255, 255, 0.75)",
+  closeDrawerBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  drawerBranchBox: {
+    backgroundColor: "#f8fafc",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  drawerBranchTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#16a34a",
+  },
+  drawerBranchName: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  drawerBranchPhone: {
     fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   drawerScroll: {
     flex: 1,
   },
   drawerMenuContent: {
-    padding: 16,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 20,
   },
   drawerSectionLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
-    color: COLORS.textLight,
+    color: "#94a3b8",
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginTop: 12,
+    marginBottom: 6,
+    paddingLeft: 4,
   },
   drawerMenuItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 4,
+    paddingVertical: 8.5,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+    marginBottom: 2,
+    backgroundColor: "transparent",
   },
   drawerMenuItemActive: {
-    backgroundColor: COLORS.blue,
+    backgroundColor: "#f0f9ff",
   },
-  drawerMenuIcon: {
-    marginRight: 12,
+  drawerIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
   },
   drawerMenuText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.textDark,
-  },
-  drawerMenuTextActive: {
-    color: COLORS.white,
-  },
-  drawerSubMenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 9,
-    paddingLeft: 36,
-    paddingRight: 12,
-    borderRadius: 10,
-    marginBottom: 4,
-    backgroundColor: "#f0f8fd",
-  },
-  drawerSubMenuText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.green,
-  },
-  badgeNew: {
-    backgroundColor: COLORS.green,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  badgeNewText: {
-    color: COLORS.white,
-    fontSize: 9,
-    fontWeight: "900",
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: "#1e293b",
   },
   drawerFooter: {
-    padding: 16,
+    padding: 14,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: "#f1f5f9",
     backgroundColor: COLORS.white,
   },
   logoutDrawerBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 9,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 9,
     backgroundColor: "#fef2f2",
   },
   logoutDrawerText: {
     color: COLORS.errorRed,
-    fontSize: 14,
+    fontSize: 12.5,
     fontWeight: "700",
   },
   branchBoxCard: {
