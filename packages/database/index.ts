@@ -375,6 +375,10 @@ export interface EmployeeRecord {
   graceMinutes?: number;
   createdAt: string;
   updatedAt?: string;
+  telecallerId?: string;
+  targetQuota?: string;
+  status?: string;
+  campaign?: string;
 }
 
 export const INITIAL_EMPLOYEES: EmployeeRecord[] = [];
@@ -462,6 +466,10 @@ export const employeeService = {
       shiftStartTime: input.shiftStartTime || "09:00 AM",
       graceMinutes: input.graceMinutes !== undefined ? Number(input.graceMinutes) : 15,
       createdAt: new Date().toISOString(),
+      telecallerId: input.telecallerId?.trim(),
+      targetQuota: input.targetQuota || "60 calls/day",
+      status: input.status || "Active",
+      campaign: input.campaign || "General Patient Follow-Up",
     };
     store.unshift(newRecord);
     global.__sphEmployeesStore = store;
@@ -1182,6 +1190,7 @@ export interface PatientRecord {
   mergedAt?: string;
   activeFollowUpDate?: string;
   completedVisitsCount?: number;
+  pendingBalance?: number;
   hasPackage?: boolean;
   activePackageId?: string;
   activePackageName?: string;
@@ -1299,6 +1308,7 @@ export interface AppointmentRecord {
   deletedReason?: string;
   // Patient File & Clinical Consultation fields
   diagnosisNotes?: string;
+  prescriptionText?: string;
   prescriptionImages?: string[];
   followUpInterval?: string;
   followUpDate?: string;
@@ -1332,6 +1342,9 @@ export interface AppointmentRecord {
   discount?: number;
   discountReason?: string;
   totalPaid?: number;
+  payLaterAmount?: number;
+  pendingBalance?: number;
+  previousDuePaid?: number;
   invoiceId?: string;
   visitBadge?: PatientVisitBadge;
   activeFollowUpDate?: string;
@@ -1343,6 +1356,8 @@ export interface AppointmentRecord {
   packagePendingAmount?: number;
   packageDurationMonths?: number;
   packageEndDate?: string;
+  bookedByTelecallerId?: string;
+  bookedByTelecallerName?: string;
 }
 
 function getPatientsCachePath(): string {
@@ -2116,6 +2131,15 @@ export const appointmentService = {
     if (data.discount !== undefined) appt.discount = data.discount;
     if (data.discountReason !== undefined) appt.discountReason = data.discountReason;
     if (data.totalPaid !== undefined) appt.totalPaid = data.totalPaid;
+    const payLaterAmt = Number((data as any).payLaterAmount) || 0;
+    const prevDuePaid = Number((data as any).previousDuePaid) || 0;
+    if (payLaterAmt > 0) {
+      appt.payLaterAmount = payLaterAmt;
+      appt.pendingBalance = payLaterAmt;
+    }
+    if (prevDuePaid > 0) {
+      appt.previousDuePaid = prevDuePaid;
+    }
     if (data.invoiceId) {
       appt.invoiceId = data.invoiceId;
     } else if (!appt.invoiceId) {
@@ -2129,7 +2153,7 @@ export const appointmentService = {
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
 
-    // Update patient profile completed visits and active follow-up
+    // Update patient profile completed visits, active follow-up, and pending balance
     const patients = getPatientsStore();
     const patIdx = patients.findIndex((p) => matchPatientProfile(appt, p));
     if (patIdx !== -1) {
@@ -2140,8 +2164,37 @@ export const appointmentService = {
       if (appt.followUpDate && appt.followUpDate.trim().length > 0) {
         patients[patIdx].activeFollowUpDate = appt.followUpDate.trim();
       }
+      const curBal = Number(patients[patIdx].pendingBalance) || 0;
+      patients[patIdx].pendingBalance = Math.max(0, curBal - prevDuePaid + payLaterAmt);
       global.__sphPatientsStore = patients;
       savePatientsToDisk(patients);
+    }
+
+    if (payLaterAmt > 0) {
+      await payLaterService.createPayLater({
+        patientId: appt.registrationId || appt.phone,
+        registrationId: appt.registrationId,
+        patientName: appt.patientName,
+        phone: appt.phone,
+        branch: (appt as any).branchName || appt.branch || "KPHB Branch",
+        appointmentId: appt.id,
+        invoiceId: appt.invoiceId,
+        originalBillAmount: data.totalAmountDue || 0,
+        amountPaid: data.totalPaid || 0,
+        pendingAmount: payLaterAmt,
+        visitDate: appt.appointmentDate || new Date().toISOString(),
+        dueDate: (data as any).dueDate || undefined,
+        notes: (data as any).payLaterNotes || undefined,
+      });
+    }
+
+    if (prevDuePaid > 0) {
+      await payLaterService.settleBalance(
+        appt.registrationId || appt.phone,
+        prevDuePaid,
+        appt.invoiceId,
+        appt.id
+      );
     }
 
     // Auto-update package installment if patient has active package and this visit is marked for package installment
@@ -2228,11 +2281,13 @@ export const appointmentService = {
     id: string,
     data: {
       diagnosisNotes?: string;
+      prescriptionText?: string;
       prescriptionImages?: string[];
       followUpInterval?: string;
       followUpDate?: string;
       consultationFee?: number;
       dietPlan?: string;
+      dietPlanFee?: number;
       isSentToReception?: boolean;
       status?: AppointmentRecord["status"];
     }
@@ -2242,10 +2297,15 @@ export const appointmentService = {
     if (!appt) return null;
 
     if (data.diagnosisNotes !== undefined) appt.diagnosisNotes = data.diagnosisNotes;
+    if (data.prescriptionText !== undefined) appt.prescriptionText = data.prescriptionText;
     if (data.prescriptionImages !== undefined) appt.prescriptionImages = data.prescriptionImages;
     if (data.followUpInterval !== undefined) appt.followUpInterval = data.followUpInterval;
     if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
     if (data.dietPlan !== undefined) appt.dietPlan = data.dietPlan;
+    if (data.dietPlanFee !== undefined) {
+      appt.dietPlanFee = data.dietPlanFee;
+      (appt as any).dietFee = data.dietPlanFee;
+    }
     if (data.isSentToReception !== undefined) appt.isSentToReception = data.isSentToReception;
     if (data.status !== undefined) appt.status = data.status;
 
@@ -3515,6 +3575,7 @@ export interface MedicineRequestRecord {
   totalAmount: number;
   medicines: MedicineRequestItem[];
   deliveryAddress?: string;
+  notes?: string;
   status: "pending" | "completed" | "dispatched";
   createdAt: string;
   updatedAt?: string;
@@ -3741,13 +3802,33 @@ export const staffAttendanceService = {
 
     let existing = store.find((r) => r.staffId === payload.staffId && r.date === today);
 
-    // Calculate late status on Punch In (Default shift 09:00 AM, 15m grace)
+    // Calculate late status on Punch In (Dynamic shift & grace period configured by HR/Admin)
     if (payload.type === "in") {
       const now = new Date();
+      let shiftHour = 9;
+      let shiftMin = 0;
+      let grace = 15;
+      try {
+        const lateConfig = await payrollSettingsService.getLatePenaltyConfig();
+        if (lateConfig) {
+          grace = Number(lateConfig.graceMinutes) || 15;
+          if (lateConfig.shiftStartTime) {
+            const timeParts = lateConfig.shiftStartTime.trim().split(" ");
+            const hm = timeParts[0].split(":");
+            let h = parseInt(hm[0], 10) || 9;
+            const m = parseInt(hm[1], 10) || 0;
+            if (timeParts[1] && timeParts[1].toUpperCase() === "PM" && h < 12) h += 12;
+            if (timeParts[1] && timeParts[1].toUpperCase() === "AM" && h === 12) h = 0;
+            shiftHour = h;
+            shiftMin = m;
+          }
+        }
+      } catch {}
+
       const shiftStart = new Date();
-      shiftStart.setHours(9, 0, 0, 0); // 09:00 AM
+      shiftStart.setHours(shiftHour, shiftMin, 0, 0);
       const diffMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / (1000 * 60)));
-      const isLate = diffMinutes > 15;
+      const isLate = diffMinutes > grace;
 
       if (!existing) {
         existing = {
@@ -3846,17 +3927,61 @@ function getStaffLeavesCachePath(): string {
   return path.join(rootCache, "staff_leaves_store.json");
 }
 
+export const INITIAL_STAFF_LEAVES: StaffLeaveRecord[] = [
+  {
+    id: "LV-101",
+    staffId: "STF-01",
+    staffName: "Anil Kumar M",
+    branch: "KPHB Branch",
+    leaveType: "Sick",
+    fromDate: "12-11-2026",
+    toDate: "13-11-2026",
+    joiningDate: "14-11-2026",
+    reason: "Severe viral fever, doctor advised 2 days bed rest",
+    status: "Pending",
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "LV-102",
+    staffId: "DOC-02",
+    staffName: "Dr. Padma Priya",
+    branch: "KPHB Branch",
+    leaveType: "Casual",
+    fromDate: "15-11-2026",
+    toDate: "16-11-2026",
+    joiningDate: "17-11-2026",
+    reason: "Family wedding event in native village",
+    status: "Pending",
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: "LV-103",
+    staffId: "STF-04",
+    staffName: "P. Sunitha",
+    branch: "Chandanagar Branch",
+    leaveType: "Privilege",
+    fromDate: "18-11-2026",
+    toDate: "20-11-2026",
+    joiningDate: "21-11-2026",
+    reason: "Annual privilege leave for child examinations",
+    status: "Approved",
+    reviewedBy: "Admin",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+];
+
 function loadStaffLeavesFromDisk(): StaffLeaveRecord[] {
   try {
     const file = getStaffLeavesCachePath();
     if (fs.existsSync(file)) {
       const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch (e) {
     console.warn("Failed reading staff leaves cache:", e);
   }
-  return [];
+  saveStaffLeavesToDisk(INITIAL_STAFF_LEAVES);
+  return [...INITIAL_STAFF_LEAVES];
 }
 
 function saveStaffLeavesToDisk(data: StaffLeaveRecord[]): void {
@@ -4477,6 +4602,487 @@ export const packageService = {
     return pkg;
   },
 };
+
+// ============================================================================
+// PAY LATER SERVICE (Partial Payments, Pending Balances, Next Visit Settlement)
+// ============================================================================
+
+export interface PayLaterRecord {
+  id: string;
+  patientId?: string;
+  registrationId?: string;
+  patientName: string;
+  phone: string;
+  branch: string;
+  appointmentId?: string;
+  invoiceId?: string;
+  originalBillAmount: number;
+  amountPaid: number;
+  pendingAmount: number;
+  visitDate: string;
+  dueDate?: string;
+  notes?: string;
+  status: "PENDING" | "PARTIALLY_PAID" | "CLEARED";
+  clearedAt?: string;
+  clearedInvoiceId?: string;
+  clearedAppointmentId?: string;
+  clearedAmount?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+declare global {
+  var __sphPayLaterStore: PayLaterRecord[] | undefined;
+}
+
+function getPayLaterCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "pay_later_store.json"))) {
+    return path.join(webCache, "pay_later_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "pay_later_store.json"))) {
+    return path.join(rootCache, "pay_later_store.json");
+  }
+  return path.join(webCache, "pay_later_store.json");
+}
+
+function savePayLaterToDisk(store: PayLaterRecord[]): void {
+  try {
+    const filePath = getPayLaterCachePath();
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), "utf8");
+  } catch (err) {
+    console.warn("Failed to persist pay later store to disk:", err);
+  }
+}
+
+function getPayLaterStore(): PayLaterRecord[] {
+  if (global.__sphPayLaterStore && Array.isArray(global.__sphPayLaterStore)) {
+    return global.__sphPayLaterStore;
+  }
+  const filePath = getPayLaterCachePath();
+  if (fs.existsSync(filePath)) {
+    try {
+      const data = fs.readFileSync(filePath, "utf8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        global.__sphPayLaterStore = parsed;
+        return parsed;
+      }
+    } catch {}
+  }
+  global.__sphPayLaterStore = [];
+  return [];
+}
+
+export const payLaterService = {
+  async getAll(branch?: string, status?: string): Promise<PayLaterRecord[]> {
+    let store = getPayLaterStore();
+    if (branch && branch !== "ALL") {
+      const cleanBranch = branch.toLowerCase().replace(/branch/gi, "").trim();
+      store = store.filter((item) => {
+        const itemBranch = item.branch.toLowerCase().replace(/branch/gi, "").trim();
+        return itemBranch === cleanBranch || cleanBranch.includes(itemBranch) || itemBranch.includes(cleanBranch);
+      });
+    }
+    if (status && status !== "ALL") {
+      const s = status.toUpperCase();
+      store = store.filter((item) => item.status === s);
+    }
+    return store;
+  },
+
+  async getPendingByPatient(phoneOrRegId: string): Promise<PayLaterRecord[]> {
+    const clean = phoneOrRegId.replace(/\D/g, "").slice(-10);
+    const store = getPayLaterStore();
+    return store.filter((r) => {
+      if (r.status === "CLEARED") return false;
+      const rPhone = (r.phone || "").replace(/\D/g, "").slice(-10);
+      const rReg = (r.registrationId || "").trim().toLowerCase();
+      const targetReg = phoneOrRegId.trim().toLowerCase();
+      return (clean && rPhone === clean) || (rReg && rReg === targetReg);
+    });
+  },
+
+  async createPayLater(
+    data: Omit<PayLaterRecord, "id" | "createdAt" | "status"> & {
+      id?: string;
+      status?: "PENDING" | "PARTIALLY_PAID" | "CLEARED";
+      createdAt?: string;
+    }
+  ): Promise<PayLaterRecord> {
+    const store = getPayLaterStore();
+    const id = data.id || `pl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newRecord: PayLaterRecord = {
+      ...data,
+      id,
+      status: data.status || "PENDING",
+      createdAt: data.createdAt || new Date().toISOString(),
+    };
+    store.unshift(newRecord);
+    global.__sphPayLaterStore = store;
+    savePayLaterToDisk(store);
+    return newRecord;
+  },
+
+  async settleBalance(
+    phoneOrRegId: string,
+    amountCleared: number,
+    clearedInvoiceId?: string,
+    clearedAppointmentId?: string
+  ): Promise<PayLaterRecord[]> {
+    const clean = phoneOrRegId.replace(/\D/g, "").slice(-10);
+    const store = getPayLaterStore();
+    let remainingToClear = amountCleared;
+    const updatedRecords: PayLaterRecord[] = [];
+
+    for (const r of store) {
+      if (remainingToClear <= 0) break;
+      if (r.status === "CLEARED") continue;
+
+      const rPhone = (r.phone || "").replace(/\D/g, "").slice(-10);
+      const rReg = (r.registrationId || "").trim().toLowerCase();
+      const targetReg = phoneOrRegId.trim().toLowerCase();
+      const matches = (clean && rPhone === clean) || (rReg && rReg === targetReg);
+
+      if (matches) {
+        if (remainingToClear >= r.pendingAmount) {
+          remainingToClear -= r.pendingAmount;
+          r.clearedAmount = (r.clearedAmount || 0) + r.pendingAmount;
+          r.pendingAmount = 0;
+          r.status = "CLEARED";
+          r.clearedAt = new Date().toISOString();
+          r.clearedInvoiceId = clearedInvoiceId;
+          r.clearedAppointmentId = clearedAppointmentId;
+        } else {
+          r.pendingAmount -= remainingToClear;
+          r.clearedAmount = (r.clearedAmount || 0) + remainingToClear;
+          r.status = "PARTIALLY_PAID";
+          r.updatedAt = new Date().toISOString();
+          remainingToClear = 0;
+        }
+        updatedRecords.push(r);
+      }
+    }
+
+    if (updatedRecords.length > 0) {
+      global.__sphPayLaterStore = store;
+      savePayLaterToDisk(store);
+    }
+    return updatedRecords;
+  },
+
+  async manualSettle(
+    id: string,
+    amount: number,
+    clearedInvoiceId?: string
+  ): Promise<PayLaterRecord | null> {
+    const store = getPayLaterStore();
+    const item = store.find((r) => r.id === id);
+    if (!item) return null;
+
+    if (amount >= item.pendingAmount) {
+      item.clearedAmount = (item.clearedAmount || 0) + item.pendingAmount;
+      item.pendingAmount = 0;
+      item.status = "CLEARED";
+      item.clearedAt = new Date().toISOString();
+      item.clearedInvoiceId = clearedInvoiceId || `REC-CLR-${Date.now().toString().slice(-6)}`;
+    } else {
+      item.pendingAmount -= amount;
+      item.clearedAmount = (item.clearedAmount || 0) + amount;
+      item.status = "PARTIALLY_PAID";
+      item.updatedAt = new Date().toISOString();
+    }
+
+    global.__sphPayLaterStore = store;
+    savePayLaterToDisk(store);
+
+    // Sync to patient profile
+    const patients = getPatientsStore();
+    const patIdx = patients.findIndex((p) => {
+      const pPhone = (p.phone || "").replace(/\D/g, "").slice(-10);
+      const rPhone = (item.phone || "").replace(/\D/g, "").slice(-10);
+      return pPhone === rPhone;
+    });
+    if (patIdx !== -1) {
+      const currentBal = Number(patients[patIdx].pendingBalance) || 0;
+      patients[patIdx].pendingBalance = Math.max(0, currentBal - amount);
+      global.__sphPatientsStore = patients;
+      savePatientsToDisk(patients);
+    }
+
+    return item;
+  },
+
+  async getSummary(branch?: string) {
+    const store = getPayLaterStore();
+    const filtered = branch && branch !== "ALL"
+      ? store.filter((r) => {
+          const itemBranch = r.branch.toLowerCase().replace(/branch/gi, "").trim();
+          const cleanBranch = branch.toLowerCase().replace(/branch/gi, "").trim();
+          return itemBranch === cleanBranch || cleanBranch.includes(itemBranch);
+        })
+      : store;
+
+    let totalPendingAmount = 0;
+    let totalClearedAmount = 0;
+    const uniquePatients = new Set<string>();
+
+    const branchMap: Record<string, { pending: number; cleared: number; count: number }> = {
+      "KPHB Branch": { pending: 0, cleared: 0, count: 0 },
+      "Chandanagar Branch": { pending: 0, cleared: 0, count: 0 },
+      "Dilshuknagar Branch": { pending: 0, cleared: 0, count: 0 },
+      "Nallagandla Branch": { pending: 0, cleared: 0, count: 0 },
+    };
+
+    for (const r of filtered) {
+      const bName = Object.keys(branchMap).find((k) =>
+        k.toLowerCase().includes(r.branch.toLowerCase().replace(/branch/gi, "").trim())
+      ) || "KPHB Branch";
+
+      if (r.status !== "CLEARED") {
+        totalPendingAmount += r.pendingAmount;
+        uniquePatients.add(r.phone);
+        branchMap[bName].pending += r.pendingAmount;
+        branchMap[bName].count += 1;
+      }
+      totalClearedAmount += r.clearedAmount || 0;
+      branchMap[bName].cleared += r.clearedAmount || 0;
+    }
+
+    return {
+      totalPendingAmount,
+      totalClearedAmount,
+      totalPendingPatients: uniquePatients.size,
+      branchBreakdown: branchMap,
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Telecaller Management & Call Log Service
+// ---------------------------------------------------------------------------
+
+export interface TelecallerCallLogRecord {
+  id: string;
+  telecallerId?: string;
+  agentName: string;
+  patientName: string;
+  phone: string;
+  branch: string;
+  callOutcome: "Interested" | "Not Interested" | "Callback Requested" | "No Response" | string;
+  notes: string;
+  dateTime: string;
+  duration?: string;
+  createdAt: string;
+}
+
+export const INITIAL_CALL_LOGS: TelecallerCallLogRecord[] = [
+  {
+    id: "LOG-901",
+    telecallerId: "TC01",
+    agentName: "Srikanth Reddy",
+    patientName: "K. Ramesh Kumar",
+    phone: "9848012345",
+    branch: "KPHB Branch",
+    callOutcome: "Interested",
+    notes: "Patient interested in chronic sinusitis consultation. Recommended Friday 5:00 PM slot.",
+    dateTime: "11/11/2026 11:24 AM",
+    duration: "3m 45s",
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "LOG-902",
+    telecallerId: "TC02",
+    agentName: "Salman Khan",
+    patientName: "G. Srilatha",
+    phone: "9700112233",
+    branch: "Chandanagar Branch",
+    callOutcome: "Callback Requested",
+    notes: "Currently out of station. Requested call back tomorrow after 3:00 PM.",
+    dateTime: "11/11/2026 10:50 AM",
+    duration: "2m 10s",
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: "LOG-903",
+    telecallerId: "TC03",
+    agentName: "K. Bhavani",
+    patientName: "M. Vijay",
+    phone: "9911882233",
+    branch: "Nallagandla Branch",
+    callOutcome: "Not Interested",
+    notes: "Current homeopathic course ended, symptoms resolved for now.",
+    dateTime: "11/11/2026 10:15 AM",
+    duration: "45s",
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: "LOG-904",
+    telecallerId: "TC01",
+    agentName: "Srikanth Reddy",
+    patientName: "P. Rajesh",
+    phone: "9876543210",
+    branch: "Dilshuknagar Branch",
+    callOutcome: "Interested",
+    notes: "Ready for 6-month skin allergy package renewal. Consultation booked.",
+    dateTime: "11/11/2026 09:40 AM",
+    duration: "4m 10s",
+    createdAt: new Date(Date.now() - 10800000).toISOString(),
+  },
+  {
+    id: "LOG-905",
+    telecallerId: "TC02",
+    agentName: "Salman Khan",
+    patientName: "T. Ananya",
+    phone: "9440112244",
+    branch: "KPHB Branch",
+    callOutcome: "No Response",
+    notes: "Called 2 times, phone ringing no answer. Will retry in evening.",
+    dateTime: "11/11/2026 09:10 AM",
+    duration: "30s",
+    createdAt: new Date(Date.now() - 14400000).toISOString(),
+  },
+];
+
+declare global {
+  var __sphCallLogsStore: TelecallerCallLogRecord[] | undefined;
+}
+
+function getCallLogsCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "telecaller_call_logs.json"))) {
+    return path.join(webCache, "telecaller_call_logs.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "telecaller_call_logs.json"))) {
+    return path.join(rootCache, "telecaller_call_logs.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "telecaller_call_logs.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".telecaller_call_logs.json");
+    }
+  }
+  return path.join(rootCache, "telecaller_call_logs.json");
+}
+
+function loadCallLogsFromDisk(): TelecallerCallLogRecord[] {
+  try {
+    const file = getCallLogsCachePath();
+    if (fs.existsSync(file)) {
+      const content = fs.readFileSync(file, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to read telecaller call logs cache:", err);
+  }
+  saveCallLogsToDisk(INITIAL_CALL_LOGS);
+  return [...INITIAL_CALL_LOGS];
+}
+
+function saveCallLogsToDisk(data: TelecallerCallLogRecord[]): void {
+  try {
+    const file = getCallLogsCachePath();
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Failed to write telecaller call logs cache:", err);
+  }
+}
+
+function getCallLogsStore(): TelecallerCallLogRecord[] {
+  if (!global.__sphCallLogsStore) {
+    global.__sphCallLogsStore = loadCallLogsFromDisk();
+  }
+  return global.__sphCallLogsStore;
+}
+
+export const telecallerCallLogService = {
+  async getAllLogs(filters?: {
+    search?: string;
+    branch?: string;
+    outcome?: string;
+    telecallerId?: string;
+  }): Promise<TelecallerCallLogRecord[]> {
+    const store = getCallLogsStore();
+    let result = [...store];
+
+    if (filters?.telecallerId && filters.telecallerId !== "ALL") {
+      result = result.filter(
+        (l) => l.telecallerId?.toLowerCase() === filters.telecallerId?.toLowerCase()
+      );
+    }
+
+    if (filters?.branch && filters.branch !== "ALL" && filters.branch !== "All Branches") {
+      const cleanBranch = filters.branch.toLowerCase().replace(/branch/gi, "").trim();
+      result = result.filter((l) =>
+        l.branch.toLowerCase().replace(/branch/gi, "").trim().includes(cleanBranch)
+      );
+    }
+
+    if (filters?.outcome && filters.outcome !== "ALL" && filters.outcome !== "All Outcomes") {
+      result = result.filter(
+        (l) => l.callOutcome?.toLowerCase() === filters.outcome?.toLowerCase()
+      );
+    }
+
+    if (filters?.search && filters.search.trim().length > 0) {
+      const q = filters.search.toLowerCase().trim();
+      result = result.filter(
+        (l) =>
+          l.patientName?.toLowerCase().includes(q) ||
+          l.phone?.includes(q) ||
+          l.agentName?.toLowerCase().includes(q) ||
+          l.notes?.toLowerCase().includes(q) ||
+          l.id?.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  },
+
+  async createLog(input: Partial<TelecallerCallLogRecord>): Promise<TelecallerCallLogRecord> {
+    const store = getCallLogsStore();
+    const cleanPhone = (input.phone || "").replace(/\D/g, "").slice(-10);
+    const newRecord: TelecallerCallLogRecord = {
+      id: input.id || `LOG-${Date.now().toString().slice(-6)}`,
+      telecallerId: input.telecallerId || "TC01",
+      agentName: input.agentName ? input.agentName.trim() : "Telecaller",
+      patientName: input.patientName ? input.patientName.trim() : "Patient",
+      phone: cleanPhone,
+      branch: input.branch ? input.branch.trim() : "KPHB Branch",
+      callOutcome: input.callOutcome || "Interested",
+      notes: input.notes ? input.notes.trim() : "",
+      dateTime: input.dateTime || new Date().toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }),
+      duration: input.duration || "1m 30s",
+      createdAt: new Date().toISOString(),
+    };
+
+    store.unshift(newRecord);
+    global.__sphCallLogsStore = store;
+    saveCallLogsToDisk(store);
+    return newRecord;
+  },
+
+  async getStats() {
+    const store = getCallLogsStore();
+    return {
+      total: store.length,
+      interested: store.filter((l) => l.callOutcome === "Interested").length,
+      callback: store.filter((l) => l.callOutcome === "Callback Requested" || l.callOutcome === "Callback").length,
+      notInterested: store.filter((l) => l.callOutcome === "Not Interested").length,
+      noResponse: store.filter((l) => l.callOutcome === "No Response").length,
+    };
+  },
+};
+
 
 
 

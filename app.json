@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "5defd488-94bb-44dd-acdd-80f5be4b2c9f"
+      }
+    },
+    "android": {
+      "package": "com.preetham.avala.spiritualhomeo"
+    }
+  }
+}
