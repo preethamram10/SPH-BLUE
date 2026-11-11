@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { packageService } from "@spiritualhomeo/database";
 
+export const dynamic = "force-dynamic";
+
 const DEFAULT_PACKAGES = [
   {
     id: "PKG-01",

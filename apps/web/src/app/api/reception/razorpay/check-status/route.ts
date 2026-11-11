@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRazorpayAuthHeader } from "@/utils/razorpay";
 import { appointmentService } from "@spiritualhomeo/database";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

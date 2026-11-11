@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
@@ -79,18 +81,6 @@ const toDDMMYYYY = (date: Date) => {
   return `${d}-${m}-${y}`;
 };
 
-const getYesterdayStr = () => {
-  const prev = new Date();
-  prev.setDate(prev.getDate() - 1);
-  return toDDMMYYYY(prev);
-};
-
-const getTomorrowStr = () => {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  return toDDMMYYYY(next);
-};
-
 const toISODate = (ddmmyyyy: string) => {
   if (!ddmmyyyy || ddmmyyyy === "ALL") return "";
   const parts = ddmmyyyy.split("-");
@@ -117,6 +107,8 @@ export default function DoctorDashboardPage() {
   const [branchesList, setBranchesList] = useState<string[]>(DEFAULT_BRANCHES);
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
+  const [yesterdayStr, setYesterdayStr] = useState("");
+  const [tomorrowStr, setTomorrowStr] = useState("");
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "SENT_TO_RECEPTION" | "COMPLETED">("ALL");
@@ -128,6 +120,14 @@ export default function DoctorDashboardPage() {
     const dt = toDDMMYYYY(now);
     setTodayStr(dt);
     setSelectedDate(dt);
+
+    const prev = new Date(now.getTime());
+    prev.setDate(prev.getDate() - 1);
+    setYesterdayStr(toDDMMYYYY(prev));
+
+    const next = new Date(now.getTime());
+    next.setDate(next.getDate() + 1);
+    setTomorrowStr(toDDMMYYYY(next));
 
     const savedDoc = localStorage.getItem("doctor_name");
     const savedBranch = localStorage.getItem("branch_name");
@@ -150,7 +150,13 @@ export default function DoctorDashboardPage() {
 
   const handlePrevDay = () => {
     if (selectedDate === "ALL" || !selectedDate) {
-      setSelectedDate(getYesterdayStr());
+      if (yesterdayStr) {
+        setSelectedDate(yesterdayStr);
+      } else {
+        const prev = new Date();
+        prev.setDate(prev.getDate() - 1);
+        setSelectedDate(toDDMMYYYY(prev));
+      }
       return;
     }
     const iso = toISODate(selectedDate);
@@ -161,7 +167,13 @@ export default function DoctorDashboardPage() {
 
   const handleNextDay = () => {
     if (selectedDate === "ALL" || !selectedDate) {
-      setSelectedDate(getTomorrowStr());
+      if (tomorrowStr) {
+        setSelectedDate(tomorrowStr);
+      } else {
+        const next = new Date();
+        next.setDate(next.getDate() + 1);
+        setSelectedDate(toDDMMYYYY(next));
+      }
       return;
     }
     const iso = toISODate(selectedDate);
@@ -358,9 +370,9 @@ export default function DoctorDashboardPage() {
 
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(getYesterdayStr())}
+                  onClick={() => yesterdayStr && setSelectedDate(yesterdayStr)}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    selectedDate === getYesterdayStr()
+                    yesterdayStr && selectedDate === yesterdayStr
                       ? "bg-[#0284c7] text-white shadow-xs font-black"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
                   }`}
@@ -370,9 +382,9 @@ export default function DoctorDashboardPage() {
 
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(todayStr)}
+                  onClick={() => todayStr && setSelectedDate(todayStr)}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    selectedDate === todayStr
+                    todayStr && selectedDate === todayStr
                       ? "bg-[#0284c7] text-white shadow-xs font-black"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
                   }`}
@@ -382,9 +394,9 @@ export default function DoctorDashboardPage() {
 
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(getTomorrowStr())}
+                  onClick={() => tomorrowStr && setSelectedDate(tomorrowStr)}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    selectedDate === getTomorrowStr()
+                    tomorrowStr && selectedDate === tomorrowStr
                       ? "bg-[#0284c7] text-white shadow-xs font-black"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-200 font-bold"
                   }`}
@@ -438,9 +450,9 @@ export default function DoctorDashboardPage() {
                     ? "Showing: All Booked (All Dates)"
                     : selectedDate === todayStr
                     ? `Today: ${selectedDate}`
-                    : selectedDate === getTomorrowStr()
+                    : tomorrowStr && selectedDate === tomorrowStr
                     ? `Tomorrow: ${selectedDate}`
-                    : selectedDate === getYesterdayStr()
+                    : yesterdayStr && selectedDate === yesterdayStr
                     ? `Yesterday: ${selectedDate}`
                     : `Date: ${selectedDate}`}
                 </span>

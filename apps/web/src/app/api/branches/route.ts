@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { branchService } from "@spiritualhomeo/database";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/branches
 export async function GET() {
   try {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService, branchService, registrationSequenceService, matchPatientProfile } from "@spiritualhomeo/database";
 
+export const dynamic = "force-dynamic";
+
 // Normalize date to DD-MM-YYYY
 function normalizeToDDMMYYYY(dateStr?: string): string {
   if (!dateStr) return "";
