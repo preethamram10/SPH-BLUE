@@ -1,13 +1,46 @@
 [
   {
     "id": "TGT-1793941501779-bu5d",
-    "branch": "Kphb",
+    "branch": "Kphb Branch",
     "monthYear": "2026-11",
     "targetAmount": 100000,
     "setByRole": "ADMIN",
     "setByName": "Admin",
     "setAt": "2026-11-06T05:05:01.779Z",
     "updatedAt": "2026-11-06T05:05:01.779Z",
+    "hrLocked": false
+  },
+  {
+    "id": "TGT-1794398207670-ltvb",
+    "branch": "Nallagandla Branch",
+    "monthYear": "2026-11",
+    "targetAmount": 50001,
+    "setByRole": "ADMIN",
+    "setByName": "Admin",
+    "setAt": "2026-11-11T11:56:47.670Z",
+    "updatedAt": "2026-11-11T11:57:27.246Z",
+    "hrLocked": false
+  },
+  {
+    "id": "TGT-1794398216652-if55",
+    "branch": "Dilshuknagar Branch",
+    "monthYear": "2026-11",
+    "targetAmount": 50001,
+    "setByRole": "ADMIN",
+    "setByName": "Admin",
+    "setAt": "2026-11-11T11:56:56.652Z",
+    "updatedAt": "2026-11-11T11:57:46.751Z",
+    "hrLocked": false
+  },
+  {
+    "id": "TGT-1794398226614-41s7",
+    "branch": "Chandanagar Branch",
+    "monthYear": "2026-11",
+    "targetAmount": 50000,
+    "setByRole": "ADMIN",
+    "setByName": "Admin",
+    "setAt": "2026-11-11T11:57:06.614Z",
+    "updatedAt": "2026-11-11T11:57:06.614Z",
     "hrLocked": false
   }
 ]

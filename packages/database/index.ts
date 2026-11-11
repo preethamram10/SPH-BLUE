@@ -110,7 +110,7 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   {
     id: "b-kphb",
     name: "KPHB Branch",
-    phone: "+91 81252 60176",
+    phone: "+91 90301 76176",
     address: "Road No. 1, KPHB Colony",
     city: "Hyderabad",
     timings: "9:00 AM - 8:30 PM",
@@ -146,7 +146,7 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   {
     id: "b-ngl",
     name: "Nallagandla Branch",
-    phone: "+91 11111 11111",
+    phone: "+91 80961 76176",
     address: "HUDA Layout, Nallagandla",
     city: "Hyderabad",
     timings: "9:00 AM - 8:30 PM",
@@ -157,11 +157,212 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   },
 ];
 
+function cascadeBranchRename(oldName: string, newName: string): void {
+  if (!oldName || !newName) return;
+  const cleanOld = normalizeBranchName(oldName);
+  const cleanNew = normalizeBranchName(newName);
+
+  // 1. Appointments Store
+  try {
+    const appts = getAppointmentsStore();
+    let changed = false;
+    appts.forEach((a) => {
+      const matchOld = a.branch === oldName || (cleanOld && normalizeBranchName(a.branch) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(a.branch) === cleanNew;
+      if (matchOld || matchNew) {
+        if (a.branch !== newName) {
+          a.branch = newName;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      global.__sphAppointmentsStore = appts;
+      saveAppointmentsToDisk(appts);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to appointments:", err);
+  }
+
+  // 2. Branch Targets Store
+  try {
+    const targets = getBranchTargetsStore();
+    let changed = false;
+    targets.forEach((t) => {
+      const matchOld = t.branch === oldName || (cleanOld && normalizeBranchName(t.branch) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(t.branch) === cleanNew;
+      if (matchOld || matchNew) {
+        if (t.branch !== newName) {
+          t.branch = newName;
+          changed = true;
+        }
+      }
+    });
+    // Consolidate targets so there are no duplicate (branch + monthYear)
+    const targetMap = new Map<string, BranchTargetRecord>();
+    targets.forEach((t) => {
+      const key = `${normalizeBranchName(t.branch)}_${t.monthYear}`;
+      if (!targetMap.has(key)) {
+        targetMap.set(key, t);
+      } else {
+        const prev = targetMap.get(key)!;
+        // keep the one with higher or updated target
+        if (t.targetAmount > prev.targetAmount || t.updatedAt > prev.updatedAt) {
+          targetMap.set(key, t);
+        }
+        changed = true;
+      }
+    });
+    const uniqueTargets = Array.from(targetMap.values());
+    if (changed || uniqueTargets.length !== targets.length) {
+      global.__sphBranchTargetsStore = uniqueTargets;
+      saveBranchTargetsToDisk(uniqueTargets);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to targets:", err);
+  }
+
+  // 3. Cleaning Tasks Store
+  try {
+    const tasks = getCleaningTasksStore();
+    let changed = false;
+    tasks.forEach((t) => {
+      const matchOld = t.branchName === oldName || (cleanOld && normalizeBranchName(t.branchName) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(t.branchName) === cleanNew;
+      if (matchOld || matchNew) {
+        if (t.branchName !== newName) {
+          t.branchName = newName;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      global.__sphCleaningTasksStore = tasks;
+      saveCleaningTasksToDisk(tasks);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to cleaning tasks:", err);
+  }
+
+  // 4. Doctor Schedules Store
+  try {
+    const schedules = getDoctorSchedulesStore();
+    let changed = false;
+    schedules.forEach((doc) => {
+      if (doc.branchSchedules && Array.isArray(doc.branchSchedules)) {
+        doc.branchSchedules.forEach((bs) => {
+          const matchOld = bs.branchName === oldName || (cleanOld && normalizeBranchName(bs.branchName) === cleanOld);
+          const matchNew = cleanNew && normalizeBranchName(bs.branchName) === cleanNew;
+          if (matchOld || matchNew) {
+            if (bs.branchName !== newName) {
+              bs.branchName = newName;
+              changed = true;
+            }
+          }
+          const tOld = (bs as any).targetBranch === oldName || (cleanOld && normalizeBranchName((bs as any).targetBranch) === cleanOld);
+          const tNew = cleanNew && normalizeBranchName((bs as any).targetBranch) === cleanNew;
+          if (tOld || tNew) {
+            if ((bs as any).targetBranch !== newName) {
+              (bs as any).targetBranch = newName;
+              changed = true;
+            }
+          }
+        });
+      }
+    });
+    if (changed) {
+      global.__sphDoctorSchedulesStore = schedules;
+      saveSchedulesToDisk(schedules);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to doctor schedules:", err);
+  }
+
+  // 5. Employees Store
+  try {
+    const emps = getEmployeesStore();
+    let changed = false;
+    emps.forEach((e) => {
+      const matchOld = e.branchName === oldName || (cleanOld && normalizeBranchName(e.branchName) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(e.branchName) === cleanNew;
+      if (matchOld || matchNew) {
+        if (e.branchName !== newName) {
+          e.branchName = newName;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      global.__sphEmployeesStore = emps;
+      saveEmployeesToDisk(emps);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to employees:", err);
+  }
+
+  // 6. Patients Store
+  try {
+    const pats = getPatientsStore();
+    let changed = false;
+    pats.forEach((p) => {
+      const matchOld = p.branch === oldName || (cleanOld && normalizeBranchName(p.branch) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(p.branch) === cleanNew;
+      if (matchOld || matchNew) {
+        if (p.branch !== newName) {
+          p.branch = newName;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      global.__sphPatientsStore = pats;
+      savePatientsToDisk(pats);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to patients:", err);
+  }
+
+  // 7. Package Members Store
+  try {
+    const pkgMembers = getPackageMembersStore();
+    let changed = false;
+    pkgMembers.forEach((p) => {
+      const matchOld = p.branch === oldName || (cleanOld && normalizeBranchName(p.branch) === cleanOld);
+      const matchNew = cleanNew && normalizeBranchName(p.branch) === cleanNew;
+      if (matchOld || matchNew) {
+        if (p.branch !== newName) {
+          p.branch = newName;
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      global.__sphPackageMembersStore = pkgMembers;
+      savePackageMembersToDisk(pkgMembers);
+    }
+  } catch (err) {
+    console.warn("Failed cascading branch rename to package members:", err);
+  }
+}
+
 // Shared In-Memory & Cache Store
 function getMemoryStore(): BranchRecord[] {
   if (!global.__sphBranchesStore) {
     const fromDisk = loadBranchesFromDisk();
-    global.__sphBranchesStore = fromDisk.length > 0 ? fromDisk : DEFAULT_BRANCHES_STORE;
+    const raw = fromDisk.length > 0 ? fromDisk : DEFAULT_BRANCHES_STORE;
+
+    // Deduplicate in-memory store by normalized branch name to prevent duplicate branches
+    const dedupedMap = new Map<string, BranchRecord>();
+    raw.forEach((b) => {
+      const key = normalizeBranchName(b.name);
+      if (!dedupedMap.has(key)) {
+        dedupedMap.set(key, b);
+      } else {
+        const prev = dedupedMap.get(key)!;
+        dedupedMap.set(key, { ...prev, ...b });
+      }
+    });
+    global.__sphBranchesStore = Array.from(dedupedMap.values());
   }
   return global.__sphBranchesStore;
 }
@@ -169,13 +370,14 @@ function getMemoryStore(): BranchRecord[] {
 export const branchService = {
   // Get all active branches (checks Prisma first, falls back to store)
   async getAllBranches(): Promise<BranchRecord[]> {
+    let branches: BranchRecord[] = [];
     try {
-      const branches = await prisma.branch.findMany({
+      const dbBranches = await prisma.branch.findMany({
         where: { isActive: true },
         orderBy: { createdAt: "desc" },
       });
-      if (branches && branches.length > 0) {
-        return branches.map((b) => ({
+      if (dbBranches && dbBranches.length > 0) {
+        branches = dbBranches.map((b) => ({
           ...b,
           photoName: b.photoName || undefined,
           photoUrl: b.photoUrl || "",
@@ -187,8 +389,24 @@ export const branchService = {
       // Database not connected
     }
 
-    const memory = getMemoryStore();
-    return memory.length > 0 ? memory : DEFAULT_BRANCHES_STORE;
+    if (branches.length === 0) {
+      branches = getMemoryStore();
+      if (branches.length === 0) branches = DEFAULT_BRANCHES_STORE;
+    }
+
+    // Deduplicate branches by normalized name (keeps the latest canonical one)
+    const seen = new Map<string, BranchRecord>();
+    branches.forEach((b) => {
+      const key = normalizeBranchName(b.name);
+      if (!seen.has(key)) {
+        seen.set(key, b);
+      } else {
+        const prev = seen.get(key)!;
+        seen.set(key, { ...prev, ...b });
+      }
+    });
+
+    return Array.from(seen.values());
   },
 
   // Create a new branch (saves to Prisma + local store)
@@ -201,6 +419,16 @@ export const branchService = {
     photoUrl?: string;
     photoName?: string;
   }): Promise<BranchRecord> {
+    const store = getMemoryStore();
+    const cleanInputName = normalizeBranchName(input.name);
+
+    // If a branch with the same normalized name already exists, update it instead of creating a duplicate!
+    const existingIdx = store.findIndex((b) => normalizeBranchName(b.name) === cleanInputName);
+    if (existingIdx !== -1) {
+      const updated = await this.updateBranch(store[existingIdx].id, input);
+      if (updated) return updated;
+    }
+
     const newRecord: BranchRecord = {
       id: Date.now().toString(),
       name: input.name.trim(),
@@ -237,11 +465,19 @@ export const branchService = {
       // Prisma offline, kept in shared memory
     }
 
-    const store = getMemoryStore();
     // Add to top of list
     store.unshift(newRecord);
-    global.__sphBranchesStore = store;
-    saveBranchesToDisk(store);
+
+    // Filter duplicates by normalized name
+    const seen = new Map<string, BranchRecord>();
+    store.forEach((b) => {
+      const key = normalizeBranchName(b.name);
+      if (!seen.has(key)) seen.set(key, b);
+    });
+    const deduped = Array.from(seen.values());
+
+    global.__sphBranchesStore = deduped;
+    saveBranchesToDisk(deduped);
 
     return newRecord;
   },
@@ -281,11 +517,18 @@ export const branchService = {
     }
 
     const store = getMemoryStore();
-    const idx = store.findIndex((b) => b.id === id);
+    let idx = store.findIndex((b) => String(b.id) === String(id));
+    if (idx === -1 && input.name) {
+      idx = store.findIndex((b) => normalizeBranchName(b.name) === normalizeBranchName(input.name || ""));
+    }
+
     if (idx !== -1) {
+      const oldBranchName = store[idx].name;
+      const newBranchName = input.name !== undefined ? input.name.trim() : oldBranchName;
+
       store[idx] = {
         ...store[idx],
-        ...(input.name !== undefined && { name: input.name.trim() }),
+        ...(input.name !== undefined && { name: newBranchName }),
         ...(input.phone !== undefined && { phone: input.phone.trim() }),
         ...(input.address !== undefined && { address: input.address.trim() }),
         ...(input.city !== undefined && { city: input.city.trim() }),
@@ -296,11 +539,46 @@ export const branchService = {
         ...(input.isActive !== undefined && { isActive: input.isActive }),
         updatedAt: new Date().toISOString(),
       };
-      global.__sphBranchesStore = store;
-      saveBranchesToDisk(store);
+
+      // Deduplicate store: remove any other entries that match this normalized name
+      const targetNorm = normalizeBranchName(newBranchName);
+      const cleanedStore: BranchRecord[] = [];
+      const seenKeys = new Set<string>();
+
+      store.forEach((b, i) => {
+        const key = normalizeBranchName(b.name);
+        if (i === idx) {
+          cleanedStore.push(b);
+          seenKeys.add(key);
+        } else if (!seenKeys.has(key)) {
+          cleanedStore.push(b);
+          seenKeys.add(key);
+        }
+      });
+
+      global.__sphBranchesStore = cleanedStore;
+      saveBranchesToDisk(cleanedStore);
+
+      if (oldBranchName && newBranchName) {
+        cascadeBranchRename(oldBranchName, newBranchName);
+      }
+
       return store[idx];
     }
     return null;
+  },
+
+  // Cascade rename to all relational stores
+  cascadeBranchRename(oldName: string, newName: string): void {
+    cascadeBranchRename(oldName, newName);
+  },
+
+  // Synchronize and clean all branches across all cache stores
+  syncAllStoresToCanonicalBranches(): void {
+    const branches = getMemoryStore();
+    branches.forEach((b) => {
+      cascadeBranchRename(b.name, b.name);
+    });
   },
 
   // Delete branch
@@ -568,12 +846,14 @@ function getSchedulesCachePath(): string {
 }
 
 function normalizeBranchName(name: string): string {
-  return (name || "")
+  let clean = (name || "")
     .toLowerCase()
     .replace(/spiritual\s*homeopathy/gi, "")
     .replace(/\bbranch\b/gi, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+  if (clean === "kpb") clean = "kphb";
+  return clean;
 }
 
 function getDefaultDoctorSchedules(): DoctorScheduleRecord[] {
@@ -1746,7 +2026,19 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
     const file = getAppointmentsCachePath();
     if (fs.existsSync(file)) {
       const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        let modified = false;
+        parsed.forEach((a: any) => {
+          if (a.branch === "Kphb" || a.branch === "KPHB") {
+            a.branch = "Kphb Branch";
+            modified = true;
+          }
+        });
+        if (modified) {
+          safeAtomicWrite(file, parsed);
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.warn("Failed to load appointments from cache:", err);
@@ -1772,23 +2064,40 @@ export const appointmentService = {
     if (!includeDeleted) {
       list = list.filter((a) => !a.isDeleted);
     }
-    if (branch) {
+    if (branch && branch !== "All Branches" && branch.toLowerCase() !== "all") {
       const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
       list = list.filter((a) => {
         const ab = a.branch.toLowerCase().replace(/branch/gi, "").trim();
-        return ab === cleanB || cleanB.includes(ab) || ab.includes(cleanB);
+        const isKpbMatch = (cleanB === "kpb" || cleanB === "kphb") && (ab === "kpb" || ab === "kphb");
+        return ab === cleanB || cleanB.includes(ab) || ab.includes(cleanB) || isKpbMatch;
       });
     }
     if (date) {
       const normQuery = normalizeDateStr(date);
       list = list.filter((a) => normalizeDateStr(a.appointmentDate) === normQuery);
     }
-    if (doctorId) {
+    if (doctorId && doctorId !== "All Doctors" && doctorId.toLowerCase() !== "all") {
       const cleanDoc = doctorId.toLowerCase().trim();
+      const normDocName = cleanDoc.replace(/^dr\.?\s*/i, "").trim();
+      const schedules = getDoctorSchedulesStore();
+      const matchedSchedule = schedules.find(
+        (s) =>
+          (s.doctorId && s.doctorId.toLowerCase() === cleanDoc) ||
+          (s.doctorName && s.doctorName.toLowerCase().replace(/^dr\.?\s*/i, "").trim() === normDocName)
+      );
+      const targetId = matchedSchedule?.doctorId?.toLowerCase() || cleanDoc;
+      const targetName = matchedSchedule?.doctorName?.toLowerCase().replace(/^dr\.?\s*/i, "").trim() || normDocName;
+
       list = list.filter((a) => {
         const dId = (a.doctorId || "").toLowerCase().trim();
-        const dName = (a.doctorName || "").toLowerCase().trim();
-        return dId === cleanDoc || dName.includes(cleanDoc) || cleanDoc.includes(dName);
+        const dName = (a.doctorName || "").toLowerCase().replace(/^dr\.?\s*/i, "").trim();
+        return (
+          dId === cleanDoc ||
+          dId === targetId ||
+          dName === targetName ||
+          dName.includes(targetName) ||
+          targetName.includes(dName)
+        );
       });
     }
 
@@ -1874,9 +2183,13 @@ export const appointmentService = {
     }
 
     const isOnline = data.consultationMode?.trim().toLowerCase() === "online";
+    const isHistorical =
+      data.status === "COMPLETED" ||
+      (typeof data.marketingSource === "string" &&
+        (data.marketingSource.includes("Historical") || data.marketingSource.includes("Old Record")));
 
-    // Anti-overbooking guardrail: Check capacity before creating in-clinic appointment
-    if (!isOnline) {
+    // Anti-overbooking guardrail: Check capacity before creating prospective in-clinic appointment
+    if (!isOnline && !isHistorical) {
       const currentBookedCount = await this.getSlotBookedCount(
         cleanBranch,
         cleanDate,
@@ -2325,6 +2638,13 @@ export const appointmentService = {
     } else if (!appt.followUpDate && patIdx !== -1 && patients[patIdx].activeFollowUpDate) {
       // Retain existing active follow-up date
       appt.followUpDate = patients[patIdx].activeFollowUpDate;
+    }
+
+    // Ensure followUpInterval is never left as "Custom Date" or "No Follow-up" if followUpDate exists
+    if (appt.followUpDate) {
+      if (!appt.followUpInterval || appt.followUpInterval === "Custom Date" || appt.followUpInterval === "No Follow-up") {
+        appt.followUpInterval = appt.followUpDate;
+      }
     }
 
     // Attach active package to appointment if patient is a package member
@@ -2824,7 +3144,19 @@ function loadBranchTargetsFromDisk(): BranchTargetRecord[] {
     const file = getBranchTargetsCachePath();
     if (fs.existsSync(file)) {
       const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        let modified = false;
+        parsed.forEach((t: any) => {
+          if (t.branch === "Kphb" || t.branch === "KPHB") {
+            t.branch = "Kphb Branch";
+            modified = true;
+          }
+        });
+        if (modified) {
+          safeAtomicWrite(file, parsed);
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.warn("Failed to load branch targets from cache:", err);
