@@ -1313,62 +1313,23 @@ export default function ReceptionBookAppointmentScreen() {
               </View>
             </View>
 
-            {/* CLINIC BRANCH */}
-            <View style={{ marginBottom: 14, position: "relative", zIndex: isBranchOpen ? 50 : 10 }}>
+            {/* CLINIC BRANCH (STRICTLY LOCKED TO RECEPTION'S ASSIGNED CLINIC) */}
+            <View style={{ marginBottom: 14 }}>
               <Text style={styles.label}>Clinic Branch *</Text>
-              <TouchableOpacity
+              <View
                 style={[
                   styles.doctorDropdownTrigger,
-                  isBranchOpen && styles.dropdownTriggerActive,
+                  { backgroundColor: "#f8fafc", borderColor: "#e2e8f0" },
                 ]}
-                onPress={() => {
-                  setIsBranchOpen(!isBranchOpen);
-                  setIsDoctorOpen(false);
-                  setIsModeOpen(false);
-                  setIsSourceOpen(false);
-                }}
-                activeOpacity={0.8}
               >
+                <Feather name="lock" size={14} color="#64748b" style={{ marginRight: 6 }} />
                 <Text style={{ fontSize: 13.5, fontWeight: "800", color: "#0f172a", flex: 1 }}>
                   {currentBranchName}
                 </Text>
-                <Feather name={isBranchOpen ? "chevron-up" : "chevron-down"} size={18} color="#94a3b8" />
-              </TouchableOpacity>
-
-              {/* INLINE BRANCH MENU */}
-              {isBranchOpen && (
-                <View style={styles.inlineDoctorMenu}>
-                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={{ maxHeight: 200 }}>
-                    {branchesList.map((bName) => {
-                      const isSelected = bName === currentBranchName;
-                      return (
-                        <TouchableOpacity
-                          key={bName}
-                          style={[
-                            styles.inlineDoctorItem,
-                            isSelected && styles.inlineDoctorItemSelected,
-                          ]}
-                          onPress={() => handleSelectBranch(bName)}
-                          activeOpacity={0.7}
-                        >
-                          <Text
-                            style={[
-                              styles.inlineDoctorName,
-                              isSelected && { color: "#0284c7", fontWeight: "800" },
-                              { flex: 1 },
-                            ]}
-                          >
-                            {bName}
-                          </Text>
-                          <View style={[styles.radioCircle, isSelected && styles.radioCircleActive]}>
-                            {isSelected && <View style={styles.radioDot} />}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 }}>
+                  <Text style={{ fontSize: 9.5, fontWeight: "900", color: "#0284c7" }}>LOCKED</Text>
                 </View>
-              )}
+              </View>
             </View>
 
             {/* DATE SELECTOR BUTTON (OPENS CALENDAR) */}

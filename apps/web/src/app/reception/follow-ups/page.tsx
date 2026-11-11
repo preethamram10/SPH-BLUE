@@ -187,9 +187,9 @@ function ReceptionFollowUpsContent() {
     "Nallagandla Branch",
     "Dilshuknagar Branch",
   ]);
-  const [branchName, setBranchName] = useState("Spiritual Homeopathy Clinic");
+  const [branchName, setBranchName] = useState("KPHB Branch");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedBranch, setSelectedBranch] = useState("All Branches");
+  const [selectedBranch, setSelectedBranch] = useState("KPHB Branch");
   const [statusFilter, setStatusFilter] = useState("All");
 
   // Period / Month Filters: "all", "overdue", "this_month", "next_month", "due_today", "month", "range"
@@ -251,20 +251,31 @@ function ReceptionFollowUpsContent() {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem("branch_name");
+    const saved =
+      localStorage.getItem("user_assigned_branch") ||
+      localStorage.getItem("user_branch") ||
+      localStorage.getItem("branch_name");
     if (saved) {
       setBranchName(saved);
-      // Pre-select local branch if in the list or keep All Branches
+      setSelectedBranch(saved);
+      setBookBranch(saved);
     }
   }, []);
 
-  // Fetch live follow-ups from database
+  // Fetch live follow-ups from database (strictly locked to clinic branch)
   const fetchFollowUps = useCallback(
     async (isManualRefresh = false) => {
       if (isManualRefresh) setRefreshing(true);
       else setLoading(true);
 
       try {
+        const assignedBranch =
+          localStorage.getItem("user_assigned_branch") ||
+          localStorage.getItem("user_branch") ||
+          localStorage.getItem("branch_name") ||
+          branchName ||
+          selectedBranch;
+
         const params = new URLSearchParams();
         params.set("page", String(currentPage));
         params.set("pageSize", String(pageSize));
@@ -278,7 +289,9 @@ function ReceptionFollowUpsContent() {
         }
 
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
-        if (selectedBranch && selectedBranch !== "All Branches") params.set("branch", selectedBranch);
+        if (assignedBranch && assignedBranch !== "All Branches") {
+          params.set("branch", assignedBranch);
+        }
         if (statusFilter && statusFilter !== "All") params.set("status", statusFilter);
 
         const res = await fetch(`/api/reception/follow-ups?${params.toString()}`, {
@@ -848,18 +861,11 @@ function ReceptionFollowUpsContent() {
                 )}
               </div>
 
-              {/* Branch Filter (Branch-wise) */}
-              <select
-                value={selectedBranch}
-                onChange={(e) => handleBranchChange(e.target.value)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-              >
-                {branches.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+              {/* Branch Indicator (Strictly Locked to Clinic Branch) */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-bold text-sky-800 select-none">
+                <span>🔒</span>
+                <span>{branchName || selectedBranch}</span>
+              </div>
 
               {/* Status Filter */}
               <select

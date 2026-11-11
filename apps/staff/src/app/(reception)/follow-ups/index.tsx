@@ -258,21 +258,35 @@ export default function ReceptionFollowUpsScreen() {
     return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
   }, []);
 
-  // Load Branch Info
+  // Load Branch Info (Strictly lock to Reception's Branch)
   useEffect(() => {
     getActiveBranch().then((b) => {
-      if (b) setActiveBranch(b);
+      if (b && b.name) {
+        setActiveBranch(b);
+        setSelectedBranch(b.name);
+        setBookBranch(b.name);
+      }
     });
   }, []);
 
-  // Fetch Follow-ups synced with Web backend
+  // Fetch Follow-ups synced with Web backend (strictly locked to clinic branch)
   const loadFollowUps = async () => {
     setIsLoading(true);
     try {
-      let url = `/reception/follow-ups?period=${periodFilter}`;
-      if (selectedBranch && selectedBranch !== "All Branches") {
-        url += `&branch=${encodeURIComponent(selectedBranch)}`;
+      let branchName = activeBranch?.name || selectedBranch;
+      if (!branchName || branchName === "All Branches") {
+        const b = await getActiveBranch();
+        if (b?.name) {
+          branchName = b.name;
+          setActiveBranch(b);
+          setSelectedBranch(b.name);
+          setBookBranch(b.name);
+        } else {
+          branchName = "KPHB Branch";
+        }
       }
+
+      let url = `/reception/follow-ups?period=${periodFilter}&branch=${encodeURIComponent(branchName)}`;
       if (periodFilter === "month" && selectedMonth) {
         url += `&selectedMonth=${encodeURIComponent(selectedMonth)}`;
       } else if (periodFilter === "range" && startDate && endDate) {
