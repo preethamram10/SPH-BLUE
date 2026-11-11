@@ -66,7 +66,7 @@ export default function DoctorPackagesScreen() {
           if (names.length > 0) setAvailableBranches(names);
         }
       }
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
