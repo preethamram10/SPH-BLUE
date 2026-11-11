@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2, UserCheck } from "lucide-react";
+import { Phone, Mail, Headphones, ShieldCheck, Lock, Eye, EyeOff, AlertCircle, Stethoscope, Building2 } from "lucide-react";
 
-type TabType = "doctor" | "reception" | "admin_hr" | "telecaller" | "staff";
+type TabType = "doctor_reception" | "admin_hr" | "telecaller";
 
 export default function WebLoginPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("doctor");
+  const [activeTab, setActiveTab] = useState<TabType>("doctor_reception");
   const [step, setStep] = useState<"INPUT" | "OTP">("INPUT");
 
   // Form states
@@ -32,8 +32,8 @@ export default function WebLoginPage() {
         window.location.href = "/doctor/dashboard";
       } else if (role === "TELECALLER") {
         window.location.href = "/telecaller/dashboard";
-      } else if (role === "STAFF") {
-        window.location.href = "/staff";
+      } else if (role === "HR") {
+        window.location.href = "/hr/dashboard";
       }
     } catch {}
   }, []);
@@ -69,7 +69,7 @@ export default function WebLoginPage() {
     setLoading(true);
 
     try {
-      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : activeTab === "staff" ? "STAFF" : "TELECALLER";
+      const roleToSend = activeTab === "doctor_reception" ? "DOCTOR_RECEPTION" : "TELECALLER";
       const res = await fetch("/api/auth/validate-phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,15 +87,6 @@ export default function WebLoginPage() {
       }
 
       setValidatedData(data);
-
-      if (data.staff) {
-        localStorage.setItem("staff_id", data.staff.id);
-        localStorage.setItem("staff_name", data.staff.name);
-        localStorage.setItem("staff_branch", data.staff.branch || "KPHB Branch");
-        localStorage.setItem("user_branch", data.staff.branch || "KPHB Branch");
-        localStorage.setItem("shift_start_time", data.staff.shiftStartTime || "09:00 AM");
-        localStorage.setItem("grace_minutes", String(data.staff.graceMinutes || 15));
-      }
 
       if (data.branch) {
         localStorage.setItem("branch_id", data.branch.id);
@@ -129,30 +120,23 @@ export default function WebLoginPage() {
       return;
     }
 
-    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : activeTab === "staff" ? "STAFF" : "TELECALLER";
-    if (validatedData?.role && validatedData.role !== expectedRole) {
-      setErrorMessage(`Role Mismatch: You are not authorized to log in as ${expectedRole}.`);
-      return;
-    }
-
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      if (activeTab === "doctor" && validatedData?.role === "DOCTOR") {
+      const returnedRole = (validatedData?.role || "").toUpperCase();
+
+      if (returnedRole === "DOCTOR") {
         localStorage.setItem("user_role", "DOCTOR");
         if (validatedData?.doctor?.name) {
           localStorage.setItem("doctor_name", validatedData.doctor.name);
         }
         window.location.href = "/doctor/dashboard";
-      } else if (activeTab === "reception" && validatedData?.role === "RECEPTION") {
+      } else if (returnedRole === "RECEPTION") {
         localStorage.setItem("user_role", "RECEPTION");
         window.location.href = "/reception/dashboard";
-      } else if (activeTab === "telecaller" && validatedData?.role === "TELECALLER") {
+      } else if (returnedRole === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");
         window.location.href = "/telecaller/dashboard";
-      } else if (activeTab === "staff" && validatedData?.role === "STAFF") {
-        localStorage.setItem("user_role", "STAFF");
-        window.location.href = "/staff";
       } else {
         setErrorMessage("Unauthorized: Please sign in with your registered role.");
       }
@@ -192,6 +176,7 @@ export default function WebLoginPage() {
       setErrorMessage("Invalid credentials. For Admin use: admin / admin@123. For HR use: hr / hr@123.");
     }, 400);
   };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#edf4f9] via-[#f1f6fa] to-[#e7f0f7]">
       {/* Centered White Card */}
@@ -203,75 +188,52 @@ export default function WebLoginPage() {
             Spiritual Homeopathy
           </h1>
           <p className="text-xs sm:text-[13px] text-slate-500 font-medium mt-1">
-            Doctor, Staff, HR, Reception, Admin &amp; Telecaller Portal
+            Doctor, Reception, Admin, HR &amp; Telecaller Portal
           </p>
         </div>
-        {/* Segmented 4 Tabs (Doctor, Reception, Admin / HR, Telecaller) */}
+
+        {/* Segmented 3 Tabs (Doctor / Reception, Admin / HR, Telecaller) */}
         <div className="bg-[#f1f5f9] p-1 rounded-xl flex items-center justify-between gap-1 mt-6">
-          {/* Tab 1: Doctor */}
+          {/* Tab 1: Doctor / Reception */}
           <button
             type="button"
-            onClick={() => handleTabChange("doctor")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === "doctor"
-                ? "bg-white text-[#268ec8] shadow-sm"
+            onClick={() => handleTabChange("doctor_reception")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[11.5px] font-semibold transition-all ${
+              activeTab === "doctor_reception"
+                ? "bg-white text-[#268ec8] shadow-sm font-bold"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
             <Stethoscope className="w-3.5 h-3.5 shrink-0" />
-            <span>Doctor</span>
+            <span>Doctor / Reception</span>
           </button>
-          {/* Tab 2: Reception */}
-          <button
-            type="button"
-            onClick={() => handleTabChange("reception")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === "reception"
-                ? "bg-white text-[#268ec8] shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Reception</span>
-          </button>
-          {/* Tab 3: Admin / HR */}
+
+          {/* Tab 2: Admin / HR */}
           <button
             type="button"
             onClick={() => handleTabChange("admin_hr")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-lg text-xs font-semibold transition-all ${
               activeTab === "admin_hr"
-                ? "bg-white text-[#268ec8] shadow-sm"
+                ? "bg-white text-[#268ec8] shadow-sm font-bold"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
             <Mail className="w-3.5 h-3.5 shrink-0" />
-            <span>Admin/HR</span>
+            <span>Admin / HR</span>
           </button>
-          {/* Tab 4: Telecaller */}
+
+          {/* Tab 3: Telecaller */}
           <button
             type="button"
             onClick={() => handleTabChange("telecaller")}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               activeTab === "telecaller"
-                ? "bg-white text-[#268ec8] shadow-sm"
+                ? "bg-white text-[#268ec8] shadow-sm font-bold"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
             <Headphones className="w-3.5 h-3.5 shrink-0" />
             <span>Telecaller</span>
-          </button>
-          {/* Tab 5: Staff */}
-          <button
-            type="button"
-            onClick={() => handleTabChange("staff")}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-              activeTab === "staff"
-                ? "bg-white text-[#268ec8] shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Staff</span>
           </button>
         </div>
 
@@ -298,8 +260,7 @@ export default function WebLoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter 'admin' or 'hr'"
-                  className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 placeholder:text-xs outline-none"
-                  autoCapitalize="none"
+                  className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
                   required
                 />
               </div>
@@ -315,20 +276,16 @@ export default function WebLoginPage() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="admin@123 or hr@123"
-                  className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 placeholder:text-xs outline-none"
+                  placeholder="Enter password"
+                  className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="text-slate-400 hover:text-slate-600 transition-colors ml-1.5"
+                  className="text-slate-400 hover:text-slate-600 transition-colors ml-2 cursor-pointer"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -336,114 +293,138 @@ export default function WebLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#268ec8] hover:bg-[#1f7bb0] text-white font-medium text-sm py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mt-2"
+              className="w-full mt-2 bg-[#268ec8] hover:bg-[#1f75a6] text-white font-semibold py-3 px-4 rounded-xl text-sm transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
             >
-              <ShieldCheck className="w-4 h-4" />
-              {loading ? "Authenticating..." : "Sign In to Management Portal"}
-            </button>
-          </form>
-        ) : step === "INPUT" ? (
-          /* Step 1: Mobile Number Input */
-          <form onSubmit={handleSendOtp} className="mt-5">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              {activeTab === "doctor"
-                ? "Doctor Registered Mobile Number"
-                : activeTab === "reception"
-                ? "Branch Reception Contact Number"
-                : "Telecaller Mobile Number"}
-            </label>
-
-            <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-3 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
-              <Phone className="w-4 h-4 text-[#268ec8] mr-2.5 shrink-0" />
-              <input
-                type="tel"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                placeholder={
-                  activeTab === "doctor"
-                    ? "e.g. 8125260176 (Dr. Prashanth)"
-                    : activeTab === "reception"
-                    ? "e.g. 9030176176 (KPHB Branch)"
-                    : "Enter telecaller mobile"
-                }
-                className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 placeholder:text-xs outline-none"
-                maxLength={10}
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#268ec8] hover:bg-[#1f7bb0] text-white font-medium text-sm py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mt-5"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              {loading ? "Sending OTP..." : "Send Verification OTP"}
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Signing In...</span>
+                </>
+              ) : (
+                <span>Sign In to Admin/HR Portal</span>
+              )}
             </button>
           </form>
         ) : (
-          /* Step 2: OTP Verification */
-          <form onSubmit={handleVerifyOtp} className="mt-5">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Enter Verification Code
-            </label>
+          /* Phone + OTP Form for Doctor / Reception or Telecaller */
+          <div className="mt-5">
+            {step === "INPUT" ? (
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    {activeTab === "doctor_reception"
+                      ? "Doctor or Reception Mobile Number"
+                      : "Telecaller Mobile Number"}
+                  </label>
+                  <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
+                    <span className="text-sm font-semibold text-slate-500 mr-2 border-r border-slate-300 pr-2">
+                      +91
+                    </span>
+                    <Phone className="w-4 h-4 text-[#268ec8] mr-2 shrink-0" />
+                    <input
+                      type="tel"
+                      value={mobileNumber}
+                      onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="10-digit registered number"
+                      className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none tracking-wide"
+                      required
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {activeTab === "doctor_reception"
+                      ? "Both Doctors and Reception branch numbers can sign in here."
+                      : "Enter your registered telecaller phone number."}
+                  </p>
+                </div>
 
-            <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-3 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
-              <Lock className="w-4 h-4 text-[#268ec8] mr-2.5 shrink-0" />
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 4-digit OTP"
-                className="w-full bg-transparent text-sm text-slate-800 font-semibold tracking-widest placeholder:tracking-normal placeholder:font-normal placeholder:text-slate-400 placeholder:text-xs outline-none"
-                maxLength={6}
-                required
-              />
-            </div>
-
-            {/* Timer countdown */}
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-600 mt-3 font-medium">
-              <span>
-                OTP expires in{" "}
-                <span className="text-rose-500 font-bold">
-                  {timer > 0 ? `${timer}s` : "Expired"}
-                </span>
-              </span>
-              {timer === 0 && (
                 <button
-                  type="button"
-                  onClick={() => {
-                    setTimer(30);
-                    setOtp("1234");
-                  }}
-                  className="text-[#268ec8] font-bold underline ml-1"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full mt-2 bg-[#268ec8] hover:bg-[#1f75a6] text-white font-semibold py-3 px-4 rounded-xl text-sm transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
                 >
-                  Resend OTP
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Verifying Phone...</span>
+                    </>
+                  ) : (
+                    <span>Send Verification Code</span>
+                  )}
                 </button>
-              )}
-            </div>
+              </form>
+            ) : (
+              /* Step 2: OTP Verification */
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Enter 4-Digit Verification Code
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setStep("INPUT")}
+                      className="text-xs text-[#268ec8] hover:underline font-medium cursor-pointer"
+                    >
+                      Change Number
+                    </button>
+                  </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#268ec8] hover:bg-[#1f7bb0] text-white font-medium text-sm py-3 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 mt-4"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              {loading ? "Verifying..." : "Verify & Sign In"}
-            </button>
+                  <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
+                    <ShieldCheck className="w-4 h-4 text-[#268ec8] mr-2.5 shrink-0" />
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="Enter 4-digit code (e.g. 1234)"
+                      className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none tracking-widest font-semibold"
+                      required
+                    />
+                  </div>
 
-            <div className="text-center mt-3">
-              <button
-                type="button"
-                onClick={() => setStep("INPUT")}
-                className="text-xs text-[#268ec8] hover:underline font-semibold"
-              >
-                Change Mobile Number
-              </button>
-            </div>
-          </form>
+                  <div className="flex items-center justify-between mt-2 text-xs">
+                    <span className="text-slate-400">
+                      Code sent to <b className="text-slate-600">+91 {mobileNumber}</b>
+                    </span>
+                    {timer > 0 ? (
+                      <span className="text-slate-400">Resend in {timer}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSendOtp}
+                        className="text-[#268ec8] hover:underline font-semibold cursor-pointer"
+                      >
+                        Resend Code
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full mt-2 bg-[#268ec8] hover:bg-[#1f75a6] text-white font-semibold py-3 px-4 rounded-xl text-sm transition-all duration-200 shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Signing In...</span>
+                    </>
+                  ) : (
+                    <span>Verify &amp; Sign In</span>
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
         )}
 
+        {/* Footer Info */}
+        <div className="mt-8 pt-4 border-t border-slate-100 text-center">
+          <p className="text-[11px] text-slate-400">
+            Secure Clinic Management System • Spiritual Homeopathy
+          </p>
+        </div>
       </div>
     </div>
   );

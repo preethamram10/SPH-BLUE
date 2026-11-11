@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { saveAuthToken, saveActiveBranch, saveActiveDoctor, saveUserRole, getAuthToken, getUserRole } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 
-type TabType = "doctor" | "reception" | "admin_hr" | "telecaller";
+type TabType = "doctor_reception" | "admin_hr" | "staff" | "telecaller";
 
 const COLORS = {
   blue: "#268ec8",
@@ -41,7 +41,7 @@ export default function StaffLoginScreen() {
   const insets = useSafeAreaInsets();
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<TabType>("doctor");
+  const [activeTab, setActiveTab] = useState<TabType>("doctor_reception");
 
   // Form Fields
   const [mobileNumber, setMobileNumber] = useState("");
@@ -97,6 +97,9 @@ export default function StaffLoginScreen() {
             case "HR":
               router.replace("/(hr)" as any);
               break;
+            case "STAFF":
+              router.replace("/(staff)" as any);
+              break;
           }
         }
       } catch {}
@@ -129,7 +132,12 @@ export default function StaffLoginScreen() {
     setLoading(true);
 
     try {
-      const roleToSend = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
+      const roleToSend =
+        activeTab === "doctor_reception"
+          ? "DOCTOR_RECEPTION"
+          : activeTab === "staff"
+          ? "STAFF"
+          : "TELECALLER";
       const res = await fetch(`${API_BASE_URL}/auth/validate-phone`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,22 +183,28 @@ export default function StaffLoginScreen() {
       return;
     }
 
-    const expectedRole = activeTab === "doctor" ? "DOCTOR" : activeTab === "reception" ? "RECEPTION" : "TELECALLER";
-    if (validatedData?.role && validatedData.role !== expectedRole) {
-      Alert.alert("Role Mismatch", `You are not authorized to log in as ${expectedRole}.`);
-      return;
-    }
-
     setLoading(true);
     try {
       await saveAuthToken(`token_${activeTab}_${mobileNumber}`);
+      const returnedRole = (validatedData?.role || "").toUpperCase();
 
-      if (activeTab === "doctor") {
-        await saveUserRole("DOCTOR");
-        router.replace("/(doctor)" as any);
-      } else if (activeTab === "reception") {
-        await saveUserRole("RECEPTION");
-        router.replace("/(reception)" as any);
+      if (activeTab === "doctor_reception") {
+        if (returnedRole === "DOCTOR") {
+          await saveUserRole("DOCTOR");
+          if (validatedData?.doctor) {
+            await saveActiveDoctor(validatedData.doctor);
+          }
+          router.replace("/(doctor)" as any);
+        } else {
+          await saveUserRole("RECEPTION");
+          if (validatedData?.branch) {
+            await saveActiveBranch(validatedData.branch);
+          }
+          router.replace("/(reception)" as any);
+        }
+      } else if (activeTab === "staff") {
+        await saveUserRole("STAFF");
+        router.replace("/(staff)" as any);
       } else if (activeTab === "telecaller") {
         await saveUserRole("TELECALLER");
         router.replace("/(telecaller)" as any);
@@ -296,61 +310,35 @@ export default function StaffLoginScreen() {
         <View style={styles.card}>
           {/* Segmented 4 Tabs */}
           <View style={styles.tabBar}>
-            {/* Tab 1: Doctor */}
+            {/* Tab 1: Doctor / Reception */}
             <TouchableOpacity
               style={[
                 styles.tabItem,
-                activeTab === "doctor" && styles.tabItemActive,
+                activeTab === "doctor_reception" && styles.tabItemActive,
               ]}
-              onPress={() => handleTabChange("doctor")}
+              onPress={() => handleTabChange("doctor_reception")}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="medkit-outline"
-                size={14}
+                size={13}
                 color={
-                  activeTab === "doctor" ? COLORS.blue : COLORS.textMuted
+                  activeTab === "doctor_reception" ? COLORS.blue : COLORS.textMuted
                 }
                 style={styles.tabIcon}
               />
               <Text
                 style={[
                   styles.tabText,
-                  activeTab === "doctor" && styles.tabTextActive,
+                  activeTab === "doctor_reception" && styles.tabTextActive,
                 ]}
                 numberOfLines={1}
               >
-                Doctor
+                Doctor/Rec
               </Text>
             </TouchableOpacity>
 
-            {/* Tab 2: Reception */}
-            <TouchableOpacity
-              style={[
-                styles.tabItem,
-                activeTab === "reception" && styles.tabItemActive,
-              ]}
-              onPress={() => handleTabChange("reception")}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="business-outline"
-                size={14}
-                color={activeTab === "reception" ? COLORS.blue : COLORS.textMuted}
-                style={styles.tabIcon}
-              />
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "reception" && styles.tabTextActive,
-                ]}
-                numberOfLines={1}
-              >
-                Reception
-              </Text>
-            </TouchableOpacity>
-
-            {/* Tab 3: Admin / HR */}
+            {/* Tab 2: Admin / HR */}
             <TouchableOpacity
               style={[
                 styles.tabItem,
@@ -361,7 +349,7 @@ export default function StaffLoginScreen() {
             >
               <Ionicons
                 name="mail-outline"
-                size={14}
+                size={13}
                 color={
                   activeTab === "admin_hr" ? COLORS.blue : COLORS.textMuted
                 }
@@ -378,6 +366,32 @@ export default function StaffLoginScreen() {
               </Text>
             </TouchableOpacity>
 
+            {/* Tab 3: Staff */}
+            <TouchableOpacity
+              style={[
+                styles.tabItem,
+                activeTab === "staff" && styles.tabItemActive,
+              ]}
+              onPress={() => handleTabChange("staff")}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="people-outline"
+                size={13}
+                color={activeTab === "staff" ? COLORS.blue : COLORS.textMuted}
+                style={styles.tabIcon}
+              />
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "staff" && styles.tabTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                Staff
+              </Text>
+            </TouchableOpacity>
+
             {/* Tab 4: Telecaller */}
             <TouchableOpacity
               style={[
@@ -389,7 +403,7 @@ export default function StaffLoginScreen() {
             >
               <Ionicons
                 name="headset-outline"
-                size={14}
+                size={13}
                 color={
                   activeTab === "telecaller" ? COLORS.blue : COLORS.textMuted
                 }
@@ -409,9 +423,9 @@ export default function StaffLoginScreen() {
 
           {/* Dynamic Tab Heading */}
           <Text style={styles.formHeading}>
-            {activeTab === "doctor" && "Doctor Clinical Sign In"}
-            {activeTab === "reception" && "Branch Receptionist Login"}
+            {activeTab === "doctor_reception" && "Doctor & Reception Sign In"}
             {activeTab === "admin_hr" && "Admin & HR Management Sign In"}
+            {activeTab === "staff" && "Staff Attendance & Duty Check-In"}
             {activeTab === "telecaller" && "Telecaller & Calling Desk Login"}
           </Text>
 
@@ -490,10 +504,10 @@ export default function StaffLoginScreen() {
                 <TextInput
                   style={styles.textInput}
                   placeholder={
-                    activeTab === "doctor"
-                      ? "Doctor Mobile (e.g. 8125260176)"
-                      : activeTab === "reception"
-                      ? "Reception Phone (e.g. 9030176176)"
+                    activeTab === "doctor_reception"
+                      ? "Doctor / Reception Phone"
+                      : activeTab === "staff"
+                      ? "Staff Mobile Number"
                       : "Telecaller Mobile Number"
                   }
                   placeholderTextColor={COLORS.textLight}

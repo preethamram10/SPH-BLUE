@@ -17,7 +17,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { apiFetch, getActiveBranch, getActiveDoctor } from "../../services/auth";
+import { apiFetch, getActiveBranch, getActiveDoctor, clearAllAuthData } from "../../services/auth";
 import { DoctorDrawerSidebar } from "../../components/doctor/DoctorDrawerSidebar";
 import { DoctorHeader } from "../../components/doctor/DoctorHeader";
 import { DoctorBottomNav } from "../../components/doctor/DoctorBottomNav";
@@ -300,6 +300,20 @@ export default function DoctorDashboard() {
     return true;
   });
 
+  const handleLogout = () => {
+    Alert.alert("Sign Out", "Are you sure you want to log out of Doctor Portal?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          await clearAllAuthData();
+          router.replace("/(auth)/login");
+        },
+      },
+    ]);
+  };
+
   const totalCount = appointments.length;
   const upcomingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
   const activeCount = appointments.filter((a) => a.status === "IN_CONSULTATION").length;
@@ -307,10 +321,11 @@ export default function DoctorDashboard() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      {/* Top Header: Doctor Name Only (No branch name or Cabin 1) + Notification Tab on Right */}
+      {/* Top Header: Doctor Name Only + Notifications & Direct Logout */}
       <DoctorHeader
         title={doctorName}
         onOpenDrawer={() => setIsDrawerOpen(true)}
+        onLogout={handleLogout}
         rightAction={{
           icon: "notifications-outline",
           onPress: handleNotificationsClick,

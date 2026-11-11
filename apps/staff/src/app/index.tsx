@@ -33,6 +33,8 @@ export default function RootIndex() {
               return "/(hr)";
             case "ADMIN":
               return "/(admin)";
+            case "STAFF":
+              return "/(staff)";
             default:
               return "";
           }
@@ -47,7 +49,8 @@ export default function RootIndex() {
           else if (lower.includes("admin")) targetRoute = "/(admin)";
           else if (lower.includes("telecaller")) targetRoute = "/(telecaller)";
           else if (lower.includes("hr")) targetRoute = "/(hr)";
-          else if (lower.includes("staff") || lower.includes("doctor")) targetRoute = "/(doctor)";
+          else if (lower.includes("staff")) targetRoute = "/(staff)";
+          else if (lower.includes("doctor")) targetRoute = "/(doctor)";
         }
 
         // 2. If we have a target route from persistent session, navigate immediately

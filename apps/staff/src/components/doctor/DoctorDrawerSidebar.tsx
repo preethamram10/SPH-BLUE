@@ -9,6 +9,7 @@ import {
   Dimensions,
   Alert,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -152,8 +153,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
           {/* Divider */}
           <View style={styles.divider} />
 
-          {/* Clean Navigation Menu Items (Icons Removed) */}
-          <View style={styles.menuContainer}>
+          {/* Clean Navigation Menu Items */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.menuContainer}
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.sectionHeader}>MENU</Text>
 
             <TouchableOpacity
@@ -240,9 +245,20 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                 </View>
               </TouchableOpacity>
             )}
-          </View>
 
-          {/* Footer Area (Icons Removed) */}
+            <TouchableOpacity
+              style={[styles.menuItem, { marginTop: 14, backgroundColor: "#fef2f2", borderLeftColor: "#ef4444", borderLeftWidth: 3 }]}
+              onPress={handleLogout}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="log-out-outline" size={17} color="#ef4444" style={{ marginRight: 8 }} />
+              <Text style={[styles.menuText, { color: "#ef4444", fontWeight: "800" }]}>
+                Sign Out / Log Out
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Footer Area */}
           <View style={styles.footerContainer}>
             <TouchableOpacity
               style={styles.logoutBtn}
