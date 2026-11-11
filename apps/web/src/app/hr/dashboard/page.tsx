@@ -1,257 +1,538 @@
 "use client";
 
-import React from "react";
-import { LogOut, Users, CalendarCheck, Clock, Award, FileCheck2, Target, BarChart3 } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import HRSidebar from "@/components/HRSidebar";
 import Link from "next/link";
+import {
+  Building2,
+  Users,
+  Search,
+  IndianRupee,
+  Clock,
+  Calendar,
+  RotateCcw,
+  Phone,
+  UserCheck,
+  CalendarX,
+  ArrowUpRight,
+  Target,
+  FileCheck2,
+  Sparkles,
+  DollarSign,
+  ChevronRight,
+} from "lucide-react";
+
+interface BranchStat {
+  id: string;
+  name: string;
+  shortName: string;
+  phone: string;
+  address: string;
+  timings: string;
+  status: string;
+  todayPatients: number;
+  todayRevenue: number;
+  presentStaff: number;
+  leaveStaff: number;
+  totalStaff: number;
+}
+
+interface TodayAttendanceItem {
+  id: string;
+  staffId: string;
+  staffName: string;
+  role: string;
+  branch: string;
+  punchInTime: string | null;
+  punchOutTime: string | null;
+  workingHours: string;
+  status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
+  punchInLocation?: string;
+}
+
+interface DashboardSummary {
+  totalBranches: number;
+  totalTodayPatients: number;
+  totalTodayRevenue: number;
+  totalPresentStaff: number;
+  totalLeaveStaff: number;
+  totalDoctors: number;
+}
 
 export default function HRDashboardPage() {
-  const handleLogout = () => {
-    localStorage.removeItem("user_role");
-    window.location.href = "/login";
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<DashboardSummary>({
+    totalBranches: 0,
+    totalTodayPatients: 0,
+    totalTodayRevenue: 0,
+    totalPresentStaff: 0,
+    totalLeaveStaff: 0,
+    totalDoctors: 0,
+  });
+  const [branches, setBranches] = useState<BranchStat[]>([]);
+  const [attendance, setAttendance] = useState<TodayAttendanceItem[]>([]);
+  const [todayDateStr, setTodayDateStr] = useState<string>("");
+
+  // Filters for Attendance Table
+  const [searchStaff, setSearchStaff] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/admin/dashboard/stats");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setSummary(data.summary || {});
+          setBranches(data.branchStats || []);
+          setAttendance(data.todayAttendance || []);
+          setTodayDateStr(data.todayStr || "");
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load live dashboard stats for HR:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  // Filtered Attendance List
+  const filteredAttendance = useMemo(() => {
+    return attendance.filter((item) => {
+      // Search Query
+      if (searchStaff.trim()) {
+        const q = searchStaff.toLowerCase().trim();
+        const matches =
+          item.staffName.toLowerCase().includes(q) ||
+          item.role.toLowerCase().includes(q) ||
+          item.branch.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+
+      // Branch filter
+      if (selectedBranch !== "all") {
+        if (!item.branch.toLowerCase().includes(selectedBranch.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Status filter
+      if (selectedStatus !== "all") {
+        if (selectedStatus === "Present" && item.status !== "Present" && item.status !== "In Clinic") {
+          return false;
+        }
+        if (selectedStatus === "Late" && item.status !== "Late") {
+          return false;
+        }
+        if (selectedStatus === "Leave" && item.status !== "On Leave" && item.status !== "Absent") {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [attendance, searchStaff, selectedBranch, selectedStatus]);
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top Navbar */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#a8ce3a] flex items-center justify-center text-white font-bold">
-            <Users className="w-5 h-5" />
-          </div>
+    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
+      {/* Dedicated Synchronized HR Sidebar */}
+      <HRSidebar currentPath="/hr/dashboard" />
+
+      {/* Main Container */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
+        {/* Top Navbar Header */}
+        <header className="bg-white border-b border-slate-200/80 px-6 py-4 flex items-center justify-between sticky top-0 z-10 shadow-xs">
           <div>
-            <h1 className="text-lg font-bold text-slate-800">Spiritual Homeopathy</h1>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-              HR Operations Portal
-            </span>
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                Clinic Master Dashboard
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-300">
+                HR Portal
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                Live Overview
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
+              Multi-branch real-time operations, staff attendance ledger &amp; patient footfalls.
+            </p>
           </div>
-        </div>
 
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-rose-600 px-3 py-2 rounded-lg border border-slate-200 hover:border-rose-200 transition-all"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Sign Out</span>
-        </button>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 p-6 max-w-6xl w-full mx-auto">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-800">Welcome, HR Manager</h2>
-          <p className="text-sm text-slate-500">Employee attendance, duty rosters, and leave approvals.</p>
-        </div>
-
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Staff</p>
-            <p className="text-2xl font-bold text-slate-800 mt-2">32</p>
-            <span className="text-xs text-slate-500 font-medium">Doctors, Reception &amp; Support</span>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Present Today</p>
-            <p className="text-2xl font-bold text-[#a8ce3a] mt-2">29</p>
-            <span className="text-xs text-emerald-600 font-semibold">91% Attendance</span>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pending Leaves</p>
-            <p className="text-2xl font-bold text-amber-500 mt-2">3</p>
-            <span className="text-xs text-slate-500 font-medium">Awaiting approval</span>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Shifts</p>
-            <p className="text-2xl font-bold text-[#268ec8] mt-2">2</p>
-            <span className="text-xs text-slate-500 font-medium">Morning &amp; Evening OPD</span>
-          </div>
-        </div>
-
-        {/* Pay Later & Pending Dues Action Card */}
-        <div className="bg-gradient-to-r from-[#268ec8] to-[#0284c7] rounded-2xl p-6 text-white shadow-md mb-4 flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <Clock className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700">
+              <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
+              <span>{todayDateStr || "Today"}</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-white">Pay Later &amp; Pending Dues</h3>
-                <span className="text-[10px] uppercase font-black bg-white/25 px-2 py-0.5 rounded-full text-white">
-                  Finance
-                </span>
-              </div>
-              <p className="text-xs text-sky-100 mt-0.5">
-                Monitor branch-wise pending patient fee balances, send WhatsApp reminders, and record settlements
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/hr/pay-later"
-            className="px-5 py-2.5 bg-white text-sky-700 hover:bg-sky-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
-          >
-            Manage Pay Later Dues →
-          </Link>
-        </div>
-
-        {/* Medical Discount Approvals Action Card */}
-        <div className="bg-gradient-to-r from-sky-600 to-[#0284c7] rounded-2xl p-6 text-white shadow-md mb-4 flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <FileCheck2 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-white">Medical Discount Requests</h3>
-              <p className="text-xs text-sky-100 mt-0.5">
-                Review, accept, or decline prescription & medicine fee discounts requested by Reception
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/hr/medical-discounts"
-            className="px-5 py-2.5 bg-white text-sky-700 hover:bg-sky-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
-          >
-            Manage Discount Requests →
-          </Link>
-        </div>
-
-        {/* Branch Cleaning & Sanitation Audits Action Card */}
-        <div className="bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl p-6 text-white shadow-md mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <Award className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-white">Branch Cleaning &amp; Hygiene Audits</h3>
-              <p className="text-xs text-emerald-100 mt-0.5">
-                Assign branch cleaning dates (DD-MM-YYYY), configure inspection areas, and review or approve uploaded photos
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/hr/branch-cleaning"
-            className="px-5 py-2.5 bg-white text-teal-800 hover:bg-teal-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
-          >
-            Manage Cleaning Audits →
-          </Link>
-        </div>
-
-        {/* Branch Targets & KPIs Action Card */}
-        <div className="bg-gradient-to-r from-emerald-600 to-[#16a34a] rounded-2xl p-6 text-white shadow-md mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <Target className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-extrabold text-white">Branch Monthly Targets</h3>
-              <p className="text-xs text-emerald-100 mt-0.5">
-                Set monthly branch revenue targets (1 time per month) &amp; monitor real-time collections
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/hr/target-management"
-            className="px-5 py-2.5 bg-white text-emerald-700 hover:bg-emerald-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
-          >
-            Manage Branch Targets →
-          </Link>
-        </div>
-
-        {/* Finance: Reports & Visual Analytics Dashboard Action Card */}
-        <div className="bg-gradient-to-r from-sky-600 to-indigo-600 rounded-2xl p-6 text-white shadow-md mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
-              <BarChart3 className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-white">Reports &amp; Visual Analytics Dashboard</h3>
-                <span className="text-[10px] uppercase font-black bg-white/25 px-2 py-0.5 rounded-full text-white">
-                  Finance
-                </span>
-              </div>
-              <p className="text-xs text-sky-100 mt-0.5">
-                Multi-month revenue trajectory, interactive spike curve, branch comparisons &amp; patient acquisition channels
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/hr/reports-analytics"
-            className="px-5 py-2.5 bg-white text-sky-800 hover:bg-sky-50 font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95"
-          >
-            Open Analytics Dashboard →
-          </Link>
-        </div>
-
-        {/* Staff Operations Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Card 1: Attendance & Shift Logs */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
-                <Clock className="w-5 h-5" />
-              </div>
-              <h4 className="font-bold text-slate-800 text-base">Staff Attendance &amp; GPS Logs</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                View employee selfie punch logs, real-time GPS locations &amp; shift punctuality.
-              </p>
-            </div>
-            <Link
-              href="/hr/attendance"
-              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+            <button
+              onClick={fetchDashboardData}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-xs cursor-pointer"
             >
-              Open Attendance Logs →
-            </Link>
+              <RotateCcw className={`w-3.5 h-3.5 text-[#0284c7] ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </button>
           </div>
+        </header>
 
-          {/* Card 2: Leave Requests */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-sky-100 text-[#0284c7] flex items-center justify-center mb-3">
-                <CalendarCheck className="w-5 h-5" />
+        {/* Dashboard Body */}
+        <main className="p-6 max-w-[1400px] w-full mx-auto space-y-6">
+          {/* Top 4 Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* Card 1: Total Branches */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Active Branches
+                </p>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-2xl font-black text-slate-900">
+                    {loading ? "..." : summary.totalBranches}
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-600">All Live</span>
+                </div>
               </div>
-              <h4 className="font-bold text-slate-800 text-base">Leave Request Desk</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Review pending staff leaves with one-click approval or rejection with reason.
-              </p>
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                <Building2 className="w-5 h-5" />
+              </div>
             </div>
-            <Link
-              href="/hr/leave-requests"
-              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
-            >
-              Manage Leave Requests →
-            </Link>
-          </div>
 
-          {/* Card 3: Payroll & Late Policy */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center mb-3">
+            {/* Card 2: Today's Patients */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Today&apos;s Total Patients
+                </p>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-2xl font-black text-slate-900">
+                    {loading ? "..." : summary.totalTodayPatients}
+                  </span>
+                  <span className="text-[11px] font-bold text-sky-600">Consultations</span>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#0284c7] flex items-center justify-center font-bold">
                 <Users className="w-5 h-5" />
               </div>
-              <h4 className="font-bold text-slate-800 text-base">Payroll &amp; Late Penalties</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Automated 3-day &gt; 15m late penalty deductions, salary cuts &amp; disbursement slips.
-              </p>
             </div>
+
+            {/* Card 3: Today's Revenue */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Today&apos;s Total Revenue
+                </p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-xs font-bold text-slate-400">₹</span>
+                  <span className="text-2xl font-black text-slate-900">
+                    {loading ? "..." : summary.totalTodayRevenue.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                <IndianRupee className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 4: Staff Present Today */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Staff On Duty Today
+                </p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-2xl font-black text-emerald-600">
+                    {loading ? "..." : summary.totalPresentStaff}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">Present</span>
+                  {summary.totalLeaveStaff > 0 && (
+                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
+                      {summary.totalLeaveStaff} Leave
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-lime-50 text-lime-700 flex items-center justify-center font-bold">
+                <UserCheck className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Operations Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
             <Link
-              href="/hr/payroll"
-              className="mt-4 inline-flex items-center justify-center py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition"
+              href="/hr/employee-management"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-xs transition group flex items-center gap-2.5"
             >
-              Open Payroll Desk →
+              <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-purple-700">Staff Mgmt</p>
+                <p className="text-[10px] text-slate-400 truncate">Directory &amp; Roles</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/hr/doctor-timings"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-sky-300 hover:shadow-xs transition group flex items-center gap-2.5"
+            >
+              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-sky-700">Doctor Timings</p>
+                <p className="text-[10px] text-slate-400 truncate">OPD Rosters</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/hr/total-revenue"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-emerald-300 hover:shadow-xs transition group flex items-center gap-2.5"
+            >
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-emerald-700">Total Revenue</p>
+                <p className="text-[10px] text-slate-400 truncate">Filters &amp; Ledger</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/hr/target-management"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-xs transition group flex items-center gap-2.5"
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+                <Target className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-amber-700">Targets</p>
+                <p className="text-[10px] text-slate-400 truncate">Monthly Goals</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/hr/leave-requests"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-rose-300 hover:shadow-xs transition group flex items-center gap-2.5"
+            >
+              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center shrink-0">
+                <CalendarX className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-rose-700">Leaves</p>
+                <p className="text-[10px] text-slate-400 truncate">Approvals</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/hr/branch-management"
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-xs transition group flex items-center gap-2.5"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-700">Branches</p>
+                <p className="text-[10px] text-slate-400 truncate">Operations</p>
+              </div>
             </Link>
           </div>
-        </div>
 
-        <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-12 text-center">
-          <div className="w-12 h-12 rounded-full bg-emerald-50 text-[#a8ce3a] flex items-center justify-center mx-auto mb-3">
-            <CalendarCheck className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-slate-700">HR Dashboard Ready</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-            Ready to implement the full UI layout and staff management tables!
-          </p>
-        </div>
-      </main>
+          {/* Section 1: Branch-Wise Real-Time Operations */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  Branch-Wise Real-Time Operations
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Live snapshot of OPD footfalls, collections, and on-duty doctors &amp; staff.
+                </p>
+              </div>
+              <Link
+                href="/hr/branch-management"
+                className="text-xs font-bold text-[#0284c7] hover:underline flex items-center gap-1"
+              >
+                <span>Manage Branches</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {branches.map((b) => (
+                <div
+                  key={b.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-4.5 shadow-xs hover:border-slate-300 transition space-y-3.5"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-[10px] font-black text-sky-700 uppercase bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                        {b.shortName}
+                      </span>
+                      <h4 className="text-sm font-extrabold text-slate-900 mt-1">{b.name}</h4>
+                    </div>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-50"></span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 text-xs">
+                    <div className="bg-slate-50 p-2 rounded-xl">
+                      <p className="text-[9.5px] font-bold text-slate-400 uppercase">Patients</p>
+                      <p className="text-base font-black text-slate-800 mt-0.5">
+                        {b.todayPatients}{" "}
+                        <span className="text-[10px] font-semibold text-slate-400">today</span>
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 p-2 rounded-xl">
+                      <p className="text-[9.5px] font-bold text-slate-400 uppercase">Revenue</p>
+                      <p className="text-base font-black text-emerald-700 mt-0.5">
+                        ₹{b.todayRevenue.toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-600 pt-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-slate-500">Staff Attendance:</span>
+                      <span className="font-bold text-slate-900">
+                        <span className="text-emerald-600">{b.presentStaff} Present</span>
+                        {b.leaveStaff > 0 && (
+                          <span className="text-rose-600 ml-1">/ {b.leaveStaff} Leave</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+                      <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="truncate">{b.phone}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Section 2: Today's Staff Punch-In & Punch-Out Timings */}
+          <section className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#0284c7]" />
+                  Today&apos;s Staff Punch-In &amp; Punch-Out Timings
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Live daily attendance ledger, punctuality status, and clinic shift hours.
+                </p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Search */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchStaff}
+                    onChange={(e) => setSearchStaff(e.target.value)}
+                    placeholder="Search staff..."
+                    className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0284c7] w-40"
+                  />
+                </div>
+
+                {/* Branch Dropdown */}
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Branches</option>
+                  <option value="KPHB">KPHB Main</option>
+                  <option value="Chandanagar">Chandanagar</option>
+                  <option value="Dilsukhnagar">Dilsukhnagar</option>
+                  <option value="Nallagandla">Nallagandla</option>
+                </select>
+
+                {/* Status Filter */}
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Status</option>
+                  <option value="Present">Present Today</option>
+                  <option value="Late">Late Arrival</option>
+                  <option value="Leave">On Leave / Absent</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Attendance Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50/75 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 px-4">Staff Member</th>
+                    <th className="py-2.5 px-4">Role</th>
+                    <th className="py-2.5 px-4">Branch</th>
+                    <th className="py-2.5 px-4">Punch In</th>
+                    <th className="py-2.5 px-4">Punch Out</th>
+                    <th className="py-2.5 px-4">Working Hours</th>
+                    <th className="py-2.5 px-4 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredAttendance.length > 0 ? (
+                    filteredAttendance.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-2.5 px-4">
+                          <div className="font-extrabold text-slate-900">{item.staffName}</div>
+                          <span className="text-[10px] text-slate-400 font-mono">{item.staffId}</span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-700 font-medium">{item.role}</td>
+                        <td className="py-2.5 px-4 text-slate-700 font-semibold">{item.branch}</td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-800">
+                          {item.punchInTime || <span className="text-slate-400 font-normal">--:--</span>}
+                        </td>
+                        <td className="py-2.5 px-4 font-mono font-bold text-slate-800">
+                          {item.punchOutTime || <span className="text-slate-400 font-normal">--:--</span>}
+                        </td>
+                        <td className="py-2.5 px-4 font-semibold text-slate-600">
+                          {item.workingHours || "--"}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${item.status === "Present" || item.status === "In Clinic"
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                : item.status === "Late"
+                                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                  : "bg-rose-100 text-rose-800 border border-rose-300"
+                              }`}
+                          >
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        No staff attendance records matched the filter criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   );
 }
-

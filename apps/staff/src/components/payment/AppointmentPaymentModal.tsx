@@ -22,6 +22,19 @@ import { apiFetch } from "../../services/auth";
 
 export type PaymentMethod = "Cash" | "Counter UPI" | "UPI / QR Code" | "Card" | "Split" | "Send Pay to app";
 
+export const MEDICINE_TYPE_OPTIONS = [
+  "Pills",
+  "Drops",
+  "Dilution",
+  "Syrup",
+  "Powder",
+  "Tablet",
+  "Ointment",
+  "Oil",
+  "Kit",
+  "Other",
+];
+
 export const TIMING_OPTIONS = [
   { label: "M - N - N", desc: "Morning - Night - Night" },
   { label: "M - A - N", desc: "Morning - Afternoon - Night" },
@@ -38,7 +51,7 @@ export const TIMING_OPTIONS = [
 interface MedicineItem {
   id: string;
   name: string;
-  type: "Pills" | "Syrup" | "Powder" | "Drops" | "Ointment" | "Oil" | "Tablet" | "Other" | string;
+  type: string;
   timing: string;
   amount: number;
 }
@@ -154,8 +167,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const [previousPendingBalance, setPreviousPendingBalance] = useState<number>(0);
   const [includePreviousDue, setIncludePreviousDue] = useState<boolean>(false);
 
-  // Timing Picker Modal state
+  // Timing and Type Picker Modal states
   const [activeTimingMedId, setActiveTimingMedId] = useState<string | null>(null);
+  const [activeTypeMedId, setActiveTypeMedId] = useState<string | null>(null);
 
   // View state: 'collect_fee' vs 'invoice_receipt'
   const [currentView, setCurrentView] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
@@ -178,15 +192,77 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           : 0;
       setTargetAmount(docFee > 0 ? String(docFee) : "");
       setConsultationFee(docFee);
-      setMedicineFee(appointment.medicineFee || 0);
       setIncludeConsult(docFee > 0 || !isPaid);
-      setIncludeMedicine(Boolean(appointment.medicineFee && appointment.medicineFee > 0));
+
+      // Pre-populate medicines if available in appointment or prescriptionText
+      let loadedMeds: MedicineItem[] = [];
+      const rawMeds = appointment.medicinesList || appointment.medicines;
+      if (Array.isArray(rawMeds) && rawMeds.length > 0) {
+        loadedMeds = rawMeds.map((m: any, idx: number) => ({
+          id: m.id || `med-${idx}-${Date.now()}`,
+          name: m.name || "",
+          type: m.type || "Pills",
+          timing: m.timing || "M - N - N",
+          amount: typeof m.amount === "number" ? m.amount : 0,
+        }));
+      } else if (appointment.prescriptionText && typeof appointment.prescriptionText === "string") {
+        const remedyLines = appointment.prescriptionText
+          .split("\n")
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.includes("|") || l.includes("Timing:"));
+        if (remedyLines.length > 0) {
+          loadedMeds = remedyLines.map((line: string, idx: number) => {
+            const parts = line.split("|").map((p: string) => p.trim());
+            const namePart = parts[0]?.replace(/^\d+[\.\)]\s*/, "").trim() || "";
+            let type = "Pills";
+            const typeMatch = namePart.match(/\((.*?)\)/);
+            if (typeMatch) type = typeMatch[1];
+            const cleanName = namePart.replace(/\(.*?\)/, "").trim();
+
+            let timing = "M - N - N";
+            const timingPart = parts.find((p: string) => p.toLowerCase().includes("timing:"));
+            if (timingPart) {
+              timing = timingPart.replace(/timing:\s*/i, "").trim();
+            }
+
+            return {
+              id: `med-${idx}-${Date.now()}`,
+              name: cleanName,
+              type,
+              timing,
+              amount: 0,
+            };
+          });
+        }
+      }
+
+      if (loadedMeds.length > 0) {
+        setMedicines(loadedMeds);
+        const sumMeds = loadedMeds.reduce((acc, m) => acc + (m.amount || 0), 0);
+        setMedicineFee(appointment.medicineFee || sumMeds || 0);
+        setIncludeMedicine(true);
+      } else {
+        const medFee = appointment.medicineFee || 0;
+        setMedicines([
+          {
+            id: "med-1",
+            name: "",
+            type: "Pills",
+            timing: "M - N - N",
+            amount: medFee,
+          },
+        ]);
+        setMedicineFee(medFee);
+        setIncludeMedicine(Boolean(medFee > 0));
+      }
+
       setIncludeDiet(Boolean(appointment.dietPlanFee && appointment.dietPlanFee > 0));
       setIsPayLater(false);
       setAmountPaidNow("");
       setPayLaterNotes("");
       setIsPayLaterModalOpen(false);
       setActiveTimingMedId(null);
+      setActiveTypeMedId(null);
       setIncludePreviousDue(false);
 
       // Check previous pending balance
@@ -216,7 +292,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         setPackageInstallmentAmount(pkgPending > 0 ? String(pkgPending) : "");
       } else {
         setBillingMode("regular");
-        setPaymentType("consultation");
+        setPaymentType(loadedMeds.length > 0 || (appointment.medicineFee && appointment.medicineFee > 0) ? "consult_and_med" : "consultation");
       }
 
       setSelectedMethod(null);
@@ -1477,122 +1553,61 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                         </View>
                       </View>
 
-                      {/* 4. PRESCRIBED MEDICINES CARD (Matching Screenshot 3) */}
+                      {/* 4. PRESCRIBED MEDICINES CARD */}
                       <View
                         style={[
                           styles.feeCard,
                           includeMedicine && styles.feeCardActive,
-                          paymentType === "consultation" && { opacity: 0.55 },
                         ]}
                       >
-                        <TouchableOpacity
-                          style={styles.checkboxTouch}
-                          disabled={paymentType === "consultation"}
-                          onPress={() => {
-                            if (paymentType === "consultation") {
-                              Alert.alert(
-                                "Consultation Mode Active",
-                                "Prescribed medicines cannot be selected under Consultation-only mode. Please select 'Consultation & Medicine' or 'Split' above to include medicines."
-                              );
-                              return;
-                            }
-                            const next = !includeMedicine;
-                            setIncludeMedicine(next);
-                            if (next && medicineFee === 0) {
-                              const target = parseFloat(targetAmount) || 0;
-                              const med = Math.max(0, target - consultationFee);
-                              setMedicineFee(med);
-                            }
-                          }}
-                          activeOpacity={paymentType === "consultation" ? 1 : 0.7}
-                        >
-                          <Ionicons
-                            name={includeMedicine && paymentType !== "consultation" ? "checkmark-circle" : "ellipse-outline"}
-                            size={20}
-                            color={includeMedicine && paymentType !== "consultation" ? "#0284c7" : "#cbd5e1"}
-                          />
-                          <View style={{ flex: 1, marginLeft: 8 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                              <Text style={styles.feeCardTitle}>Prescribed Medicines</Text>
-                              {paymentType === "consultation" && (
-                                <Text style={{ fontSize: 9, fontWeight: "700", color: "#94a3b8" }}>
-                                  (Disabled in Consultation)
-                                </Text>
-                              )}
-                            </View>
-                            <Text style={styles.feeCardSub}>Prescribed Remedies / Pharmacy Fee</Text>
-                          </View>
-                        </TouchableOpacity>
-
-                        <View style={styles.amountInputBox}>
-                          <Text style={styles.inputRupee}>₹</Text>
-                          <TextInput
-                            style={styles.amountInputText}
-                            keyboardType="numeric"
-                            editable={includeMedicine && paymentType === "split"}
-                            value={paymentType === "consultation" ? "0" : String(medicineFee)}
-                            onChangeText={(val) => {
-                              const num = parseFloat(val) || 0;
-                              setMedicineFee(num);
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <TouchableOpacity
+                            style={styles.checkboxTouch}
+                            onPress={() => {
+                              const next = !includeMedicine;
+                              setIncludeMedicine(next);
+                              if (next && medicineFee === 0) {
+                                const sum = medicines.reduce((acc, m) => acc + (m.amount || 0), 0);
+                                setMedicineFee(sum > 0 ? sum : 500);
+                              }
                             }}
-                          />
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={includeMedicine ? "checkmark-circle" : "ellipse-outline"}
+                              size={20}
+                              color={includeMedicine ? "#0284c7" : "#cbd5e1"}
+                            />
+                            <View style={{ flex: 1, marginLeft: 8 }}>
+                              <Text style={styles.feeCardTitle}>Prescribed Medicines</Text>
+                              <Text style={styles.feeCardSub}>Prescribed Remedies / Pharmacy Fee</Text>
+                            </View>
+                          </TouchableOpacity>
+
+                          <View style={styles.amountInputBox}>
+                            <Text style={styles.inputRupee}>₹</Text>
+                            <TextInput
+                              style={styles.amountInputText}
+                              keyboardType="numeric"
+                              value={String(medicineFee)}
+                              onChangeText={(val) => {
+                                const num = parseFloat(val) || 0;
+                                setMedicineFee(num);
+                              }}
+                            />
+                          </View>
                         </View>
 
-                        {/* EXPANDABLE MEDICINE DETAILS (Matching Screenshot 3) */}
-                        {includeMedicine && medicineFee > 0 && paymentType !== "consultation" && (
+                        {/* PRESCRIBED MEDICINES ITEMS */}
+                        {includeMedicine && (
                           <View style={styles.medicinesExpansionSection}>
-                            {/* Duration Chips */}
-                            <Text style={styles.miniLabel}>Medicine Duration:</Text>
-                            <View style={styles.durationRow}>
-                              {["1 Month", "2 Months", "3 Months", "4 Months", "5 Months", "6 Months"].map((dur) => {
-                                const isDurSelected = medicineDuration === dur;
-                                return (
-                                  <TouchableOpacity
-                                    key={dur}
-                                    style={[styles.durationChip, isDurSelected && styles.durationChipActive]}
-                                    onPress={() => setMedicineDuration(dur)}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Text style={[styles.durationChipText, isDurSelected && styles.durationChipTextActive]}>
-                                      {dur}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-
-                            {/* Itemized Header & Match Indicator */}
                             <View style={styles.itemizedHeaderRow}>
-                              <Text style={styles.itemizedHeaderTitle}>Itemized Medicines ({medicines.length})</Text>
+                              <Text style={styles.itemizedHeaderTitle}>Prescribed Medicine Items ({medicines.length})</Text>
                               <TouchableOpacity style={styles.addMedicineBtn} onPress={handleAddMedicine} activeOpacity={0.7}>
                                 <Text style={styles.addMedicineBtnText}>+ Add Medicine</Text>
                               </TouchableOpacity>
                             </View>
 
-                            {/* Match Banner */}
-                            <View
-                              style={[
-                                styles.matchBanner,
-                                isMedicineTotalMatching ? styles.matchBannerSuccess : styles.matchBannerWarning,
-                              ]}
-                            >
-                              <Text style={styles.matchBannerText}>
-                                Allocated Medicine: <Text style={{ fontWeight: "800" }}>₹{medicineFee}</Text> | Itemized:{" "}
-                                <Text style={{ fontWeight: "800" }}>₹{itemizedTotal}</Text>
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.matchStatusTag,
-                                  isMedicineTotalMatching ? { color: "#16a34a" } : { color: "#ea580c" },
-                                ]}
-                              >
-                                {isMedicineTotalMatching
-                                  ? "✓ Total Matches"
-                                  : `⚠️ Diff: ₹${Math.abs(medicineFee - itemizedTotal)}`}
-                              </Text>
-                            </View>
-
-                            {/* Medicines List */}
                             <View style={{ gap: 8, marginTop: 8 }}>
                               {medicines.map((med, idx) => (
                                 <View key={med.id} style={styles.medicineItemCard}>
@@ -1618,31 +1633,17 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   </View>
 
                                   <View style={styles.medRowBottom}>
-                                    {/* Type Selector Pill */}
+                                    {/* Type Selector Pop-up Pill */}
                                     <TouchableOpacity
                                       style={styles.dropdownMiniBtn}
-                                      onPress={() => {
-                                        const types: MedicineItem["type"][] = [
-                                          "Pills",
-                                          "Syrup",
-                                          "Powder",
-                                          "Drops",
-                                          "Ointment",
-                                          "Oil",
-                                          "Tablet",
-                                          "Other",
-                                        ];
-                                        const curIdx = types.indexOf(med.type);
-                                        const nextType = types[(curIdx + 1) % types.length];
-                                        handleUpdateMedicine(med.id, { type: nextType });
-                                      }}
+                                      onPress={() => setActiveTypeMedId(med.id)}
                                       activeOpacity={0.7}
                                     >
-                                      <Text style={styles.dropdownMiniText}>{med.type}</Text>
+                                      <Text style={styles.dropdownMiniText}>{med.type || "Type"}</Text>
                                       <Ionicons name="chevron-down" size={12} color="#64748b" />
                                     </TouchableOpacity>
 
-                                    {/* Timing Selector Pill */}
+                                    {/* Timing Selector Pop-up Pill */}
                                     <TouchableOpacity
                                       style={styles.dropdownMiniBtn}
                                       onPress={() => setActiveTimingMedId(med.id)}
@@ -1658,10 +1659,16 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                       <TextInput
                                         style={styles.medAmountText}
                                         keyboardType="numeric"
-                                        value={String(med.amount || "")}
-                                        onChangeText={(txt) =>
-                                          handleUpdateMedicine(med.id, { amount: parseFloat(txt) || 0 })
-                                        }
+                                        placeholder="0"
+                                        placeholderTextColor="#94a3b8"
+                                        value={med.amount !== undefined && med.amount !== 0 ? String(med.amount) : ""}
+                                        onChangeText={(txt) => {
+                                          const num = parseFloat(txt) || 0;
+                                          handleUpdateMedicine(med.id, { amount: num });
+                                          const nextMeds = medicines.map((m) => (m.id === med.id ? { ...m, amount: num } : m));
+                                          const nextSum = nextMeds.reduce((acc, m) => acc + (m.amount || 0), 0);
+                                          if (nextSum > 0) setMedicineFee(nextSum);
+                                        }}
                                       />
                                     </View>
                                   </View>
@@ -2317,6 +2324,51 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                   </TouchableOpacity>
                 </Modal>
 
+                {/* MEDICINE TYPE PICKER POP-UP MODAL */}
+                <Modal
+                  visible={activeTypeMedId !== null}
+                  transparent
+                  animationType="fade"
+                  onRequestClose={() => setActiveTypeMedId(null)}
+                >
+                  <TouchableOpacity
+                    style={styles.subModalBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setActiveTypeMedId(null)}
+                  >
+                    <View style={styles.timingPickerCard}>
+                      <View style={styles.timingPickerHeader}>
+                        <View>
+                          <Text style={styles.subModalTitle}>Select Medicine Type</Text>
+                          <Text style={styles.subModalSubtitle}>Choose form / type of medicine</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setActiveTypeMedId(null)} style={{ padding: 4 }}>
+                          <Ionicons name="close" size={20} color="#64748b" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                        {MEDICINE_TYPE_OPTIONS.map((t) => (
+                          <TouchableOpacity
+                            key={t}
+                            style={styles.timingOptionItem}
+                            onPress={() => {
+                              if (activeTypeMedId) {
+                                handleUpdateMedicine(activeTypeMedId, { type: t });
+                              }
+                              setActiveTypeMedId(null);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.timingOptionLabel}>{t}</Text>
+                            <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </TouchableOpacity>
+                </Modal>
+
                 {/* PAY LATER POP-UP MODAL */}
                 <Modal
                   visible={isPayLaterModalOpen}
@@ -2742,17 +2794,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    height: 28,
-    fontSize: 11,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+    fontSize: 12.5,
     color: "#0f172a",
   },
   medRowBottom: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 5,
+    marginTop: 6,
   },
   dropdownMiniBtn: {
     flex: 1,
@@ -2762,12 +2814,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    height: 26,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 36,
   },
   dropdownMiniText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "700",
     color: "#334155",
   },
@@ -2777,17 +2829,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    height: 26,
-    width: 68,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    height: 36,
+    width: 78,
   },
   medAmountText: {
-    fontSize: 11,
+    fontSize: 12.5,
     fontWeight: "800",
     color: "#0f172a",
     padding: 0,
-    width: 45,
+    width: 52,
   },
   discountCard: {
     backgroundColor: "#ffffff",

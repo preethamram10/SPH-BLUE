@@ -81,6 +81,7 @@ export interface PatientAppointment {
   payLaterAmount?: number;
   pendingBalance?: number;
   previousDuePaid?: number;
+  prescriptionText?: string;
 }
 
 export interface FeeCheckoutModalProps {
@@ -180,22 +181,65 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setIncludeConsultFee(consult > 0);
 
       const medFee = typeof appointment.medicineFee === "number" ? appointment.medicineFee : 0;
-      setIncludeMedicineFee(medFee > 0);
       setMedicineDuration(appointment.medicineDuration || "1 Month");
 
       const meds = appointment.medicines || appointment.medicinesList || [];
       if (meds.length > 0) {
         setMedicineItems(meds);
+        setIncludeMedicineFee(true);
+      } else if (appointment.prescriptionText && typeof appointment.prescriptionText === "string") {
+        const remedyLines = appointment.prescriptionText
+          .split("\n")
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.includes("|") || l.includes("Timing:"));
+        if (remedyLines.length > 0) {
+          const parsed = remedyLines.map((line: string, idx: number) => {
+            const parts = line.split("|").map((p: string) => p.trim());
+            const namePart = parts[0]?.replace(/^\d+[\.\)]\s*/, "").trim() || "";
+            let type = "Pills";
+            const typeMatch = namePart.match(/\((.*?)\)/);
+            if (typeMatch) type = typeMatch[1];
+            const cleanName = namePart.replace(/\(.*?\)/, "").trim();
+
+            let timing = "M - N - N";
+            const timingPart = parts.find((p: string) => p.toLowerCase().includes("timing:"));
+            if (timingPart) {
+              timing = timingPart.replace(/timing:\s*/i, "").trim();
+            }
+
+            return {
+              id: String(idx + 1),
+              name: cleanName,
+              type,
+              timing,
+              amount: idx === 0 && medFee > 0 ? medFee : 0,
+            };
+          });
+          setMedicineItems(parsed);
+          setIncludeMedicineFee(true);
+        } else {
+          setMedicineItems([
+            {
+              id: "1",
+              name: "",
+              type: "Pills",
+              timing: "M - N - N",
+              amount: medFee > 0 ? medFee : 0,
+            },
+          ]);
+          setIncludeMedicineFee(medFee > 0);
+        }
       } else {
         setMedicineItems([
           {
             id: "1",
-            name: "Prescribed Homeo Kit",
+            name: "",
             type: "Pills",
-            timing: "Morning & Night",
-            amount: medFee > 0 ? medFee : 1500,
+            timing: "M - N - N",
+            amount: medFee > 0 ? medFee : 0,
           },
         ]);
+        setIncludeMedicineFee(medFee > 0);
       }
 
       setDietFee(appointment.dietFee ?? appointment.dietPlanFee ?? 0);
@@ -800,12 +844,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           placeholder="Medicine Name (e.g. Arnica)"
                           value={item.name}
                           onChange={(e) => handleUpdateMedicine(item.id, "name", e.target.value)}
-                          className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-800 bg-white font-medium"
+                          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm text-slate-800 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-sky-500"
                         />
                         <select
                           value={item.type || "Pills"}
                           onChange={(e) => handleUpdateMedicine(item.id, "type", e.target.value)}
-                          className="w-20 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-700"
+                          className="w-24 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm text-slate-700 font-medium"
                         >
                           <option value="Pills">Pills</option>
                           <option value="Drops">Drops</option>
@@ -813,11 +857,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <option value="Tincture">Tincture</option>
                           <option value="Syrup">Syrup</option>
                           <option value="Kit">Kit</option>
+                          <option value="Tablet">Tablet</option>
+                          <option value="Other">Other</option>
                         </select>
                         <select
                           value={item.timing || "M - N - N"}
                           onChange={(e) => handleUpdateMedicine(item.id, "timing", e.target.value)}
-                          className="w-24 rounded-lg border border-slate-300 bg-white px-1.5 py-1 text-xs font-bold text-slate-700"
+                          className="w-28 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs md:text-sm font-bold text-slate-700"
                         >
                           <option value="M - N - N">M - N - N</option>
                           <option value="M - A - N">M - A - N</option>
@@ -829,14 +875,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <option value="SOS">SOS</option>
                         </select>
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400">₹</span>
+                          <span className="text-xs text-slate-400 font-bold">₹</span>
                           <input
                             type="number"
                             value={item.amount}
                             onChange={(e) =>
                               handleUpdateMedicine(item.id, "amount", Math.max(0, Number(e.target.value)))
                             }
-                            className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-xs font-bold text-slate-800 bg-white"
+                            className="w-20 rounded-xl border border-slate-300 px-2.5 py-2 text-right text-xs md:text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                           />
                         </div>
                         {medicineItems.length > 1 && (

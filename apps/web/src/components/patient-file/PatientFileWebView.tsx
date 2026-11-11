@@ -977,11 +977,11 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     </button>
                   </div>
                   <textarea
-                    rows={3}
+                    rows={6}
                     placeholder="Type prescription remedies, instructions, or click '+ Add Remedy / Script' to insert remedies with dosage timing (M - N - N)..."
                     value={prescriptionText}
                     onChange={(e) => setPrescriptionText(e.target.value)}
-                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-medium bg-slate-50/50"
+                    className="w-full min-h-[140px] p-3 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs font-medium bg-slate-50/50 leading-relaxed"
                   />
                 </div>
               </div>

@@ -12,10 +12,11 @@ import {
   Stethoscope,
   Building2,
   Calendar,
+  FileCheck2,
 } from "lucide-react";
 
 interface DoctorSidebarProps {
-  activePage: "dashboard" | "packages" | "patient-list" | "total-revenue" | string;
+  activePage: "dashboard" | "packages" | "patient-list" | "total-revenue" | "fee-requests" | string;
 }
 
 export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
@@ -29,6 +30,10 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
     if (savedDoc) setDoctorName(savedDoc);
     if (savedBranch) setBranchName(savedBranch);
   }, []);
+
+  const isHeadDoctor =
+    doctorName.toLowerCase().includes("prashanth") ||
+    doctorName.toLowerCase().includes("head");
 
   const handleLogout = () => {
     localStorage.removeItem("user_role");
@@ -58,10 +63,20 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
     },
     {
       id: "total-revenue",
-      name: "Total Revenue",
-      href: "/doctor/total-revenue",
+      name: isHeadDoctor ? "Total Revenue (Full Clinic)" : "Total Revenue",
+      href: isHeadDoctor ? "/admin/total-revenue" : "/doctor/total-revenue",
       icon: DollarSign,
     },
+    ...(isHeadDoctor
+      ? [
+        {
+          id: "fee-requests",
+          name: "Fee Requests",
+          href: "/admin/fee-requests",
+          icon: FileCheck2,
+        },
+      ]
+      : []),
   ];
 
   return (
@@ -100,11 +115,10 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
               <Link
                 key={item.id}
                 href={item.href}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  isActive
+                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive
                     ? "bg-[#0284c7] text-white shadow-xs"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{item.name}</span>

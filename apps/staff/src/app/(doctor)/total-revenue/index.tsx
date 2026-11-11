@@ -105,6 +105,29 @@ export default function DoctorTotalRevenueScreen() {
           />
         }
       >
+        {/* Head Doctor Clinic-Wide Access */}
+        <TouchableOpacity
+          style={styles.clinicWideBtn}
+          onPress={() => router.push("/(admin)/total-revenue" as any)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+            <View style={styles.clinicWideIcon}>
+              <Ionicons name="bar-chart" size={16} color="#0284c7" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <Text style={styles.clinicWideTitle}>Full Clinic Master Revenue</Text>
+                <View style={styles.headBadge}>
+                  <Text style={styles.headBadgeText}>HEAD DOCTOR</Text>
+                </View>
+              </View>
+              <Text style={styles.clinicWideSub}>All branch collections, date filters &amp; ledger</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#0284c7" />
+        </TouchableOpacity>
+
         {/* Hero Revenue Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
@@ -490,5 +513,45 @@ const styles = StyleSheet.create({
   txStatusText: {
     fontSize: 9.5,
     fontWeight: "700",
+  },
+  clinicWideBtn: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#bae6fd",
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  clinicWideIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#e0f2fe",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clinicWideTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  clinicWideSub: {
+    fontSize: 10.5,
+    color: "#64748b",
+    marginTop: 1,
+  },
+  headBadge: {
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  headBadgeText: {
+    fontSize: 8.5,
+    fontWeight: "900",
+    color: "#0284c7",
   },
 });

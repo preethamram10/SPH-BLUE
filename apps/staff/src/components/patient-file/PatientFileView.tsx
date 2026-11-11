@@ -967,7 +967,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                   </TouchableOpacity>
                 </View>
                 <TextInput
-                  style={[styles.textInputArea, { minHeight: 70 }]}
+                  style={[styles.textInputArea, { minHeight: 140, height: 140, textAlignVertical: "top", fontSize: 12.5, lineHeight: 18 }]}
                   multiline
                   placeholder="Type remedies, dosage, or tap '+ Add Remedy' to insert with timing (M - N - N)..."
                   placeholderTextColor="#94a3b8"

@@ -68,6 +68,33 @@ export default function DoctorTotalRevenuePage() {
         </header>
 
         <main className="flex-1 px-4 py-3.5 max-w-7xl w-full mx-auto space-y-3.5">
+          {/* Head Doctor Banner */}
+          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#0284c7] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                👑
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold text-slate-900">Head Doctor Master Revenue Access</h3>
+                  <span className="text-[9px] font-black text-[#0284c7] bg-sky-100 border border-sky-300 px-1.5 py-0.2 rounded">
+                    AUTHORIZED
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Access multi-branch collections, custom date filters, payment methods &amp; page-wise transaction ledger.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/admin/total-revenue"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0"
+            >
+              <span>View Clinic Master Revenue</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
           {/* Top Revenue Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {/* Card 1: Total Earnings */}

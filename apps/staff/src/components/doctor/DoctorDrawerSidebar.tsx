@@ -33,6 +33,9 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
   doctorName = "Dr. Prashanth K Vaidya",
 }) => {
   const router = useRouter();
+  const isHeadDoctor =
+    doctorName.toLowerCase().includes("prashanth") ||
+    doctorName.toLowerCase().includes("head");
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -212,7 +215,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                 styles.menuItem,
                 activeRoute === "total-revenue" && styles.menuItemActive,
               ]}
-              onPress={() => handleNavigate("/(doctor)/total-revenue")}
+              onPress={() => handleNavigate(isHeadDoctor ? "/(admin)/total-revenue" : "/(doctor)/total-revenue")}
               activeOpacity={0.7}
             >
               <Text
@@ -221,9 +224,22 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                   activeRoute === "total-revenue" && styles.menuTextActive,
                 ]}
               >
-                Total Revenue
+                {isHeadDoctor ? "Total Revenue (Clinic)" : "Total Revenue"}
               </Text>
             </TouchableOpacity>
+
+            {isHeadDoctor && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => handleNavigate("/(admin)/fee-requests")}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.menuText}>Fee Requests</Text>
+                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
+                  <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>HEAD</Text>
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Footer Area (Icons Removed) */}
