@@ -514,13 +514,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
 
   // When Consultation Fee is adjusted
   const handleConsultFeeChange = (val: string) => {
-    const consult = parseFloat(val) || 0;
+    const rawConsult = parseFloat(val) || 0;
+    const target = parseFloat(targetAmount) || 0;
+    // Cannot exceed target amount when target is set
+    const consult = target > 0 ? Math.min(rawConsult, target) : rawConsult;
     setConsultationFee(consult);
     if (paymentType === "consultation" || paymentType === "package") {
-      setTargetAmount(val);
+      if (target <= 0) setTargetAmount(val);
       return;
     }
-    const target = parseFloat(targetAmount) || 0;
     const remaining = Math.max(0, target - consult);
     setMedicineFee(remaining);
     if (medicines.length === 1) {
@@ -1926,7 +1928,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                 value={String(medicineFee)}
                                 onChangeText={(val) => {
                                   const num = parseFloat(val) || 0;
-                                  setMedicineFee(num);
+                                  const target = parseFloat(targetAmount) || 0;
+                                  const maxAllowed = target > 0
+                                    ? (paymentType === "split" && includeConsult ? Math.max(0, target - consultationFee) : target)
+                                    : num;
+                                  const effectiveVal = target > 0 ? Math.min(num, maxAllowed) : num;
+                                  setMedicineFee(effectiveVal);
+                                  if (medicines.length === 1) {
+                                    setMedicines([{ ...medicines[0], amount: effectiveVal }]);
+                                  }
                                 }}
                               />
                             </View>
@@ -2000,8 +2010,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                               value={med.amount !== undefined && med.amount !== 0 ? String(med.amount) : ""}
                                               onChangeText={(txt) => {
                                                 const num = parseFloat(txt) || 0;
-                                                handleUpdateMedicine(med.id, { amount: num });
-                                                const nextMeds = medicines.map((m) => (m.id === med.id ? { ...m, amount: num } : m));
+                                                const target = parseFloat(targetAmount) || 0;
+                                                const maxAllowed = target > 0
+                                                  ? (paymentType === "split" && includeConsult ? Math.max(0, target - consultationFee) : target)
+                                                  : num;
+                                                const otherSum = medicines.filter((m) => m.id !== med.id).reduce((acc, m) => acc + (m.amount || 0), 0);
+                                                const effectiveVal = target > 0 ? Math.min(num, Math.max(0, maxAllowed - otherSum)) : num;
+                                                handleUpdateMedicine(med.id, { amount: effectiveVal });
+                                                const nextMeds = medicines.map((m) => (m.id === med.id ? { ...m, amount: effectiveVal } : m));
                                                 const nextSum = nextMeds.reduce((acc, m) => acc + (m.amount || 0), 0);
                                                 if (nextSum > 0) setMedicineFee(nextSum);
                                               }}

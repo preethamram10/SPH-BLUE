@@ -413,10 +413,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   };
 
   const handleConsultFeeChange = (val: number) => {
-    setConsultationFee(val);
+    const target = targetAmount || 0;
+    // Restrict consultation fee to target amount if target is set
+    const clampedVal = target > 0 ? Math.min(val, target) : val;
+    setConsultationFee(clampedVal);
     if (paymentType === "split") {
-      const target = targetAmount || 0;
-      const remaining = Math.max(0, target - val);
+      const remaining = Math.max(0, target - clampedVal);
       if (medicineItems.length <= 1) {
         setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: remaining }]);
       }
@@ -424,10 +426,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   };
 
   const handleMedicineFeeInputChange = (val: number) => {
+    const target = targetAmount || 0;
+    const maxAllowed = target > 0
+      ? (paymentType === "split" && includeConsultFee ? Math.max(0, target - consultationFee) : target)
+      : val;
+    const effectiveVal = target > 0 ? Math.min(val, maxAllowed) : val;
+
     if (medicineItems.length <= 1) {
-      setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: val }]);
+      setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: effectiveVal }]);
     } else {
-      const diff = val - totalMedicineAmount;
+      const diff = effectiveVal - totalMedicineAmount;
       setMedicineItems((prev) =>
         prev.map((m, idx) => (idx === 0 ? { ...m, amount: Math.max(0, (Number(m.amount) || 0) + diff) } : m))
       );
@@ -535,8 +543,24 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   };
 
   const handleUpdateMedicine = (id: string, field: keyof MedicineItem, value: any) => {
+    let finalValue = value;
+    if (field === "amount") {
+      const num = Math.max(0, Number(value) || 0);
+      const target = targetAmount || 0;
+      if (target > 0) {
+        const maxAllowed = paymentType === "split" && includeConsultFee
+          ? Math.max(0, target - consultationFee)
+          : target;
+        const otherItemsSum = medicineItems
+          .filter((m) => m.id !== id)
+          .reduce((acc, m) => acc + (Number(m.amount) || 0), 0);
+        finalValue = Math.min(num, Math.max(0, maxAllowed - otherItemsSum));
+      } else {
+        finalValue = num;
+      }
+    }
     setMedicineItems((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, [field]: value } : m))
+      prev.map((m) => (m.id === id ? { ...m, [field]: finalValue } : m))
     );
   };
 
