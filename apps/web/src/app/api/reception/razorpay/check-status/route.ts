@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     const methodParam = searchParams.get("method") || "";
     const appointmentId = searchParams.get("appointmentId") || "";
     const amount = parseFloat(searchParams.get("amount") || "0");
+    const targetPaise = Math.round(amount * 100);
     const forceVerify = searchParams.get("forceVerify") === "true";
-    const allowAnyRecent = searchParams.get("allowAnyRecent") === "true";
     const confirmManual = searchParams.get("confirmManual") === "true";
 
     let isPaid = false;
@@ -103,8 +103,11 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Check Live Razorpay Captured Payments under /v1/payments
-    // When patients scan the dynamic UPI QR or soundbox QR, payments arrive here directly as captured UPI payments!
-    if (!isPaid) {
+    // Only match payments that:
+    // a) Exactly match the required amount
+    // b) Occurred very recently (last 5 minutes)
+    // c) Have NOT already been claimed/recorded by another appointment
+    if (!isPaid && targetPaise > 0) {
       try {
         const res = await fetch("https://api.razorpay.com/v1/payments?count=15", {
           headers: { Authorization: getRazorpayAuthHeader() },
@@ -112,40 +115,45 @@ export async function GET(req: NextRequest) {
         const paymentsData = await res.json();
         const items: any[] = paymentsData.items || [];
         const nowSec = Math.floor(Date.now() / 1000);
-        const targetPaise = Math.round(amount * 100);
 
         const isCardSearch = methodParam.toLowerCase() === "card";
 
-        // Priority 3A: Payment matching target amount in the last 45 minutes
-        let matched = items.find((p: any) => {
+        // Get existing appointments to ensure no double-claiming of the same payment ID
+        const allAppts = await appointmentService.getAppointments();
+
+        const matched = items.find((p: any) => {
           if (p.status !== "captured") return false;
+          // Must match payment method
           const isTargetType = isCardSearch
             ? p.method === "card"
-            : (p.method === "upi" || p.method === "qr" || p.method === "card" || p.description?.includes("QR"));
+            : (p.method === "upi" || p.method === "qr" || p.description?.includes("QR"));
+          if (!isTargetType) return false;
+
+          // Must strictly match the exact amount
+          if (p.amount !== targetPaise) return false;
+
+          // Must be within the last 5 minutes (300 seconds)
           const createdSec = p.created_at || 0;
-          const isRecent = createdSec >= (nowSec - 2700); // 45 mins
-          const isAmountMatch = targetPaise > 0 ? p.amount === targetPaise : true;
-          return isTargetType && isRecent && isAmountMatch;
+          if (createdSec < nowSec - 300) return false;
+
+          // Must not already be recorded on another appointment
+          const isAlreadyUsed = allAppts.some(
+            (a) =>
+              a.id !== appointmentId &&
+              (a.invoiceId === p.id ||
+                (a as any).razorpayPaymentId === p.id ||
+                (a as any).paymentTxId === p.id ||
+                (a as any).splitDetails?.upiTxId === p.id)
+          );
+          if (isAlreadyUsed) return false;
+
+          // If note contains appointment_id, verify it matches
+          if (p.notes?.appointment_id && p.notes.appointment_id !== appointmentId) {
+            return false;
+          }
+
+          return true;
         });
-
-        // Priority 3B: If test payment (e.g. ₹1) or allowAnyRecent or forceVerify
-        if (!matched && (forceVerify || allowAnyRecent || targetPaise <= 100)) {
-          matched = items.find((p: any) => {
-            if (p.status !== "captured") return false;
-            const createdSec = p.created_at || 0;
-            const isRecent = createdSec >= (nowSec - 2700);
-            return isRecent && (p.method === "upi" || p.method === "qr" || p.method === "card" || p.description?.includes("QR"));
-          });
-        }
-
-        // Priority 3C: If forceVerify is requested, match the most recent captured payment in last 30 minutes
-        if (!matched && forceVerify) {
-          matched = items.find((p: any) => {
-            if (p.status !== "captured") return false;
-            const createdSec = p.created_at || 0;
-            return createdSec >= (nowSec - 1800);
-          });
-        }
 
         if (matched) {
           isPaid = true;

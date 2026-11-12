@@ -761,7 +761,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     try {
       const upiTargetAmount = isPayLater ? effectivePaidToday : totalAmountDue;
       const res = await apiFetch<any>(
-        `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&allowAnyRecent=true${force ? "&forceVerify=true" : ""}`
+        `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}${force ? "&forceVerify=true" : ""}`
       );
       if (res.success && res.isPaid) {
         if (selectedMethod === "Split") {
@@ -990,7 +990,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       try {
         const upiTargetAmount = isPayLater ? effectivePaidToday : totalAmountDue;
         const res = await apiFetch<any>(
-          `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&method=${selectedMethod === "Card" ? "card" : "upi"}&allowAnyRecent=true`
+          `/reception/razorpay/check-status?amount=${upiTargetAmount}&appointmentId=${appointment.id}&method=${selectedMethod === "Card" ? "card" : "upi"}`
         );
         if (isMounted && res.success && res.isPaid) {
           setIsUpiPaid(true);

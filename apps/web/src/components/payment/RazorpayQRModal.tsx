@@ -116,7 +116,6 @@ export const RazorpayQRModal: React.FC<RazorpayQRModalProps> = ({
           paymentLinkId: qrData.paymentLinkId || "",
           appointmentId: appointmentId || "",
           amount: String(amount),
-          allowAnyRecent: "true",
         });
 
         const res = await fetch(`/api/reception/razorpay/check-status?${params.toString()}`);
@@ -164,7 +163,6 @@ export const RazorpayQRModal: React.FC<RazorpayQRModalProps> = ({
         paymentLinkId: qrData.paymentLinkId || "",
         appointmentId: appointmentId || "",
         amount: String(amount),
-        allowAnyRecent: "true",
         forceVerify: force ? "true" : "false",
       });
 
