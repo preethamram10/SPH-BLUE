@@ -2998,12 +2998,20 @@ export const appointmentService = {
   /**
    * Reschedules an appointment to a new date and time slot.
    */
-  async rescheduleAppointment(id: string, newDate: string, newTimeSlot: string): Promise<AppointmentRecord | null> {
+  async rescheduleAppointment(
+    id: string,
+    newDate: string,
+    newTimeSlot: string,
+    doctorId?: string,
+    doctorName?: string
+  ): Promise<AppointmentRecord | null> {
     const store = getAppointmentsStore();
     const appt = store.find((a) => a.id === id || a.token === id);
     if (!appt) return null;
     appt.appointmentDate = newDate;
     appt.timeSlot = newTimeSlot;
+    if (doctorId) appt.doctorId = doctorId;
+    if (doctorName) appt.doctorName = doctorName;
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
     return decorateAppointmentWithVisitInfo(appt, store);

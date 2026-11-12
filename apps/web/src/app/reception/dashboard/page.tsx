@@ -35,6 +35,7 @@ import {
   CreditCard,
   Receipt,
   Package,
+  Stethoscope,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -155,6 +156,9 @@ export default function ReceptionDashboardPage() {
   const [newRescheduleDate, setNewRescheduleDate] = useState("");
   const [newRescheduleSlot, setNewRescheduleSlot] = useState("");
   const [isSubmittingReschedule, setIsSubmittingReschedule] = useState(false);
+  const [rescheduleDoctors, setRescheduleDoctors] = useState<any[]>([]);
+  const [selectedRescheduleDoctor, setSelectedRescheduleDoctor] = useState<any>(null);
+  const [loadingRescheduleDoctors, setLoadingRescheduleDoctors] = useState(false);
 
   // Mandatory Cleaning Lockout State
   const [cleaningLockoutTask, setCleaningLockoutTask] = useState<any>(null);
@@ -265,11 +269,195 @@ export default function ReceptionDashboardPage() {
     window.open(url, "_blank");
   };
 
+  // Time conversion helpers
+  const parseTimeToMinutes = (t: string): number => {
+    if (!t) return 0;
+    const clean = t.trim().toUpperCase();
+    const match = clean.match(/(\d{1,2})(?::(\d{1,2}))?\s*([APap][Mm])?/);
+    if (!match) return 0;
+    let h = parseInt(match[1], 10);
+    const m = match[2] ? parseInt(match[2], 10) : 0;
+    const ap = (match[3] || "").toUpperCase();
+    if (ap === "PM" && h !== 12) h += 12;
+    if (ap === "AM" && h === 12) h = 0;
+    if (!ap && h >= 1 && h <= 7) h += 12;
+    return h * 60 + m;
+  };
+
+  const formatMinutesToTime = (min: number): string => {
+    let h = Math.floor(min / 60) % 24;
+    const m = min % 60;
+    const ap = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ap}`;
+  };
+
+  const getDayOfWeekAbbr = (dateStr: string): string => {
+    if (!dateStr) return "Mon";
+    let d: Date;
+    if (dateStr.includes("-")) {
+      const parts = dateStr.split("-");
+      if (parts[0].length === 4) {
+        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      }
+    } else {
+      d = new Date(dateStr);
+    }
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[d.getDay()] || "Mon";
+  };
+
+  const fetchRescheduleDoctors = async (bName: string, dtFormatted: string, preferredDoctorName?: string) => {
+    try {
+      setLoadingRescheduleDoctors(true);
+      const day = getDayOfWeekAbbr(dtFormatted);
+      const cleanBranch = (bName || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+
+      const [timingsRes, noShowRes] = await Promise.all([
+        fetch(`/api/admin/doctor-timings?branch=${encodeURIComponent(cleanBranch)}&day=${day}`),
+        fetch(`/api/reception/doctor-no-show?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dtFormatted)}`),
+      ]);
+
+      let noShows: any[] = [];
+      if (noShowRes.ok) {
+        const noShowData = await noShowRes.json();
+        if (noShowData.success && Array.isArray(noShowData.noShows)) {
+          noShows = noShowData.noShows;
+        }
+      }
+
+      if (timingsRes.ok) {
+        const data = await timingsRes.json();
+        if (data.success && Array.isArray(data.doctors)) {
+          const availableDocs = data.doctors.filter((doc: any) => {
+            const isFullDayOff = noShows.some(
+              (ns) =>
+                (ns.doctorId === doc.id || ns.doctorId === doc.doctorId || ns.doctorName === (doc.doctorName || doc.name)) &&
+                ns.type === "FULL_DAY"
+            );
+            return !isFullDayOff;
+          });
+
+          setRescheduleDoctors(availableDocs);
+
+          if (availableDocs.length > 0) {
+            const match = preferredDoctorName
+              ? availableDocs.find((d: any) =>
+                  (d.doctorName || d.name || "").toLowerCase().replace(/^dr\.?\s*/i, "").trim() ===
+                  preferredDoctorName.toLowerCase().replace(/^dr\.?\s*/i, "").trim()
+                )
+              : null;
+            setSelectedRescheduleDoctor(match || availableDocs[0]);
+          } else {
+            setSelectedRescheduleDoctor(null);
+          }
+          return;
+        }
+      }
+      setRescheduleDoctors([]);
+      setSelectedRescheduleDoctor(null);
+    } catch (err) {
+      console.warn("Failed to load reschedule doctors:", err);
+      setRescheduleDoctors([]);
+      setSelectedRescheduleDoctor(null);
+    } finally {
+      setLoadingRescheduleDoctors(false);
+    }
+  };
+
+  const rescheduleSlotSessions = useMemo(() => {
+    if (!selectedRescheduleDoctor) {
+      return [
+        {
+          id: "default-morning",
+          title: "Morning Shift (10:00 AM - 01:00 PM)",
+          slots: [
+            "10:00 AM", "10:15 AM", "10:30 AM", "10:45 AM",
+            "11:00 AM", "11:15 AM", "11:30 AM", "11:45 AM",
+            "12:00 PM", "12:15 PM", "12:30 PM", "12:45 PM",
+          ],
+        },
+        {
+          id: "default-evening",
+          title: "Evening Shift (05:00 PM - 09:00 PM)",
+          slots: [
+            "05:00 PM", "05:15 PM", "05:30 PM", "05:45 PM",
+            "06:00 PM", "06:15 PM", "06:30 PM", "06:45 PM",
+            "07:00 PM", "07:15 PM", "07:30 PM", "07:45 PM",
+            "08:00 PM", "08:15 PM", "08:30 PM", "08:45 PM",
+          ],
+        },
+      ];
+    }
+
+    let ranges = selectedRescheduleDoctor.slots || [];
+    if (ranges.length === 0) {
+      ranges = [
+        { displayText: "10:00 AM - 01:00 PM" },
+        { displayText: "05:00 PM - 09:00 PM" },
+      ];
+    }
+
+    return ranges.map((r: any, idx: number) => {
+      let startMin = 0;
+      let endMin = 0;
+      const rText = typeof r === "string" ? r : (r?.displayText || "");
+
+      if (typeof r === "object" && r?.startHour && r?.endHour) {
+        const sHour = r.startHour;
+        const sMin = r.startMin ?? r.startMinute ?? "00";
+        const sAmPm = r.startAmPm || "AM";
+        const eHour = r.endHour;
+        const eMin = r.endMin ?? r.endMinute ?? "00";
+        const eAmPm = r.endAmPm || "PM";
+        startMin = parseTimeToMinutes(`${sHour}:${sMin} ${sAmPm}`);
+        endMin = parseTimeToMinutes(`${eHour}:${eMin} ${eAmPm}`);
+      } else if (rText) {
+        const parts = rText.split(/[-–—]|to/i);
+        if (parts.length === 2) {
+          startMin = parseTimeToMinutes(parts[0]);
+          endMin = parseTimeToMinutes(parts[1]);
+        }
+      }
+
+      if (endMin <= startMin) {
+        endMin = startMin + 180;
+      }
+
+      const slots: string[] = [];
+      for (let cur = startMin; cur < endMin; cur += 15) {
+        slots.push(formatMinutesToTime(cur));
+      }
+
+      const shiftTitle = idx === 0 ? "Morning Shift" : "Evening Shift";
+      return {
+        id: `shift-${idx}`,
+        title: `${shiftTitle} (${rText || `${formatMinutesToTime(startMin)} - ${formatMinutesToTime(endMin)}`})`,
+        slots,
+      };
+    });
+  }, [selectedRescheduleDoctor]);
+
   const openRescheduleModal = (appt: any) => {
     setRescheduleAppt(appt);
-    setNewRescheduleDate(toISODate(appt.appointmentDate || selectedDate));
+    const initialFormatted = appt.appointmentDate || selectedDate || getTodayStr();
+    setNewRescheduleDate(toISODate(initialFormatted));
     setNewRescheduleSlot(appt.timeSlot || appt.selectedTimeSlot || "10:00 AM");
     setRescheduleModalOpen(true);
+    fetchRescheduleDoctors(branchName, initialFormatted, appt.doctorName);
+  };
+
+  const handleRescheduleDateChange = (isoDate: string) => {
+    setNewRescheduleDate(isoDate);
+    const formatted = fromISODate(isoDate);
+    fetchRescheduleDoctors(
+      branchName,
+      formatted,
+      selectedRescheduleDoctor?.name || selectedRescheduleDoctor?.doctorName || rescheduleAppt?.doctorName
+    );
   };
 
   const handleConfirmReschedule = async () => {
@@ -277,6 +465,9 @@ export default function ReceptionDashboardPage() {
     setIsSubmittingReschedule(true);
     try {
       const formattedDate = fromISODate(newRescheduleDate);
+      const docId = selectedRescheduleDoctor?.doctorId || selectedRescheduleDoctor?.id || rescheduleAppt.doctorId;
+      const docName = selectedRescheduleDoctor?.doctorName || selectedRescheduleDoctor?.name || rescheduleAppt.doctorName;
+
       const res = await fetch("/api/reception/appointments", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -285,13 +476,15 @@ export default function ReceptionDashboardPage() {
           id: rescheduleAppt.id,
           appointmentDate: formattedDate,
           timeSlot: newRescheduleSlot,
+          doctorId: docId,
+          doctorName: docName,
         }),
       });
       const data = await res.json();
       if (data.success) {
         setFeedback({
           type: "success",
-          message: `Appointment for ${rescheduleAppt.patientName} rescheduled to ${formattedDate} (${newRescheduleSlot})!`,
+          message: `Appointment for ${rescheduleAppt.patientName} rescheduled to ${formattedDate} (${newRescheduleSlot})${docName ? ` with ${docName}` : ""}!`,
         });
         setRescheduleModalOpen(false);
         fetchAppointments(branchName, selectedDate);
@@ -1303,11 +1496,12 @@ export default function ReceptionDashboardPage() {
 
           {/* RESCHEDULE APPOINTMENT MODAL */}
           {rescheduleModalOpen && rescheduleAppt && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-sky-100 text-[#0284c7] flex items-center justify-center">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-sky-100 text-[#0284c7] flex items-center justify-center">
                       <CalendarRange className="w-4 h-4" />
                     </div>
                     <div>
@@ -1325,49 +1519,144 @@ export default function ReceptionDashboardPage() {
                   </button>
                 </div>
 
-                <div className="p-3.5 space-y-3">
+                <div className="p-4 space-y-4 overflow-y-auto flex-1 text-[11px]">
+                  {/* 1. Date Selection */}
                   <div>
-                    <label className="block text-[10.5px] font-bold text-slate-700 mb-1">
-                      New Appointment Date *
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-bold text-slate-700">
+                        Select New Date *
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleRescheduleDateChange(toISODate(getTodayStr()))}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                            newRescheduleDate === toISODate(getTodayStr())
+                              ? "bg-[#0284c7] text-white"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          Today
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRescheduleDateChange(toISODate(getTomorrowStr()))}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                            newRescheduleDate === toISODate(getTomorrowStr())
+                              ? "bg-[#0284c7] text-white"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          Tomorrow
+                        </button>
+                      </div>
+                    </div>
                     <input
                       type="date"
                       value={newRescheduleDate}
-                      onChange={(e) => setNewRescheduleDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] text-[11px] font-bold text-slate-800 outline-none transition-all"
+                      onChange={(e) => handleRescheduleDateChange(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] text-xs font-bold text-slate-800 outline-none transition-all cursor-pointer"
                     />
                   </div>
 
+                  {/* 2. Doctor Selection */}
                   <div>
-                    <label className="block text-[10.5px] font-bold text-slate-700 mb-1">
-                      New Time Slot *
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-bold text-slate-700">
+                        Consulting Doctor ({getDayOfWeekAbbr(fromISODate(newRescheduleDate))}) *
+                      </label>
+                      {rescheduleDoctors.length > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {rescheduleDoctors.length} On Duty
+                        </span>
+                      )}
+                    </div>
+
+                    {loadingRescheduleDoctors ? (
+                      <div className="flex items-center gap-2 py-3 text-slate-400">
+                        <div className="w-3.5 h-3.5 border-2 border-[#0284c7] border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[10.5px]">Loading doctors on duty...</span>
+                      </div>
+                    ) : rescheduleDoctors.length === 0 ? (
+                      <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[10.5px] text-amber-800">
+                        No doctors scheduled at this branch on {getDayOfWeekAbbr(fromISODate(newRescheduleDate))}. Keeping current: <span className="font-bold">{rescheduleAppt?.doctorName || "Doctor"}</span>.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {rescheduleDoctors.map((doc: any) => {
+                          const dName = doc.doctorName || doc.name;
+                          const isSel =
+                            (selectedRescheduleDoctor?.doctorId || selectedRescheduleDoctor?.id) === (doc.doctorId || doc.id) ||
+                            selectedRescheduleDoctor?.doctorName === dName ||
+                            selectedRescheduleDoctor?.name === dName;
+                          return (
+                            <button
+                              key={doc.doctorId || doc.id || dName}
+                              type="button"
+                              onClick={() => setSelectedRescheduleDoctor(doc)}
+                              className={`p-2 rounded-lg border text-left cursor-pointer transition-all ${
+                                isSel
+                                  ? "bg-sky-50 border-[#0284c7] text-[#0284c7] shadow-xs"
+                                  : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              <div className="font-bold text-xs truncate flex items-center gap-1">
+                                <Stethoscope className="w-3 h-3 text-[#0284c7]" />
+                                {dName}
+                              </div>
+                              <div className="text-[9.5px] text-slate-400 truncate mt-0.5">
+                                {doc.specialty || "Homeopathic Consultant"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Time Slot Picker */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1.5">
+                      New Time Slot: <span className="text-[#0284c7] font-black">{newRescheduleSlot}</span> *
                     </label>
-                    <select
-                      value={newRescheduleSlot}
-                      onChange={(e) => setNewRescheduleSlot(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#0284c7] text-[11px] font-bold text-slate-800 outline-none transition-all cursor-pointer"
-                    >
-                      {[
-                        "10:00 AM", "10:15 AM", "10:30 AM", "10:45 AM",
-                        "11:00 AM", "11:15 AM", "11:30 AM", "11:45 AM",
-                        "12:00 PM", "12:15 PM", "12:30 PM", "12:45 PM",
-                        "01:00 PM", "05:00 PM", "05:15 PM", "05:30 PM",
-                        "05:45 PM", "06:00 PM", "06:15 PM", "06:30 PM",
-                        "06:45 PM", "07:00 PM", "07:15 PM", "07:30 PM",
-                      ].map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
+
+                    <div className="space-y-2">
+                      {rescheduleSlotSessions.map((s: any) => (
+                        <div key={s.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-1.5">
+                          <div className="text-[9.5px] font-extrabold uppercase text-slate-500 tracking-wider">
+                            {s.title}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {s.slots.map((slot: string) => {
+                              const isSel = newRescheduleSlot === slot;
+                              return (
+                                <button
+                                  key={slot}
+                                  type="button"
+                                  onClick={() => setNewRescheduleSlot(slot)}
+                                  className={`px-2 py-1 rounded-md text-[10.5px] font-bold cursor-pointer transition-all ${
+                                    isSel
+                                      ? "bg-[#0284c7] text-white shadow-xs"
+                                      : "bg-white text-slate-700 border border-slate-200 hover:border-sky-300"
+                                  }`}
+                                >
+                                  {slot}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
 
+                {/* Footer Actions */}
                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setRescheduleModalOpen(false)}
-                    className="px-3 py-1.5 rounded-lg text-[10.5px] font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -1375,7 +1664,7 @@ export default function ReceptionDashboardPage() {
                     type="button"
                     disabled={isSubmittingReschedule}
                     onClick={handleConfirmReschedule}
-                    className="px-3.5 py-1.5 rounded-lg text-[10.5px] font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                    className="px-4 py-1.5 rounded-lg text-xs font-extrabold text-white bg-[#0284c7] hover:bg-[#0369a1] shadow-xs transition-all cursor-pointer disabled:opacity-50"
                   >
                     {isSubmittingReschedule ? "Rescheduling..." : "Confirm Reschedule"}
                   </button>

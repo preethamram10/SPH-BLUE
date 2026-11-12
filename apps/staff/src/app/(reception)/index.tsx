@@ -24,7 +24,7 @@ import { API_BASE_URL } from "../../config/api";
 import { useNetwork } from "../../context/NetworkContext";
 import { AppointmentPaymentModal } from "../../components/payment/AppointmentPaymentModal";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
 
 // Brand Colors matching user reference screenshot
@@ -97,6 +97,13 @@ export default function ReceptionDashboard() {
   const [rescheduleDate, setRescheduleDate] = useState(() => getTodayStr());
   const [rescheduleSlot, setRescheduleSlot] = useState("10:00 AM");
   const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleShowCalendar, setRescheduleShowCalendar] = useState(false);
+  const [rescheduleCalYear, setRescheduleCalYear] = useState(() => new Date().getFullYear());
+  const [rescheduleCalMonth, setRescheduleCalMonth] = useState(() => new Date().getMonth());
+  const [rescheduleDoctors, setRescheduleDoctors] = useState<any[]>([]);
+  const [selectedRescheduleDoctor, setSelectedRescheduleDoctor] = useState<any>(null);
+  const [loadingRescheduleDoctors, setLoadingRescheduleDoctors] = useState(false);
+  const [rescheduleNoShows, setRescheduleNoShows] = useState<any[]>([]);
 
   // Appointment Payment Modal State (Orange COLLECT FEE)
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -139,30 +146,232 @@ export default function ReceptionDashboard() {
     }
   };
 
+  // Time conversion helpers
+  const parseTimeToMinutes = (t: string): number => {
+    if (!t) return 0;
+    const clean = t.trim().toUpperCase();
+    const match = clean.match(/(\d{1,2})(?::(\d{1,2}))?\s*([APap][Mm])?/);
+    if (!match) return 0;
+    let h = parseInt(match[1], 10);
+    const m = match[2] ? parseInt(match[2], 10) : 0;
+    const ap = (match[3] || "").toUpperCase();
+    if (ap === "PM" && h !== 12) h += 12;
+    if (ap === "AM" && h === 12) h = 0;
+    if (!ap && h >= 1 && h <= 7) h += 12;
+    return h * 60 + m;
+  };
+
+  const formatMinutesToTime = (min: number): string => {
+    let h = Math.floor(min / 60) % 24;
+    const m = min % 60;
+    const ap = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ap}`;
+  };
+
+  const getDayOfWeekAbbr = (dateStr: string): string => {
+    if (!dateStr) return "Mon";
+    let d: Date;
+    if (dateStr.includes("-")) {
+      const parts = dateStr.split("-");
+      if (parts[0].length === 4) {
+        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      } else {
+        d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+      }
+    } else {
+      d = new Date(dateStr);
+    }
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[d.getDay()] || "Mon";
+  };
+
+  const fetchRescheduleDoctors = async (bName: string, dt: string, preferredDoctorName?: string) => {
+    try {
+      setLoadingRescheduleDoctors(true);
+      const day = getDayOfWeekAbbr(dt);
+      const cleanBranch = (bName || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+
+      const [timingsRes, noShowRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/doctor-timings?branch=${encodeURIComponent(cleanBranch)}&day=${day}`),
+        fetch(`${API_BASE_URL}/reception/doctor-no-show?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`),
+      ]);
+
+      let noShows: any[] = [];
+      if (noShowRes.ok) {
+        const noShowData = await noShowRes.json();
+        if (noShowData.success && Array.isArray(noShowData.noShows)) {
+          noShows = noShowData.noShows;
+          setRescheduleNoShows(noShows);
+        } else {
+          setRescheduleNoShows([]);
+        }
+      }
+
+      if (timingsRes.ok) {
+        const data = await timingsRes.json();
+        if (data.success && Array.isArray(data.doctors)) {
+          const availableDocs = data.doctors.filter((doc: any) => {
+            const isFullDayOff = noShows.some(
+              (ns) =>
+                (ns.doctorId === doc.id || ns.doctorId === doc.doctorId || ns.doctorName === (doc.doctorName || doc.name)) &&
+                ns.type === "FULL_DAY"
+            );
+            return !isFullDayOff;
+          });
+
+          setRescheduleDoctors(availableDocs);
+
+          if (availableDocs.length > 0) {
+            const match = preferredDoctorName
+              ? availableDocs.find((d: any) =>
+                  (d.doctorName || d.name || "").toLowerCase().replace(/^dr\.?\s*/i, "").trim() ===
+                  preferredDoctorName.toLowerCase().replace(/^dr\.?\s*/i, "").trim()
+                )
+              : null;
+            setSelectedRescheduleDoctor(match || availableDocs[0]);
+          } else {
+            setSelectedRescheduleDoctor(null);
+          }
+          return;
+        }
+      }
+      setRescheduleDoctors([]);
+      setSelectedRescheduleDoctor(null);
+    } catch (err) {
+      console.warn("Failed to load reschedule doctors:", err);
+      setRescheduleDoctors([]);
+      setSelectedRescheduleDoctor(null);
+    } finally {
+      setLoadingRescheduleDoctors(false);
+    }
+  };
+
+  const rescheduleSlotSessions = useMemo(() => {
+    if (!selectedRescheduleDoctor) {
+      return [
+        {
+          id: "default-morning",
+          title: "Morning Shift (10:00 AM - 01:00 PM)",
+          slots: [
+            "10:00 AM", "10:15 AM", "10:30 AM", "10:45 AM",
+            "11:00 AM", "11:15 AM", "11:30 AM", "11:45 AM",
+            "12:00 PM", "12:15 PM", "12:30 PM", "12:45 PM",
+          ],
+        },
+        {
+          id: "default-evening",
+          title: "Evening Shift (05:00 PM - 09:00 PM)",
+          slots: [
+            "05:00 PM", "05:15 PM", "05:30 PM", "05:45 PM",
+            "06:00 PM", "06:15 PM", "06:30 PM", "06:45 PM",
+            "07:00 PM", "07:15 PM", "07:30 PM", "07:45 PM",
+            "08:00 PM", "08:15 PM", "08:30 PM", "08:45 PM",
+          ],
+        },
+      ];
+    }
+
+    let ranges = selectedRescheduleDoctor.slots || [];
+    if (ranges.length === 0) {
+      ranges = [
+        { displayText: "10:00 AM - 01:00 PM" },
+        { displayText: "05:00 PM - 09:00 PM" },
+      ];
+    }
+
+    return ranges.map((r: any, idx: number) => {
+      let startMin = 0;
+      let endMin = 0;
+      const rText = typeof r === "string" ? r : (r?.displayText || "");
+
+      if (typeof r === "object" && r?.startHour && r?.endHour) {
+        const sHour = r.startHour;
+        const sMin = r.startMin ?? r.startMinute ?? "00";
+        const sAmPm = r.startAmPm || "AM";
+        const eHour = r.endHour;
+        const eMin = r.endMin ?? r.endMinute ?? "00";
+        const eAmPm = r.endAmPm || "PM";
+        startMin = parseTimeToMinutes(`${sHour}:${sMin} ${sAmPm}`);
+        endMin = parseTimeToMinutes(`${eHour}:${eMin} ${eAmPm}`);
+      } else if (rText) {
+        const parts = rText.split(/[-–—]|to/i);
+        if (parts.length === 2) {
+          startMin = parseTimeToMinutes(parts[0]);
+          endMin = parseTimeToMinutes(parts[1]);
+        }
+      }
+
+      if (endMin <= startMin) {
+        endMin = startMin + 180;
+      }
+
+      const slots: string[] = [];
+      for (let cur = startMin; cur < endMin; cur += 15) {
+        slots.push(formatMinutesToTime(cur));
+      }
+
+      const shiftTitle = idx === 0 ? "Morning / Afternoon Shift" : "Evening Shift";
+      return {
+        id: `shift-${idx}`,
+        title: `${shiftTitle} (${rText || `${formatMinutesToTime(startMin)} - ${formatMinutesToTime(endMin)}`})`,
+        slots,
+      };
+    });
+  }, [selectedRescheduleDoctor]);
+
   const openRescheduleModal = (appt: any) => {
     setRescheduleTargetAppt(appt);
-    setRescheduleDate(appt.appointmentDate || selectedDate);
+    const initialDt = appt.appointmentDate || selectedDate || getTodayStr();
+    setRescheduleDate(initialDt);
     setRescheduleSlot(appt.timeSlot || appt.selectedTimeSlot || "10:00 AM");
+    setRescheduleShowCalendar(false);
     setRescheduleModalOpen(true);
+
+    if (initialDt && initialDt.includes("-")) {
+      const parts = initialDt.split("-");
+      if (parts.length === 3) {
+        const m = parts[0].length === 4 ? parseInt(parts[1], 10) - 1 : parseInt(parts[1], 10) - 1;
+        const y = parts[0].length === 4 ? parseInt(parts[0], 10) : parseInt(parts[2], 10);
+        setRescheduleCalMonth(m);
+        setRescheduleCalYear(y);
+      }
+    }
+
+    const bName = activeBranch?.name || appt.branch || "KPHB";
+    fetchRescheduleDoctors(bName, initialDt, appt.doctorName);
+  };
+
+  const handleSelectRescheduleDate = (dt: string) => {
+    setRescheduleDate(dt);
+    setRescheduleShowCalendar(false);
+    const bName = activeBranch?.name || rescheduleTargetAppt?.branch || "KPHB";
+    fetchRescheduleDoctors(bName, dt, selectedRescheduleDoctor?.name || selectedRescheduleDoctor?.doctorName || rescheduleTargetAppt?.doctorName);
   };
 
   const handleConfirmReschedule = async () => {
     if (!rescheduleTargetAppt) return;
     setIsRescheduling(true);
     try {
-      const data = await apiFetch("/reception/appointments", {
+      const docId = selectedRescheduleDoctor?.doctorId || selectedRescheduleDoctor?.id || rescheduleTargetAppt.doctorId;
+      const docName = selectedRescheduleDoctor?.doctorName || selectedRescheduleDoctor?.name || rescheduleTargetAppt.doctorName;
+
+      const data = await apiFetch<any>("/reception/appointments", {
         method: "PATCH",
         body: JSON.stringify({
           action: "RESCHEDULE",
           id: rescheduleTargetAppt.id,
           appointmentDate: rescheduleDate,
           timeSlot: rescheduleSlot,
+          doctorId: docId,
+          doctorName: docName,
         }),
       });
       if (data.success) {
         Alert.alert(
-          "Rescheduled",
-          `Appointment for ${rescheduleTargetAppt.patientName} moved to ${rescheduleDate} (${rescheduleSlot})!`
+          "Rescheduled Successfully",
+          `Appointment for ${rescheduleTargetAppt.patientName} moved to ${rescheduleDate} at ${rescheduleSlot}${docName ? ` with ${docName}` : ""}!`
         );
         setRescheduleModalOpen(false);
         const bName = activeBranch?.name || "KPHB";
@@ -1863,15 +2072,15 @@ export default function ReceptionDashboard() {
         <TouchableWithoutFeedback onPress={() => setRescheduleModalOpen(false)}>
           <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={[styles.modalContainer, { maxWidth: 360, padding: 18 }]}>
+              <View style={[styles.modalContainer, { maxWidth: 390, maxHeight: SCREEN_HEIGHT * 0.88, padding: 16 }]}>
                 {/* Header */}
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f1f5f9", paddingBottom: 10, marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f1f5f9", paddingBottom: 10, marginBottom: 10 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#f0f9ff", alignItems: "center", justifyContent: "center" }}>
                       <Ionicons name="calendar" size={18} color="#0284c7" />
                     </View>
                     <View>
-                      <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>Reschedule</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>Reschedule Appointment</Text>
                       <Text style={{ fontSize: 10.5, color: "#64748b" }}>
                         {rescheduleTargetAppt?.patientName} • {rescheduleTargetAppt?.registrationId}
                       </Text>
@@ -1882,64 +2091,226 @@ export default function ReceptionDashboard() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Date Selection */}
-                <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
-                  Select New Date (Currently: {rescheduleDate})
-                </Text>
-                <View style={{ flexDirection: "row", gap: 6, marginBottom: 14 }}>
-                  <TouchableOpacity
-                    style={[styles.datePill, rescheduleDate === todayStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
-                    onPress={() => setRescheduleDate(todayStr)}
-                  >
-                    <Text style={[styles.datePillText, rescheduleDate === todayStr && styles.datePillTextActive, { fontSize: 11 }]}>
-                      Today
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+                  {/* 1. Date Selection Row */}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155" }}>
+                      Select New Date: <Text style={{ color: "#0284c7", fontWeight: "800" }}>{rescheduleDate}</Text>
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.datePill, rescheduleDate === tomorrowStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
-                    onPress={() => setRescheduleDate(tomorrowStr)}
-                  >
-                    <Text style={[styles.datePillText, rescheduleDate === tomorrowStr && styles.datePillTextActive, { fontSize: 11 }]}>
-                      Tomorrow
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      onPress={() => setRescheduleShowCalendar(!rescheduleShowCalendar)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: rescheduleShowCalendar ? "#0284c7" : "#e0f2fe" }}
+                    >
+                      <Ionicons name="calendar-outline" size={12} color={rescheduleShowCalendar ? "#ffffff" : "#0284c7"} />
+                      <Text style={{ fontSize: 10.5, fontWeight: "700", color: rescheduleShowCalendar ? "#ffffff" : "#0284c7" }}>
+                        {rescheduleShowCalendar ? "Hide Calendar" : "Pick Date"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
-                {/* Time Slot Picker */}
-                <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
-                  Select Time Slot
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                  <View style={{ flexDirection: "row", gap: 6 }}>
-                    {[
-                      "10:00 AM", "10:15 AM", "10:30 AM", "10:45 AM",
-                      "11:00 AM", "11:15 AM", "11:30 AM", "11:45 AM",
-                      "12:00 PM", "12:15 PM", "12:30 PM", "12:45 PM",
-                      "05:00 PM", "05:15 PM", "05:30 PM", "05:45 PM",
-                      "06:00 PM", "06:15 PM", "06:30 PM", "06:45 PM",
-                      "07:00 PM", "07:15 PM", "07:30 PM",
-                    ].map((slot) => {
-                      const isSel = rescheduleSlot === slot;
-                      return (
+                  {/* Quick Date Pills */}
+                  <View style={{ flexDirection: "row", gap: 6, marginBottom: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.datePill, rescheduleDate === todayStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
+                      onPress={() => handleSelectRescheduleDate(todayStr)}
+                    >
+                      <Text style={[styles.datePillText, rescheduleDate === todayStr && styles.datePillTextActive, { fontSize: 11 }]}>
+                        Today
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.datePill, rescheduleDate === tomorrowStr && styles.datePillActive, { flex: 1, alignItems: "center" }]}
+                      onPress={() => handleSelectRescheduleDate(tomorrowStr)}
+                    >
+                      <Text style={[styles.datePillText, rescheduleDate === tomorrowStr && styles.datePillTextActive, { fontSize: 11 }]}>
+                        Tomorrow
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Inline Calendar View */}
+                  {rescheduleShowCalendar && (
+                    <View style={{ backgroundColor: "#f8fafc", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: "#e2e8f0", marginBottom: 12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                         <TouchableOpacity
-                          key={slot}
-                          onPress={() => setRescheduleSlot(slot)}
-                          style={[
-                            { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#f8fafc" },
-                            isSel && { backgroundColor: "#0284c7", borderColor: "#0284c7" },
-                          ]}
+                          onPress={() => {
+                            if (rescheduleCalMonth === 0) {
+                              setRescheduleCalMonth(11);
+                              setRescheduleCalYear(rescheduleCalYear - 1);
+                            } else {
+                              setRescheduleCalMonth(rescheduleCalMonth - 1);
+                            }
+                          }}
+                          style={{ padding: 4 }}
                         >
-                          <Text style={[{ fontSize: 11, fontWeight: "700", color: "#334155" }, isSel && { color: "#ffffff" }]}>
-                            {slot}
-                          </Text>
+                          <Ionicons name="chevron-back" size={16} color="#0f172a" />
                         </TouchableOpacity>
-                      );
-                    })}
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                          {monthNames[rescheduleCalMonth]} {rescheduleCalYear}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            if (rescheduleCalMonth === 11) {
+                              setRescheduleCalMonth(0);
+                              setRescheduleCalYear(rescheduleCalYear + 1);
+                            } else {
+                              setRescheduleCalMonth(rescheduleCalMonth + 1);
+                            }
+                          }}
+                          style={{ padding: 4 }}
+                        >
+                          <Ionicons name="chevron-forward" size={16} color="#0f172a" />
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Weekday headers */}
+                      <View style={{ flexDirection: "row", marginBottom: 4 }}>
+                        {["S", "M", "T", "W", "T", "F", "S"].map((w, idx) => (
+                          <Text key={idx} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: "700", color: "#64748b" }}>
+                            {w}
+                          </Text>
+                        ))}
+                      </View>
+
+                      {/* Days Grid */}
+                      {(() => {
+                        const daysInM = new Date(rescheduleCalYear, rescheduleCalMonth + 1, 0).getDate();
+                        const offset = new Date(rescheduleCalYear, rescheduleCalMonth, 1).getDay();
+                        return (
+                          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                            {Array.from({ length: offset }).map((_, i) => (
+                              <View key={`empty-${i}`} style={{ width: "14.28%", height: 32 }} />
+                            ))}
+                            {Array.from({ length: daysInM }).map((_, i) => {
+                              const dayNum = i + 1;
+                              const dtStr = `${String(dayNum).padStart(2, "0")}-${String(rescheduleCalMonth + 1).padStart(2, "0")}-${rescheduleCalYear}`;
+                              const isSel = rescheduleDate === dtStr;
+                              return (
+                                <TouchableOpacity
+                                  key={dayNum}
+                                  onPress={() => handleSelectRescheduleDate(dtStr)}
+                                  style={{ width: "14.28%", height: 32, alignItems: "center", justifyContent: "center" }}
+                                >
+                                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isSel ? "#0284c7" : "transparent", alignItems: "center", justifyContent: "center" }}>
+                                    <Text style={{ fontSize: 11, fontWeight: isSel ? "800" : "600", color: isSel ? "#ffffff" : "#0f172a" }}>
+                                      {dayNum}
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  )}
+
+                  {/* 2. Consulting Doctor Selection */}
+                  <View style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155" }}>
+                        Consulting Doctor ({getDayOfWeekAbbr(rescheduleDate)}) *
+                      </Text>
+                      {rescheduleDoctors.length > 0 && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f0fdf4", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: "#16a34a" }} />
+                          <Text style={{ fontSize: 9.5, fontWeight: "700", color: "#16a34a" }}>
+                            {rescheduleDoctors.length} On Duty
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {loadingRescheduleDoctors ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 }}>
+                        <ActivityIndicator size="small" color="#0284c7" />
+                        <Text style={{ fontSize: 11, color: "#64748b" }}>Checking doctor schedule...</Text>
+                      </View>
+                    ) : rescheduleDoctors.length === 0 ? (
+                      <View style={{ backgroundColor: "#fef3c7", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#fde68a" }}>
+                        <Text style={{ fontSize: 10.5, color: "#92400e", fontWeight: "600" }}>
+                          No doctors scheduled at {activeBranch?.name || "this branch"} on {getDayOfWeekAbbr(rescheduleDate)}. Keeping current doctor: {rescheduleTargetAppt?.doctorName || "Doctor"}.
+                        </Text>
+                      </View>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingVertical: 2 }}>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          {rescheduleDoctors.map((doc: any) => {
+                            const dName = doc.doctorName || doc.name;
+                            const isSel =
+                              (selectedRescheduleDoctor?.doctorId || selectedRescheduleDoctor?.id) === (doc.doctorId || doc.id) ||
+                              selectedRescheduleDoctor?.doctorName === dName ||
+                              selectedRescheduleDoctor?.name === dName;
+                            return (
+                              <TouchableOpacity
+                                key={doc.doctorId || doc.id || dName}
+                                onPress={() => setSelectedRescheduleDoctor(doc)}
+                                style={{
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 7,
+                                  borderRadius: 10,
+                                  borderWidth: 1.5,
+                                  borderColor: isSel ? "#0284c7" : "#e2e8f0",
+                                  backgroundColor: isSel ? "#f0f9ff" : "#ffffff",
+                                  minWidth: 110,
+                                }}
+                              >
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                  <Ionicons name="medkit" size={13} color={isSel ? "#0284c7" : "#64748b"} />
+                                  <Text style={{ fontSize: 11.5, fontWeight: "800", color: isSel ? "#0284c7" : "#0f172a" }}>
+                                    {dName}
+                                  </Text>
+                                </View>
+                                <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 2 }}>
+                                  {doc.specialty || "Homeopathic Consultant"}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                    )}
+                  </View>
+
+                  {/* 3. Time Slot Picker */}
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
+                      Select Time Slot: <Text style={{ color: "#0284c7", fontWeight: "800" }}>{rescheduleSlot}</Text>
+                    </Text>
+
+                    <View style={{ gap: 10 }}>
+                      {rescheduleSlotSessions.map((s: any) => (
+                        <View key={s.id} style={{ backgroundColor: "#f8fafc", padding: 8, borderRadius: 10, borderWidth: 1, borderColor: "#f1f5f9" }}>
+                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#64748b", marginBottom: 6, textTransform: "uppercase" }}>
+                            {s.title}
+                          </Text>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                            {s.slots.map((slot: string) => {
+                              const isSel = rescheduleSlot === slot;
+                              return (
+                                <TouchableOpacity
+                                  key={slot}
+                                  onPress={() => setRescheduleSlot(slot)}
+                                  style={[
+                                    { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7, borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#ffffff" },
+                                    isSel && { backgroundColor: "#0284c7", borderColor: "#0284c7" },
+                                  ]}
+                                >
+                                  <Text style={[{ fontSize: 10.5, fontWeight: "700", color: "#334155" }, isSel && { color: "#ffffff" }]}>
+                                    {slot}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 </ScrollView>
 
                 {/* Actions */}
-                <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
+                <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end", borderTopWidth: 1, borderTopColor: "#f1f5f9", paddingTop: 10, marginTop: 4 }}>
                   <TouchableOpacity
                     onPress={() => setRescheduleModalOpen(false)}
                     style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: "#f1f5f9" }}
@@ -1952,7 +2323,7 @@ export default function ReceptionDashboard() {
                     style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: "#0284c7" }}
                   >
                     <Text style={{ fontSize: 12, fontWeight: "800", color: "#ffffff" }}>
-                      {isRescheduling ? "Saving..." : "Confirm"}
+                      {isRescheduling ? "Saving..." : "Confirm Reschedule"}
                     </Text>
                   </TouchableOpacity>
                 </View>

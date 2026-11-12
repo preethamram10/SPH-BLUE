@@ -49,7 +49,8 @@ export async function PATCH(req: NextRequest) {
 
     // 2. RESCHEDULE APPOINTMENT
     if (action === "RESCHEDULE" && id && appointmentDate && timeSlot) {
-      const updated = await appointmentService.rescheduleAppointment(id, appointmentDate, timeSlot);
+      const { doctorId, doctorName } = body;
+      const updated = await appointmentService.rescheduleAppointment(id, appointmentDate, timeSlot, doctorId, doctorName);
       return NextResponse.json({ success: !!updated, appointment: updated });
     }
 
