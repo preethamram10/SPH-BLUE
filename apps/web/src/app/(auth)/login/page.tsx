@@ -100,6 +100,8 @@ export default function WebLoginPage() {
         localStorage.setItem("doctor_id", data.doctor.id);
         localStorage.setItem("doctor_name", data.doctor.name);
         localStorage.setItem("branch_name", data.doctor.branch || "KPHB Branch");
+        localStorage.setItem("is_head_doctor", String(Boolean(data.doctor.isHeadDoctor)));
+        localStorage.setItem("doctor_category", data.doctor.doctorCategory || (data.doctor.isHeadDoctor ? "HEAD" : "EMPLOYEE"));
       }
 
       setStep("OTP");
@@ -129,6 +131,12 @@ export default function WebLoginPage() {
         localStorage.setItem("user_role", "DOCTOR");
         if (validatedData?.doctor?.name) {
           localStorage.setItem("doctor_name", validatedData.doctor.name);
+        }
+        if (validatedData?.doctor?.isHeadDoctor !== undefined) {
+          localStorage.setItem("is_head_doctor", String(Boolean(validatedData.doctor.isHeadDoctor)));
+        }
+        if (validatedData?.doctor?.doctorCategory) {
+          localStorage.setItem("doctor_category", validatedData.doctor.doctorCategory);
         }
         window.location.href = "/doctor/dashboard";
       } else if (returnedRole === "RECEPTION") {

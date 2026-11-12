@@ -94,9 +94,9 @@ export function MobileRevenueLedgerView({
 
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [allRegisteredBranches, setAllRegisteredBranches] = useState<string[]>([]);
+  const [registeredDoctors, setRegisteredDoctors] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   // Filters (Clean & Compact)
   const [searchQuery, setSearchQuery] = useState("");
   const [datePreset, setDatePreset] = useState<DatePreset>("THIS_MONTH");
@@ -131,6 +131,23 @@ export function MobileRevenueLedgerView({
     }
   }, []);
 
+  // Fetch registered doctors from official API
+  const fetchDoctors = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.employees || []);
+        const names = list.map((d: any) => d.name).filter(Boolean);
+        if (names.length > 0) {
+          setRegisteredDoctors(names);
+        }
+      }
+    } catch (e) {
+      console.warn("Error fetching registered doctors:", e);
+    }
+  }, []);
+
   // Fetch full live database transactions
   const fetchTransactions = useCallback(async () => {
     try {
@@ -151,12 +168,14 @@ export function MobileRevenueLedgerView({
 
   useEffect(() => {
     fetchBranches();
+    fetchDoctors();
     fetchTransactions();
-  }, [fetchBranches, fetchTransactions]);
+  }, [fetchBranches, fetchDoctors, fetchTransactions]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchBranches();
+    fetchDoctors();
     fetchTransactions();
   };
 
@@ -221,11 +240,13 @@ export function MobileRevenueLedgerView({
   // Doctor List
   const doctorList = useMemo(() => {
     const set = new Set<string>();
+    set.add("Dr. Prashanth K Vaidya");
+    registeredDoctors.forEach((d) => set.add(d));
     transactions.forEach((t) => {
       if (t.doctorName) set.add(t.doctorName);
     });
     return Array.from(set);
-  }, [transactions]);
+  }, [registeredDoctors, transactions]);
 
   // Amount Range Check
   const checkAmountRange = (amt: number, rangeStr: string): boolean => {
@@ -820,21 +841,21 @@ export function MobileRevenueLedgerView({
                 }}
                 activeOpacity={0.8}
               >
-              <View style={styles.branchCardTop}>
-                <View style={{ flex: 1, marginRight: 4 }}>
-                  <Text style={styles.branchCardName} numberOfLines={1}>
-                    {b.name}
-                  </Text>
-                  <Text style={styles.branchCardSub}>{b.count} collections</Text>
+                <View style={styles.branchCardTop}>
+                  <View style={{ flex: 1, marginRight: 4 }}>
+                    <Text style={styles.branchCardName} numberOfLines={1}>
+                      {b.name}
+                    </Text>
+                    <Text style={styles.branchCardSub}>{b.count} collections</Text>
+                  </View>
+                  <View style={styles.branchShareBadge}>
+                    <Text style={styles.branchShareText}>{b.share}</Text>
+                  </View>
                 </View>
-                <View style={styles.branchShareBadge}>
-                  <Text style={styles.branchShareText}>{b.share}</Text>
-                </View>
-              </View>
-              <Text style={styles.branchCardAmt}>₹{b.amount.toLocaleString("en-IN")}</Text>
-            </TouchableOpacity>
-          );
-        })}
+                <Text style={styles.branchCardAmt}>₹{b.amount.toLocaleString("en-IN")}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* 5. TRANSACTION LEDGER TABLE (PAGE-WISE) */}
@@ -900,10 +921,10 @@ export function MobileRevenueLedgerView({
                         isCounter
                           ? styles.txMethodCounter
                           : isOnlineUpi
-                          ? styles.txMethodUpi
-                          : isCash
-                          ? styles.txMethodCash
-                          : styles.txMethodOther,
+                            ? styles.txMethodUpi
+                            : isCash
+                              ? styles.txMethodCash
+                              : styles.txMethodOther,
                       ]}
                     >
                       <Text
@@ -912,10 +933,10 @@ export function MobileRevenueLedgerView({
                           isCounter
                             ? styles.txMethodTextCounter
                             : isOnlineUpi
-                            ? styles.txMethodTextUpi
-                            : isCash
-                            ? styles.txMethodTextCash
-                            : styles.txMethodTextOther,
+                              ? styles.txMethodTextUpi
+                              : isCash
+                                ? styles.txMethodTextCash
+                                : styles.txMethodTextOther,
                         ]}
                       >
                         {tx.displayPaymentMethod || tx.paymentMethod?.toUpperCase()}

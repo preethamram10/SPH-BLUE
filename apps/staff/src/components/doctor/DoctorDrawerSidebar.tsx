@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { clearAllAuthData } from "../../services/auth";
+import { clearAllAuthData, getActiveDoctor, getUserRole, saveActiveDoctor } from "../../services/auth";
+import { API_BASE_URL } from "../../config/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Minimized compact drawer width
@@ -25,6 +26,7 @@ interface DoctorDrawerSidebarProps {
   activeRoute: "dashboard" | "patient-list" | "packages" | "total-revenue";
   doctorName?: string;
   branchName?: string;
+  isHeadDoctor?: boolean;
 }
 
 export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
@@ -32,13 +34,60 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
   onClose,
   activeRoute,
   doctorName = "Dr. Prashanth K Vaidya",
+  isHeadDoctor: isHeadDoctorProp,
 }) => {
   const router = useRouter();
-  const isHeadDoctor =
-    doctorName.toLowerCase().includes("prashanth") ||
-    doctorName.toLowerCase().includes("head") ||
-    doctorName.toLowerCase().includes("vaidya") ||
-    doctorName.toLowerCase().includes("chief");
+  const [isHeadDoctor, setIsHeadDoctor] = useState(isHeadDoctorProp ?? false);
+
+  useEffect(() => {
+    async function checkDoc() {
+      try {
+        const doc = await getActiveDoctor();
+        const role = await getUserRole();
+        const name = (doc?.name || doc?.doctorName || doctorName || "").toLowerCase();
+        const specialty = (doc?.specialty || "").toLowerCase();
+
+        let isHead =
+          isHeadDoctorProp === true ||
+          doc?.isHeadDoctor === true ||
+          doc?.doctorCategory === "HEAD" ||
+          doc?.category === "HEAD" ||
+          role === "HEAD_DOCTOR" ||
+          role === "ADMIN" ||
+          specialty.includes("head") ||
+          specialty.includes("chief") ||
+          name.includes("prashanth") ||
+          name.includes("head") ||
+          name.includes("vaidya") ||
+          name.includes("chief");
+
+        // If not immediately flagged, check live employee registry
+        if (!isHead && doc && (doc.phone || doc.name)) {
+          try {
+            const cleanPhone = (doc.phone || "").replace(/\D/g, "").slice(-10);
+            const res = await fetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
+            if (res.ok) {
+              const data = await res.json();
+              const list = Array.isArray(data) ? data : (data.employees || []);
+              const match = list.find((e: any) => {
+                const ep = (e.phone || "").replace(/\D/g, "").slice(-10);
+                return (cleanPhone && ep === cleanPhone) || (e.name && e.name.toLowerCase() === name);
+              });
+              if (match && match.doctorCategory === "HEAD") {
+                isHead = true;
+                await saveActiveDoctor({ ...doc, isHeadDoctor: true, doctorCategory: "HEAD" });
+              }
+            }
+          } catch {}
+        }
+
+        setIsHeadDoctor(isHead);
+      } catch (e) {
+        setIsHeadDoctor(true);
+      }
+    }
+    checkDoc();
+  }, [doctorName, isHeadDoctorProp]);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 

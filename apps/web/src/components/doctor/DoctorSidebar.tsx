@@ -23,19 +23,44 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
   const router = useRouter();
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
   const [branchName, setBranchName] = useState("KPHB Branch");
+  const [isHeadDoctor, setIsHeadDoctor] = useState(false);
 
   useEffect(() => {
-    const savedDoc = localStorage.getItem("doctor_name");
+    const savedDoc = localStorage.getItem("doctor_name") || doctorName;
     const savedBranch = localStorage.getItem("branch_name");
+    const savedIsHead = localStorage.getItem("is_head_doctor");
+    const savedCategory = localStorage.getItem("doctor_category");
+
     if (savedDoc) setDoctorName(savedDoc);
     if (savedBranch) setBranchName(savedBranch);
-  }, []);
 
-  const isHeadDoctor =
-    doctorName.toLowerCase().includes("prashanth") ||
-    doctorName.toLowerCase().includes("head") ||
-    doctorName.toLowerCase().includes("vaidya") ||
-    doctorName.toLowerCase().includes("chief");
+    const docLower = savedDoc.toLowerCase();
+    const isHead =
+      savedIsHead === "true" ||
+      savedCategory === "HEAD" ||
+      docLower.includes("prashanth") ||
+      docLower.includes("head") ||
+      docLower.includes("vaidya") ||
+      docLower.includes("chief");
+
+    setIsHeadDoctor(isHead);
+
+    // If not flagged yet, check against employee directory
+    if (!isHead && savedDoc) {
+      fetch("/api/admin/employees?category=DOCTOR")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data.employees || []);
+          const match = list.find((e: any) => e.name && e.name.toLowerCase() === docLower);
+          if (match && match.doctorCategory === "HEAD") {
+            setIsHeadDoctor(true);
+            localStorage.setItem("is_head_doctor", "true");
+            localStorage.setItem("doctor_category", "HEAD");
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("user_role");

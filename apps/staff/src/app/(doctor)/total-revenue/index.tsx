@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getActiveDoctor, getUserRole } from "../../../services/auth";
+import { getActiveDoctor, getUserRole, saveActiveDoctor } from "../../../services/auth";
+import { API_BASE_URL } from "../../../config/api";
 import { MobileRevenueLedgerView } from "../../../components/revenue/MobileRevenueLedgerView";
 import { DoctorBottomNav } from "../../../components/doctor/DoctorBottomNav";
 
@@ -17,19 +18,42 @@ export default function DoctorTotalRevenueScreen() {
         const doc = await getActiveDoctor();
         const role = await getUserRole();
         const name = (doc?.name || doc?.doctorName || "").toLowerCase();
-        if (
+        const specialty = (doc?.specialty || "").toLowerCase();
+
+        let isHead =
+          doc?.isHeadDoctor === true ||
+          doc?.doctorCategory === "HEAD" ||
+          doc?.category === "HEAD" ||
+          role === "HEAD_DOCTOR" ||
+          role === "ADMIN" ||
+          specialty.includes("head") ||
+          specialty.includes("chief") ||
           name.includes("prashanth") ||
           name.includes("head") ||
           name.includes("vaidya") ||
-          name.includes("chief") ||
-          role === "HEAD_DOCTOR" ||
-          role === "ADMIN" ||
-          !doc
-        ) {
-          setIsHeadDoctor(true);
-        } else {
-          setIsHeadDoctor(false);
+          name.includes("chief");
+
+        // If not immediately flagged, check live employee registry
+        if (!isHead && doc && (doc.phone || doc.name)) {
+          try {
+            const cleanPhone = (doc.phone || "").replace(/\D/g, "").slice(-10);
+            const res = await fetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
+            if (res.ok) {
+              const data = await res.json();
+              const list = Array.isArray(data) ? data : (data.employees || []);
+              const match = list.find((e: any) => {
+                const ep = (e.phone || "").replace(/\D/g, "").slice(-10);
+                return (cleanPhone && ep === cleanPhone) || (e.name && e.name.toLowerCase() === name);
+              });
+              if (match && match.doctorCategory === "HEAD") {
+                isHead = true;
+                await saveActiveDoctor({ ...doc, isHeadDoctor: true, doctorCategory: "HEAD" });
+              }
+            }
+          } catch {}
         }
+
+        setIsHeadDoctor(isHead);
       } catch (e) {
         console.warn("Could not check doctor role:", e);
         setIsHeadDoctor(true);

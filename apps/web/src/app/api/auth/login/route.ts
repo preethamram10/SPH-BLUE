@@ -154,11 +154,28 @@ export async function POST(request: Request) {
         dbUser?.id ||
         `doc-${clean10}`;
 
+      const isHead =
+        matchedEmployee?.doctorCategory === "HEAD" ||
+        matchedEmployee?.category === "HEAD" ||
+        (matchedSchedule?.specialty || "").toLowerCase().includes("head") ||
+        (matchedSchedule?.specialty || "").toLowerCase().includes("chief") ||
+        (matchedSchedule as any)?.doctorCategory === "HEAD" ||
+        dbUser?.role === "HEAD_DOCTOR" ||
+        dbUser?.doctorCategory === "HEAD" ||
+        docName.toLowerCase().includes("prashanth") ||
+        docName.toLowerCase().includes("head") ||
+        docName.toLowerCase().includes("vaidya") ||
+        docName.toLowerCase().includes("chief");
+
+      const doctorCategory = isHead ? "HEAD" : (matchedEmployee?.doctorCategory || "EMPLOYEE");
+
       const token = Buffer.from(
         JSON.stringify({
           userId: docId,
           role: "DOCTOR",
           name: docName,
+          isHeadDoctor: isHead,
+          doctorCategory,
           identifier,
           exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
         })
@@ -171,7 +188,19 @@ export async function POST(request: Request) {
           id: docId,
           name: docName,
           role: "DOCTOR",
+          isHeadDoctor: isHead,
+          doctorCategory,
           identifier,
+        },
+        doctor: {
+          id: docId,
+          name: docName,
+          role: "DOCTOR",
+          isHeadDoctor: isHead,
+          doctorCategory,
+          phone: matchedSchedule?.phone || matchedEmployee?.phone || clean10,
+          specialty: matchedSchedule?.specialty || "Consultant Homeopath",
+          branch: matchedEmployee?.branchName || "KPHB Branch",
         },
       });
     }

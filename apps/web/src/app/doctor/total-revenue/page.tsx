@@ -45,17 +45,53 @@ export interface TransactionRecord {
 
 export default function DoctorTotalRevenuePage() {
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [isHeadDoctor, setIsHeadDoctor] = useState(true);
+  const [registeredDoctors, setRegisteredDoctors] = useState<string[]>([]);
 
   useEffect(() => {
     const savedDoc = localStorage.getItem("doctor_name") || "Dr. Prashanth K Vaidya";
+    const savedIsHead = localStorage.getItem("is_head_doctor");
+    const savedCategory = localStorage.getItem("doctor_category");
     setDoctorName(savedDoc);
-  }, []);
 
-  const isHeadDoctor =
-    doctorName.toLowerCase().includes("prashanth") ||
-    doctorName.toLowerCase().includes("head") ||
-    doctorName.toLowerCase().includes("vaidya") ||
-    doctorName.toLowerCase().includes("chief");
+    const docLower = savedDoc.toLowerCase();
+    const isHead =
+      savedIsHead === "true" ||
+      savedCategory === "HEAD" ||
+      docLower.includes("prashanth") ||
+      docLower.includes("head") ||
+      docLower.includes("vaidya") ||
+      docLower.includes("chief");
+
+    setIsHeadDoctor(isHead);
+
+    // If not immediately flagged, check with admin employee directory
+    if (!isHead && savedDoc) {
+      fetch("/api/admin/employees?category=DOCTOR")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data.employees || []);
+          const match = list.find((e: any) => e.name && e.name.toLowerCase() === docLower);
+          if (match && match.doctorCategory === "HEAD") {
+            setIsHeadDoctor(true);
+            localStorage.setItem("is_head_doctor", "true");
+            localStorage.setItem("doctor_category", "HEAD");
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Load registered doctors for dropdown
+    fetch("/api/admin/employees?category=DOCTOR")
+      .then((res) => res.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data.employees || []);
+        if (list.length > 0) {
+          setRegisteredDoctors(list.map((d: any) => d.name).filter(Boolean));
+        }
+      })
+      .catch(() => {});
+  }, []);
   // Stable dates initialized cleanly to avoid SSR prerender mismatch
   const [todayStr, setTodayStr] = useState("2026-11-07");
   const [currentYearStr, setCurrentYearStr] = useState("2026");
@@ -229,6 +265,17 @@ export default function DoctorTotalRevenuePage() {
     });
     return Array.from(set);
   }, [availableBranches, transactions]);
+
+  // Doctor options computed dynamically from registered doctors + recorded transactions
+  const doctorOptions = useMemo(() => {
+    const set = new Set<string>();
+    set.add("Dr. Prashanth K Vaidya");
+    registeredDoctors.forEach((d) => set.add(d));
+    transactions.forEach((t) => {
+      if (t.doctorName && t.doctorName.trim()) set.add(t.doctorName.trim());
+    });
+    return Array.from(set);
+  }, [registeredDoctors, transactions]);
 
   // --- Filtering Engine ---
   const filteredTransactions = useMemo(() => {
@@ -890,10 +937,11 @@ export default function DoctorTotalRevenuePage() {
                   className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium"
                 >
                   <option value="all">All Doctors</option>
-                  <option value="Dr. Prashanth K Vaidya">Dr. Prashanth K Vaidya</option>
-                  <option value="Dr. Ramakrishna Chanduri">Dr. Ramakrishna Chanduri</option>
-                  <option value="Dr. Jobedah Parveej">Dr. Jobedah Parveej</option>
-                  <option value="Dr. Padma Priya">Dr. Padma Priya</option>
+                  {doctorOptions.map((doc) => (
+                    <option key={doc} value={doc}>
+                      {doc}
+                    </option>
+                  ))}
                 </select>
               </div>
 

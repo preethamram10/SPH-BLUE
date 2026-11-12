@@ -147,6 +147,21 @@ export async function POST(req: NextRequest) {
       const branchName =
         matchedEmployee?.branchName || "KPHB Branch";
 
+      const isHead =
+        matchedEmployee?.doctorCategory === "HEAD" ||
+        matchedEmployee?.category === "HEAD" ||
+        (matchedSchedule?.specialty || "").toLowerCase().includes("head") ||
+        (matchedSchedule?.specialty || "").toLowerCase().includes("chief") ||
+        (matchedSchedule as any)?.doctorCategory === "HEAD" ||
+        dbUser?.role === "HEAD_DOCTOR" ||
+        dbUser?.doctorCategory === "HEAD" ||
+        docName.toLowerCase().includes("prashanth") ||
+        docName.toLowerCase().includes("head") ||
+        docName.toLowerCase().includes("vaidya") ||
+        docName.toLowerCase().includes("chief");
+
+      const doctorCategory = isHead ? "HEAD" : (matchedEmployee?.doctorCategory || "EMPLOYEE");
+
       return NextResponse.json({
         authorized: true,
         role: "DOCTOR",
@@ -156,6 +171,8 @@ export async function POST(req: NextRequest) {
           phone: matchedSchedule?.phone || matchedEmployee?.phone || clean10,
           specialty,
           branch: branchName,
+          doctorCategory,
+          isHeadDoctor: isHead,
         },
       });
     }
@@ -339,6 +356,24 @@ export async function POST(req: NextRequest) {
           matchedEmployee?.id ||
           dbUser?.id ||
           `doc-${clean10}`;
+        const specialty = matchedSchedule?.specialty || "Consultant Homeopath";
+        const branchName = matchedEmployee?.branchName || "KPHB Branch";
+
+        const isHead =
+          matchedEmployee?.doctorCategory === "HEAD" ||
+          matchedEmployee?.category === "HEAD" ||
+          (matchedSchedule?.specialty || "").toLowerCase().includes("head") ||
+          (matchedSchedule?.specialty || "").toLowerCase().includes("chief") ||
+          (matchedSchedule as any)?.doctorCategory === "HEAD" ||
+          dbUser?.role === "HEAD_DOCTOR" ||
+          dbUser?.doctorCategory === "HEAD" ||
+          docName.toLowerCase().includes("prashanth") ||
+          docName.toLowerCase().includes("head") ||
+          docName.toLowerCase().includes("vaidya") ||
+          docName.toLowerCase().includes("chief");
+
+        const doctorCategory = isHead ? "HEAD" : (matchedEmployee?.doctorCategory || "EMPLOYEE");
+
         return NextResponse.json({
           authorized: true,
           role: "DOCTOR",
@@ -346,8 +381,10 @@ export async function POST(req: NextRequest) {
             id: docId,
             name: docName,
             phone: matchedSchedule?.phone || matchedEmployee?.phone || clean10,
-            specialty: matchedSchedule?.specialty || "Consultant Homeopath",
-            branch: matchedEmployee?.branchName || "KPHB Branch",
+            specialty,
+            branch: branchName,
+            doctorCategory,
+            isHeadDoctor: isHead,
           },
         });
       }

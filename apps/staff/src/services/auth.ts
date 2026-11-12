@@ -80,7 +80,27 @@ export async function getActiveDoctor(): Promise<any | null> {
   const raw = await SecureStore.getItemAsync(ACTIVE_DOCTOR_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const doc = JSON.parse(raw);
+    if (doc) {
+      const name = (doc.name || doc.doctorName || "").toLowerCase();
+      const specialty = (doc.specialty || "").toLowerCase();
+      const isHead =
+        doc.isHeadDoctor === true ||
+        doc.doctorCategory === "HEAD" ||
+        doc.category === "HEAD" ||
+        doc.role === "HEAD_DOCTOR" ||
+        specialty.includes("head") ||
+        specialty.includes("chief") ||
+        name.includes("prashanth") ||
+        name.includes("head") ||
+        name.includes("vaidya") ||
+        name.includes("chief");
+      if (isHead) {
+        doc.isHeadDoctor = true;
+        doc.doctorCategory = "HEAD";
+      }
+    }
+    return doc;
   } catch {
     return null;
   }
