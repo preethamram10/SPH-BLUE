@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { patientService, appointmentService } from "@spiritualhomeo/database";
+import { patientService, appointmentService, normalizeDateStr } from "@spiritualhomeo/database";
 
 /** Returns YYYY-MM-DD for a given Date (local zone of the server) */
 function toDateStr(d: Date): string {
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
         ...p,
         totalVisits,
         appointmentCount: totalVisits,
-        lastVisitDate: latest?.appointmentDate || p.createdAt?.slice(0, 10) || "",
+        lastVisitDate: normalizeDateStr(latest?.appointmentDate || p.createdAt?.slice(0, 10) || ""),
         lastDoctorName: latest?.doctorName || "",
       };
     });

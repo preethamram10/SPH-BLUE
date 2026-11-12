@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { patientService, appointmentService, branchService } from "@spiritualhomeo/database";
+import { patientService, appointmentService, branchService, normalizeDateStr } from "@spiritualhomeo/database";
 
 export async function GET(req: NextRequest) {
   try {
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
         registeredBranch: cleanBranch,
         lastDoctor: String(latest?.doctorName || "Dr. Prashanth K Vaidya"),
         totalVisits: Math.max(matchedAppts.length, 1),
-        lastVisitDate: String(latest?.appointmentDate || p.createdAt?.slice(0, 10) || "Recent"),
+        lastVisitDate: normalizeDateStr(String(latest?.appointmentDate || p.createdAt?.slice(0, 10) || "Recent")),
         condition: String(p.diseases || latest?.diseases || latest?.diagnosisNotes || "Homeopathy Care"),
         email: String(p.email || latest?.email || ""),
       });
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
           registeredBranch: cleanBranch,
           lastDoctor: String(latest.doctorName || "Dr. Prashanth K Vaidya"),
           totalVisits: matchedAppts.length,
-          lastVisitDate: String(latest.appointmentDate || "Recent"),
+          lastVisitDate: normalizeDateStr(String(latest.appointmentDate || "Recent")),
           condition: String(a.diseases || a.diagnosisNotes || "General Consultation"),
           email: String(a.email || ""),
         });

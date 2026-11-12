@@ -35,6 +35,33 @@ interface Patient {
 
 const PAGE_SIZE = 25;
 
+function formatLastVisitDate(lastVisit: string): string {
+  if (!lastVisit || lastVisit === "Registered") return lastVisit || "Registered";
+  try {
+    let cleanDt = String(lastVisit).trim().split("T")[0].replace(/\//g, "-");
+    const parts = cleanDt.split("-");
+    if (parts.length === 3) {
+      let y = parseInt(parts[0], 10);
+      if (y < 100) {
+        cleanDt = `${2000 + y}-${parts[1]}-${parts[2]}`;
+      } else if (parseInt(parts[2], 10) < 100 && parts[0].length <= 2) {
+        cleanDt = `${parts[0]}-${parts[1]}-${2000 + parseInt(parts[2], 10)}`;
+      }
+    }
+    const d = new Date(cleanDt);
+    if (!isNaN(d.getTime())) {
+      if (d.getFullYear() < 100) d.setFullYear(2000 + d.getFullYear());
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      if (d.toDateString() === today.toDateString()) return "Today";
+      if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+      return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    }
+  } catch {}
+  return lastVisit;
+}
+
 export default function ReceptionAllPatientsPage() {
   const [session, setSession] = useState<SessionTab>("TODAY");
   const [searchQuery, setSearchQuery] = useState("");
@@ -414,7 +441,7 @@ export default function ReceptionAllPatientsPage() {
                           <td className="px-6 py-3.5 font-semibold text-slate-700">
                             {cleanPhone ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : "No Mobile"}
                           </td>
-                          <td className="px-6 py-3.5 text-slate-500 font-medium">{patient.lastVisit}</td>
+                          <td className="px-6 py-3.5 text-slate-500 font-medium">{formatLastVisitDate(patient.lastVisit)}</td>
                           <td className="px-6 py-3.5 text-center font-bold text-slate-800">
                             {patient.totalVisits > 0 ? (
                               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-200">

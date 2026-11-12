@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService, registrationSequenceService } from "@spiritualhomeo/database";
+import {
+  appointmentService,
+  patientService,
+  registrationSequenceService,
+  normalizePhone,
+} from "@spiritualhomeo/database";
 
 export const dynamic = "force-dynamic";
 
@@ -87,25 +92,44 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const finalRegId =
-      registrationId && registrationId !== "SPH-GEN"
-        ? registrationId
-        : await registrationSequenceService.getNextRegistrationId(branch || "KPB");
+    const cleanPhone = normalizePhone(phoneNumber);
+    let matchedPatient = null;
+    if (registrationId && registrationId !== "SPH-GEN") {
+      matchedPatient = await patientService.getByRegId(registrationId.trim().toUpperCase());
+    }
+    if (!matchedPatient && cleanPhone && cleanPhone.length >= 10) {
+      const phoneProfiles = await patientService.getProfilesByPhone(cleanPhone);
+      const normName = (patientName || "").trim().toLowerCase();
+      matchedPatient = phoneProfiles.find(
+        (p) =>
+          p.name.trim().toLowerCase() === normName ||
+          p.name.toLowerCase().includes(normName) ||
+          normName.includes(p.name.toLowerCase())
+      );
+    }
+
+    const finalRegId = matchedPatient?.regId
+      ? matchedPatient.regId
+      : registrationId && registrationId !== "SPH-GEN"
+      ? registrationId.trim().toUpperCase()
+      : await registrationSequenceService.getNextRegistrationId(branch || "KPB");
+
+    const finalIsReback = Boolean(isReback || matchedPatient);
 
     const saved = await appointmentService.createAppointment({
       registrationId: finalRegId,
-      patientName,
+      patientName: matchedPatient?.name || patientName.trim(),
       phone: phoneNumber,
       email: emailAddress,
       diseases,
-      marketingSource: marketingSource || "Walk-in Direct",
+      marketingSource: finalIsReback ? (marketingSource || "Old Patient") : (marketingSource || "Walk-in Direct"),
       consultationMode: consultationMode || "In-Clinic",
       doctorId: selectedDoctor || "doc-1",
       doctorName: doctorName || "Consultant Doctor",
       appointmentDate,
       timeSlot: selectedTimeSlot,
       branch: branch || "Clinic Branch",
-      isReback: !!isReback,
+      isReback: finalIsReback,
       notes,
     });
 

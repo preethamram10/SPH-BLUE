@@ -3,6 +3,7 @@ import {
   patientService,
   appointmentService,
   normalizePhone,
+  normalizeDateStr,
 } from "@spiritualhomeo/database";
 
 export async function POST(req: NextRequest) {
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     const cleanRegId = regId.trim().toUpperCase();
     const cleanPhone = normalizePhone(phone);
     const targetBranch = branch || "Clinic Branch";
-    const targetDate = visitDate || new Date().toISOString().slice(0, 10);
+    const targetDate = normalizeDateStr(visitDate || new Date().toISOString().slice(0, 10));
     const targetDoctor = doctorName || "Dr. Prashanth K Vaidya";
     const targetDoctorId = doctorId || "doc-1";
     const fee = typeof consultationFee === "number" ? consultationFee : parseInt(consultationFee, 10) || 0;

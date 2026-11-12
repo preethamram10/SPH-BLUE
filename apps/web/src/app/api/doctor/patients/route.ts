@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService } from "@spiritualhomeo/database";
+import { appointmentService, normalizeDateStr } from "@spiritualhomeo/database";
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
           patientName: a.patientName,
           phone: a.phone || "",
           diseases: a.diseases || "General Consultation",
-          lastVisitDate: a.appointmentDate,
+          lastVisitDate: normalizeDateStr(a.appointmentDate),
           lastSlot: a.timeSlot,
           status: a.status,
           totalVisits: 1,
@@ -50,8 +50,9 @@ export async function GET(req: NextRequest) {
         const existing = patientMap.get(regId);
         existing.totalVisits += 1;
         // Keep track of latest visit date
-        if (a.appointmentDate > existing.lastVisitDate) {
-          existing.lastVisitDate = a.appointmentDate;
+        const normApptDate = normalizeDateStr(a.appointmentDate);
+        if (normApptDate > existing.lastVisitDate) {
+          existing.lastVisitDate = normApptDate;
           existing.lastSlot = a.timeSlot;
           existing.status = a.status;
         }

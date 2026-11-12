@@ -997,8 +997,10 @@ export default function ReceptionBookAppointmentScreen() {
 
     setIsSubmitting(true);
     try {
-      const finalRegId = isRebackMode && manualRegId.trim()
-        ? manualRegId.trim().toUpperCase()
+      const existingId = (foundProfile?.regId || manualRegId || "").trim().toUpperCase();
+      const isExisting = isRebackMode || Boolean(existingId);
+      const finalRegId = isExisting && existingId
+        ? existingId
         : await generateRegistrationId(currentBranchName, API_BASE_URL);
 
       const payload = {
@@ -1006,14 +1008,14 @@ export default function ReceptionBookAppointmentScreen() {
         patientName: patientName.trim(),
         phoneNumber: cleanPhone.slice(-10),
         diseases: diseases.trim() || undefined,
-        marketingSource,
+        marketingSource: isExisting ? (marketingSource || "Old Patient") : marketingSource,
         consultationMode,
         selectedDoctor: selectedDoctor.id,
         doctorName: selectedDoctor.name,
         appointmentDate,
         selectedTimeSlot: selectedSlot,
         branch: currentBranchName,
-        isReback: isRebackMode,
+        isReback: isExisting,
       };
 
       const res = await fetch(`${API_BASE_URL}/reception/appointments`, {

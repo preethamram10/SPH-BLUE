@@ -793,6 +793,8 @@ export default function ReceptionAppointmentsPage() {
     if (p.regId) setManualRegId(p.regId);
     if (p.diseases) setDiseases(p.diseases);
     setFoundProfile(p);
+    setIsRebackMode(true);
+    setMarketingSource("Old Patient");
     setShowSuggestions(false);
   };
 
@@ -978,6 +980,8 @@ export default function ReceptionAppointmentsPage() {
           setPatientName(prof.name);
           setPhoneNumber(prof.phone);
           if (prof.diseases) setDiseases(prof.diseases);
+          setIsRebackMode(true);
+          setMarketingSource("Old Patient");
         } else {
           setFoundProfile(null);
         }
@@ -1045,8 +1049,10 @@ export default function ReceptionAppointmentsPage() {
 
     try {
       setIsSubmitting(true);
-      const registrationId = isRebackMode && foundProfile?.regId
-        ? foundProfile.regId
+      const existingId = (foundProfile?.regId || manualRegId || "").trim().toUpperCase();
+      const isExisting = isRebackMode || Boolean(existingId);
+      const registrationId = isExisting && existingId
+        ? existingId
         : await generateRegistrationId(branchName);
 
       const payload = {
@@ -1054,14 +1060,14 @@ export default function ReceptionAppointmentsPage() {
         patientName: patientName.trim(),
         phoneNumber: cleanPhone,
         diseases: diseases.trim() || undefined,
-        marketingSource,
+        marketingSource: isExisting ? (marketingSource || "Old Patient") : marketingSource,
         consultationMode,
         selectedDoctor: selectedDoctor.id,
         doctorName: selectedDoctor.name,
         appointmentDate,
         selectedTimeSlot: selectedSlot,
         branch: branchName,
-        isReback: isRebackMode,
+        isReback: isExisting,
       };
 
       const res = await fetch("/api/reception/appointments", {

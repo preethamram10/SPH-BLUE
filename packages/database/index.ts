@@ -1299,23 +1299,29 @@ export interface BranchDoctorWithSchedule {
   days: Record<string, { isAvailable: boolean; slots: string[] }>;
 }
 
-function normalizeDateStr(dt: string): string {
+export function normalizeDateStr(dt: string): string {
   if (!dt) return "";
   const cleaned = dt.trim().split("T")[0].replace(/\//g, "-");
   const parts = cleaned.split("-");
-  // Handle DD-MM-YYYY or D-M-YYYY
-  if (parts.length === 3 && parts[2].length === 4) {
-    const d = parts[0].padStart(2, "0");
-    const m = parts[1].padStart(2, "0");
-    const y = parts[2];
-    return `${y}-${m}-${d}`;
-  }
-  // Handle YYYY-MM-DD or YYYY-M-D
-  if (parts.length === 3 && parts[0].length === 4) {
-    const y = parts[0];
+  if (parts.length === 3) {
+    // If format is DD-MM-YYYY or DD-MM-YY
+    const p0 = parseInt(parts[0], 10);
+    const p2 = parseInt(parts[2], 10);
+
+    if (parts[2].length === 4 || (p0 > 12 && p2 < 100)) {
+      let yNum = p2;
+      if (yNum < 100) yNum = 2000 + yNum;
+      const d = parts[0].padStart(2, "0");
+      const m = parts[1].padStart(2, "0");
+      return `${yNum}-${m}-${d}`;
+    }
+
+    // If format is YYYY-MM-DD or 00YY-MM-DD or YY-MM-DD
+    let yNum = p0;
+    if (yNum < 100) yNum = 2000 + yNum;
     const m = parts[1].padStart(2, "0");
     const d = parts[2].padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    return `${yNum}-${m}-${d}`;
   }
   return cleaned;
 }
@@ -1783,7 +1789,19 @@ function loadPatientsFromDisk(): PatientRecord[] {
     const file = getPatientsCachePath();
     if (fs.existsSync(file)) {
       const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        let modified = false;
+        parsed.forEach((p: any) => {
+          if (p.createdAt && typeof p.createdAt === "string" && p.createdAt.startsWith("00")) {
+            p.createdAt = p.createdAt.replace(/^00(\d\d)/, "20$1");
+            modified = true;
+          }
+        });
+        if (modified) {
+          safeAtomicWrite(file, parsed);
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.warn("Failed to load patients from cache:", err);
@@ -2147,6 +2165,17 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
         parsed.forEach((a: any) => {
           if (a.branch === "Kphb" || a.branch === "KPHB") {
             a.branch = "Kphb Branch";
+            modified = true;
+          }
+          if (a.appointmentDate) {
+            const fixedDate = normalizeDateStr(a.appointmentDate);
+            if (fixedDate && fixedDate !== a.appointmentDate) {
+              a.appointmentDate = fixedDate;
+              modified = true;
+            }
+          }
+          if (a.paidAt && typeof a.paidAt === "string" && a.paidAt.startsWith("00")) {
+            a.paidAt = a.paidAt.replace(/^00(\d\d)/, "20$1");
             modified = true;
           }
         });

@@ -193,14 +193,33 @@ export default function ReceptionAllPatientsScreen() {
     let lastVisitLabel = "";
     if (lastVisit) {
       try {
-        const d = new Date(lastVisit);
+        let cleanDt = String(lastVisit).trim().split("T")[0].replace(/\//g, "-");
+        const parts = cleanDt.split("-");
+        if (parts.length === 3) {
+          // If YYYY-MM-DD and year < 100
+          let y = parseInt(parts[0], 10);
+          if (y < 100) {
+            cleanDt = `${2000 + y}-${parts[1]}-${parts[2]}`;
+          } else if (parseInt(parts[2], 10) < 100 && parts[0].length <= 2) {
+            // DD-MM-YY
+            cleanDt = `${parts[0]}-${parts[1]}-${2000 + parseInt(parts[2], 10)}`;
+          }
+        }
+        const d = new Date(cleanDt);
+        if (!isNaN(d.getTime()) && d.getFullYear() < 100) {
+          d.setFullYear(2000 + d.getFullYear());
+        }
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
-        if (d.toDateString() === today.toDateString()) lastVisitLabel = "Today";
-        else if (d.toDateString() === yesterday.toDateString()) lastVisitLabel = "Yesterday";
-        else {
-          lastVisitLabel = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        if (!isNaN(d.getTime())) {
+          if (d.toDateString() === today.toDateString()) lastVisitLabel = "Today";
+          else if (d.toDateString() === yesterday.toDateString()) lastVisitLabel = "Yesterday";
+          else {
+            lastVisitLabel = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+          }
+        } else {
+          lastVisitLabel = lastVisit;
         }
       } catch {
         lastVisitLabel = lastVisit;
