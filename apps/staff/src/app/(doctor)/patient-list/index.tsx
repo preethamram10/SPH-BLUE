@@ -19,6 +19,7 @@ import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { DoctorDrawerSidebar } from "../../../components/doctor/DoctorDrawerSidebar";
 import { DoctorHeader } from "../../../components/doctor/DoctorHeader";
 import { DoctorBottomNav } from "../../../components/doctor/DoctorBottomNav";
+import { normalizeDateStr } from "../../../utils/dateUtils";
 
 const PAGE_SIZE = 25;
 type SessionTab = "TODAY" | "YESTERDAY" | "ALL";
@@ -180,26 +181,25 @@ export default function DoctorPatientListScreen() {
     let lastVisitLabel = "";
     if (lastVisit) {
       try {
-        let cleanDt = String(lastVisit).trim().split("T")[0].replace(/\//g, "-");
-        const parts = cleanDt.split("-");
+        const clean = normalizeDateStr(lastVisit);
+        const parts = clean.split("-");
         if (parts.length === 3) {
-          let y = parseInt(parts[0], 10);
-          if (y < 100) cleanDt = `${2000 + y}-${parts[1]}-${parts[2]}`;
-          else if (parseInt(parts[2], 10) < 100 && parts[0].length <= 2) {
-            cleanDt = `${parts[0]}-${parts[1]}-${2000 + parseInt(parts[2], 10)}`;
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const dateObj = new Date(y, m, d);
+          if (!isNaN(dateObj.getTime())) {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            if (dateObj.toDateString() === today.toDateString()) lastVisitLabel = "Today";
+            else if (dateObj.toDateString() === yesterday.toDateString()) lastVisitLabel = "Yesterday";
+            else {
+              lastVisitLabel = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+            }
+          } else {
+            lastVisitLabel = lastVisit;
           }
-        }
-        const d = new Date(cleanDt);
-        if (!isNaN(d.getTime()) && d.getFullYear() < 100) {
-          d.setFullYear(2000 + d.getFullYear());
-        }
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        if (!isNaN(d.getTime())) {
-          if (d.toDateString() === today.toDateString()) lastVisitLabel = "Today";
-          else if (d.toDateString() === yesterday.toDateString()) lastVisitLabel = "Yesterday";
-          else lastVisitLabel = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
         } else {
           lastVisitLabel = lastVisit;
         }

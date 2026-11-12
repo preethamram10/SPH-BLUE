@@ -38,25 +38,34 @@ const PAGE_SIZE = 25;
 function formatLastVisitDate(lastVisit: string): string {
   if (!lastVisit || lastVisit === "Registered") return lastVisit || "Registered";
   try {
-    let cleanDt = String(lastVisit).trim().split("T")[0].replace(/\//g, "-");
-    const parts = cleanDt.split("-");
+    const clean = String(lastVisit).trim().split("T")[0].replace(/\//g, "-");
+    const parts = clean.split("-");
+    let y = 0, m = 1, d = 1;
     if (parts.length === 3) {
-      let y = parseInt(parts[0], 10);
-      if (y < 100) {
-        cleanDt = `${2000 + y}-${parts[1]}-${parts[2]}`;
-      } else if (parseInt(parts[2], 10) < 100 && parts[0].length <= 2) {
-        cleanDt = `${parts[0]}-${parts[1]}-${2000 + parseInt(parts[2], 10)}`;
+      if (parts[0].length === 4 && parts[2].length === 4) {
+        y = parseInt(parts[2], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0].slice(2), 10);
+      } else if (parts[0].length === 4) {
+        y = parseInt(parts[0], 10);
+        if (y < 100) y = 2000 + y;
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else if (parts[2].length === 4 || parts[2].length === 2) {
+        y = parseInt(parts[2], 10);
+        if (y < 100) y = 2000 + y;
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[0], 10);
       }
-    }
-    const d = new Date(cleanDt);
-    if (!isNaN(d.getTime())) {
-      if (d.getFullYear() < 100) d.setFullYear(2000 + d.getFullYear());
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      if (d.toDateString() === today.toDateString()) return "Today";
-      if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-      return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      const dateObj = new Date(y, m, d);
+      if (!isNaN(dateObj.getTime())) {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (dateObj.toDateString() === today.toDateString()) return "Today";
+        if (dateObj.toDateString() === yesterday.toDateString()) return "Yesterday";
+        return dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+      }
     }
   } catch {}
   return lastVisit;
