@@ -1487,6 +1487,9 @@ export interface PatientRecord {
   phone: string;
   email?: string;
   diseases?: string;
+  subject?: string;
+  source?: string;
+  marketingSource?: string;
   branch: string;
   createdAt: string;
   updatedAt?: string;
@@ -1904,6 +1907,9 @@ export const patientService = {
       const updated: PatientRecord = {
         ...store[existingIdx],
         ...data,
+        source: data.source || data.marketingSource || store[existingIdx].source || store[existingIdx].marketingSource || "Walk-in",
+        marketingSource: data.marketingSource || data.source || store[existingIdx].marketingSource || store[existingIdx].source || "Walk-in",
+        subject: data.subject || data.diseases || store[existingIdx].subject || store[existingIdx].diseases || "",
         activeFollowUpDate: data.activeFollowUpDate !== undefined ? data.activeFollowUpDate : store[existingIdx].activeFollowUpDate,
         completedVisitsCount: data.completedVisitsCount !== undefined ? data.completedVisitsCount : store[existingIdx].completedVisitsCount,
         regId: cleanReg,
@@ -1922,7 +1928,10 @@ export const patientService = {
       name: data.name,
       phone: cleanPhone,
       email: data.email,
-      diseases: data.diseases,
+      diseases: data.diseases || data.subject || "",
+      subject: data.subject || data.diseases || "",
+      source: data.source || data.marketingSource || "Walk-in",
+      marketingSource: data.marketingSource || data.source || "Walk-in",
       branch: data.branch,
       isDeleted: false,
       createdAt: data.createdAt || new Date().toISOString(),

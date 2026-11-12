@@ -78,7 +78,9 @@ export async function GET(req: NextRequest) {
         lastDoctor: String(latest?.doctorName || "Dr. Prashanth K Vaidya"),
         totalVisits: Math.max(matchedAppts.length, 1),
         lastVisitDate: normalizeDateStr(String(latest?.appointmentDate || p.createdAt?.slice(0, 10) || "Recent")),
-        condition: String(p.diseases || latest?.diseases || latest?.diagnosisNotes || "Homeopathy Care"),
+        condition: String(p.diseases || (p as any).subject || latest?.diseases || latest?.diagnosisNotes || "Homeopathy Care"),
+        subject: String((p as any).subject || p.diseases || latest?.diseases || latest?.diagnosisNotes || "Homeopathy Care"),
+        source: String((p as any).source || (p as any).marketingSource || latest?.marketingSource || "Walk-in"),
         email: String(p.email || latest?.email || ""),
       });
     });
@@ -118,6 +120,8 @@ export async function GET(req: NextRequest) {
           totalVisits: matchedAppts.length,
           lastVisitDate: normalizeDateStr(String(latest.appointmentDate || "Recent")),
           condition: String(a.diseases || a.diagnosisNotes || "General Consultation"),
+          subject: String(a.diseases || a.diagnosisNotes || "General Consultation"),
+          source: String(a.marketingSource || "Walk-in"),
           email: String(a.email || ""),
         });
       }

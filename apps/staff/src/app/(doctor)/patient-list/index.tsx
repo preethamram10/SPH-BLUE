@@ -177,6 +177,7 @@ export default function DoctorPatientListScreen() {
     const totalVisits = p.totalVisits || p.appointmentCount || 0;
     const lastVisit = p.lastVisitDate || p.lastVisit || "";
     const diseases = p.diseases || p.primarySymptoms || "";
+    const source = p.source || p.marketingSource || "";
 
     let lastVisitLabel = "";
     if (lastVisit) {
@@ -223,9 +224,16 @@ export default function DoctorPatientListScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.metaText}>
-              ID: {regId} • {displayPhone}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+              <Text style={styles.metaText}>
+                ID: {regId} • {displayPhone}
+              </Text>
+              {source ? (
+                <View style={styles.sourceBadge}>
+                  <Text style={styles.sourceBadgeText}>{source}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
 
@@ -519,6 +527,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   historyBtnText: { fontSize: 12, fontWeight: "700", color: "#0284c7" },
+  sourceBadge: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  sourceBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
   iconActionBtn: {
     width: 34,
     height: 34,

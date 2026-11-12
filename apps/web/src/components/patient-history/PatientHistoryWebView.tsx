@@ -88,6 +88,8 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
     phone: paramPhone,
     branch: paramBranch,
     diseases: "",
+    subject: "",
+    source: "Old Patient",
   });
 
   const [stats, setStats] = useState({
@@ -134,7 +136,9 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
               name: data.patient.name || paramName,
               phone: data.patient.phone || paramPhone,
               branch: data.patient.branch || paramBranch,
-              diseases: data.patient.diseases || "",
+              diseases: data.patient.diseases || data.patient.subject || "",
+              subject: data.patient.subject || data.patient.diseases || "",
+              source: data.patient.source || data.patient.marketingSource || "Old Patient",
             });
             setCurrentPatientId(data.patient.regId || lookupId);
           }
@@ -586,6 +590,55 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
             </div>
           </div>
 
+          {/* Patient Details Info Block: Branch, Subject, Mobile Number, Source */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                  BRANCH
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <MapPin className="w-4 h-4 text-[#0284c7] shrink-0" />
+                  <span className="truncate">{patient.branch || "Spiritual Homeopathy"}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                  SUBJECT / COMPLAINT
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <Activity className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="truncate" title={patient.subject || patient.diseases || "General Care"}>
+                    {patient.subject || patient.diseases || "General Care"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                  MOBILE NUMBER
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 font-mono">
+                  <Phone className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>{cleanPhone ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : "No Mobile"}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/70">
+                <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                  PATIENT SOURCE
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <Users className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
+                    {patient.source || "Old Patient"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Three Interactive Tabs */}
           <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
             <button
@@ -690,8 +743,8 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         </span>
                       </div>
 
-                      {/* Doctor & Location Details */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                      {/* Doctor, Branch, Mobile & Source Details */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
                           <Activity className="w-3.5 h-3.5 text-[#0284c7]" />
                           <span>Doctor: {item.doctorName || "Dr. Prashanth K Vaidya"}</span>
@@ -703,16 +756,21 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
-                          <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Paid: ₹{actualPaid} ({item.paymentMethod || "Cash"})</span>
+                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Mobile: {cleanPhone || "N/A"}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                          <Users className="w-3.5 h-3.5 text-purple-500" />
+                          <span>Source: {item.marketingSource || item.source || patient.source || "Old Patient"}</span>
                         </div>
                       </div>
 
-                      {/* Clinical Notes / Diagnosis */}
-                      {item.diagnosisNotes && (
+                      {/* Clinical Notes / Subject / Diagnosis */}
+                      {(item.subject || item.diagnosisNotes || patient.diseases) && (
                         <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
-                          <span className="font-black text-slate-800 block mb-1">Clinical Notes &amp; Diagnosis:</span>
-                          <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{item.diagnosisNotes}</p>
+                          <span className="font-black text-slate-800 block mb-1">Subject / Notes &amp; Diagnosis:</span>
+                          <p className="text-slate-600 leading-relaxed whitespace-pre-wrap">{item.subject || item.diagnosisNotes || patient.diseases}</p>
                         </div>
                       )}
 

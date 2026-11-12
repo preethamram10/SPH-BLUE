@@ -115,6 +115,8 @@ function OldPrescriptionEntryContent() {
 
   const [patientName, setPatientName] = useState("");
   const [visitDate, setVisitDate] = useState("");
+  const [source, setSource] = useState("Old Patient");
+  const [subject, setSubject] = useState("");
 
   // Doctor state
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>(DEFAULT_DOCTORS);
@@ -258,6 +260,8 @@ function OldPrescriptionEntryContent() {
     setPatientName(p.name || "");
     if (p.phone) setPhone((p.phone || "").replace(/\D/g, "").slice(-10));
     if (p.branch) setBranchName(p.branch);
+    if (p.source || p.marketingSource) setSource(p.source || p.marketingSource);
+    if (p.subject || p.diseases) setSubject(p.subject || p.diseases);
     setIdStatus("EXISTS");
     setExistingPatientData(p);
   };
@@ -386,6 +390,10 @@ function OldPrescriptionEntryContent() {
           name: patientName.trim(),
           phone: phone.trim(),
           branch: branchName,
+          source: source,
+          marketingSource: source,
+          subject: subject.trim(),
+          diseases: subject.trim(),
           visitDate,
           doctorName: selectedDoctorName,
           doctorId: selectedDoctorId,
@@ -407,6 +415,8 @@ function OldPrescriptionEntryContent() {
           name: data.patient?.name || patientName,
           phone,
           visitDate,
+          source,
+          subject: subject.trim(),
           imagesCount: uploadedImages.length,
           doctorName: selectedDoctorName,
           createdAt: new Date().toLocaleTimeString(),
@@ -419,6 +429,8 @@ function OldPrescriptionEntryContent() {
         setRegId("");
         setPatientName("");
         setPhone("");
+        setSubject("");
+        setSource("Old Patient");
         setUploadedImages([]);
         setIdStatus("IDLE");
         setExistingPatientData(null);
@@ -752,6 +764,45 @@ function OldPrescriptionEntryContent() {
                       1 Yr Ago
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* SECTION 2B: Patient Source & Subject / Chief Complaint */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                {/* Source Dropdown */}
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Patient Acquisition Source *
+                  </label>
+                  <select
+                    value={source}
+                    onChange={(e) => setSource(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] font-bold shadow-2xs text-slate-800"
+                  >
+                    <option value="Old Patient">Old Patient</option>
+                    <option value="Walk-in">Walk-in</option>
+                    <option value="Referral">Referral</option>
+                    <option value="Google">Google</option>
+                    <option value="Youtube">Youtube</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Practo">Practo</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                {/* Subject / Chief Complaint */}
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Subject / Chief Complaint / Disease
+                  </label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="e.g. Migraine, Hair Fall, Skin Allergy, Gastritis"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] font-semibold shadow-2xs"
+                  />
                 </div>
               </div>
 

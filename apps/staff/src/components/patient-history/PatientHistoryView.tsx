@@ -54,6 +54,8 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
     phone: paramPhone,
     branch: paramBranch,
     diseases: "",
+    subject: "",
+    source: "Old Patient",
   });
 
   const [stats, setStats] = useState({
@@ -97,7 +99,9 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
             name: res.patient.name || paramName,
             phone: res.patient.phone || paramPhone,
             branch: res.patient.branch || paramBranch,
-            diseases: res.patient.diseases || "",
+            diseases: res.patient.diseases || res.patient.subject || "",
+            subject: res.patient.subject || res.patient.diseases || "",
+            source: res.patient.source || res.patient.marketingSource || "Old Patient",
           });
           setCurrentPatientId(res.patient.regId || lookupId);
         }
@@ -470,6 +474,51 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
           </View>
         </View>
 
+        {/* Patient Details Info Block: Branch, Subject, Mobile Number, Source */}
+        <View style={styles.patientInfoBlock}>
+          <View style={styles.infoBlockGrid}>
+            <View style={styles.infoBlockItem}>
+              <Text style={styles.infoBlockLabel}>BRANCH</Text>
+              <View style={styles.infoBlockValRow}>
+                <Ionicons name="location-outline" size={13} color="#0284c7" />
+                <Text style={styles.infoBlockValText} numberOfLines={1}>
+                  {patient.branch || "Clinic Branch"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoBlockItem}>
+              <Text style={styles.infoBlockLabel}>SUBJECT / COMPLAINT</Text>
+              <View style={styles.infoBlockValRow}>
+                <Ionicons name="pulse-outline" size={13} color="#16a34a" />
+                <Text style={styles.infoBlockValText} numberOfLines={1}>
+                  {patient.subject || patient.diseases || "General Care"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoBlockItem}>
+              <Text style={styles.infoBlockLabel}>MOBILE NUMBER</Text>
+              <View style={styles.infoBlockValRow}>
+                <Ionicons name="call-outline" size={13} color="#0284c7" />
+                <Text style={styles.infoBlockValText} numberOfLines={1}>
+                  {cleanPhone ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : "No Mobile"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoBlockItem}>
+              <Text style={styles.infoBlockLabel}>PATIENT SOURCE</Text>
+              <View style={styles.infoBlockValRow}>
+                <Ionicons name="people-outline" size={13} color="#7c3aed" />
+                <Text style={[styles.infoBlockValText, { color: "#7c3aed", fontWeight: "800" }]} numberOfLines={1}>
+                  {patient.source || "Old Patient"}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* 3. THREE TABS ROW */}
         <View style={styles.tabsRow}>
           {/* Tab 1: All History */}
@@ -587,6 +636,20 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           </View>
                         </View>
 
+                        {/* Visit Meta Row: Mobile & Source */}
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2, marginTop: 2, marginBottom: 4 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Ionicons name="call-outline" size={12} color="#0284c7" />
+                            <Text style={{ fontSize: 11, color: "#475569", fontWeight: "600" }}>{cleanPhone || "N/A"}</Text>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f3e8ff", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: "#e9d5ff" }}>
+                            <Ionicons name="funnel-outline" size={10} color="#7c3aed" />
+                            <Text style={{ fontSize: 10, color: "#7c3aed", fontWeight: "800" }}>
+                              {item.marketingSource || item.source || patient.source || "Old Patient"}
+                            </Text>
+                          </View>
+                        </View>
+
                         {/* Payment Inner Box */}
                         <View style={styles.paymentInnerBox}>
                           <View style={styles.paymentBoxTopRow}>
@@ -646,7 +709,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           {/* Diagnosis Box */}
                           <View style={styles.diagnosisBox}>
                             <Text style={styles.diagnosisText}>
-                              Diagnosis: {item.diagnosisNotes || patient.diseases || "General Consultation"}
+                              Subject / Diagnosis: {item.subject || item.diagnosisNotes || patient.subject || patient.diseases || "General Consultation"}
                             </Text>
                           </View>
 
@@ -1220,6 +1283,46 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: "#e0f2fe",
     marginTop: 1,
+  },
+  patientInfoBlock: {
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginBottom: 12,
+  },
+  infoBlockGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  infoBlockItem: {
+    flex: 1,
+    minWidth: "46%",
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  infoBlockLabel: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#64748b",
+    marginBottom: 3,
+    letterSpacing: 0.3,
+  },
+  infoBlockValRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  infoBlockValText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0f172a",
+    flexShrink: 1,
   },
   tabsRow: {
     flexDirection: "row",

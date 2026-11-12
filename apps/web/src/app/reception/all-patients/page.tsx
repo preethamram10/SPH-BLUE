@@ -27,6 +27,8 @@ interface Patient {
   mrn: string;
   name: string;
   phone: string;
+  source?: string;
+  subject?: string;
   lastVisit: string;
   totalVisits: number;
   doctorName?: string;
@@ -118,6 +120,8 @@ export default function ReceptionAllPatientsPage() {
               mrn: p.regId || p.mrn || "SPH-GEN",
               name: p.name || p.patientName || "Unknown",
               phone: p.phone || p.phoneNumber || "",
+              source: p.source || p.marketingSource || "Walk-in",
+              subject: p.subject || p.diseases || "",
               lastVisit: p.lastVisitDate || p.lastVisit || "Registered",
               totalVisits: p.totalVisits || p.appointmentCount || 0,
               doctorName: p.doctorName || p.lastDoctorName || "",
@@ -398,6 +402,7 @@ export default function ReceptionAllPatientsPage() {
                     <th className="px-6 py-3.5">MRN ID</th>
                     <th className="px-6 py-3.5">Patient Name</th>
                     <th className="px-6 py-3.5">Mobile Phone</th>
+                    <th className="px-6 py-3.5">Source</th>
                     <th className="px-6 py-3.5">Last Visit</th>
                     <th className="px-6 py-3.5 text-center">Total Visits</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
@@ -406,7 +411,7 @@ export default function ReceptionAllPatientsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
+                      <td colSpan={7} className="px-6 py-20 text-center text-slate-400">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Loader2 className="w-6 h-6 animate-spin text-[#0284c7]" />
                           <span className="text-xs font-semibold">Loading patients ({session.toLowerCase()})...</span>
@@ -415,7 +420,7 @@ export default function ReceptionAllPatientsPage() {
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-16 text-center text-slate-400">
+                      <td colSpan={7} className="px-6 py-16 text-center text-slate-400">
                         <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <p className="font-bold text-slate-700 text-sm">No Patients Found</p>
                         <p className="text-xs text-slate-400 mt-1">
@@ -446,9 +451,17 @@ export default function ReceptionAllPatientsPage() {
                             <Link href={historyUrl} className="hover:text-[#0284c7] transition-colors">
                               {patient.name}
                             </Link>
+                            {patient.subject && (
+                              <p className="text-[11px] font-normal text-slate-500 truncate max-w-xs">{patient.subject}</p>
+                            )}
                           </td>
                           <td className="px-6 py-3.5 font-semibold text-slate-700">
                             {cleanPhone ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : "No Mobile"}
+                          </td>
+                          <td className="px-6 py-3.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                              {patient.source || "Walk-in"}
+                            </span>
                           </td>
                           <td className="px-6 py-3.5 text-slate-500 font-medium">{formatLastVisitDate(patient.lastVisit)}</td>
                           <td className="px-6 py-3.5 text-center font-bold text-slate-800">

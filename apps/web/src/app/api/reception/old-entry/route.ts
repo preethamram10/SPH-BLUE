@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
       doctorId,
       timeSlot,
       diseases,
+      subject,
+      source,
+      marketingSource,
       consultationFee,
       prescriptionImages,
       notes,
@@ -37,6 +40,8 @@ export async function POST(req: NextRequest) {
     const targetDate = normalizeDateStr(visitDate || new Date().toISOString().slice(0, 10));
     const targetDoctor = doctorName || "Dr. Prashanth K Vaidya";
     const targetDoctorId = doctorId || "doc-1";
+    const cleanSource = (source || marketingSource || "Old Patient").trim();
+    const cleanSubject = (subject || diseases || notes || "").trim();
     const fee = typeof consultationFee === "number" ? consultationFee : parseInt(consultationFee, 10) || 0;
     const images = Array.isArray(prescriptionImages) ? prescriptionImages : [];
 
@@ -46,7 +51,10 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       phone: cleanPhone,
       branch: targetBranch,
-      diseases: diseases || notes || "",
+      diseases: cleanSubject,
+      subject: cleanSubject,
+      source: cleanSource,
+      marketingSource: cleanSource,
     });
 
     // 2. Create Historical Appointment Record with Prescriptions
@@ -55,7 +63,7 @@ export async function POST(req: NextRequest) {
       patientName: name.trim(),
       phone: cleanPhone,
       branch: targetBranch,
-      marketingSource: "Historical / Old Record Entry",
+      marketingSource: cleanSource,
       consultationMode: "Offline",
       doctorId: targetDoctorId,
       doctorName: targetDoctor,
@@ -70,7 +78,8 @@ export async function POST(req: NextRequest) {
       isHistorical: true,
       paidAt: fee > 0 ? new Date(targetDate).toISOString() : undefined,
       paymentMethod: fee > 0 ? "CASH" : undefined,
-      diagnosisNotes: notes || diseases || "Historical Prescription Entry",
+      diagnosisNotes: cleanSubject || "Historical Prescription Entry",
+      diseases: cleanSubject,
       prescriptionImages: images,
     });
 

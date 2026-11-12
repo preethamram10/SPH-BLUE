@@ -51,6 +51,8 @@ export async function GET(req: NextRequest) {
         ...p,
         totalVisits,
         appointmentCount: totalVisits,
+        source: (p as any).source || (p as any).marketingSource || latest?.marketingSource || "Walk-in",
+        subject: (p as any).subject || (p as any).diseases || latest?.diseases || latest?.diagnosisNotes || "",
         lastVisitDate: normalizeDateStr(latest?.appointmentDate || p.createdAt?.slice(0, 10) || ""),
         lastDoctorName: latest?.doctorName || "",
       };

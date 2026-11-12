@@ -42,6 +42,18 @@ const DEFAULT_DOCTORS = [
   { id: "doc-4", name: "Dr. Ananya Rao" },
 ];
 
+const SOURCES_LIST = [
+  "Old Patient",
+  "Walk-in",
+  "Referral",
+  "Google",
+  "Youtube",
+  "Instagram",
+  "Facebook",
+  "Practo",
+  "Other",
+];
+
 export default function MobileOldPrescriptionEntryScreen() {
   const router = useRouter();
   const [activeBranch, setActiveBranch] = useState<any>(null);
@@ -56,6 +68,9 @@ export default function MobileOldPrescriptionEntryScreen() {
   const [phone, setPhone] = useState("");
   const [familyProfiles, setFamilyProfiles] = useState<any[]>([]);
   const [patientName, setPatientName] = useState("");
+  const [source, setSource] = useState("Old Patient");
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [subject, setSubject] = useState("");
 
   // Doctor state
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>(DEFAULT_DOCTORS);
@@ -192,6 +207,8 @@ export default function MobileOldPrescriptionEntryScreen() {
     setRegId(p.regId || regId);
     setPatientName(p.name || "");
     if (p.phone) setPhone((p.phone || "").replace(/\D/g, "").slice(-10));
+    if (p.source || p.marketingSource) setSource(p.source || p.marketingSource);
+    if (p.subject || p.diseases) setSubject(p.subject || p.diseases);
     setIdStatus("EXISTS");
     setExistingPatient(p);
   };
@@ -401,6 +418,10 @@ export default function MobileOldPrescriptionEntryScreen() {
           name: patientName.trim(),
           phone: phone.trim(),
           branch: branchName,
+          source,
+          marketingSource: source,
+          subject: subject.trim(),
+          diseases: subject.trim(),
           visitDate,
           doctorName: selectedDoctor.name,
           doctorId: selectedDoctor.id,
@@ -432,6 +453,8 @@ export default function MobileOldPrescriptionEntryScreen() {
                 setRegId("");
                 setPatientName("");
                 setPhone("");
+                setSubject("");
+                setSource("Old Patient");
                 setUploadedImages([]);
                 setIdStatus("IDLE");
                 setExistingPatient(null);
@@ -675,6 +698,38 @@ export default function MobileOldPrescriptionEntryScreen() {
             </View>
           </View>
 
+          {/* SECTION 5B: PATIENT SOURCE & SUBJECT */}
+          <View style={styles.card}>
+            <Text style={styles.fieldLabel}>PATIENT ACQUISITION SOURCE *</Text>
+            <TouchableOpacity
+              style={styles.doctorSelectorBtn}
+              onPress={() => setIsSourceModalOpen(true)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={styles.doctorIconCircle}>
+                  <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={styles.selectedDoctorName}>{source}</Text>
+                  <Text style={styles.selectedDoctorSub}>Tap to change acquisition channel</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-down" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.fieldLabel}>SUBJECT / CHIEF COMPLAINT</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Migraine, Hair Fall, Gastritis, Joint Pains..."
+                placeholderTextColor={COLORS.textMuted}
+                value={subject}
+                onChangeText={setSubject}
+              />
+            </View>
+          </View>
+
           {/* SECTION 6: UPLOAD PRESCRIPTION SCANS (WITH VIEWER & SUCCESS MESSAGE) */}
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
@@ -807,6 +862,49 @@ export default function MobileOldPrescriptionEntryScreen() {
                       </Text>
                       <Text style={styles.doctorOptionSub}>Doctor ID: {doc.id}</Text>
                     </View>
+                    {isSelected && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* SOURCE SELECTION MODAL */}
+      <Modal
+        visible={isSourceModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsSourceModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Select Patient Source</Text>
+                <Text style={styles.modalSub}>Patient acquisition channel</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsSourceModalOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.textDark} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 350 }}>
+              {SOURCES_LIST.map((src) => {
+                const isSelected = src === source;
+                return (
+                  <TouchableOpacity
+                    key={src}
+                    style={[styles.doctorOptionItem, isSelected && styles.doctorOptionItemSelected]}
+                    onPress={() => {
+                      setSource(src);
+                      setIsSourceModalOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.doctorOptionName, isSelected && { color: COLORS.primary, fontWeight: "bold" }]}>
+                      {src}
+                    </Text>
                     {isSelected && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
                   </TouchableOpacity>
                 );

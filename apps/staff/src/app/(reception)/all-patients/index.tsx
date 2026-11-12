@@ -187,6 +187,8 @@ export default function ReceptionAllPatientsScreen() {
     const doctor = item.doctorName || item.lastDoctorName || "";
     const branch = item.branch || (activeBranch?.name ?? "");
     const diseases = item.diseases || item.primarySymptoms || "";
+    const source = item.source || item.marketingSource || "Walk-in";
+    const subject = item.subject || diseases || "";
     const status = (item.status || "").toUpperCase();
     const isInDuration = status === "IN_CONSULTATION" || status === "COLLECT_FEE" || status === "WAITING" || status === "SCHEDULED";
 
@@ -235,7 +237,17 @@ export default function ReceptionAllPatientsScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.regIdText}>ID: {regId}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+              <Text style={styles.regIdText}>ID: {regId}</Text>
+              <View style={styles.sourceBadge}>
+                <Text style={styles.sourceBadgeText}>{source}</Text>
+              </View>
+            </View>
+            {subject ? (
+              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }} numberOfLines={1}>
+                Subject: {subject}
+              </Text>
+            ) : null}
           </View>
           {/* Visits badge - removed 0 visited */}
           {totalVisits > 0 && (
@@ -510,6 +522,19 @@ const styles = StyleSheet.create({
   },
   patientName: { fontSize: 15, fontWeight: "800", color: COLORS.textDark, flex: 1 },
   regIdText: { fontSize: 11, fontWeight: "700", color: COLORS.primary, marginTop: 1 },
+  sourceBadge: {
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  sourceBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "700",
+    color: "#475569",
+  },
   inDurBadge: {
     flexDirection: "row",
     alignItems: "center",
