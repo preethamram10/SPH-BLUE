@@ -54,6 +54,9 @@
         "asyncRoutes": {
           "web": true
         }
+      },
+      "eas": {
+        "projectId": "2a61368a-e9b4-4ddf-9456-4865fb25c5ce"
       }
     }
   }
