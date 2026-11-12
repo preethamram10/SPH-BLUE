@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   ScrollView,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,8 +18,8 @@ import { clearAllAuthData, getActiveDoctor, getUserRole, saveActiveDoctor } from
 import { API_BASE_URL } from "../../config/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-// Minimized compact drawer width
-const DRAWER_WIDTH = Math.min(Math.round(SCREEN_WIDTH * 0.58), 210);
+// Comfortable drawer width to fit logo and icons
+const DRAWER_WIDTH = Math.min(Math.round(SCREEN_WIDTH * 0.72), 250);
 
 interface DoctorDrawerSidebarProps {
   isOpen: boolean;
@@ -181,9 +182,14 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
             },
           ]}
         >
-          {/* Header Section (Icons, Cabin Active & Branch Removed) */}
+          {/* Header Section with App Icon & Doctor Info */}
           <View style={styles.profileSection}>
             <View style={styles.profileTopRow}>
+              <Image
+                source={require("../../../assets/App icon.png")}
+                style={styles.drawerLogo}
+                resizeMode="contain"
+              />
               <View style={{ flex: 1 }}>
                 <Text style={styles.doctorName} numberOfLines={1}>
                   {doctorName}
@@ -220,6 +226,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               onPress={() => handleNavigate("/(doctor)")}
               activeOpacity={0.7}
             >
+              <Ionicons
+                name="grid-outline"
+                size={16}
+                color={activeRoute === "dashboard" ? "#0284c7" : "#64748b"}
+                style={{ marginRight: 8 }}
+              />
               <Text
                 style={[
                   styles.menuText,
@@ -238,6 +250,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               onPress={() => handleNavigate("/(doctor)/patient-list")}
               activeOpacity={0.7}
             >
+              <Ionicons
+                name="people-outline"
+                size={16}
+                color={activeRoute === "patient-list" ? "#0284c7" : "#64748b"}
+                style={{ marginRight: 8 }}
+              />
               <Text
                 style={[
                   styles.menuText,
@@ -256,6 +274,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               onPress={() => handleNavigate("/(doctor)/packages")}
               activeOpacity={0.7}
             >
+              <Ionicons
+                name="cube-outline"
+                size={16}
+                color={activeRoute === "packages" ? "#0284c7" : "#64748b"}
+                style={{ marginRight: 8 }}
+              />
               <Text
                 style={[
                   styles.menuText,
@@ -275,6 +299,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                 onPress={() => handleNavigate("/(doctor)/total-revenue")}
                 activeOpacity={0.7}
               >
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={16}
+                  color={activeRoute === "total-revenue" ? "#0284c7" : "#64748b"}
+                  style={{ marginRight: 8 }}
+                />
                 <Text
                   style={[
                     styles.menuText,
@@ -295,6 +325,12 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
                 onPress={() => handleNavigate("/(admin)/fee-requests")}
                 activeOpacity={0.7}
               >
+                <Ionicons
+                  name="receipt-outline"
+                  size={16}
+                  color="#64748b"
+                  style={{ marginRight: 8 }}
+                />
                 <Text style={styles.menuText}>Fee Requests</Text>
                 <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
                   <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>HEAD</Text>
@@ -353,6 +389,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  drawerLogo: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    marginRight: 10,
+  },
   closeBtn: {
     width: 28,
     height: 28,
@@ -391,6 +433,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: 8,
