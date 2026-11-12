@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,13 +10,18 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
+  RefreshControl,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { apiFetch } from "../../../../services/auth";
 
 const COLORS = {
   green: "#16a34a",
+  greenDark: "#15803d",
   greenLight: "#dcfce7",
   white: "#ffffff",
   textDark: "#0f172a",
@@ -26,16 +31,20 @@ const COLORS = {
   cardBorder: "#e2e8f0",
   bg: "#f8fafc",
   cardBg: "#ffffff",
+  red: "#dc2626",
+  redLight: "#fee2e2",
 };
 
 interface BranchStaff {
   id: string;
   name: string;
-  role: string;
-  branch: string;
   phone: string;
-  shift: string;
-  status: "ON_DUTY" | "OFF_DUTY";
+  branchName?: string;
+  category?: string;
+  salary?: number;
+  shiftHours?: string;
+  dailyHours?: string;
+  status?: string;
 }
 
 const ROLES = [
@@ -48,93 +57,127 @@ const ROLES = [
 
 export default function AdminStaffManagementScreen() {
   const router = useRouter();
+  const [staffList, setStaffList] = useState<BranchStaff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // New Staff Form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState("Kphb Branch");
   const [role, setRole] = useState(ROLES[0]);
-  const [shift, setShift] = useState("Full-Time (08:30 AM - 05:30 PM)");
+  const [shift, setShift] = useState("09:00 AM - 06:00 PM");
+  const [salary, setSalary] = useState("20000");
 
-  const [staffList, setStaffList] = useState<BranchStaff[]>([
-    {
-      id: "1",
-      name: "Sravani Latha",
-      role: "Receptionist / Front Desk",
-      branch: "KPHB Branch",
-      phone: "+91 90301 76176",
-      shift: "Morning (08:30 AM - 04:30 PM)",
-      status: "ON_DUTY",
-    },
-    {
-      id: "2",
-      name: "Raju Nayak",
-      role: "Branch Cleaning & Sanitization",
-      branch: "KPHB Branch",
-      phone: "+91 98492 11002",
-      shift: "Full-Time (08:00 AM - 05:00 PM)",
-      status: "ON_DUTY",
-    },
-    {
-      id: "3",
-      name: "Lakshmi Bai",
-      role: "Branch Cleaning & Sanitization",
-      branch: "Dilsukhnagar Branch",
-      phone: "+91 97004 88221",
-      shift: "Morning (07:30 AM - 03:30 PM)",
-      status: "ON_DUTY",
-    },
-    {
-      id: "4",
-      name: "Naveen Chary",
-      role: "Pharmacy Assistant",
-      branch: "Gachibowli Branch",
-      phone: "+91 91211 44552",
-      shift: "General (10:00 AM - 07:00 PM)",
-      status: "ON_DUTY",
-    },
-    {
-      id: "5",
-      name: "Krishna Mohan",
-      role: "Security / Front Helper",
-      branch: "KPHB Branch",
-      phone: "+91 93450 99881",
-      shift: "Night Shift",
-      status: "OFF_DUTY",
-    },
-  ]);
+  const fetchStaff = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await apiFetch<any>("/admin/employees");
+      const list = res?.employees || [];
+      const staffFiltered = list.filter(
+        (e: any) => e.category === "STAFF" || e.category === "RECEPTION"
+      );
+      setStaffList(staffFiltered);
+    } catch (err: any) {
+      console.warn("Failed to fetch staff:", err);
+      Alert.alert("Notice", "Unable to load live staff records: " + (err.message || "Please retry"));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const handleAddStaff = () => {
+  useEffect(() => {
+    fetchStaff();
+  }, [fetchStaff]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchStaff();
+  };
+
+  const handleAddStaff = async () => {
     if (!name.trim() || !phone.trim()) {
       Alert.alert("Required", "Please provide Staff Member Name and Phone.");
       return;
     }
 
-    const newStaff: BranchStaff = {
-      id: String(Date.now()),
-      name,
-      role,
-      branch,
-      phone,
-      shift,
-      status: "ON_DUTY",
-    };
+    try {
+      setSubmitting(true);
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim().startsWith("+91") ? phone.trim() : `+91 ${phone.trim()}`,
+        branchName: branch.trim() || "Kphb Branch",
+        category: role.toLowerCase().includes("reception") ? "RECEPTION" : "STAFF",
+        shiftHours: shift.trim() || "09:00 AM - 06:00 PM",
+        salary: Number(salary) || 20000,
+        status: "Active",
+      };
 
-    setStaffList([newStaff, ...staffList]);
-    setShowAddModal(false);
-    setName("");
-    setPhone("");
+      const res = await apiFetch<any>("/admin/employees", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (res.success || res.employee) {
+        Alert.alert("Success", `${payload.name} was registered to staff directory.`);
+        setShowAddModal(false);
+        setName("");
+        setPhone("");
+        fetchStaff();
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to add staff member.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const filtered = staffList.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.role.toLowerCase().includes(search.toLowerCase()) ||
-      s.branch.toLowerCase().includes(search.toLowerCase()) ||
-      s.phone.includes(search)
-  );
+  const handleDeleteStaff = (item: BranchStaff) => {
+    Alert.alert(
+      "Confirm Removal",
+      `Are you sure you want to remove ${item.name} from staff directory?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiFetch<any>(`/admin/employees?id=${item.id}`, { method: "DELETE" });
+              setStaffList((prev) => prev.filter((s) => s.id !== item.id));
+              Alert.alert("Removed", `${item.name} has been removed.`);
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to remove staff.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCall = (ph: string) => {
+    const cleaned = ph.replace(/[^0-9+]/g, "");
+    if (cleaned) {
+      Linking.openURL(`tel:${cleaned}`).catch(() => {
+        Alert.alert("Dialer", `Cannot open phone dialer for ${ph}.`);
+      });
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return staffList.filter((s) => {
+      const q = search.toLowerCase().trim();
+      if (!q) return true;
+      const n = (s.name || "").toLowerCase();
+      const b = (s.branchName || "").toLowerCase();
+      const p = (s.phone || "").replace(/[^0-9]/g, "");
+      return n.includes(q) || b.includes(q) || p.includes(q.replace(/[^0-9]/g, ""));
+    });
+  }, [staffList, search]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
@@ -150,7 +193,9 @@ export default function AdminStaffManagementScreen() {
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Staff &amp; Helpers</Text>
-            <Text style={styles.headerSub}>{staffList.length} Personnel Registered</Text>
+            <Text style={styles.headerSub}>
+              {loading ? "Loading staff..." : `${staffList.length} Personnel Registered`}
+            </Text>
           </View>
         </View>
 
@@ -174,58 +219,101 @@ export default function AdminStaffManagementScreen() {
           value={search}
           onChangeText={setSearch}
         />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Ionicons name="close-circle" size={16} color={COLORS.textLight} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Staff List */}
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
-        {filtered.map((item) => (
-          <View key={item.id} style={styles.staffCard}>
-            <View style={styles.cardTop}>
-              <View style={styles.avatar}>
-                <Ionicons name="people" size={18} color={COLORS.green} />
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={COLORS.green} />
+          <Text style={styles.loadingText}>Loading staff directory...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.green]}
+              tintColor={COLORS.green}
+            />
+          }
+        >
+          {filtered.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconBg}>
+                <Ionicons name="people-outline" size={36} color={COLORS.textLight} />
               </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.staffName}>{item.name}</Text>
-                <Text style={styles.staffRole}>{item.role}</Text>
-                <Text style={styles.staffBranch}>📍 {item.branch}</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  item.status === "ON_DUTY" ? styles.statusOn : styles.statusOff,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusText,
-                    item.status === "ON_DUTY"
-                      ? { color: COLORS.green }
-                      : { color: COLORS.textMuted },
-                  ]}
-                >
-                  {item.status === "ON_DUTY" ? "ON DUTY" : "OFF DUTY"}
-                </Text>
-              </View>
+              <Text style={styles.emptyTitle}>No staff members found</Text>
+              <Text style={styles.emptySubtitle}>
+                {search.trim()
+                  ? `No personnel matched "${search}".`
+                  : "No staff members registered in this category yet."}
+              </Text>
             </View>
+          ) : (
+            filtered.map((item) => (
+              <View key={item.id} style={styles.staffCard}>
+                <View style={styles.cardTop}>
+                  <View style={styles.avatar}>
+                    <Ionicons name="people" size={18} color={COLORS.green} />
+                  </View>
 
-            <View style={styles.cardDivider} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.staffName}>{item.name}</Text>
+                    <Text style={styles.staffRole}>
+                      {item.category === "RECEPTION" ? "Receptionist / Front Desk" : "Clinic Assistant / Operations"}
+                    </Text>
+                    <Text style={styles.staffBranch}>📍 {item.branchName || "All Branches"}</Text>
+                  </View>
 
-            <View style={styles.cardBottom}>
-              <View style={styles.infoRow}>
-                <Ionicons name="call-outline" size={14} color={COLORS.textMuted} />
-                <Text style={styles.infoText}>{item.phone}</Text>
+                  <View style={styles.statusBadge}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.statusText}>{item.status || "Active"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardDivider} />
+
+                <View style={styles.cardBottom}>
+                  <TouchableOpacity
+                    style={styles.infoRow}
+                    onPress={() => handleCall(item.phone)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="call-outline" size={14} color={COLORS.textMuted} />
+                    <Text style={styles.infoText}>{item.phone}</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.rightActionRow}>
+                    <View style={styles.infoRow}>
+                      <Ionicons name="time-outline" size={14} color={COLORS.green} />
+                      <Text style={styles.infoText}>
+                        {item.shiftHours && item.shiftHours !== "-" ? item.shiftHours : "Full-Time"}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleDeleteStaff(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="trash-outline" size={14} color={COLORS.red} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-
-              <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={14} color={COLORS.green} />
-                <Text style={styles.infoText}>{item.shift}</Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      )}
 
       {/* Add Staff Modal */}
       <Modal visible={showAddModal} transparent animationType="slide">
@@ -238,12 +326,16 @@ export default function AdminStaffManagementScreen() {
               style={{ maxHeight: "90%", width: "100%" }}
               contentContainerStyle={{ alignItems: "center", paddingVertical: 10 }}
               keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.modalSheet}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Register Branch Staff</Text>
+                  <View>
+                    <Text style={styles.modalTitle}>Register Branch Staff</Text>
+                    <Text style={styles.modalSub}>
+                      Add receptionists, clinic helpers and operations personnel
+                    </Text>
+                  </View>
                   <TouchableOpacity onPress={() => setShowAddModal(false)}>
                     <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
                   </TouchableOpacity>
@@ -262,7 +354,7 @@ export default function AdminStaffManagementScreen() {
                   <Text style={styles.label}>Phone Number *</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="+91 98765 43210"
+                    placeholder="9876543210"
                     placeholderTextColor={COLORS.textLight}
                     keyboardType="phone-pad"
                     value={phone}
@@ -303,21 +395,36 @@ export default function AdminStaffManagementScreen() {
                     </View>
                   </ScrollView>
 
-                  <Text style={styles.label}>Shift Schedule</Text>
+                  <Text style={styles.label}>Shift Timings</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Full-Time (08:30 AM - 05:30 PM)"
+                    placeholder="09:00 AM - 06:00 PM"
                     placeholderTextColor={COLORS.textLight}
                     value={shift}
                     onChangeText={setShift}
                   />
 
+                  <Text style={styles.label}>Monthly Salary (₹)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="20000"
+                    placeholderTextColor={COLORS.textLight}
+                    keyboardType="numeric"
+                    value={salary}
+                    onChangeText={setSalary}
+                  />
+
                   <TouchableOpacity
-                    style={styles.submitBtn}
+                    style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
                     onPress={handleAddStaff}
+                    disabled={submitting}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.submitBtnText}>Save Staff Record</Text>
+                    {submitting ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.submitBtnText}>Save Staff Record</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -339,7 +446,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
@@ -367,6 +474,7 @@ const styles = StyleSheet.create({
   headerSub: {
     fontSize: 11,
     color: COLORS.textMuted,
+    marginTop: 1,
   },
   addButton: {
     backgroundColor: COLORS.green,
@@ -389,7 +497,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 12,
-    height: 38,
+    height: 40,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
@@ -399,13 +507,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textDark,
   },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: "600",
+  },
   content: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 30,
+    paddingBottom: 36,
     gap: 12,
+  },
+  emptyContainer: {
+    paddingVertical: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyIconBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textDark,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    maxWidth: 240,
   },
   staffCard: {
     backgroundColor: COLORS.white,
@@ -420,15 +566,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatar: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     backgroundColor: COLORS.greenLight,
     justifyContent: "center",
     alignItems: "center",
   },
   staffName: {
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: "700",
     color: COLORS.textDark,
   },
@@ -439,24 +585,29 @@ const styles = StyleSheet.create({
   },
   staffBranch: {
     fontSize: 10.5,
-    color: COLORS.green,
+    color: COLORS.greenDark,
     fontWeight: "600",
     marginTop: 2,
   },
   statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.greenLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  statusOn: {
-    backgroundColor: "#dcfce7",
-  },
-  statusOff: {
-    backgroundColor: "#f1f5f9",
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.green,
   },
   statusText: {
     fontSize: 10,
     fontWeight: "800",
+    color: COLORS.green,
   },
   cardDivider: {
     height: 1,
@@ -466,6 +617,7 @@ const styles = StyleSheet.create({
   cardBottom: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
   infoRow: {
     flexDirection: "row",
@@ -476,6 +628,16 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: COLORS.textMuted,
     fontWeight: "600",
+  },
+  rightActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  deleteBtn: {
+    backgroundColor: COLORS.redLight,
+    padding: 5,
+    borderRadius: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -492,21 +654,27 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: COLORS.textDark,
+  },
+  modalSub: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   modalForm: {
     gap: 12,
   },
   label: {
-    fontSize: 11.5,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
     color: COLORS.textDark,
+    marginBottom: 4,
   },
   input: {
     height: 40,
@@ -524,7 +692,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#f8fafc",
   },
   roleChipSelected: {
     backgroundColor: COLORS.green,
@@ -532,6 +700,7 @@ const styles = StyleSheet.create({
   },
   roleChipText: {
     fontSize: 11,
+    fontWeight: "600",
     color: COLORS.textDark,
   },
   roleChipTextSelected: {
@@ -552,4 +721,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-

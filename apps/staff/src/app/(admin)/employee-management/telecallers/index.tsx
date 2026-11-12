@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,15 +10,21 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
+  RefreshControl,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { apiFetch } from "../../../../services/auth";
 
 const COLORS = {
   purple: "#8b5cf6",
+  purpleDark: "#7c3aed",
   purpleLight: "#f3e8ff",
   green: "#16a34a",
+  greenLight: "#dcfce7",
   white: "#ffffff",
   textDark: "#0f172a",
   textMuted: "#64748b",
@@ -27,104 +33,145 @@ const COLORS = {
   cardBorder: "#e2e8f0",
   bg: "#f8fafc",
   cardBg: "#ffffff",
+  red: "#dc2626",
+  redLight: "#fee2e2",
 };
 
 interface Telecaller {
   id: string;
   name: string;
   phone: string;
-  branch: string;
-  language: string;
-  shift: string;
-  leadsAssigned: number;
-  status: "ONLINE" | "BUSY" | "OFFLINE";
+  branchName?: string;
+  telecallerId?: string;
+  targetQuota?: string;
+  bookedCount?: number;
+  status?: string;
+  email?: string;
 }
 
 export default function AdminTelecallersManagementScreen() {
   const router = useRouter();
+  const [telecallers, setTelecallers] = useState<Telecaller[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // New Telecaller Form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [branch, setBranch] = useState("Central Hub / KPHB");
-  const [language, setLanguage] = useState("Telugu, English, Hindi");
-  const [shift, setShift] = useState("Morning (09:00 AM - 05:00 PM)");
+  const [branch, setBranch] = useState("KPHB Branch");
+  const [quota, setQuota] = useState("60 calls/day");
+  const [suggestedId, setSuggestedId] = useState("");
 
-  const [telecallers, setTelecallers] = useState<Telecaller[]>([
-    {
-      id: "1",
-      name: "Pooja Sharma",
-      phone: "+91 91234 56789",
-      branch: "KPHB Branch",
-      language: "Telugu, Hindi, English",
-      shift: "Morning Shift",
-      leadsAssigned: 34,
-      status: "ONLINE",
-    },
-    {
-      id: "2",
-      name: "Manoj Kumar",
-      phone: "+91 92345 67890",
-      branch: "Dilsukhnagar Branch",
-      language: "Telugu, English",
-      shift: "General Shift",
-      leadsAssigned: 28,
-      status: "BUSY",
-    },
-    {
-      id: "3",
-      name: "Divya Bhavani",
-      phone: "+91 93456 78901",
-      branch: "KPHB Branch",
-      language: "Telugu, Hindi",
-      shift: "Morning Shift",
-      leadsAssigned: 41,
-      status: "ONLINE",
-    },
-    {
-      id: "4",
-      name: "Suresh Varma",
-      phone: "+91 94567 89012",
-      branch: "Gachibowli Branch",
-      language: "English, Hindi",
-      shift: "Evening Shift",
-      leadsAssigned: 19,
-      status: "OFFLINE",
-    },
-  ]);
+  const fetchTelecallers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await apiFetch<any>("/admin/employees?category=TELECALLER");
+      const list = res?.employees || [];
+      setTelecallers(list);
+      if (res?.nextTelecallerId) {
+        setSuggestedId(res.nextTelecallerId);
+      }
+    } catch (err: any) {
+      console.warn("Failed to fetch telecallers:", err);
+      Alert.alert("Notice", "Unable to load live telecallers: " + (err.message || "Please retry"));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const handleAddTelecaller = () => {
+  useEffect(() => {
+    fetchTelecallers();
+  }, [fetchTelecallers]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchTelecallers();
+  };
+
+  const handleAddTelecaller = async () => {
     if (!name.trim() || !phone.trim()) {
       Alert.alert("Required", "Please provide Agent Name and Phone number.");
       return;
     }
 
-    const newAgent: Telecaller = {
-      id: String(Date.now()),
-      name,
-      phone,
-      branch,
-      language,
-      shift,
-      leadsAssigned: 0,
-      status: "ONLINE",
-    };
+    try {
+      setSubmitting(true);
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim().startsWith("+91") ? phone.trim() : `+91 ${phone.trim()}`,
+        branchName: branch.trim() || "KPHB Branch",
+        category: "TELECALLER",
+        telecallerId: suggestedId || `TC${String(telecallers.length + 1).padStart(2, "0")}`,
+        targetQuota: quota.trim() || "60 calls/day",
+        status: "Active",
+      };
 
-    setTelecallers([newAgent, ...telecallers]);
-    setShowAddModal(false);
-    setName("");
-    setPhone("");
+      const res = await apiFetch<any>("/admin/employees", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (res.success || res.employee) {
+        Alert.alert("Success", `${payload.name} was registered as a telecaller agent.`);
+        setShowAddModal(false);
+        setName("");
+        setPhone("");
+        fetchTelecallers();
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to add telecaller.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const filtered = telecallers.filter(
-    (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.branch.toLowerCase().includes(search.toLowerCase()) ||
-      t.phone.includes(search) ||
-      t.language.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleDeleteTelecaller = (agent: Telecaller) => {
+    Alert.alert(
+      "Confirm Removal",
+      `Are you sure you want to remove ${agent.name} (${agent.telecallerId || "Agent"})?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove Agent",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await apiFetch<any>(`/admin/employees?id=${agent.id}`, { method: "DELETE" });
+              setTelecallers((prev) => prev.filter((a) => a.id !== agent.id));
+              Alert.alert("Removed", `${agent.name} has been removed.`);
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to remove agent");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCall = (ph: string) => {
+    const cleaned = ph.replace(/[^0-9+]/g, "");
+    if (cleaned) {
+      Linking.openURL(`tel:${cleaned}`).catch(() => {
+        Alert.alert("Dialer", `Cannot open phone dialer for ${ph}.`);
+      });
+    }
+  };
+
+  const filtered = useMemo(() => {
+    return telecallers.filter((t) => {
+      const q = search.toLowerCase().trim();
+      if (!q) return true;
+      const n = (t.name || "").toLowerCase();
+      const b = (t.branchName || "").toLowerCase();
+      const id = (t.telecallerId || "").toLowerCase();
+      const p = (t.phone || "").replace(/[^0-9]/g, "");
+      return n.includes(q) || b.includes(q) || id.includes(q) || p.includes(q.replace(/[^0-9]/g, ""));
+    });
+  }, [telecallers, search]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
@@ -140,7 +187,9 @@ export default function AdminTelecallersManagementScreen() {
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Telecaller Team</Text>
-            <Text style={styles.headerSub}>{telecallers.length} Agents Registered</Text>
+            <Text style={styles.headerSub}>
+              {loading ? "Loading agents..." : `${telecallers.length} Agents Registered`}
+            </Text>
           </View>
         </View>
 
@@ -159,71 +208,113 @@ export default function AdminTelecallersManagementScreen() {
         <Ionicons name="search" size={16} color={COLORS.textLight} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search telecaller by name, branch or phone..."
+          placeholder="Search telecaller by name, ID, branch or phone..."
           placeholderTextColor={COLORS.textLight}
           value={search}
           onChangeText={setSearch}
         />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Ionicons name="close-circle" size={16} color={COLORS.textLight} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Telecallers List */}
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
-        {filtered.map((agent) => (
-          <View key={agent.id} style={styles.agentCard}>
-            <View style={styles.cardTop}>
-              <View style={styles.avatar}>
-                <Ionicons name="headset" size={18} color={COLORS.purple} />
+      {loading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={COLORS.purple} />
+          <Text style={styles.loadingText}>Loading telecaller team...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.purple]}
+              tintColor={COLORS.purple}
+            />
+          }
+        >
+          {filtered.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconBg}>
+                <Ionicons name="headset-outline" size={36} color={COLORS.textLight} />
               </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.agentName}>{agent.name}</Text>
-                <Text style={styles.agentSub}>
-                  {agent.shift} • {agent.language}
-                </Text>
-                <Text style={styles.agentBranch}>📍 {agent.branch}</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.statusBadge,
-                  agent.status === "ONLINE"
-                    ? styles.statusOnline
-                    : agent.status === "BUSY"
-                    ? styles.statusBusy
-                    : styles.statusOffline,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusText,
-                    agent.status === "ONLINE"
-                      ? { color: COLORS.green }
-                      : agent.status === "BUSY"
-                      ? { color: "#d97706" }
-                      : { color: COLORS.textMuted },
-                  ]}
-                >
-                  {agent.status}
-                </Text>
-              </View>
+              <Text style={styles.emptyTitle}>No telecallers found</Text>
+              <Text style={styles.emptySubtitle}>
+                {search.trim()
+                  ? `No agent matched "${search}".`
+                  : "No telecaller agents have been registered yet."}
+              </Text>
             </View>
+          ) : (
+            filtered.map((agent) => (
+              <View key={agent.id} style={styles.agentCard}>
+                <View style={styles.cardTop}>
+                  <View style={styles.avatar}>
+                    <Ionicons name="headset" size={18} color={COLORS.purple} />
+                  </View>
 
-            <View style={styles.cardDivider} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.agentName}>{agent.name}</Text>
+                      {agent.telecallerId && (
+                        <View style={styles.idBadge}>
+                          <Text style={styles.idBadgeText}>{agent.telecallerId}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.agentSub}>
+                      Target: {agent.targetQuota || "60 calls/day"}
+                    </Text>
+                    <Text style={styles.agentBranch}>📍 {agent.branchName || "All Branches"}</Text>
+                  </View>
 
-            <View style={styles.cardBottom}>
-              <View style={styles.infoRow}>
-                <Ionicons name="call-outline" size={14} color={COLORS.textMuted} />
-                <Text style={styles.infoText}>{agent.phone}</Text>
+                  <View style={styles.statusBadge}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.statusText}>{agent.status || "Active"}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.cardDivider} />
+
+                <View style={styles.cardBottom}>
+                  <TouchableOpacity
+                    style={styles.infoRow}
+                    onPress={() => handleCall(agent.phone)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="call-outline" size={14} color={COLORS.textMuted} />
+                    <Text style={styles.infoText}>{agent.phone}</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.rightActionRow}>
+                    <View style={styles.bookedBadge}>
+                      <Ionicons name="calendar-outline" size={12} color={COLORS.purple} />
+                      <Text style={styles.bookedText}>
+                        {agent.bookedCount !== undefined ? agent.bookedCount : 0} Booked
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleDeleteTelecaller(agent)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="trash-outline" size={14} color={COLORS.red} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-
-              <View style={styles.infoRow}>
-                <Ionicons name="chatbubbles-outline" size={14} color={COLORS.purple} />
-                <Text style={styles.infoText}>{agent.leadsAssigned} Leads Assigned</Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      )}
 
       {/* Add Telecaller Modal */}
       <Modal visible={showAddModal} transparent animationType="slide">
@@ -236,12 +327,16 @@ export default function AdminTelecallersManagementScreen() {
               style={{ maxHeight: "90%", width: "100%" }}
               contentContainerStyle={{ alignItems: "center", paddingVertical: 10 }}
               keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.modalSheet}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Add Telecaller Agent</Text>
+                  <View>
+                    <Text style={styles.modalTitle}>Add Telecaller Agent</Text>
+                    <Text style={styles.modalSub}>
+                      Create telecaller profile with caller ID &amp; quota
+                    </Text>
+                  </View>
                   <TouchableOpacity onPress={() => setShowAddModal(false)}>
                     <Ionicons name="close-circle" size={22} color={COLORS.textLight} />
                   </TouchableOpacity>
@@ -260,7 +355,7 @@ export default function AdminTelecallersManagementScreen() {
                   <Text style={styles.label}>Mobile Number *</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="+91 98765 43210"
+                    placeholder="9876543210"
                     placeholderTextColor={COLORS.textLight}
                     keyboardType="phone-pad"
                     value={phone}
@@ -270,36 +365,32 @@ export default function AdminTelecallersManagementScreen() {
                   <Text style={styles.label}>Branch / Hub Location</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Central Hub / KPHB"
+                    placeholder="KPHB Branch"
                     placeholderTextColor={COLORS.textLight}
                     value={branch}
                     onChangeText={setBranch}
                   />
 
-                  <Text style={styles.label}>Spoken Languages</Text>
+                  <Text style={styles.label}>Daily Target Quota</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Telugu, English, Hindi"
+                    placeholder="60 calls/day"
                     placeholderTextColor={COLORS.textLight}
-                    value={language}
-                    onChangeText={setLanguage}
-                  />
-
-                  <Text style={styles.label}>Work Shift</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Morning (09:00 AM - 05:00 PM)"
-                    placeholderTextColor={COLORS.textLight}
-                    value={shift}
-                    onChangeText={setShift}
+                    value={quota}
+                    onChangeText={setQuota}
                   />
 
                   <TouchableOpacity
-                    style={styles.submitBtn}
+                    style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
                     onPress={handleAddTelecaller}
+                    disabled={submitting}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.submitBtnText}>Save Telecaller Record</Text>
+                    {submitting ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.submitBtnText}>Save Telecaller Record</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -321,7 +412,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
@@ -349,6 +440,7 @@ const styles = StyleSheet.create({
   headerSub: {
     fontSize: 11,
     color: COLORS.textMuted,
+    marginTop: 1,
   },
   addButton: {
     backgroundColor: COLORS.purple,
@@ -371,7 +463,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     paddingHorizontal: 12,
-    height: 38,
+    height: 40,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
@@ -381,13 +473,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textDark,
   },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: "600",
+  },
   content: {
     flex: 1,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 30,
+    paddingBottom: 36,
     gap: 12,
+  },
+  emptyContainer: {
+    paddingVertical: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyIconBg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.textDark,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    maxWidth: 240,
   },
   agentCard: {
     backgroundColor: COLORS.white,
@@ -402,17 +532,33 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatar: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     backgroundColor: COLORS.purpleLight,
     justifyContent: "center",
     alignItems: "center",
   },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   agentName: {
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: "700",
     color: COLORS.textDark,
+  },
+  idBadge: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  idBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.purpleDark,
   },
   agentSub: {
     fontSize: 11,
@@ -421,27 +567,29 @@ const styles = StyleSheet.create({
   },
   agentBranch: {
     fontSize: 10.5,
-    color: COLORS.purple,
+    color: COLORS.purpleDark,
     fontWeight: "600",
     marginTop: 2,
   },
   statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.greenLight,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  statusOnline: {
-    backgroundColor: "#dcfce7",
-  },
-  statusBusy: {
-    backgroundColor: "#fef3c7",
-  },
-  statusOffline: {
-    backgroundColor: "#f1f5f9",
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.green,
   },
   statusText: {
     fontSize: 10,
     fontWeight: "800",
+    color: COLORS.green,
   },
   cardDivider: {
     height: 1,
@@ -451,6 +599,7 @@ const styles = StyleSheet.create({
   cardBottom: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
   infoRow: {
     flexDirection: "row",
@@ -461,6 +610,30 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: COLORS.textMuted,
     fontWeight: "600",
+  },
+  rightActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bookedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.purpleLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  bookedText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: COLORS.purpleDark,
+  },
+  deleteBtn: {
+    backgroundColor: COLORS.redLight,
+    padding: 5,
+    borderRadius: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -477,21 +650,27 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     color: COLORS.textDark,
+  },
+  modalSub: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   modalForm: {
     gap: 12,
   },
   label: {
-    fontSize: 11.5,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
     color: COLORS.textDark,
+    marginBottom: 4,
   },
   input: {
     height: 40,
@@ -517,4 +696,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-

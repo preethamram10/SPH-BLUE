@@ -668,6 +668,8 @@ export interface EmployeeRecord {
   targetQuota?: string;
   status?: string;
   campaign?: string;
+  qualification?: string;
+  specialty?: string;
 }
 
 export const INITIAL_EMPLOYEES: EmployeeRecord[] = [];
@@ -759,6 +761,8 @@ export const employeeService = {
       targetQuota: input.targetQuota || "60 calls/day",
       status: input.status || "Active",
       campaign: input.campaign || "General Patient Follow-Up",
+      qualification: input.qualification?.trim(),
+      specialty: input.specialty?.trim(),
     };
     store.unshift(newRecord);
     global.__sphEmployeesStore = store;

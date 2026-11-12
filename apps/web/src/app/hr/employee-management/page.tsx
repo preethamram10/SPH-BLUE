@@ -44,6 +44,9 @@ interface Employee {
   isAccessGranted?: boolean;
   shiftStartTime?: string;
   graceMinutes?: number;
+  qualification?: string;
+  specialty?: string;
+  status?: string;
 }
 
 interface Branch {
@@ -80,6 +83,8 @@ export default function StaffManagementPage() {
 
   // Doctor Specific
   const [doctorCategory, setDoctorCategory] = useState<"HEAD" | "EMPLOYEE">("EMPLOYEE");
+  const [formQualification, setFormQualification] = useState("");
+  const [formSpecialty, setFormSpecialty] = useState("");
 
   // Shift & Hours State
   const [shiftType, setShiftType] = useState<"SINGLE_STRICT" | "MULTI_STRICT">("SINGLE_STRICT");
@@ -211,6 +216,8 @@ export default function StaffManagementPage() {
     setLogoutAmPm("PM");
     setFormAccessGranted(true);
     setFormGraceMinutes("15");
+    setFormQualification("");
+    setFormSpecialty("");
     setEditingEmployee(null);
   };
 
@@ -234,6 +241,8 @@ export default function StaffManagementPage() {
     setShiftType(emp.shiftType || "SINGLE_STRICT");
     setFormAccessGranted(emp.isAccessGranted !== false);
     setFormGraceMinutes(String(emp.graceMinutes || 15));
+    setFormQualification(emp.qualification || "");
+    setFormSpecialty(emp.specialty || "");
     if (emp.doctorCategory) setDoctorCategory(emp.doctorCategory);
 
     if (emp.category === "DOCTOR") {
@@ -266,7 +275,7 @@ export default function StaffManagementPage() {
       email: formEmail.trim() || "",
       password: formPassword.trim() || "",
       phone: formPhone.trim().startsWith("+91") ? formPhone.trim() : `+91 ${formPhone.trim()}`,
-      branchName: categoryToSave === "STAFF" ? (formBranch?.trim() || "KPHB") : "",
+      branchName: (categoryToSave === "STAFF" || categoryToSave === "DOCTOR") ? (formBranch?.trim() || "KPHB") : "",
       salary: (isHeadDoctor || isHR) ? 0 : (parseInt(formSalary, 10) || 0),
       shiftType: (isHeadDoctor || isHR) ? "SINGLE_STRICT" : shiftType,
       shiftHours: (isHeadDoctor || isHR) ? "-" : formattedShiftHours,
@@ -278,6 +287,8 @@ export default function StaffManagementPage() {
       isAccessGranted: true,
       shiftStartTime: `${loginHour}:${loginMin} ${loginAmPm}`,
       graceMinutes: parseInt(formGraceMinutes, 10) || 15,
+      qualification: formQualification.trim() || undefined,
+      specialty: formSpecialty.trim() || undefined,
     };
 
     try {
@@ -423,7 +434,7 @@ export default function StaffManagementPage() {
                       {activeCategory === "DOCTOR" ? "DOCTOR NAME" : activeCategory === "HR" ? "HR NAME" : "STAFF NAME"}
                     </th>
                     <th className="px-6 py-4">MOBILE NUMBER</th>
-                    {activeCategory === "STAFF" && <th className="px-6 py-4">ASSIGNED BRANCH</th>}
+                    {(activeCategory === "STAFF" || activeCategory === "DOCTOR") && <th className="px-6 py-4">ASSIGNED BRANCH</th>}
                     {activeCategory === "HR" && <th className="px-6 py-4">LOGIN ID</th>}
                     {activeCategory !== "HR" && (
                       <>
@@ -440,13 +451,13 @@ export default function StaffManagementPage() {
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={activeCategory === "STAFF" ? 7 : activeCategory === "DOCTOR" ? 6 : 4} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={activeCategory === "HR" ? 4 : 7} className="px-6 py-12 text-center text-slate-400">
                         Loading {activeCategory === "DOCTOR" ? "doctors" : activeCategory === "HR" ? "HR staff" : "staff members"}...
                       </td>
                     </tr>
                   ) : filteredEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={activeCategory === "STAFF" ? 7 : activeCategory === "DOCTOR" ? 6 : 4} className="px-6 py-16 text-center">
+                      <td colSpan={activeCategory === "HR" ? 4 : 7} className="px-6 py-16 text-center">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <Users className="w-10 h-10 text-slate-300 stroke-[1.5]" />
                           <p className="text-sm font-semibold text-slate-700">
@@ -468,18 +479,26 @@ export default function StaffManagementPage() {
                         <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
                           {/* 1. NAME */}
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900 text-sm">{emp.name}</span>
-                              {isDoctor && (
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    isHeadDoc
-                                      ? "bg-slate-100 text-slate-800 border border-slate-300"
-                                      : "bg-slate-50 text-slate-600 border border-slate-200"
-                                  }`}
-                                >
-                                  {isHeadDoc ? "Head Doctor" : "Employee Doctor"}
-                                </span>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 text-sm">{emp.name}</span>
+                                {isDoctor && (
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      isHeadDoc
+                                        ? "bg-slate-900 text-white shadow-xs"
+                                        : "bg-sky-50 text-[#0284c7] border border-sky-200"
+                                    }`}
+                                  >
+                                    {isHeadDoc ? "Head Doctor" : "Consulting Doctor"}
+                                  </span>
+                                )}
+                              </div>
+                              {isDoctor && (emp.qualification || emp.specialty) && (
+                                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                                  <span>🩺</span>
+                                  <span>{[emp.qualification, emp.specialty].filter(Boolean).join(" • ")}</span>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -492,12 +511,13 @@ export default function StaffManagementPage() {
                             </div>
                           </td>
 
-                          {/* 3. ASSIGNED BRANCH (Staff Only) */}
-                          {activeCategory === "STAFF" && (
+                          {/* 3. ASSIGNED BRANCH (Staff & Doctor) */}
+                          {(activeCategory === "STAFF" || activeCategory === "DOCTOR") && (
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-[#0284c7] font-bold text-xs">
-                                {emp.branchName || "KPHB"}
-                              </span>
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                <span className="text-[#0284c7]">📍</span>
+                                <span>{emp.branchName || "All Branches"}</span>
+                              </div>
                             </td>
                           )}
 
@@ -1114,6 +1134,53 @@ export default function StaffManagementPage() {
                     placeholder="e.g. 9876543210"
                     value={formPhone}
                     onChange={(e) => setFormPhone(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                  />
+                </div>
+              </div>
+
+              {/* Branch, Qualification & Specialty */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Assigned Branch *
+                  </label>
+                  <select
+                    value={formBranch}
+                    onChange={(e) => setFormBranch(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] bg-white"
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id || b.name} value={b.name}>
+                        {b.name}
+                      </option>
+                    ))}
+                    <option value="All Branches">All Branches</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Qualification
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. MD (Hom), BHMS"
+                    value={formQualification}
+                    onChange={(e) => setFormQualification(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Specialization
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Classical Homeopathy"
+                    value={formSpecialty}
+                    onChange={(e) => setFormSpecialty(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                   />
                 </div>
