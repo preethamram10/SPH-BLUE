@@ -900,7 +900,43 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* 3. Next Month */}
+          {/* 3. This Month */}
+          <TouchableOpacity
+            style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
+            onPress={() => setPeriodFilter("this_month")}
+            activeOpacity={0.75}
+          >
+            <Ionicons
+              name="calendar"
+              size={12}
+              color={periodFilter === "this_month" ? "#ffffff" : "#0284c7"}
+            />
+            <Text
+              style={[
+                styles.periodChipText,
+                periodFilter === "this_month" && styles.periodChipTextActive,
+              ]}
+            >
+              This Month
+            </Text>
+            <View
+              style={[
+                styles.countBadge,
+                periodFilter === "this_month" ? styles.countBadgeActiveWhite : styles.countBadgeSky,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.countBadgeText,
+                  periodFilter === "this_month" ? styles.countBadgeTextSky : styles.countBadgeTextSkyDark,
+                ]}
+              >
+                {stats.thisMonth}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 4. Next Month */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "next_month" && styles.periodChipActiveIndigo]}
             onPress={() => setPeriodFilter("next_month")}
@@ -936,7 +972,7 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* 4. Overdue */}
+          {/* 5. Overdue */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "overdue" && styles.periodChipActiveRose]}
             onPress={() => setPeriodFilter("overdue")}
@@ -972,7 +1008,7 @@ export default function ReceptionFollowUpsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* 5. Custom Month Picker Button */}
+          {/* 6. Custom Month Picker Button */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "month" && styles.periodChipActiveSky]}
             onPress={() => setShowMonthModal(true)}
@@ -998,7 +1034,7 @@ export default function ReceptionFollowUpsScreen() {
             />
           </TouchableOpacity>
 
-          {/* 6. Custom Date Picker Button */}
+          {/* 7. Custom Date Picker Button */}
           <TouchableOpacity
             style={[styles.periodChip, periodFilter === "range" && styles.periodChipActiveSky]}
             onPress={() => setShowRangeModal(true)}
@@ -1024,42 +1060,6 @@ export default function ReceptionFollowUpsScreen() {
               size={11}
               color={periodFilter === "range" ? "#ffffff" : "#64748b"}
             />
-          </TouchableOpacity>
-
-          {/* 7. This Month */}
-          <TouchableOpacity
-            style={[styles.periodChip, periodFilter === "this_month" && styles.periodChipActiveSky]}
-            onPress={() => setPeriodFilter("this_month")}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name="calendar"
-              size={12}
-              color={periodFilter === "this_month" ? "#ffffff" : "#0284c7"}
-            />
-            <Text
-              style={[
-                styles.periodChipText,
-                periodFilter === "this_month" && styles.periodChipTextActive,
-              ]}
-            >
-              This Month
-            </Text>
-            <View
-              style={[
-                styles.countBadge,
-                periodFilter === "this_month" ? styles.countBadgeActiveWhite : styles.countBadgeSky,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.countBadgeText,
-                  periodFilter === "this_month" ? styles.countBadgeTextSky : styles.countBadgeTextSkyDark,
-                ]}
-              >
-                {stats.thisMonth}
-              </Text>
-            </View>
           </TouchableOpacity>
 
           {/* 8. All Follow-Ups (MOVED TO LAST) */}
