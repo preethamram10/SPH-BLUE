@@ -14,6 +14,7 @@ export interface MedicineRequest {
   age?: string;
   gender?: string; // "Mr.", "Mrs.", "Ms.", "Master", "Male", "Female"
   branchName: string;
+  receptionPhone?: string;
   condition?: string;
   duration?: string; // "1 Month", "2 Months", "3 Months", etc.
   totalAmount?: number;
@@ -25,9 +26,9 @@ export interface MedicineRequest {
 // Branch phone directory mapping
 export const BRANCH_PHONES: Record<string, string> = {
   kphb: "+91 90301 76176",
-  chandanagar: "+91 99031 19766",
-  dilshuknagar: "+91 94908 08582",
-  nallagandla: "+91 80961 76176",
+  chandanagar: "+91 95531 76176",
+  dilshuknagar: "+91 98041 76176",
+  nallagandla: "+91 91321 76176",
   banjara: "+91 81252 60176",
 };
 
@@ -83,7 +84,7 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
   const branchDisplay = (req.branchName || "KPHB Branch").toUpperCase();
   const cleanDuration = (req.duration || "1 Month").replace(/months?/gi, "").trim();
   const formattedDate = new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
-  const branchPhone = getBranchPhone(req.branchName);
+  const branchPhone = req.receptionPhone || getBranchPhone(req.branchName);
 
   const validMedicines = req.medicines && req.medicines.length > 0 ? req.medicines : [];
   const totalAmt = Number(req.totalAmount) || 0;

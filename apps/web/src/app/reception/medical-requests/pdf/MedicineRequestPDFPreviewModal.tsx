@@ -22,7 +22,7 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
   if (!isOpen) return null;
 
   const formattedDate = new Date().toLocaleDateString("en-GB");
-  const branchPhone = getBranchPhone(request.branchName);
+  const branchPhone = (request as any).receptionPhone || getBranchPhone(request.branchName);
   const totalAmt = Number(request.totalAmount) || 0;
 
   return (

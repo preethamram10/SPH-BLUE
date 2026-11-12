@@ -348,6 +348,7 @@ function MedicalRequestsContent() {
       age: sharePopupData.age,
       phone: sharePopupData.phone,
       branchName: sharePopupData.branchName,
+      receptionPhone: (sharePopupData as any).receptionPhone,
       duration: sharePopupData.duration,
       totalAmount: sharePopupData.totalAmount,
       medicines: sharePopupData.medicines,

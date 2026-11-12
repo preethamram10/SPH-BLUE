@@ -122,7 +122,7 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   {
     id: "b-chn",
     name: "Chandanagar Branch",
-    phone: "+91 99031 19766",
+    phone: "+91 95531 76176",
     address: "Main Road, Chandanagar",
     city: "Hyderabad",
     timings: "9:00 AM - 8:30 PM",
@@ -134,7 +134,7 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   {
     id: "b-dil",
     name: "Dilshuknagar Branch",
-    phone: "+91 94908 08582",
+    phone: "+91 98041 76176",
     address: "Near Metro, Dilshuknagar",
     city: "Hyderabad",
     timings: "9:00 AM - 8:30 PM",
@@ -146,7 +146,7 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   {
     id: "b-ngl",
     name: "Nallagandla Branch",
-    phone: "+91 80961 76176",
+    phone: "+91 91321 76176",
     address: "HUDA Layout, Nallagandla",
     city: "Hyderabad",
     timings: "9:00 AM - 8:30 PM",
@@ -345,6 +345,15 @@ function cascadeBranchRename(oldName: string, newName: string): void {
   }
 }
 
+export function getBranchReceptionPhone(branchName: string = ""): string {
+  const lower = (branchName || "").toLowerCase().replace(/branch/gi, "").trim();
+  if (lower.includes("nalla") || lower.includes("nlg")) return "+91 91321 76176";
+  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return "+91 98041 76176";
+  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return "+91 95531 76176";
+  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return "+91 90301 76176";
+  return "+91 90301 76176";
+}
+
 // Shared In-Memory & Cache Store
 function getMemoryStore(): BranchRecord[] {
   if (!global.__sphBranchesStore) {
@@ -355,11 +364,13 @@ function getMemoryStore(): BranchRecord[] {
     const dedupedMap = new Map<string, BranchRecord>();
     raw.forEach((b) => {
       const key = normalizeBranchName(b.name);
+      const canonicalPhone = getBranchReceptionPhone(b.name);
+      const updatedBranch = { ...b, phone: canonicalPhone || b.phone };
       if (!dedupedMap.has(key)) {
-        dedupedMap.set(key, b);
+        dedupedMap.set(key, updatedBranch);
       } else {
         const prev = dedupedMap.get(key)!;
-        dedupedMap.set(key, { ...prev, ...b });
+        dedupedMap.set(key, { ...prev, ...updatedBranch, phone: canonicalPhone || updatedBranch.phone });
       }
     });
     global.__sphBranchesStore = Array.from(dedupedMap.values());
@@ -3967,6 +3978,7 @@ export interface MedicineRequestRecord {
   gender: string;
   age?: string;
   branchName: string;
+  receptionPhone?: string;
   duration: string;
   totalAmount: number;
   medicines: MedicineRequestItem[];
@@ -4043,7 +4055,10 @@ export const medicineRequestService = {
       const s = status.toLowerCase();
       store = store.filter((item) => item.status.toLowerCase() === s);
     }
-    return store;
+    return store.map((item) => ({
+      ...item,
+      receptionPhone: item.receptionPhone || getBranchReceptionPhone(item.branchName),
+    }));
   },
 
   async createRequest(
@@ -4061,6 +4076,7 @@ export const medicineRequestService = {
       id: data.id || generatedId,
       requestId: data.requestId || `MED-${Date.now().toString().slice(-6)}`,
       status: data.status || "pending",
+      receptionPhone: data.receptionPhone || getBranchReceptionPhone(data.branchName),
       createdAt: data.createdAt || new Date().toISOString(),
     };
     store.unshift(newRecord);
