@@ -582,7 +582,9 @@ export default function AdminPayLaterPage() {
                           <td className="py-2 px-3">
                             <span className="font-semibold text-slate-800 text-[11px]">{r.branch || "KPHB"}</span>
                             {r.doctorName && (
-                              <div className="text-[10px] text-slate-500">Dr. {r.doctorName}</div>
+                              <div className="text-[10px] text-slate-500">
+                                {r.doctorName?.startsWith("Dr.") ? r.doctorName : `Dr. ${r.doctorName || "Doctor"}`}
+                              </div>
                             )}
                           </td>
 

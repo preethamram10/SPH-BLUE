@@ -81,7 +81,8 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
 
   const title = resolveTitle(req.gender);
   const pronoun = resolvePronoun(req.gender);
-  const patUpper = (req.patientName || "PATIENT").toUpperCase();
+  const rawPatUpper = (req.patientName || "PATIENT").toUpperCase().trim();
+  const patUpper = title === "DR." ? rawPatUpper.replace(/^DR\.?\s+/i, "") : rawPatUpper;
   const ageVal = req.age ? req.age.trim() : "";
   const branchDisplay = (req.branchName || "KPHB Branch").toUpperCase();
   const cleanDuration = (req.duration || "1 Month").replace(/months?/gi, "").trim();

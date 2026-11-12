@@ -937,7 +937,12 @@ export default function MedicalRequestsScreen() {
                   <Text style={styles.certPara}>
                     THIS IS TO CERTIFY THAT{" "}
                     <Text style={{ fontWeight: "900", color: "#0f172a" }}>
-                      {sharePopupData?.gender || "MR."} {(sharePopupData?.patientName || "PATIENT").toUpperCase()}
+                      {(() => {
+                        const sal = sharePopupData?.gender || "MR.";
+                        const raw = (sharePopupData?.patientName || "PATIENT").toUpperCase();
+                        const clean = sal.toLowerCase().startsWith("dr") ? raw.replace(/^DR\.?\s+/i, "") : raw;
+                        return `${sal.toUpperCase()} ${clean}`.trim();
+                      })()}
                     </Text>
                     {sharePopupData?.age ? ` AGED ABOUT ${sharePopupData.age} YEARS,` : ""} HAS BEEN UNDER OUR TREATMENT AT SPIRITUAL HOMEOPATHY ({sharePopupData?.branchName}).
                   </Text>

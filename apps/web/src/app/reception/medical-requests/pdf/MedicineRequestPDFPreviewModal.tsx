@@ -24,6 +24,11 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
   const formattedDate = new Date().toLocaleDateString("en-GB");
   const branchPhone = (request as any).receptionPhone || getBranchPhone(request.branchName);
   const totalAmt = Number(request.totalAmount) || 0;
+  const isDrSalutation = (request.gender || "").toLowerCase().startsWith("dr");
+  const cleanPatName = isDrSalutation
+    ? (request.patientName || "").replace(/^dr\.?\s+/i, "")
+    : request.patientName || "";
+  const displayPatName = `${request.gender || "MR."} ${cleanPatName}`.trim();
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -83,7 +88,7 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
               <p className="text-slate-700 leading-6 text-justify">
                 THIS IS TO CERTIFY THAT{" "}
                 <strong className="text-slate-900 uppercase">
-                  {request.gender || "MR."} {request.patientName}
+                  {displayPatName}
                 </strong>
                 {request.age ? (
                   <span>
@@ -103,7 +108,7 @@ export const MedicineRequestPDFPreviewModal: React.FC<PreviewModalProps> = ({
                 )}
                 WE RECOMMENDED THAT{" "}
                 <strong className="text-slate-900 uppercase">
-                  {request.gender || "MR."} {request.patientName}
+                  {displayPatName}
                 </strong>{" "}
                 CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
               </p>

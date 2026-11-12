@@ -289,7 +289,7 @@ export default function MobileFeeRequestsScreen() {
                       📞 {r.phoneNumber || r.phone || "No Phone"} • {r.branch || "All Branches"}
                     </Text>
                     <Text style={styles.docText}>
-                      Doctor: Dr. {r.doctorName || "Doctor"} • ID: {r.registrationId || "N/A"}
+                      Doctor: {r.doctorName?.startsWith("Dr.") ? r.doctorName : `Dr. ${r.doctorName || "Doctor"}`} • ID: {r.registrationId || "N/A"}
                     </Text>
                     <Text style={styles.dateText}>📅 {dateStr}</Text>
                   </View>

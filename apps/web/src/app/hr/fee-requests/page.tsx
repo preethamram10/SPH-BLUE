@@ -372,7 +372,9 @@ export default function HRFeeRequestsPage() {
 
                           <td className="py-3.5 px-4">
                             <p className="font-bold text-slate-800">{d.branch || "All Branches"}</p>
-                            <p className="text-[11px] text-slate-500">Dr. {d.doctorName || "Doctor"}</p>
+                            <p className="text-[11px] text-slate-500">
+                              {d.doctorName?.startsWith("Dr.") ? d.doctorName : `Dr. ${d.doctorName || "Doctor"}`}
+                            </p>
                           </td>
 
                           <td className="py-3.5 px-4">
