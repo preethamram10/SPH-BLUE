@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { API_BASE_URL } from "../config/api";
+import { getBranchPhone } from "../utils/branchPhone";
 
 const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
@@ -101,7 +102,11 @@ export async function getActiveBranch(): Promise<any | null> {
   const raw = await SecureStore.getItemAsync(ACTIVE_BRANCH_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const branch = JSON.parse(raw);
+    if (branch && branch.name) {
+      branch.phone = getBranchPhone(branch.name, branch.phone);
+    }
+    return branch;
   } catch {
     return null;
   }
@@ -111,7 +116,11 @@ export async function getAssignedBranch(): Promise<any | null> {
   const raw = await SecureStore.getItemAsync(ASSIGNED_BRANCH_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const branch = JSON.parse(raw);
+    if (branch && branch.name) {
+      branch.phone = getBranchPhone(branch.name, branch.phone);
+    }
+    return branch;
   } catch {
     return null;
   }

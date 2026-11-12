@@ -35,7 +35,14 @@ export const BRANCH_PHONES: Record<string, string> = {
 export const getBranchPhone = (branchName: string = "", branchesList?: any[]): string => {
   const lower = (branchName || "").toLowerCase().trim();
 
-  // 1. Check loaded branches list first if provided
+  // 1. Canonical directory mapping takes strict priority
+  if (lower.includes("nalla") || lower.includes("nlg")) return BRANCH_PHONES.nallagandla;
+  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return BRANCH_PHONES.dilshuknagar;
+  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return BRANCH_PHONES.chandanagar;
+  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return BRANCH_PHONES.kphb;
+  if (lower.includes("banjara") || lower.includes("bjh")) return BRANCH_PHONES.banjara;
+
+  // 2. Dynamic branch lookup fallback
   if (Array.isArray(branchesList) && branchesList.length > 0) {
     const match = branchesList.find((b: any) => {
       const bName = (b.name || "").toLowerCase().trim();
@@ -46,13 +53,6 @@ export const getBranchPhone = (branchName: string = "", branchesList?: any[]): s
       return String(match.phone).trim();
     }
   }
-
-  // 2. Directory fallback based on known branch names & aliases
-  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return BRANCH_PHONES.chandanagar;
-  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return BRANCH_PHONES.dilshuknagar;
-  if (lower.includes("nalla") || lower.includes("nlg")) return BRANCH_PHONES.nallagandla;
-  if (lower.includes("banjara") || lower.includes("bjh")) return BRANCH_PHONES.banjara;
-  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return BRANCH_PHONES.kphb;
 
   return BRANCH_PHONES.kphb;
 };

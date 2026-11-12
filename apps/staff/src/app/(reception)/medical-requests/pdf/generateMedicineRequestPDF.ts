@@ -33,13 +33,19 @@ export const BRANCH_PHONES: Record<string, string> = {
   chandanagar: "+91 95531 76176",
   dilshuknagar: "+91 98041 76176",
   nallagandla: "+91 91321 76176",
-  banjara: "+91 81252 60176",
 };
 
 export const getBranchPhone = (branchName: string = "", branchesList?: any[]): string => {
   const lower = (branchName || "").toLowerCase().trim();
 
-  // 1. Check loaded branches list first if provided
+  // 1. Canonical directory mapping takes strict priority
+  if (lower.includes("nalla") || lower.includes("nlg")) return BRANCH_PHONES.nallagandla;
+  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return BRANCH_PHONES.dilshuknagar;
+  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return BRANCH_PHONES.chandanagar;
+  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return BRANCH_PHONES.kphb;
+  if (lower.includes("banjara") || lower.includes("bjh")) return BRANCH_PHONES.banjara;
+
+  // 2. Dynamic branch lookup fallback
   if (Array.isArray(branchesList) && branchesList.length > 0) {
     const match = branchesList.find((b: any) => {
       const bName = (b.name || "").toLowerCase().trim();
@@ -50,13 +56,6 @@ export const getBranchPhone = (branchName: string = "", branchesList?: any[]): s
       return String(match.phone).trim();
     }
   }
-
-  // 2. Directory fallback based on known branch names & aliases
-  if (lower.includes("chanda") || lower.includes("cngr") || lower.includes("chn")) return BRANCH_PHONES.chandanagar;
-  if (lower.includes("dilshuk") || lower.includes("dilsukh") || lower.includes("dsnr") || lower.includes("dil")) return BRANCH_PHONES.dilshuknagar;
-  if (lower.includes("nalla") || lower.includes("nlg")) return BRANCH_PHONES.nallagandla;
-  if (lower.includes("banjara") || lower.includes("bjh")) return BRANCH_PHONES.banjara;
-  if (lower.includes("kphb") || lower.includes("kpb") || lower.includes("kukatpally")) return BRANCH_PHONES.kphb;
 
   return BRANCH_PHONES.kphb;
 };
@@ -175,15 +174,14 @@ export const generateMedicineRequestHTML = (req: MedicineRequest): string => {
       : ""
     }WE RECOMMENDED THAT <strong>${title} ${patUpper}</strong> CONTINUES TO FOLLOW THE PRESCRIBED MEDICATIONS.
         </div>
-        ${
-          req.notes && req.notes.trim()
-            ? `
+        ${req.notes && req.notes.trim()
+      ? `
           <div style="font-size: 12.5px; color: #1e293b; line-height: 1.5; margin: 14px 0 12px 0; font-weight: 500; white-space: pre-wrap;">
             ${req.notes.trim()}
           </div>
         `
-            : ""
-        }
+      : ""
+    }
         <div class="med-heading-bar">
           <div class="med-heading">PRESCRIBED MEDICINES</div>
           ${totalAmt > 0

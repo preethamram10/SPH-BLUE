@@ -19,6 +19,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken, getActiveBranch, removeActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
+import { getBranchPhone } from "../../utils/branchPhone";
 import { API_BASE_URL } from "../../config/api";
 import { useNetwork } from "../../context/NetworkContext";
 import { AppointmentPaymentModal } from "../../components/payment/AppointmentPaymentModal";
@@ -704,7 +705,7 @@ export default function ReceptionDashboard() {
           <View style={styles.headerTitleBox}>
             <Text style={styles.headerMainTitle}>{branchShortName} Reception</Text>
             <Text style={styles.headerPhoneText}>
-              {activeBranch?.phone || "+91 90301 76176"}
+              {getBranchPhone(activeBranch?.name, activeBranch?.phone)}
             </Text>
             <View style={styles.badgeRow}>
               <View style={styles.receptionBadge}>
@@ -1798,9 +1799,9 @@ export default function ReceptionDashboard() {
                     {activeBranch?.name || "Clinic Branch"}
                   </Text>
                 </View>
-                {activeBranch?.phone && (
-                  <Text style={styles.drawerBranchPhone}>📞 {activeBranch.phone}</Text>
-                )}
+                <Text style={styles.drawerBranchPhone}>
+                  📞 {getBranchPhone(activeBranch?.name, activeBranch?.phone)}
+                </Text>
               </View>
             </View>
 
