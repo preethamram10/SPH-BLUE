@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import DoctorSidebar from "@/components/doctor/DoctorSidebar";
 import {
   Users,
@@ -11,25 +11,60 @@ import {
   RotateCcw,
   RefreshCw,
   ExternalLink,
+  MapPin,
+  Stethoscope,
 } from "lucide-react";
+
+type SessionTab = "TODAY" | "YESTERDAY" | "TREATED" | "ALL";
 
 export default function DoctorPatientListPage() {
   const [patients, setPatients] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [session, setSession] = useState<SessionTab>("TODAY");
+  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number>>({
+    TODAY: 0,
+    YESTERDAY: 0,
+    TREATED: 0,
+    ALL: 0,
+  });
+
+  const fetchPatients = useCallback(async (tab: SessionTab) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/doctor/patients?session=${tab}&pageSize=100`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.patients)) {
+        setPatients(data.patients);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchSessionCounts = useCallback(async () => {
+    const tabs: SessionTab[] = ["TODAY", "YESTERDAY", "TREATED", "ALL"];
+    const counts: Record<SessionTab, number> = { TODAY: 0, YESTERDAY: 0, TREATED: 0, ALL: 0 };
+    await Promise.all(
+      tabs.map(async (tab) => {
+        try {
+          const res = await fetch(`/api/doctor/patients?session=${tab}&page=1&pageSize=1`);
+          const data = await res.json();
+          if (data.success) {
+            counts[tab] = data.totalCount || 0;
+          }
+        } catch {}
+      })
+    );
+    setSessionCounts(counts);
+  }, []);
 
   useEffect(() => {
-    setIsLoading(true);
-    fetch("/api/doctor/patients")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.patients)) {
-          setPatients(data.patients);
-        }
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setIsLoading(false));
-  }, []);
+    fetchPatients(session);
+    fetchSessionCounts();
+  }, [session, fetchPatients, fetchSessionCounts]);
 
   const filteredPatients = patients.filter((p) => {
     const q = searchTerm.toLowerCase();
@@ -37,7 +72,9 @@ export default function DoctorPatientListPage() {
       (p.patientName || "").toLowerCase().includes(q) ||
       (p.registrationId || "").toLowerCase().includes(q) ||
       (p.phone || "").includes(q) ||
-      (p.diseases || "").toLowerCase().includes(q)
+      (p.diseases || "").toLowerCase().includes(q) ||
+      (p.doctorName || "").toLowerCase().includes(q) ||
+      (p.branch || "").toLowerCase().includes(q)
     );
   });
 
@@ -72,10 +109,46 @@ export default function DoctorPatientListPage() {
         </header>
 
         <main className="flex-1 px-4 py-3.5 max-w-7xl w-full mx-auto space-y-3.5">
+          {/* Session Tabs */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+            {(["TODAY", "YESTERDAY", "TREATED", "ALL"] as SessionTab[]).map((tab) => {
+              const count = sessionCounts[tab];
+              let label = "";
+              if (tab === "TODAY") label = `Today (${count})`;
+              else if (tab === "YESTERDAY") label = `Yesterday (${count})`;
+              else if (tab === "TREATED") label = `Treated (${count})`;
+              else label = `All Patients (${count})`;
+
+              const isActive = session === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setSession(tab)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-[#0284c7] text-white shadow-xs"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">All Doctor Consulted Patients</h3>
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                  {session === "TODAY"
+                    ? "Today's Consulted Patients"
+                    : session === "YESTERDAY"
+                    ? "Yesterday's Consulted Patients"
+                    : session === "TREATED"
+                    ? "All Treated / Consulted Patients"
+                    : "All Registered Patients Directory"}
+                </h3>
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-sky-50 text-[#0284c7] border border-sky-200">
                   {filteredPatients.length} Records
                 </span>
@@ -89,7 +162,7 @@ export default function DoctorPatientListPage() {
               </div>
             ) : filteredPatients.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs">
-                No patient records match &quot;{searchTerm}&quot;
+                No patient records found for this session.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -98,6 +171,7 @@ export default function DoctorPatientListPage() {
                     <tr>
                       <th className="py-2 px-3">Patient ID</th>
                       <th className="py-2 px-3">Patient Name</th>
+                      <th className="py-2 px-3">Doctor & Branch</th>
                       <th className="py-2 px-3">Primary Diagnosis / Disease</th>
                       <th className="py-2 px-3">Last Visit Date</th>
                       <th className="py-2 px-3 text-center">Total Visits</th>
@@ -118,6 +192,31 @@ export default function DoctorPatientListPage() {
                             <Phone className="w-2.5 h-2.5" />
                             {p.phone || "No Mobile"}
                           </span>
+                          {p.consultationMode && (
+                            <span
+                              className={`inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded ${
+                                p.consultationMode.toLowerCase() === "online"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-slate-100 text-slate-600 border border-slate-200"
+                              }`}
+                            >
+                              {p.consultationMode}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-slate-600">
+                          {p.doctorName && (
+                            <div className="font-medium text-slate-800 flex items-center gap-1">
+                              <Stethoscope className="w-3 h-3 text-[#0284c7]" />
+                              {p.doctorName}
+                            </div>
+                          )}
+                          {p.branch && (
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                              <MapPin className="w-2.5 h-2.5" />
+                              {p.branch}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-3">
                           <span className="font-medium text-slate-700">{p.diseases}</span>
@@ -141,9 +240,10 @@ export default function DoctorPatientListPage() {
                             onClick={() => {
                               const clean = (p.phone || "").replace(/\D/g, "").slice(-10);
                               if (clean) {
+                                const docLabel = p.doctorName || "our Doctor";
                                 window.open(
                                   `https://wa.me/91${clean}?text=${encodeURIComponent(
-                                    `Hello ${p.patientName}, this is regarding your homeopathic follow-up visit with Dr. Prashanth K Vaidya.`
+                                    `Hello ${p.patientName}, this is regarding your homeopathic follow-up visit with ${docLabel} at Spiritual Homeopathy.`
                                   )}`,
                                   "_blank"
                                 );

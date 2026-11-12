@@ -15,14 +15,14 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { apiFetch, getActiveBranch } from "../../../services/auth";
+import { apiFetch, getActiveBranch, getActiveDoctor } from "../../../services/auth";
 import { DoctorDrawerSidebar } from "../../../components/doctor/DoctorDrawerSidebar";
 import { DoctorHeader } from "../../../components/doctor/DoctorHeader";
 import { DoctorBottomNav } from "../../../components/doctor/DoctorBottomNav";
 import { normalizeDateStr } from "../../../utils/dateUtils";
 
 const PAGE_SIZE = 25;
-type SessionTab = "TODAY" | "YESTERDAY" | "ALL";
+type SessionTab = "TODAY" | "YESTERDAY" | "TREATED" | "ALL";
 
 const COLORS = {
   primary: "#0284c7",
@@ -45,11 +45,13 @@ export default function DoctorPatientListScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [session, setSession] = useState<SessionTab>("TODAY");
-  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number>>({ TODAY: 0, YESTERDAY: 0, ALL: 0 });
+  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number>>({ TODAY: 0, YESTERDAY: 0, TREATED: 0, ALL: 0 });
   const [activeBranch, setActiveBranch] = useState<any>(null);
+  const [activeDoctor, setActiveDoctor] = useState<any>(null);
 
   useEffect(() => {
     getActiveBranch().then((b) => { if (b) setActiveBranch(b); });
+    getActiveDoctor().then((d) => { if (d) setActiveDoctor(d); });
   }, []);
 
   const fetchPatients = useCallback(
@@ -58,14 +60,23 @@ export default function DoctorPatientListScreen() {
       else setIsLoading(true);
       try {
         const branchName = activeBranch?.name || activeBranch?.branch || "";
-        const doctorName = activeBranch?.doctorName || activeBranch?.doctorId || "";
+        const isHead =
+          activeDoctor?.isHeadDoctor === true ||
+          (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
+          (activeDoctor?.name || "").toLowerCase().includes("head");
+        const doctorName = isHead ? "" : (activeDoctor?.name || "");
+
         const params = new URLSearchParams({
           session: tab,
           page: String(page),
           pageSize: String(PAGE_SIZE),
         });
-        if (branchName) params.set("branch", branchName);
-        if (doctorName) params.set("doctorName", doctorName);
+        if (branchName && branchName !== "All Branches" && branchName !== "ALL") {
+          params.set("branch", branchName);
+        }
+        if (doctorName && doctorName !== "All Doctors" && doctorName !== "ALL") {
+          params.set("doctorName", doctorName);
+        }
 
         const data = await apiFetch<any>(`/doctor/patients?${params.toString()}`);
         if (data.success) {
@@ -75,40 +86,47 @@ export default function DoctorPatientListScreen() {
           setCurrentPage(data.currentPage || 1);
         }
       } catch (err) {
-        console.error(err);
+        console.error("fetchPatients error:", err);
       } finally {
         setIsLoading(false);
         setIsRefreshing(false);
       }
     },
-    [activeBranch]
+    [activeBranch, activeDoctor]
   );
 
   const fetchSessionCounts = useCallback(async () => {
     const branchName = activeBranch?.name || activeBranch?.branch || "";
-    const doctorName = activeBranch?.doctorName || activeBranch?.doctorId || "";
-    const tabs: SessionTab[] = ["TODAY", "YESTERDAY", "ALL"];
-    const counts: Record<SessionTab, number> = { TODAY: 0, YESTERDAY: 0, ALL: 0 };
+    const isHead =
+      activeDoctor?.isHeadDoctor === true ||
+      (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
+      (activeDoctor?.name || "").toLowerCase().includes("head");
+    const doctorName = isHead ? "" : (activeDoctor?.name || "");
+
+    const tabs: SessionTab[] = ["TODAY", "YESTERDAY", "TREATED", "ALL"];
+    const counts: Record<SessionTab, number> = { TODAY: 0, YESTERDAY: 0, TREATED: 0, ALL: 0 };
     await Promise.all(
       tabs.map(async (tab) => {
         try {
           const params = new URLSearchParams({ session: tab, page: "1", pageSize: "1" });
-          if (branchName) params.set("branch", branchName);
-          if (doctorName) params.set("doctorName", doctorName);
+          if (branchName && branchName !== "All Branches" && branchName !== "ALL") {
+            params.set("branch", branchName);
+          }
+          if (doctorName && doctorName !== "All Doctors" && doctorName !== "ALL") {
+            params.set("doctorName", doctorName);
+          }
           const data = await apiFetch<any>(`/doctor/patients?${params.toString()}`);
           if (data.success) counts[tab] = data.totalCount || 0;
-        } catch { }
+        } catch {}
       })
     );
     setSessionCounts(counts);
-  }, [activeBranch]);
+  }, [activeBranch, activeDoctor]);
 
   useEffect(() => {
-    if (activeBranch !== null) {
-      fetchPatients(session, 1);
-      fetchSessionCounts();
-    }
-  }, [activeBranch, session]);
+    fetchPatients(session, 1);
+    fetchSessionCounts();
+  }, [session, activeBranch, activeDoctor]);
 
   const handleTabChange = (tab: SessionTab) => {
     setSession(tab);
@@ -228,6 +246,13 @@ export default function DoctorPatientListScreen() {
               <Text style={styles.metaText}>
                 ID: {regId} • {displayPhone}
               </Text>
+              {p.consultationMode ? (
+                <View style={[styles.sourceBadge, { backgroundColor: (p.consultationMode || "").toLowerCase() === "online" ? "#ecfdf5" : "#f1f5f9" }]}>
+                  <Text style={[styles.sourceBadgeText, { color: (p.consultationMode || "").toLowerCase() === "online" ? "#059669" : "#475569" }]}>
+                    {p.consultationMode}
+                  </Text>
+                </View>
+              ) : null}
               {source ? (
                 <View style={styles.sourceBadge}>
                   <Text style={styles.sourceBadgeText}>{source}</Text>
@@ -236,6 +261,24 @@ export default function DoctorPatientListScreen() {
             </View>
           </View>
         </View>
+
+        {/* Doctor and Branch Row */}
+        {(p.doctorName || p.branch) ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+            {p.doctorName ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="medkit-outline" size={12} color="#0284c7" />
+                <Text style={{ fontSize: 11, fontWeight: "600", color: "#334155" }}>{p.doctorName}</Text>
+              </View>
+            ) : null}
+            {p.branch ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="location-outline" size={12} color="#64748b" />
+                <Text style={{ fontSize: 11, color: "#64748b" }}>{p.branch}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Symptoms / Chief Complaints */}
         {diseases ? (
@@ -289,9 +332,14 @@ export default function DoctorPatientListScreen() {
 
           {/* Session Tabs */}
           <View style={styles.tabsRow}>
-            {(["TODAY", "YESTERDAY", "ALL"] as SessionTab[]).map((tab) => {
+            {(["TODAY", "YESTERDAY", "TREATED", "ALL"] as SessionTab[]).map((tab) => {
               const count = sessionCounts[tab];
-              const label = tab === "ALL" ? `All Patients (${count})` : `${tab === "TODAY" ? "Today" : "Yesterday"} (${count})`;
+              let label = "";
+              if (tab === "TODAY") label = `Today (${count})`;
+              else if (tab === "YESTERDAY") label = `Yesterday (${count})`;
+              else if (tab === "TREATED") label = `Treated (${count})`;
+              else label = `All Patients (${count})`;
+
               const isActive = session === tab;
               return (
                 <TouchableOpacity
