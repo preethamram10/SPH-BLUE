@@ -40,6 +40,37 @@ function normalizeDateToYYYYMMDD(dt?: string | null): string {
   return clean;
 }
 
+function isHistoricalOrUploadPlaceholder(a: any): boolean {
+  if (a.isHistorical) return true;
+  const src = (a.marketingSource || "").toLowerCase();
+  const notes = ((a.diagnosisNotes || "") + " " + (a.notes || "")).toLowerCase();
+  if (
+    src.includes("historical") ||
+    src.includes("old record") ||
+    src.includes("old entry") ||
+    src.includes("uploaded") ||
+    notes.includes("historical prescription") ||
+    notes.includes("historical entry") ||
+    notes.includes("uploaded prescription")
+  ) {
+    return true;
+  }
+  // If record has zero paid amount, no invoice, and no fee declared, it's an uploaded placeholder
+  const hasPaymentRecord =
+    (typeof a.totalPaid === "number" && a.totalPaid > 0) ||
+    Boolean(a.invoiceId) ||
+    Boolean(a.paidAt);
+  const hasFeeDeclared =
+    (typeof a.consultationFee === "number" && a.consultationFee > 0) ||
+    (typeof a.medicineFee === "number" && a.medicineFee > 0) ||
+    (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0);
+
+  if (!hasPaymentRecord && !hasFeeDeclared) {
+    return true;
+  }
+  return false;
+}
+
 export async function GET(req: Request) {
   try {
     const appointments = await appointmentService.getAppointments(
@@ -49,18 +80,53 @@ export async function GET(req: Request) {
       false
     );
 
-    // Filter appointments that have been completed or paid
+    // Filter appointments that have been completed or paid WITH REAL REVENUE
+    // Exclude uploaded files, old historical placeholders, and $0 entries
     const paidAppointments = appointments.filter((a) => {
       if (a.isDeleted || a.status === "CANCELLED") return false;
 
+      // 1. Exclude all uploaded file placeholders & historical record entries
+      if (isHistoricalOrUploadPlaceholder(a)) return false;
+
+      // 2. Compute exact billable / collected amount
+      const cFee = Number(a.consultationFee) || 0;
+      const mFee = Number(a.medicineFee) || 0;
+      const dFee = Number(a.dietPlanFee || (a as any).dietFee) || 0;
+      const oFee = Number(a.otherCharges) || 0;
+      const disc = Number(a.discountApproved || a.discount) || 0;
+
+      const isPkg = Boolean(
+        (a as any).hasPackage ||
+        (a as any).activePackage ||
+        (a as any).packageTotalAmount ||
+        (a as any).packageName ||
+        (a as any).packageInstallmentPaid ||
+        (a as any).billingMode === "package" ||
+        (a as any).paymentType === "package"
+      );
+      const pkgAmount = Number((a as any).packageInstallmentPaid || (a as any).packageTotalAmount || 0);
+
+      let total = 0;
+      if (typeof a.totalPaid === "number" && a.totalPaid > 0) {
+        total = a.totalPaid;
+      } else if (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0) {
+        total = a.totalAmountDue;
+      } else if (isPkg && pkgAmount > 0) {
+        total = pkgAmount;
+      } else {
+        total = Math.max(0, cFee + mFee + dFee + oFee - disc);
+      }
+
+      // Must have actual collected or due revenue > 0
+      if (total <= 0) return false;
+
+      // Must be paid, fee collected, or completed with real payment
       return (
-        a.isFeeCollected ||
-        a.status === "COMPLETED" ||
+        a.isFeeCollected === true ||
         Boolean(a.paidAt) ||
+        Boolean(a.invoiceId) ||
         (typeof a.totalPaid === "number" && a.totalPaid > 0) ||
-        (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0) ||
-        (typeof a.consultationFee === "number" && a.consultationFee > 0) ||
-        (typeof a.medicineFee === "number" && a.medicineFee > 0)
+        (a.status === "COMPLETED" && (cFee > 0 || mFee > 0 || isPkg))
       );
     });
 
@@ -91,10 +157,6 @@ export async function GET(req: Request) {
         total = pkgAmount;
       } else {
         total = Math.max(0, cFee + mFee + dFee + oFee - disc);
-      }
-
-      if (total <= 0 && (a.isFeeCollected || a.status === "COMPLETED")) {
-        total = cFee + mFee + dFee || 500;
       }
 
       let split = "Consultation";

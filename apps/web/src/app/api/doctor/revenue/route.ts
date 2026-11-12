@@ -12,7 +12,24 @@ export async function GET(req: NextRequest) {
     // Fetch all historical appointments for this doctor
     const allAppointments = await appointmentService.getAppointments(branch, undefined, doctorName);
 
-    const completed = allAppointments.filter((a) => (a.status || "").toUpperCase() === "COMPLETED");
+    const completed = allAppointments.filter((a) => {
+      if ((a.status || "").toUpperCase() !== "COMPLETED") return false;
+      if (a.isDeleted) return false;
+      if ((a as any).isHistorical) return false;
+      const src = (a.marketingSource || "").toLowerCase();
+      const notes = ((a.diagnosisNotes || "") + " " + (a.notes || "")).toLowerCase();
+      if (
+        src.includes("historical") ||
+        src.includes("old record") ||
+        src.includes("old entry") ||
+        src.includes("uploaded") ||
+        notes.includes("historical prescription") ||
+        notes.includes("historical entry")
+      ) {
+        return false;
+      }
+      return true;
+    });
     const activeWaiting = allAppointments.filter((a) => (a.status || "").toUpperCase() !== "COMPLETED");
 
     // Compute consultation & package earnings from real appointments
@@ -29,16 +46,24 @@ export async function GET(req: NextRequest) {
     const totalRevenue = consultationEarnings + packageEarnings;
 
     // Recent revenue transactions
-    const recentTransactions = completed.slice(0, 10).map((a, idx) => ({
-      id: a.id || `tx-${idx}`,
-      patientName: a.patientName,
-      registrationId: a.registrationId,
-      date: a.appointmentDate,
-      service: a.diseases ? `Consultation (${a.diseases})` : "Standard Consultation",
-      amount: 500,
-      paymentMode: idx % 2 === 0 ? "UPI" : "Cash",
-      status: "Collected",
-    }));
+    const recentTransactions = completed.slice(0, 10).map((a, idx) => {
+      const amt =
+        typeof a.totalPaid === "number" && a.totalPaid > 0
+          ? a.totalPaid
+          : typeof a.totalAmountDue === "number" && a.totalAmountDue > 0
+          ? a.totalAmountDue
+          : Number(a.consultationFee) || 0;
+      return {
+        id: a.id || `tx-${idx}`,
+        patientName: a.patientName,
+        registrationId: a.registrationId,
+        date: a.appointmentDate,
+        service: a.diseases ? `Consultation (${a.diseases})` : "Standard Consultation",
+        amount: amt,
+        paymentMode: a.paymentMethod || (idx % 2 === 0 ? "UPI" : "Cash"),
+        status: "Collected",
+      };
+    });
 
     return NextResponse.json({
       success: true,

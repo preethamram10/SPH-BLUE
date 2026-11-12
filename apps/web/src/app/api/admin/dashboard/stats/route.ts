@@ -100,12 +100,27 @@ export async function GET(req: Request) {
 
       const todayPatients = branchApptsToday.length;
 
-      // Revenue today for this branch
+      // Revenue today for this branch (excluding historical / uploaded records)
       const todayRevenue = branchApptsToday.reduce((sum, a) => {
+        if ((a as any).isHistorical) return sum;
+        const src = (a.marketingSource || "").toLowerCase();
+        const notes = ((a.diagnosisNotes || "") + " " + (a.notes || "")).toLowerCase();
+        if (
+          src.includes("historical") ||
+          src.includes("old record") ||
+          src.includes("old entry") ||
+          src.includes("uploaded") ||
+          notes.includes("historical prescription") ||
+          notes.includes("historical entry") ||
+          notes.includes("uploaded prescription")
+        ) {
+          return sum;
+        }
+
         const isPaid =
           a.isFeeCollected ||
-          a.status === "COMPLETED" ||
           Boolean(a.paidAt) ||
+          Boolean(a.invoiceId) ||
           (typeof a.totalPaid === "number" && a.totalPaid > 0) ||
           (typeof a.totalAmountDue === "number" && a.totalAmountDue > 0);
         if (!isPaid) return sum;
@@ -119,9 +134,9 @@ export async function GET(req: Request) {
           const cFee = Number(a.consultationFee) || 0;
           const mFee = Number(a.medicineFee) || 0;
           const dFee = Number(a.dietPlanFee) || 0;
-          total = cFee + mFee + dFee || 500;
+          total = cFee + mFee + dFee;
         }
-        return sum + total;
+        return sum + Math.max(0, total);
       }, 0);
 
       // Staff assigned to this branch

@@ -1753,6 +1753,7 @@ export interface AppointmentRecord {
   packageEndDate?: string;
   bookedByTelecallerId?: string;
   bookedByTelecallerName?: string;
+  isHistorical?: boolean;
 }
 
 function getPatientsCachePath(): string {
@@ -3588,6 +3589,20 @@ export const branchTargetService = {
       // 2. Real-time live revenue reached: calculate sum of all completed appointments for THIS branch in THIS month
       const branchAppts = appointments.filter((a) => {
         if (a.isDeleted) return false;
+        if (a.isHistorical) return false;
+        const src = (a.marketingSource || "").toLowerCase();
+        const notes = ((a.diagnosisNotes || "") + " " + (a.notes || "")).toLowerCase();
+        if (
+          src.includes("historical") ||
+          src.includes("old record") ||
+          src.includes("old entry") ||
+          src.includes("uploaded") ||
+          notes.includes("historical prescription") ||
+          notes.includes("historical entry")
+        ) {
+          return false;
+        }
+
         // Check branch match
         const apptBranch = normalizeBranchName(a.branch);
         if (apptBranch !== cleanBranch) return false;

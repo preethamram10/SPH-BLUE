@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
           patientName: body.patientName || "Patient",
           phone: body.phone || "9999999999",
           branch: body.branch || "Clinic Branch",
-          marketingSource: "Direct Walk-In",
+          marketingSource: "Uploaded Prescription Record",
           consultationMode: "Offline",
           doctorId: "doc-1",
           doctorName: "Dr. Prashanth K Vaidya",
@@ -220,6 +220,12 @@ export async function POST(req: NextRequest) {
           isReback: false,
           prescriptionImages: [imageUrl],
           status: "COMPLETED",
+          isHistorical: true,
+          isFeeCollected: false,
+          consultationFee: 0,
+          totalAmountDue: 0,
+          totalPaid: 0,
+          diagnosisNotes: "Uploaded Prescription Record",
         });
         return NextResponse.json({ success: true, message: "Created appointment and attached prescription", appointment: newAppt });
       }
