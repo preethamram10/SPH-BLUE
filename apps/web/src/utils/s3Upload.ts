@@ -155,7 +155,6 @@ export async function uploadBufferToS3(options: S3UploadOptions): Promise<string
       "AWS S3 credentials missing. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in your environment (.env)."
     );
   }
-
   const key = options.key.startsWith("/") ? options.key.slice(1) : options.key;
   const contentType = options.contentType || "image/jpeg";
   const host = `${bucket}.s3.${region}.amazonaws.com`;
