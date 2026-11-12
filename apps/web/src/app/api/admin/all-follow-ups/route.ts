@@ -226,19 +226,39 @@ export async function GET(req: NextRequest) {
         };
       });
 
-    // Compute aggregate stats across all live records
+    // Branch filter first (scoped to branch if selected)
+    let branchFollowUps = followUpsList;
+    if (branchFilter && branchFilter !== "All Branches" && branchFilter !== "ALL") {
+      const normFilter = branchFilter
+        .toLowerCase()
+        .replace(/spiritual\s*homeopathy/gi, "")
+        .replace(/\bbranch\b/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+      branchFollowUps = branchFollowUps.filter((f) => {
+        const normF = f.branch
+          .toLowerCase()
+          .replace(/spiritual\s*homeopathy/gi, "")
+          .replace(/\bbranch\b/gi, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
+      });
+    }
+
+    // Compute aggregate stats scoped to the branch (or all branches if "All Branches")
     const stats = {
-      total: followUpsList.length,
-      dueToday: followUpsList.filter((f) => f.isDueToday).length,
-      dueTomorrow: followUpsList.filter((f) => f.isDueTomorrow).length,
-      overdue: followUpsList.filter((f) => f.isOverdue).length,
-      nextMonth: followUpsList.filter((f) => f.isNextMonth).length,
-      thisMonth: followUpsList.filter((f) => f.isThisMonth).length,
-      completed: followUpsList.filter((f) => f.status === "Completed").length,
+      total: branchFollowUps.length,
+      dueToday: branchFollowUps.filter((f) => f.isDueToday).length,
+      dueTomorrow: branchFollowUps.filter((f) => f.isDueTomorrow).length,
+      overdue: branchFollowUps.filter((f) => f.isOverdue).length,
+      nextMonth: branchFollowUps.filter((f) => f.isNextMonth).length,
+      thisMonth: branchFollowUps.filter((f) => f.isThisMonth).length,
+      completed: branchFollowUps.filter((f) => f.status === "Completed").length,
     };
 
     // Filter
-    let filtered = followUpsList;
+    let filtered = branchFollowUps;
 
     // Period / Month / Range filter: due_today, due_tomorrow, overdue, next_month, this_month, month, range, all
     if (periodFilter === "due_today" || periodFilter === "today") {
@@ -262,24 +282,7 @@ export async function GET(req: NextRequest) {
       filtered = filtered.filter((f) => f.dueTime >= startTime && f.dueTime <= endTime);
     }
 
-    // Branch filter
-    if (branchFilter && branchFilter !== "All Branches") {
-      const normFilter = branchFilter
-        .toLowerCase()
-        .replace(/spiritual\s*homeopathy/gi, "")
-        .replace(/\bbranch\b/gi, "")
-        .replace(/[^a-z0-9]/g, "")
-        .trim();
-      filtered = filtered.filter((f) => {
-        const normF = f.branch
-          .toLowerCase()
-          .replace(/spiritual\s*homeopathy/gi, "")
-          .replace(/\bbranch\b/gi, "")
-          .replace(/[^a-z0-9]/g, "")
-          .trim();
-        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
-      });
-    }
+
 
     // Status filter
     if (statusFilter && statusFilter !== "All") {

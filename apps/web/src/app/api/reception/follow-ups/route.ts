@@ -219,18 +219,38 @@ interface FollowUpRecordItem {
         };
       });
 
-    // Compute aggregate stats across all live records
+    // Branch filter first (scoped to Reception branch)
+    let branchFollowUps = followUpsList;
+    if (branchFilter && branchFilter !== "All Branches" && branchFilter !== "ALL") {
+      const normFilter = branchFilter
+        .toLowerCase()
+        .replace(/spiritual\s*homeopathy/gi, "")
+        .replace(/\bbranch\b/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+      branchFollowUps = branchFollowUps.filter((f) => {
+        const normF = f.branch
+          .toLowerCase()
+          .replace(/spiritual\s*homeopathy/gi, "")
+          .replace(/\bbranch\b/gi, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
+      });
+    }
+
+    // Compute aggregate stats scoped to the branch
     const stats = {
-      total: followUpsList.length,
-      dueToday: followUpsList.filter((f) => f.isDueToday).length,
-      dueTomorrow: followUpsList.filter((f) => f.isDueTomorrow).length,
-      overdue: followUpsList.filter((f) => f.isOverdue).length,
-      nextMonth: followUpsList.filter((f) => f.isNextMonth).length,
-      thisMonth: followUpsList.filter((f) => f.isThisMonth).length,
-      completed: followUpsList.filter((f) => f.status === "Completed").length,
+      total: branchFollowUps.length,
+      dueToday: branchFollowUps.filter((f) => f.isDueToday).length,
+      dueTomorrow: branchFollowUps.filter((f) => f.isDueTomorrow).length,
+      overdue: branchFollowUps.filter((f) => f.isOverdue).length,
+      nextMonth: branchFollowUps.filter((f) => f.isNextMonth).length,
+      thisMonth: branchFollowUps.filter((f) => f.isThisMonth).length,
+      completed: branchFollowUps.filter((f) => f.status === "Completed").length,
     };
 
-    let filtered = followUpsList;
+    let filtered = branchFollowUps;
 
     // Direct date match if dateParam provided
     if (dateParam && dateParam !== "ALL") {
@@ -260,24 +280,7 @@ interface FollowUpRecordItem {
       }
     }
 
-    // Branch filter
-    if (branchFilter && branchFilter !== "All Branches" && branchFilter !== "ALL") {
-      const normFilter = branchFilter
-        .toLowerCase()
-        .replace(/spiritual\s*homeopathy/gi, "")
-        .replace(/\bbranch\b/gi, "")
-        .replace(/[^a-z0-9]/g, "")
-        .trim();
-      filtered = filtered.filter((f) => {
-        const normF = f.branch
-          .toLowerCase()
-          .replace(/spiritual\s*homeopathy/gi, "")
-          .replace(/\bbranch\b/gi, "")
-          .replace(/[^a-z0-9]/g, "")
-          .trim();
-        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
-      });
-    }
+
 
     // Status filter
     if (statusFilter && statusFilter !== "All") {
