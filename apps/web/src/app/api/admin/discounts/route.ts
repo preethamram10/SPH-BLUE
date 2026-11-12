@@ -1,16 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService } from "@spiritualhomeo/database";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const discounts = await appointmentService.getPendingDiscounts();
+    const { searchParams } = new URL(req.url);
+    const months = parseInt(searchParams.get("months") || "2", 10);
+    const status = searchParams.get("status") || "ALL";
+    const branch = searchParams.get("branch") || "ALL";
+
+    const { discounts, stats } = await appointmentService.getDiscounts({
+      months: isNaN(months) ? 2 : months,
+      status,
+      branch,
+    });
+
     return NextResponse.json({
       success: true,
       count: discounts.length,
       discounts,
+      stats,
     });
   } catch (error: any) {
-    console.error("Fetch pending discounts error:", error);
+    console.error("Fetch discounts error:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch discounts." },
       { status: 500 }

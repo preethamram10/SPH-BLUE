@@ -89,14 +89,14 @@ export interface MedicineRequestPayload {
   medicines: MedicineItem[];
   deliveryAddress?: string;
   notes?: string;
-  status?: "pending" | "completed" | "dispatched";
+  status?: "pending" | "completed" | "dispatched" | "rejected";
   createdAt?: string;
 }
 
 function MedicalRequestsContent() {
   const [currentBranch, setCurrentBranch] = useState("KPHB Branch");
   const [viewMode, setViewMode] = useState<"list" | "form">("list");
-  const [activeTab, setActiveTab] = useState<"ALL" | "completed">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "pending" | "completed" | "dispatched" | "rejected">("ALL");
 
   // Requests List
   const [requests, setRequests] = useState<MedicineRequestPayload[]>([]);
@@ -219,7 +219,7 @@ function MedicalRequestsContent() {
     setNotes("");
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched") => {
+  const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched" | "rejected") => {
     try {
       const res = await fetch("/api/reception/medical-requests", {
         method: "POST",
@@ -357,7 +357,10 @@ function MedicalRequestsContent() {
   };
 
   const filteredRequests = requests.filter((r) => {
+    if (activeTab === "pending") return (r.status || "pending") === "pending";
     if (activeTab === "completed") return r.status === "completed";
+    if (activeTab === "dispatched") return r.status === "dispatched";
+    if (activeTab === "rejected") return r.status === "rejected";
     return true;
   });
 
@@ -436,26 +439,61 @@ function MedicalRequestsContent() {
           <div className="flex-1 flex flex-col min-h-0 print:hidden">
             {/* Filter Tabs Bar */}
             <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setActiveTab("ALL")}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${activeTab === "ALL"
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "ALL"
                       ? "bg-slate-900 text-white"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
+                  }`}
                 >
-                  All Requests ({requests.length})
+                  All ({requests.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("pending")}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "pending"
+                      ? "bg-amber-600 text-white"
+                      : "bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  }`}
+                >
+                  Pending ({requests.filter((r) => (r.status || "pending") === "pending").length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("completed")}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${activeTab === "completed"
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "completed"
                       ? "bg-emerald-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
+                      : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                  }`}
                 >
                   Completed ({requests.filter((r) => r.status === "completed").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("dispatched")}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "dispatched"
+                      ? "bg-blue-600 text-white"
+                      : "bg-blue-50 text-blue-800 hover:bg-blue-100"
+                  }`}
+                >
+                  Dispatched ({requests.filter((r) => r.status === "dispatched").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("rejected")}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    activeTab === "rejected"
+                      ? "bg-rose-600 text-white"
+                      : "bg-rose-50 text-rose-800 hover:bg-rose-100"
+                  }`}
+                >
+                  Rejected ({requests.filter((r) => r.status === "rejected").length})
                 </button>
               </div>
 

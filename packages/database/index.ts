@@ -1731,6 +1731,7 @@ export interface AppointmentRecord {
   discountApproved?: number;
   discountNotes?: string;
   discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  discountRespondedAt?: string;
   paidAt?: string;
   otherCharges?: number;
   discount?: number;
@@ -2567,6 +2568,7 @@ export const appointmentService = {
       discountApproved?: number;
       discountNotes?: string;
       discountStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  discountRespondedAt?: string;
       otherCharges?: number;
       discount?: number;
       discountReason?: string;
@@ -2733,6 +2735,7 @@ export const appointmentService = {
       appt.discountStatus = "REJECTED";
       appt.discountApproved = 0;
     }
+    appt.discountRespondedAt = new Date().toISOString();
     if (data.notes) {
       appt.discountNotes = `${appt.discountNotes || ""} | HR/Admin Note: ${data.notes}`.trim();
     }
@@ -2746,8 +2749,97 @@ export const appointmentService = {
    * Returns all pending discount requests for HR / Admin.
    */
   async getPendingDiscounts(): Promise<AppointmentRecord[]> {
+    const res = await this.getDiscounts({ status: "PENDING" });
+    return res.discounts;
+  },
+
+  /**
+   * Returns discount requests (pending, approved, rejected) within the last N months (default 2 months).
+   */
+  async getDiscounts(options?: { months?: number; status?: string; branch?: string }): Promise<{
+    discounts: AppointmentRecord[];
+    stats: { total: number; pending: number; approved: number; rejected: number };
+  }> {
     const store = getAppointmentsStore();
-    return store.filter((a) => a.discountStatus === "PENDING" && !a.isDeleted);
+    const months = options?.months || 2;
+    const cutoffTime = Date.now() - months * 30 * 24 * 60 * 60 * 1000;
+
+    // Filter appointments that have a discount request
+    const discountAppts = store.filter((a) => {
+      if (a.isDeleted) return false;
+      const status = a.discountStatus;
+      const hasDiscount =
+        (typeof a.discountRequested === "number" && a.discountRequested > 0) ||
+        (typeof a.discountApproved === "number" && a.discountApproved > 0) ||
+        (status && status !== "NONE");
+      if (!hasDiscount) return false;
+
+      // Pending are always shown regardless of date!
+      if (status === "PENDING") return true;
+
+      // Approved / Rejected: check within last N months (by discountRespondedAt, createdAt, or appointmentDate)
+      let recordTime = 0;
+      if (a.discountRespondedAt) {
+        recordTime = new Date(a.discountRespondedAt).getTime();
+      } else if (a.createdAt) {
+        recordTime = new Date(a.createdAt).getTime();
+      } else if (a.appointmentDate) {
+        const parts = a.appointmentDate.split("-");
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            recordTime = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
+          } else {
+            recordTime = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10)).getTime();
+          }
+        }
+      }
+
+      if (recordTime && recordTime < cutoffTime) {
+        return false;
+      }
+      return true;
+    });
+
+    const stats = {
+      total: discountAppts.length,
+      pending: discountAppts.filter((a) => (a.discountStatus || "PENDING") === "PENDING").length,
+      approved: discountAppts.filter((a) => a.discountStatus === "APPROVED").length,
+      rejected: discountAppts.filter((a) => a.discountStatus === "REJECTED").length,
+    };
+
+    let filtered = discountAppts;
+
+    // Filter by branch if specified
+    if (options?.branch && options.branch !== "All Branches" && options.branch !== "ALL") {
+      const bClean = options.branch.toLowerCase().replace(/branch/gi, "").trim();
+      filtered = filtered.filter((a) => {
+        const aBranch = (a.branch || "").toLowerCase().replace(/branch/gi, "").trim();
+        return aBranch === bClean || aBranch.includes(bClean) || bClean.includes(aBranch);
+      });
+    }
+
+    // Filter by status if specified
+    if (options?.status && options.status !== "ALL" && options.status !== "All") {
+      const s = options.status.toUpperCase();
+      filtered = filtered.filter((a) => (a.discountStatus || "PENDING").toUpperCase() === s);
+    }
+
+    // Sort: PENDING first, then newest to oldest
+    filtered.sort((a, b) => {
+      const isAPending = (a.discountStatus || "PENDING") === "PENDING";
+      const isBPending = (b.discountStatus || "PENDING") === "PENDING";
+      if (isAPending && !isBPending) return -1;
+      if (!isAPending && isBPending) return 1;
+
+      const tA = new Date(a.discountRespondedAt || a.createdAt || 0).getTime();
+      const tB = new Date(b.discountRespondedAt || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+
+    return {
+      discounts: filtered.map((a) => decorateAppointmentWithVisitInfo(a, store)),
+      stats,
+    };
   },
 
   /**
@@ -4074,7 +4166,7 @@ export interface MedicineRequestRecord {
   medicines: MedicineRequestItem[];
   deliveryAddress?: string;
   notes?: string;
-  status: "pending" | "completed" | "dispatched";
+  status: "pending" | "completed" | "dispatched" | "rejected";
   createdAt: string;
   updatedAt?: string;
 }
@@ -4155,7 +4247,7 @@ export const medicineRequestService = {
     data: Omit<MedicineRequestRecord, "id" | "requestId" | "createdAt" | "status"> & {
       id?: string;
       requestId?: string;
-      status?: "pending" | "completed" | "dispatched";
+      status?: "pending" | "completed" | "dispatched" | "rejected";
       createdAt?: string;
     }
   ): Promise<MedicineRequestRecord> {
@@ -4177,7 +4269,7 @@ export const medicineRequestService = {
 
   async updateRequestStatus(
     id: string,
-    status: "pending" | "completed" | "dispatched"
+    status: "pending" | "completed" | "dispatched" | "rejected"
   ): Promise<MedicineRequestRecord | null> {
     const store = getMedicineRequestsStore();
     const item = store.find((r) => r.id === id || r.requestId === id);

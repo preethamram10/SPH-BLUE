@@ -88,14 +88,14 @@ export interface MedicalRequestItem {
   medicines: MedicineItem[];
   deliveryAddress?: string;
   notes?: string;
-  status: "pending" | "completed" | "dispatched";
+  status: "pending" | "completed" | "dispatched" | "rejected";
   createdAt: string;
 }
 
 export default function MedicalRequestsScreen() {
   const router = useRouter();
   const [activeBranch, setActiveBranch] = useState<{ id: string; name: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<"ALL" | "completed">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "pending" | "completed" | "dispatched" | "rejected">("ALL");
   const [requests, setRequests] = useState<MedicalRequestItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -162,7 +162,7 @@ export default function MedicalRequestsScreen() {
     }
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched") => {
+  const handleUpdateStatus = async (id: string, newStatus: "pending" | "completed" | "dispatched" | "rejected") => {
     try {
       const res = await apiFetch<{ success: boolean }>(
         "/reception/medical-requests",
@@ -363,9 +363,12 @@ export default function MedicalRequestsScreen() {
     });
   };
 
-  // Filtered requests list (ALL or completed)
+  // Filtered requests list
   const filteredRequests = requests.filter((r) => {
+    if (activeTab === "pending") return (r.status || "pending") === "pending";
     if (activeTab === "completed") return r.status === "completed";
+    if (activeTab === "dispatched") return r.status === "dispatched";
+    if (activeTab === "rejected") return r.status === "rejected";
     return true;
   });
 
@@ -394,27 +397,59 @@ export default function MedicalRequestsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 2. TABS BAR (ALL & COMPLETED) */}
+      {/* 2. TABS BAR */}
       <View style={styles.tabsRow}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === "ALL" && styles.tabButtonActive]}
-          onPress={() => setActiveTab("ALL")}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabText, activeTab === "ALL" && styles.tabTextActive]}>
-            All Requests ({requests.length})
-          </Text>
-        </TouchableOpacity>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "ALL" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("ALL")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === "ALL" && styles.tabTextActive]}>
+              All ({requests.length})
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === "completed" && styles.tabButtonActive]}
-          onPress={() => setActiveTab("completed")}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.tabText, activeTab === "completed" && styles.tabTextActive]}>
-            Completed ({requests.filter((r) => r.status === "completed").length})
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "pending" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("pending")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === "pending" && styles.tabTextActive]}>
+              Pending ({requests.filter((r) => (r.status || "pending") === "pending").length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "completed" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("completed")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === "completed" && styles.tabTextActive]}>
+              Completed ({requests.filter((r) => r.status === "completed").length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "dispatched" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("dispatched")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === "dispatched" && styles.tabTextActive]}>
+              Dispatched ({requests.filter((r) => r.status === "dispatched").length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "rejected" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("rejected")}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, activeTab === "rejected" && styles.tabTextActive]}>
+              Rejected ({requests.filter((r) => r.status === "rejected").length})
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* 3. REQUESTS LIST */}
