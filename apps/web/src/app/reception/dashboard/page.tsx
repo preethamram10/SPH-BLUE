@@ -522,12 +522,12 @@ export default function ReceptionDashboardPage() {
     [appointments]
   );
   const collectFeeCount = useMemo(
-    () => appointments.filter((a) => a.status === "COLLECT_FEE").length,
+    () => appointments.filter((a) => !a.isFeeCollected && a.status !== "COMPLETED" && (a.status === "COLLECT_FEE" || !!a.isSentToReception)).length,
     [appointments]
   );
   const activeCount = inConsultationCount;
   const completedCount = useMemo(
-    () => appointments.filter((a) => a.status === "COMPLETED").length,
+    () => appointments.filter((a) => a.status === "COMPLETED" || !!a.isFeeCollected).length,
     [appointments]
   );
 
@@ -543,10 +543,12 @@ export default function ReceptionDashboardPage() {
       return appointments.filter((a) => a.status === "IN_CONSULTATION");
     }
     if (activeFilter === "COLLECT_FEE") {
-      return appointments.filter((a) => a.status === "COLLECT_FEE");
+      return appointments.filter(
+        (a) => !a.isFeeCollected && a.status !== "COMPLETED" && (a.status === "COLLECT_FEE" || !!a.isSentToReception)
+      );
     }
     if (activeFilter === "COMPLETED") {
-      return appointments.filter((a) => a.status === "COMPLETED");
+      return appointments.filter((a) => a.status === "COMPLETED" || !!a.isFeeCollected);
     }
     return appointments;
   }, [appointments, activeFilter]);
@@ -942,9 +944,10 @@ export default function ReceptionDashboardPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredAppointments.map((appt, index) => {
                       const status = (appt.status || "WAITING").toUpperCase();
-                      const isWaiting = status === "WAITING" || status === "SCHEDULED";
-                      const isActive = status === "IN_CONSULTATION" || status === "COLLECT_FEE";
-                      const isCompleted = status === "COMPLETED";
+                      const isCompleted = status === "COMPLETED" || !!appt.isFeeCollected;
+                      const isWaiting = !isCompleted && (status === "WAITING" || status === "SCHEDULED");
+                      const isActive = !isCompleted && status === "IN_CONSULTATION";
+                      const isSentToReception = !isCompleted && (status === "COLLECT_FEE" || !!appt.isSentToReception);
                       const isFirst = index === 0;
                       const isLast = index === filteredAppointments.length - 1;
                       const isRevisit = !!appt.isReback;
@@ -1020,7 +1023,7 @@ export default function ReceptionDashboardPage() {
                                 <Play className="w-3 h-3 fill-white" />
                                 <span>Start Prescription</span>
                               </button>
-                            ) : status === "IN_CONSULTATION" ? (
+                            ) : isActive ? (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1035,7 +1038,20 @@ export default function ReceptionDashboardPage() {
                                 <Activity className="w-3 h-3 text-white" />
                                 <span>In Consultation</span>
                               </button>
-                            ) : (status === "COLLECT_FEE" || appt.isSentToReception) ? (
+                            ) : isCompleted ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPaymentAppt(appt);
+                                  setIsPaymentModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all cursor-pointer shadow-xs active:scale-95"
+                                title="View & Print Payment Receipt / Invoice"
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>COMPLETED</span>
+                              </button>
+                            ) : isSentToReception ? (
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
@@ -1050,19 +1066,6 @@ export default function ReceptionDashboardPage() {
                                   <span>COLLECT FEE</span>
                                 </button>
                               </div>
-                            ) : isCompleted ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedPaymentAppt(appt);
-                                  setIsPaymentModalOpen(true);
-                                }}
-                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all cursor-pointer shadow-xs active:scale-95"
-                                title="View & Print Payment Receipt / Invoice"
-                              >
-                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                                <span>COMPLETED</span>
-                              </button>
                             ) : (
                               <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-slate-100 text-slate-600">
                                 {status.replace("_", " ")}

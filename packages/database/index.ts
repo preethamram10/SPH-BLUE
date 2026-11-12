@@ -2618,6 +2618,7 @@ export const appointmentService = {
 
     appt.status = "COMPLETED";
     appt.isFeeCollected = true;
+    appt.isSentToReception = false;
     appt.paidAt = new Date().toISOString();
 
     global.__sphAppointmentsStore = store;

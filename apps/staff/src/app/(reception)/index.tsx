@@ -509,11 +509,17 @@ export default function ReceptionDashboard() {
     [appointments]
   );
   const collectFeeAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "COLLECT_FEE"),
+    () => appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return !a.isFeeCollected && st !== "COMPLETED" && (st === "COLLECT_FEE" || !!a.isSentToReception);
+    }),
     [appointments]
   );
   const completedAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "COMPLETED"),
+    () => appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return st === "COMPLETED" || !!a.isFeeCollected;
+    }),
     [appointments]
   );
 

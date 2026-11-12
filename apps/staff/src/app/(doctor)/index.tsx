@@ -327,8 +327,8 @@ export default function DoctorDashboard() {
     const st = (a.status || "WAITING").toUpperCase();
     if (activeFilter === "UPCOMING") return st === "WAITING" || st === "SCHEDULED";
     if (activeFilter === "ACTIVE") return st === "IN_CONSULTATION";
-    if (activeFilter === "SENT_TO_RECEPTION") return st === "COLLECT_FEE" || !!a.isSentToReception;
-    if (activeFilter === "COMPLETED") return st === "COMPLETED";
+    if (activeFilter === "SENT_TO_RECEPTION") return (st === "COLLECT_FEE" || !!a.isSentToReception) && st !== "COMPLETED" && !a.isFeeCollected;
+    if (activeFilter === "COMPLETED") return st === "COMPLETED" || !!a.isFeeCollected;
     return true;
   });
 
@@ -349,8 +349,14 @@ export default function DoctorDashboard() {
   const totalCount = appointments.length;
   const upcomingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
   const activeCount = appointments.filter((a) => a.status === "IN_CONSULTATION").length;
-  const sentCount = appointments.filter((a) => (a.status || "").toUpperCase() === "COLLECT_FEE" || !!a.isSentToReception).length;
-  const completedCount = appointments.filter((a) => a.status === "COMPLETED").length;
+  const sentCount = appointments.filter((a) => {
+    const st = (a.status || "").toUpperCase();
+    return (st === "COLLECT_FEE" || !!a.isSentToReception) && st !== "COMPLETED" && !a.isFeeCollected;
+  }).length;
+  const completedCount = appointments.filter((a) => {
+    const st = (a.status || "").toUpperCase();
+    return st === "COMPLETED" || !!a.isFeeCollected;
+  }).length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
@@ -582,9 +588,9 @@ export default function DoctorDashboard() {
         ) : (
           filtered.map((appt, index) => {
             const status = (appt.status || "WAITING").toUpperCase();
-            const isActive = status === "IN_CONSULTATION";
-            const isSentToReception = status === "COLLECT_FEE" || !!appt.isSentToReception;
-            const isCompleted = status === "COMPLETED";
+            const isCompleted = status === "COMPLETED" || !!appt.isFeeCollected;
+            const isActive = !isCompleted && status === "IN_CONSULTATION";
+            const isSentToReception = !isCompleted && (status === "COLLECT_FEE" || !!appt.isSentToReception);
 
             const patientName = appt.name || appt.patientName || "Patient";
             const phoneNum = appt.phoneNumber || appt.phone || "";
@@ -656,9 +662,9 @@ export default function DoctorDashboard() {
                   <TouchableOpacity
                     style={[
                       styles.startConsultBtn,
-                      isActive && { backgroundColor: "#16a34a" },
+                      isCompleted && { backgroundColor: "#16a34a", opacity: 0.9 },
+                      isActive && { backgroundColor: "#0284c7" },
                       isSentToReception && { backgroundColor: "#f59e0b" },
-                      isCompleted && { backgroundColor: "#64748b", opacity: 0.85 },
                     ]}
                     onPress={() => {
                       if (isCompleted) {
@@ -671,12 +677,12 @@ export default function DoctorDashboard() {
                     activeOpacity={0.8}
                   >
                     <Text style={styles.startConsultBtnText}>
-                      {isActive
+                      {isCompleted
+                        ? "✓ COMPLETED"
+                        : isActive
                         ? "IN CONSULTATION"
                         : isSentToReception
                         ? "SENT TO RECEPTION"
-                        : isCompleted
-                        ? "✓ COMPLETED"
                         : "START PRESCRIPTION"}
                     </Text>
                   </TouchableOpacity>

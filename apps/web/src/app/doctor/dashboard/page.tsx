@@ -263,18 +263,18 @@ export default function DoctorDashboardPage() {
       return appointments.filter((a) => a.status === "IN_CONSULTATION");
     }
     if (activeFilter === "SENT_TO_RECEPTION") {
-      return appointments.filter((a) => a.status === "COLLECT_FEE" || a.isSentToReception);
+      return appointments.filter((a) => !a.isFeeCollected && a.status !== "COMPLETED" && (a.status === "COLLECT_FEE" || !!a.isSentToReception));
     }
     if (activeFilter === "COMPLETED") {
-      return appointments.filter((a) => a.status === "COMPLETED");
+      return appointments.filter((a) => a.status === "COMPLETED" || !!a.isFeeCollected);
     }
     return appointments;
   }, [appointments, activeFilter]);
 
   const upcomingCount = appointments.filter((a) => !a.status || a.status === "WAITING" || a.status === "SCHEDULED").length;
   const activeCount = appointments.filter((a) => a.status === "IN_CONSULTATION").length;
-  const sentCount = appointments.filter((a) => a.status === "COLLECT_FEE" || a.isSentToReception).length;
-  const completedCount = appointments.filter((a) => a.status === "COMPLETED").length;
+  const sentCount = appointments.filter((a) => !a.isFeeCollected && a.status !== "COMPLETED" && (a.status === "COLLECT_FEE" || !!a.isSentToReception)).length;
+  const completedCount = appointments.filter((a) => a.status === "COMPLETED" || !!a.isFeeCollected).length;
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
@@ -571,10 +571,10 @@ export default function DoctorDashboardPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredAppointments.map((appt, index) => {
                       const status = (appt.status || "WAITING").toUpperCase();
-                      const isWaiting = status === "WAITING" || status === "SCHEDULED";
-                      const isActive = status === "IN_CONSULTATION";
-                      const isSentToReception = status === "COLLECT_FEE" || !!appt.isSentToReception;
-                      const isCompleted = status === "COMPLETED";
+                      const isCompleted = status === "COMPLETED" || !!appt.isFeeCollected;
+                      const isWaiting = !isCompleted && (status === "WAITING" || status === "SCHEDULED");
+                      const isActive = !isCompleted && status === "IN_CONSULTATION";
+                      const isSentToReception = !isCompleted && (status === "COLLECT_FEE" || !!appt.isSentToReception);
                       const isRevisit = !!appt.isReback;
                       const cleanPhone = (appt.phone || appt.phoneNumber || "").replace(/\D/g, "").slice(-10);
 
@@ -631,18 +631,18 @@ export default function DoctorDashboardPage() {
                           <td className="py-2 px-3">
                             <span
                               className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${
-                                isWaiting
+                                isCompleted
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : isWaiting
                                   ? "bg-amber-50 text-amber-700 border border-amber-200"
                                   : isActive
                                   ? "bg-sky-50 text-[#0284c7] border border-sky-200"
                                   : isSentToReception
                                   ? "bg-amber-100 text-amber-900 border border-amber-300"
-                                  : isCompleted
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                   : "bg-slate-100 text-slate-600"
                               }`}
                             >
-                              {isSentToReception ? "Sent to Reception" : status.replace("_", " ")}
+                              {isCompleted ? "COMPLETED" : isSentToReception ? "Sent to Reception" : status.replace("_", " ")}
                             </span>
                           </td>
 
