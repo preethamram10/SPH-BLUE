@@ -763,7 +763,12 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
 
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
                           <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Mode: {item.consultationMode || item.mode || "Offline"}</span>
+                          <span>
+                            Mode:{" "}
+                            {(item.consultationMode || item.mode || "").toLowerCase().includes("online")
+                              ? "Online"
+                              : "In-Clinic"}
+                          </span>
                         </div>
                       </div>
 

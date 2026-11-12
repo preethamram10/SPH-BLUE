@@ -115,6 +115,7 @@ function OldPrescriptionEntryContent() {
 
   const [patientName, setPatientName] = useState("");
   const [visitDate, setVisitDate] = useState("");
+  const [consultationMode, setConsultationMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [source, setSource] = useState("Old Patient");
   const [subject, setSubject] = useState("");
 
@@ -392,6 +393,7 @@ function OldPrescriptionEntryContent() {
           branch: branchName,
           source: source,
           marketingSource: source,
+          consultationMode,
           subject: subject.trim(),
           diseases: subject.trim(),
           visitDate,
@@ -415,6 +417,7 @@ function OldPrescriptionEntryContent() {
           name: data.patient?.name || patientName,
           phone,
           visitDate,
+          consultationMode,
           source,
           subject: subject.trim(),
           imagesCount: uploadedImages.length,
@@ -431,6 +434,7 @@ function OldPrescriptionEntryContent() {
         setPhone("");
         setSubject("");
         setSource("Old Patient");
+        setConsultationMode("In-Clinic");
         setUploadedImages([]);
         setIdStatus("IDLE");
         setExistingPatientData(null);
@@ -767,8 +771,23 @@ function OldPrescriptionEntryContent() {
                 </div>
               </div>
 
-              {/* SECTION 2B: Patient Source & Subject / Chief Complaint */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+              {/* SECTION 2B: Consultation Mode, Patient Source & Subject / Chief Complaint */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+                {/* Consultation Mode */}
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                    Consultation Mode *
+                  </label>
+                  <select
+                    value={consultationMode}
+                    onChange={(e) => setConsultationMode(e.target.value as "In-Clinic" | "Online")}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] font-bold shadow-2xs text-slate-800"
+                  >
+                    <option value="In-Clinic">In-Clinic</option>
+                    <option value="Online">Online</option>
+                  </select>
+                </div>
+
                 {/* Source Dropdown */}
                 <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
@@ -792,7 +811,7 @@ function OldPrescriptionEntryContent() {
                 </div>
 
                 {/* Subject / Chief Complaint */}
-                <div className="lg:col-span-2">
+                <div>
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
                     Subject / Chief Complaint / Disease
                   </label>

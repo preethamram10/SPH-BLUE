@@ -68,6 +68,7 @@ export default function MobileOldPrescriptionEntryScreen() {
   const [phone, setPhone] = useState("");
   const [familyProfiles, setFamilyProfiles] = useState<any[]>([]);
   const [patientName, setPatientName] = useState("");
+  const [consultationMode, setConsultationMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [source, setSource] = useState("Old Patient");
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
   const [subject, setSubject] = useState("");
@@ -420,6 +421,7 @@ export default function MobileOldPrescriptionEntryScreen() {
           branch: branchName,
           source,
           marketingSource: source,
+          consultationMode,
           subject: subject.trim(),
           diseases: subject.trim(),
           visitDate,
@@ -455,6 +457,7 @@ export default function MobileOldPrescriptionEntryScreen() {
                 setPhone("");
                 setSubject("");
                 setSource("Old Patient");
+                setConsultationMode("In-Clinic");
                 setUploadedImages([]);
                 setIdStatus("IDLE");
                 setExistingPatient(null);
@@ -698,8 +701,76 @@ export default function MobileOldPrescriptionEntryScreen() {
             </View>
           </View>
 
-          {/* SECTION 5B: PATIENT SOURCE & SUBJECT */}
+          {/* SECTION 5B: CONSULTATION MODE, PATIENT SOURCE & SUBJECT */}
           <View style={styles.card}>
+            {/* Consultation Mode Selector */}
+            <Text style={styles.fieldLabel}>CONSULTATION MODE *</Text>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 4, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  borderColor: consultationMode === "In-Clinic" ? COLORS.primary : COLORS.border,
+                  backgroundColor: consultationMode === "In-Clinic" ? "#e0f2fe" : "#ffffff",
+                }}
+                onPress={() => setConsultationMode("In-Clinic")}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="business-outline"
+                  size={16}
+                  color={consultationMode === "In-Clinic" ? COLORS.primary : COLORS.textMuted}
+                />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "800",
+                    color: consultationMode === "In-Clinic" ? COLORS.primary : COLORS.textDark,
+                  }}
+                >
+                  In-Clinic
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  borderColor: consultationMode === "Online" ? COLORS.primary : COLORS.border,
+                  backgroundColor: consultationMode === "Online" ? "#e0f2fe" : "#ffffff",
+                }}
+                onPress={() => setConsultationMode("Online")}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="globe-outline"
+                  size={16}
+                  color={consultationMode === "Online" ? COLORS.primary : COLORS.textMuted}
+                />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: "800",
+                    color: consultationMode === "Online" ? COLORS.primary : COLORS.textDark,
+                  }}
+                >
+                  Online
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.fieldLabel}>PATIENT ACQUISITION SOURCE *</Text>
             <TouchableOpacity
               style={styles.doctorSelectorBtn}

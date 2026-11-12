@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       subject,
       source,
       marketingSource,
+      consultationMode,
       consultationFee,
       prescriptionImages,
       notes,
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
     const targetDoctorId = doctorId || "doc-1";
     const cleanSource = (source || marketingSource || "Old Patient").trim();
     const cleanSubject = (subject || diseases || notes || "").trim();
+    const cleanMode = (consultationMode || "").trim().toLowerCase().includes("online") ? "Online" : "In-Clinic";
     const fee = typeof consultationFee === "number" ? consultationFee : parseInt(consultationFee, 10) || 0;
     const images = Array.isArray(prescriptionImages) ? prescriptionImages : [];
 
@@ -64,7 +66,7 @@ export async function POST(req: NextRequest) {
       phone: cleanPhone,
       branch: targetBranch,
       marketingSource: cleanSource,
-      consultationMode: "Offline",
+      consultationMode: cleanMode,
       doctorId: targetDoctorId,
       doctorName: targetDoctor,
       appointmentDate: targetDate,

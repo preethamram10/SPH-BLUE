@@ -645,7 +645,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f0fdf4", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: "#bbf7d0" }}>
                             <Ionicons name="medkit-outline" size={11} color="#16a34a" />
                             <Text style={{ fontSize: 10, color: "#16a34a", fontWeight: "800" }}>
-                              Mode: {item.consultationMode || item.mode || "Offline"}
+                              Mode: {(item.consultationMode || item.mode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic"}
                             </Text>
                           </View>
                         </View>
