@@ -16,8 +16,19 @@ export async function GET(req: NextRequest) {
     const rawDate = searchParams.get("date");
     const date = (rawDate && rawDate !== "ALL" && rawDate !== "All Dates" && rawDate.toLowerCase() !== "all") ? rawDate : undefined;
 
-    // Fetch appointments strictly for this doctor only
-    const appointments = await appointmentService.getAppointments(branch, date, doctorName);
+    // Fetch appointments strictly for this doctor (no branch restriction by default)
+    let appointments = await appointmentService.getAppointments(branch, date, doctorName);
+
+    // If viewing a specific date (e.g. Today), also include any active IN_CONSULTATION appointments for this doctor from past dates
+    if (date) {
+      const allDocAppts = await appointmentService.getAppointments(branch, undefined, doctorName);
+      const activeUnfinishedFromPast = allDocAppts.filter(
+        (a) => a.status === "IN_CONSULTATION" && !appointments.some((x) => x.id === a.id)
+      );
+      if (activeUnfinishedFromPast.length > 0) {
+        appointments = [...activeUnfinishedFromPast, ...appointments];
+      }
+    }
     return NextResponse.json({ success: true, appointments });
   } catch (error: any) {
     return NextResponse.json(

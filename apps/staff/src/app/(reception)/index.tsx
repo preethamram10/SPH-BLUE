@@ -521,26 +521,30 @@ export default function ReceptionDashboard() {
   const activeAppointments = inConsultationAppointments;
 
   const renderVisitBadge = (appt: any) => {
-    const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+    const badge = appt.visitBadge || (appt.hasPackage ? "In-Dur" : appt.isReback ? "Revisit" : "New");
     return (
       <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
         {badge === "New" && (
           <View style={styles.badgeNew}>
+            <Ionicons name="sparkles" size={9.5} color="#16a34a" />
             <Text style={styles.badgeNewText}>NEW</Text>
           </View>
         )}
         {badge === "In-Dur" && (
           <View style={styles.badgeInDur}>
+            <Ionicons name="time" size={9.5} color="#0284c7" />
             <Text style={styles.badgeInDurText}>IN-DUR</Text>
           </View>
         )}
         {badge === "Revisit" && (
           <View style={styles.badgeRevisit}>
+            <Ionicons name="repeat" size={9.5} color="#d97706" />
             <Text style={styles.badgeRevisitText}>REVISIT</Text>
           </View>
         )}
         {!!appt.hasPackage && (
           <View style={styles.badgePkg}>
+            <Ionicons name="cube" size={9.5} color="#ffffff" />
             <Text style={styles.badgePkgText}>PKG</Text>
           </View>
         )}

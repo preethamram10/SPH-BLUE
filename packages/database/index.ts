@@ -1527,48 +1527,143 @@ export interface VisitBadgeInfo {
   allowZeroFee: boolean;
 }
 
-export function computePatientVisitBadge(
-  completedVisitsCount: number,
-  activeFollowUpDate?: string | null
-): VisitBadgeInfo {
-  // 1. If 0 completed visits, patient is brand new
-  if (!completedVisitsCount || completedVisitsCount <= 0) {
-    return {
-      badge: "New",
-      label: "New",
-      color: "#16a34a",
-      bgColor: "#dcfce7",
-      borderColor: "#86efac",
-      allowZeroFee: false,
-    };
+/**
+ * Resolves follow-up intervals or custom date strings into normalized YYYY-MM-DD.
+ * Handles "1 Month", "2 Months", "15 Days", "DD-MM-YYYY", "YYYY-MM-DD", etc.
+ */
+export function resolveFollowUpToDate(
+  followUpStr?: string | null,
+  baseDate?: string | null
+): string {
+  if (!followUpStr || typeof followUpStr !== "string") return "";
+  const trimmed = followUpStr.trim();
+  if (
+    trimmed.length === 0 ||
+    trimmed.toLowerCase() === "no follow-up" ||
+    trimmed.toLowerCase() === "custom date"
+  ) {
+    return "";
   }
 
-  // 2. If patient has an active follow-up date, check if today is within duration
-  if (activeFollowUpDate && typeof activeFollowUpDate === "string" && activeFollowUpDate.trim().length > 0) {
-    const now = new Date();
-    const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const normFollowUp = normalizeDateStr(activeFollowUpDate);
+  // If already a calendar date, normalize it
+  const norm = normalizeDateStr(trimmed);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) {
+    return norm;
+  }
 
-    // If today is on or before follow-up date, they are in treatment duration!
-    if (normFollowUp && todayYmd <= normFollowUp) {
+  // Parse relative interval strings e.g. "1 Month", "2 Months", "15 Days"
+  let daysToAdd = 0;
+  const lower = trimmed.toLowerCase();
+  const numMatch = lower.match(/\d+/);
+  const count = numMatch ? parseInt(numMatch[0], 10) : 1;
+
+  if (lower.includes("month")) {
+    daysToAdd = count * 30;
+  } else if (lower.includes("day")) {
+    daysToAdd = count;
+  } else if (lower.includes("week")) {
+    daysToAdd = count * 7;
+  } else if (lower.includes("year")) {
+    daysToAdd = count * 365;
+  }
+
+  if (daysToAdd > 0) {
+    const base = baseDate && normalizeDateStr(baseDate) ? new Date(normalizeDateStr(baseDate)) : new Date();
+    const target = new Date(base.getTime() + daysToAdd * 86400000);
+    const y = target.getFullYear();
+    const m = String(target.getMonth() + 1).padStart(2, "0");
+    const d = String(target.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  return norm;
+}
+
+export function computePatientVisitBadge(
+  completedVisitsCount: number,
+  activeFollowUpDate?: string | null,
+  options?: {
+    hasActivePackage?: boolean;
+    packageEndDate?: string | null;
+    referenceDate?: string | null;
+    isReback?: boolean;
+    hasPriorVisits?: boolean;
+  }
+): VisitBadgeInfo {
+  const hasPrior =
+    (typeof completedVisitsCount === "number" && completedVisitsCount > 0) ||
+    options?.hasPriorVisits === true ||
+    options?.isReback === true;
+
+  const now = new Date();
+  const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const refDate = options?.referenceDate ? normalizeDateStr(options.referenceDate) : todayYmd;
+  const targetDate = refDate || todayYmd;
+
+  // 1. Check if Patient is in Duration (IN-DUR)
+  // A. Active Package Duration
+  if (options?.hasActivePackage) {
+    if (options.packageEndDate) {
+      const normPkgEnd = resolveFollowUpToDate(options.packageEndDate, options?.referenceDate);
+      if (!normPkgEnd || targetDate <= normPkgEnd) {
+        return {
+          badge: "In-Dur",
+          label: "In-Dur",
+          color: "#0284c7",
+          bgColor: "#e0f2fe",
+          borderColor: "#7dd3fc",
+          allowZeroFee: true,
+        };
+      }
+    } else {
+      // Active package without explicit end date defaults to in-duration
       return {
         badge: "In-Dur",
         label: "In-Dur",
         color: "#0284c7",
         bgColor: "#e0f2fe",
         borderColor: "#7dd3fc",
-        allowZeroFee: true, // ₹0 consultation fee permitted
+        allowZeroFee: true,
       };
     }
   }
 
-  // 3. Otherwise: Expired follow-up date or past completed visit with no active duration -> REVISIT
+  // B. Follow-up Duration window (e.g. within 1 month, 2 weeks, or specific follow-up date)
+  if (activeFollowUpDate && typeof activeFollowUpDate === "string" && activeFollowUpDate.trim().length > 0) {
+    const normFollowUp = resolveFollowUpToDate(activeFollowUpDate, options?.referenceDate);
+    if (normFollowUp && /^\d{4}-\d{2}-\d{2}$/.test(normFollowUp)) {
+      if (targetDate <= normFollowUp) {
+        return {
+          badge: "In-Dur",
+          label: "In-Dur",
+          color: "#0284c7",
+          bgColor: "#e0f2fe",
+          borderColor: "#7dd3fc",
+          allowZeroFee: true, // ₹0 consultation fee permitted
+        };
+      }
+    }
+  }
+
+  // 2. If patient has prior visits, old records, or flagged as revisit -> REVISIT
+  if (hasPrior) {
+    return {
+      badge: "Revisit",
+      label: "Revisit",
+      color: "#d97706",
+      bgColor: "#fef3c7",
+      borderColor: "#fde68a",
+      allowZeroFee: false,
+    };
+  }
+
+  // 3. Otherwise: Brand New patient
   return {
-    badge: "Revisit",
-    label: "Revisit",
-    color: "#d97706",
-    bgColor: "#fef3c7",
-    borderColor: "#fde68a",
+    badge: "New",
+    label: "New",
+    color: "#16a34a",
+    bgColor: "#dcfce7",
+    borderColor: "#86efac",
     allowZeroFee: false,
   };
 }
@@ -2072,6 +2167,81 @@ function getAppointmentsStore(): AppointmentRecord[] {
   return global.__sphAppointmentsStore;
 }
 
+/**
+ * Decorates an appointment with accurate visit badge ("New" | "In-Dur" | "Revisit"),
+ * follow-up continuity date, and package metadata across all lifecycle stages.
+ */
+export function decorateAppointmentWithVisitInfo(
+  a: AppointmentRecord,
+  allStore?: AppointmentRecord[],
+  patientsStore?: PatientRecord[],
+  pkgStore?: PackageMemberRecord[]
+): AppointmentRecord {
+  const store = allStore || getAppointmentsStore();
+  const patients = patientsStore || getPatientsStore();
+  const packages = pkgStore || getPackageMembersStore();
+
+  const pat = patients.find((p) => matchPatientProfile(a, p));
+
+  // Prior completed visits (or visits where fee was collected or marked completed)
+  const priorCompleted = store.filter(
+    (past) =>
+      past.id !== a.id &&
+      !past.isDeleted &&
+      (past.status === "COMPLETED" || past.isFeeCollected || (typeof past.totalPaid === "number" && past.totalPaid > 0)) &&
+      matchPatientProfile(a, past)
+  );
+
+  let completedCount = priorCompleted.length;
+  if (completedCount === 0 && pat?.completedVisitsCount !== undefined) {
+    completedCount = pat.completedVisitsCount;
+  }
+
+  // Check any prior appointments (even if not yet marked completed, e.g. historical records)
+  const anyPrior = store.filter(
+    (past) => past.id !== a.id && !past.isDeleted && matchPatientProfile(a, past)
+  );
+
+  // Active follow-up date resolution
+  let activeFollowUp = pat?.activeFollowUpDate;
+  if (!activeFollowUp || activeFollowUp.trim().length === 0) {
+    if (a.followUpDate && a.followUpDate.trim().length > 0) {
+      activeFollowUp = a.followUpDate;
+    } else {
+      const pastWithFollowUp = [...priorCompleted]
+        .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
+        .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
+      if (pastWithFollowUp.length > 0) {
+        activeFollowUp = pastWithFollowUp[0].followUpDate;
+      }
+    }
+  }
+
+  const activePkg = packages.find((p) => p.status === "ACTIVE" && matchPatientProfile(a, p));
+
+  const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp, {
+    hasActivePackage: !!activePkg,
+    packageEndDate: activePkg?.endDate,
+    referenceDate: a.appointmentDate || a.createdAt,
+    isReback: Boolean(a.isReback || (a.marketingSource && a.marketingSource.toLowerCase().includes("old"))),
+    hasPriorVisits: completedCount > 0 || anyPrior.length > 0,
+  });
+
+  return {
+    ...a,
+    visitBadge: badgeInfo.badge,
+    activeFollowUpDate: activeFollowUp,
+    hasPackage: !!activePkg,
+    packageId: activePkg?.id || a.packageId,
+    packageName: activePkg?.packageName || a.packageName,
+    packageTotalAmount: activePkg?.totalAmount || a.packageTotalAmount,
+    packagePaidAmount: activePkg?.paidAmount || a.packagePaidAmount,
+    packagePendingAmount: activePkg?.pendingAmount || a.packagePendingAmount,
+    packageDurationMonths: activePkg?.durationMonths || a.packageDurationMonths,
+    packageEndDate: activePkg?.endDate || a.packageEndDate,
+  };
+}
+
 export const appointmentService = {
   async getAppointments(branch?: string, date?: string, doctorId?: string, includeDeleted = false): Promise<AppointmentRecord[]> {
     let list = getAppointmentsStore();
@@ -2117,55 +2287,9 @@ export const appointmentService = {
 
     const allStore = getAppointmentsStore();
     const patients = getPatientsStore();
+    const pkgStore = getPackageMembersStore();
 
-    return list.map((a) => {
-      const pat = patients.find((p) => matchPatientProfile(a, p));
-
-      // Calculate prior completed visits for this profile
-      const priorCompleted = allStore.filter(
-        (past) =>
-          past.id !== a.id &&
-          !past.isDeleted &&
-          past.status === "COMPLETED" &&
-          matchPatientProfile(a, past)
-      );
-
-      let completedCount = priorCompleted.length;
-      if (completedCount === 0 && pat?.completedVisitsCount !== undefined) {
-        if (a.status !== "COMPLETED") {
-          completedCount = pat.completedVisitsCount;
-        }
-      }
-
-      // Latest set follow-up date wins
-      let activeFollowUp = pat?.activeFollowUpDate;
-      if (!activeFollowUp) {
-        const pastWithFollowUp = [...priorCompleted]
-          .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
-          .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
-        if (pastWithFollowUp.length > 0) {
-          activeFollowUp = pastWithFollowUp[0].followUpDate;
-        }
-      }
-
-      const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp);
-      const pkgStore = getPackageMembersStore();
-      const activePkg = pkgStore.find((p) => p.status === "ACTIVE" && matchPatientProfile(a, p));
-
-      return {
-        ...a,
-        visitBadge: badgeInfo.badge,
-        activeFollowUpDate: activeFollowUp,
-        hasPackage: !!activePkg,
-        packageId: activePkg?.id,
-        packageName: activePkg?.packageName,
-        packageTotalAmount: activePkg?.totalAmount,
-        packagePaidAmount: activePkg?.paidAmount,
-        packagePendingAmount: activePkg?.pendingAmount,
-        packageDurationMonths: activePkg?.durationMonths,
-        packageEndDate: activePkg?.endDate,
-      };
-    });
+    return list.map((a) => decorateAppointmentWithVisitInfo(a, allStore, patients, pkgStore));
   },
 
   async createAppointment(data: Omit<AppointmentRecord, "id" | "token" | "createdAt" | "status"> & {
@@ -2258,7 +2382,7 @@ export const appointmentService = {
       name: newRecord.patientName,
     });
 
-    return newRecord;
+    return decorateAppointmentWithVisitInfo(newRecord, store);
   },
 
   /**
@@ -2377,49 +2501,7 @@ export const appointmentService = {
     const store = getAppointmentsStore();
     const appt = store.find((a) => a.id === id || a.token === id);
     if (!appt) return null;
-
-    const patients = getPatientsStore();
-    const pat = patients.find((p) => matchPatientProfile(appt, p));
-    const priorCompleted = store.filter(
-      (past) =>
-        past.id !== appt.id &&
-        !past.isDeleted &&
-        past.status === "COMPLETED" &&
-        matchPatientProfile(appt, past)
-    );
-
-    let completedCount = priorCompleted.length;
-    if (completedCount === 0 && pat?.completedVisitsCount !== undefined && appt.status !== "COMPLETED") {
-      completedCount = pat.completedVisitsCount;
-    }
-
-    let activeFollowUp = pat?.activeFollowUpDate;
-    if (!activeFollowUp) {
-      const pastWithFollowUp = [...priorCompleted]
-        .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
-        .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
-      if (pastWithFollowUp.length > 0) {
-        activeFollowUp = pastWithFollowUp[0].followUpDate;
-      }
-    }
-
-    const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp);
-    const pkgStore = getPackageMembersStore();
-    const activePkg = pkgStore.find((p) => p.status === "ACTIVE" && matchPatientProfile(appt, p));
-
-    return {
-      ...appt,
-      visitBadge: badgeInfo.badge,
-      activeFollowUpDate: activeFollowUp,
-      hasPackage: !!activePkg,
-      packageId: activePkg?.id,
-      packageName: activePkg?.packageName,
-      packageTotalAmount: activePkg?.totalAmount,
-      packagePaidAmount: activePkg?.paidAmount,
-      packagePendingAmount: activePkg?.pendingAmount,
-      packageDurationMonths: activePkg?.durationMonths,
-      packageEndDate: activePkg?.endDate,
-    };
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2449,7 +2531,7 @@ export const appointmentService = {
       }
     }
 
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2604,7 +2686,7 @@ export const appointmentService = {
       }
     }
 
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2624,7 +2706,7 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2651,7 +2733,7 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2738,7 +2820,7 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**
@@ -2769,7 +2851,7 @@ export const appointmentService = {
     appt.timeSlot = newTimeSlot;
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
-    return appt;
+    return decorateAppointmentWithVisitInfo(appt, store);
   },
 
   /**

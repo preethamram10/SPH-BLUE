@@ -36,7 +36,7 @@ export default function DoctorDashboard() {
   const router = useRouter();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
-  const [branchName, setBranchName] = useState("KPHB Branch");
+  const [branchName, setBranchName] = useState("All Branches");
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
   const [yesterdayStr, setYesterdayStr] = useState("");
@@ -82,13 +82,8 @@ export default function DoctorDashboard() {
     const ty = tmrw.getFullYear();
     setTomorrowStr(`${td}-${tm}-${ty}`);
 
-    getActiveBranch().then((b) => {
-      if (b?.name) setBranchName(b.name);
-    });
-
     getActiveDoctor().then((d) => {
       if (d?.name) setDoctorName(d.name);
-      if (d?.branch) setBranchName(d.branch);
     });
   }, []);
 
@@ -143,13 +138,10 @@ export default function DoctorDashboard() {
     if (!dt) return;
     if (!isSilent) setIsLoading(true);
     try {
-      const cleanBranch = branchName.replace(/Spiritual Homeopathy/gi, "").trim();
-      const branchQuery = cleanBranch && cleanBranch !== "All Branches" && cleanBranch.toLowerCase() !== "all"
-        ? `&branch=${encodeURIComponent(cleanBranch)}`
-        : "";
       const dateParam = dt === "ALL" ? "&date=ALL" : `&date=${encodeURIComponent(dt)}`;
+      // No branch restriction for doctor: doctor sees appointments across ALL branches
       const data = await apiFetch<any>(
-        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}${dateParam}${branchQuery}`
+        `/doctor/appointments?doctorName=${encodeURIComponent(doctorName)}${dateParam}`
       );
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -191,7 +183,7 @@ export default function DoctorDashboard() {
         name: appt.name || appt.patientName,
         phone: appt.phone || appt.phoneNumber,
         registrationId: appt.registrationId || appt.patientId || "SPH-GEN",
-        branch: branchName,
+        branch: appt.branch || branchName || "All Branches",
       },
     } as any);
   };
@@ -299,26 +291,30 @@ export default function DoctorDashboard() {
   };
 
   const renderVisitBadge = (appt: any) => {
-    const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+    const badge = appt.visitBadge || (appt.hasPackage ? "In-Dur" : appt.isReback ? "Revisit" : "New");
     return (
       <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
         {badge === "New" && (
           <View style={styles.badgeNew}>
+            <Ionicons name="sparkles" size={9.5} color="#16a34a" />
             <Text style={styles.badgeNewText}>NEW</Text>
           </View>
         )}
         {badge === "In-Dur" && (
           <View style={styles.badgeInDur}>
+            <Ionicons name="time" size={9.5} color="#0284c7" />
             <Text style={styles.badgeInDurText}>IN-DUR</Text>
           </View>
         )}
         {badge === "Revisit" && (
           <View style={styles.badgeRevisit}>
+            <Ionicons name="repeat" size={9.5} color="#d97706" />
             <Text style={styles.badgeRevisitText}>REVISIT</Text>
           </View>
         )}
         {!!appt.hasPackage && (
           <View style={styles.badgePkg}>
+            <Ionicons name="cube" size={9.5} color="#ffffff" />
             <Text style={styles.badgePkgText}>PKG</Text>
           </View>
         )}
@@ -400,31 +396,6 @@ export default function DoctorDashboard() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dateScrollContent}
           >
-            {/* All Dates / All Booked */}
-            <TouchableOpacity
-              style={[
-                styles.datePill,
-                selectedDate === "ALL" && styles.datePillActive,
-              ]}
-              onPress={() => setSelectedDate("ALL")}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="sparkles"
-                size={12}
-                color={selectedDate === "ALL" ? "#ffffff" : "#0284c7"}
-                style={{ marginRight: 3 }}
-              />
-              <Text
-                style={[
-                  styles.datePillText,
-                  selectedDate === "ALL" && styles.datePillTextActive,
-                ]}
-              >
-                All Dates
-              </Text>
-            </TouchableOpacity>
-
             {/* Yesterday */}
             <TouchableOpacity
               style={[
@@ -498,7 +469,6 @@ export default function DoctorDashboard() {
                 selectedDate !== todayStr &&
                   selectedDate !== tomorrowStr &&
                   selectedDate !== yesterdayStr &&
-                  selectedDate !== "ALL" &&
                   styles.currentDateBadgeHighlight,
               ]}
               onPress={() => setCalendarModalOpen(true)}
@@ -506,9 +476,7 @@ export default function DoctorDashboard() {
             >
               <Ionicons name="calendar" size={13} color="#0284c7" />
               <Text style={styles.currentDateBadgeText}>
-                {selectedDate === "ALL"
-                  ? "All Booked"
-                  : selectedDate === todayStr
+                {selectedDate === todayStr
                   ? `Today (${selectedDate})`
                   : selectedDate}
               </Text>

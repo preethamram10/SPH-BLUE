@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
       success: true,
       patientFile: {
         ...appt,
+        visitBadge: appt.visitBadge,
         followUpDate: appt.followUpDate || (appt as any).activeFollowUpDate || "",
         totalVisits: allPatientVisits.length,
         totalPaid: totalLifetimePaid,

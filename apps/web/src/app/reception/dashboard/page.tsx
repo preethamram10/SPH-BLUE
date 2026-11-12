@@ -34,6 +34,7 @@ import {
   Activity,
   CreditCard,
   Receipt,
+  Package,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -47,26 +48,30 @@ const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => 
 );
 
 const renderVisitBadge = (appt: any) => {
-  const badge = appt.visitBadge || (appt.isReback ? "Revisit" : "New");
+  const badge = appt.visitBadge || (appt.hasPackage ? "In-Dur" : appt.isReback ? "Revisit" : "New");
   return (
     <div className="inline-flex items-center gap-1">
       {badge === "New" && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+          <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
           NEW
         </span>
       )}
       {badge === "In-Dur" && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shadow-xs">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 shadow-xs">
+          <Clock className="w-2.5 h-2.5 text-sky-600" />
           IN-DUR
         </span>
       )}
       {badge === "Revisit" && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shadow-xs">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 shadow-xs">
+          <RotateCcw className="w-2.5 h-2.5 text-amber-600" />
           REVISIT
         </span>
       )}
       {appt.hasPackage && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-wide bg-amber-500 text-white shadow-xs">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8.5px] font-black tracking-wide bg-amber-500 text-white shadow-xs">
+          <Package className="w-2.5 h-2.5 text-white" />
           PKG
         </span>
       )}

@@ -202,7 +202,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             diseases: pf.diseases || pf.notes || "Consultation",
             hasPackage: !!pf.hasPackage,
             packageName: pf.packageName || "",
-            visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
+            visitBadge: pf.visitBadge || (pf.hasPackage ? "In-Dur" : pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
             pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
             status: pf.status || "WAITING",
@@ -790,19 +790,23 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                   {patientData.visitBadge === "In-Dur" ? (
                     <View style={[styles.durationPill, { backgroundColor: "#e0f2fe", borderColor: "#7dd3fc" }]}>
+                      <Ionicons name="time" size={10} color="#0284c7" />
                       <Text style={[styles.durationPillText, { color: "#0284c7" }]}>IN-DUR</Text>
                     </View>
                   ) : patientData.visitBadge === "Revisit" ? (
                     <View style={[styles.durationPill, { backgroundColor: "#fffbeb", borderColor: "#fde68a" }]}>
+                      <Ionicons name="repeat" size={10} color="#d97706" />
                       <Text style={[styles.durationPillText, { color: "#d97706" }]}>REVISIT</Text>
                     </View>
                   ) : (
                     <View style={[styles.durationPill, { backgroundColor: "#dcfce7", borderColor: "#86efac" }]}>
+                      <Ionicons name="sparkles" size={10} color="#16a34a" />
                       <Text style={[styles.durationPillText, { color: "#16a34a" }]}>NEW</Text>
                     </View>
                   )}
                   {patientData.hasPackage && (
                     <View style={[styles.durationPill, { backgroundColor: "#f59e0b", borderColor: "#d97706" }]}>
+                      <Ionicons name="cube" size={10} color="#ffffff" />
                       <Text style={[styles.durationPillText, { color: "#ffffff", fontWeight: "900" }]}>PKG</Text>
                     </View>
                   )}

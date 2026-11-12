@@ -31,6 +31,8 @@ import {
   Eraser,
   Plus,
   Send,
+  Sparkles,
+  Package,
 } from "lucide-react";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
@@ -218,7 +220,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             diseases: pf.diseases || pf.notes || "General Consultation",
             hasPackage: !!pf.hasPackage,
             packageName: pf.packageName || "",
-            visitBadge: pf.visitBadge || (pf.isReback ? "Revisit" : "New"),
+            visitBadge: pf.visitBadge || (pf.hasPackage ? "In-Dur" : pf.isReback ? "Revisit" : "New"),
             activePackage: pf.activePackage || null,
             pendingBalance: pf.pendingBalance || pf.payLaterBalance || 0,
             status: pf.status || "WAITING",
@@ -754,20 +756,24 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                   <h2 className="text-base font-extrabold text-slate-900">{patientData.patientName}</h2>
                   <div className="flex items-center gap-1.5">
                     {patientData.visitBadge === "In-Dur" ? (
-                      <span className="px-2.5 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-700 font-extrabold text-[10px] shadow-xs">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-700 font-extrabold text-[10px] shadow-xs">
+                        <Clock className="w-3 h-3 text-sky-600" />
                         IN-DUR
                       </span>
                     ) : patientData.visitBadge === "Revisit" ? (
-                      <span className="px-2.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 font-extrabold text-[10px] shadow-xs">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700 font-extrabold text-[10px] shadow-xs">
+                        <RotateCcw className="w-3 h-3 text-amber-600" />
                         REVISIT
                       </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 font-extrabold text-[10px] shadow-xs">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 font-extrabold text-[10px] shadow-xs">
+                        <Sparkles className="w-3 h-3 text-emerald-600" />
                         NEW
                       </span>
                     )}
                     {patientData.hasPackage && (
-                      <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] shadow-xs">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500 text-white font-black text-[10px] shadow-xs">
+                        <Package className="w-3 h-3 text-white" />
                         PKG
                       </span>
                     )}
