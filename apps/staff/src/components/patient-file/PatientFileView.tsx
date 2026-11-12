@@ -151,6 +151,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   // Fee Collection Modal State (Immediate payment for Reception)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
   const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date" | string>("No Follow-up");
   const [followUpDate, setFollowUpDate] = useState("");
@@ -1823,12 +1824,17 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           onClose={() => {
             setIsPaymentModalOpen(false);
             setSelectedPaymentAppt(null);
-            loadPatientFile();
+            if (isCompleted || isPaymentCompleted) {
+              handleBack();
+            } else {
+              loadPatientFile();
+            }
           }}
           onPaymentSuccess={() => {
             setIsPaymentModalOpen(false);
             setSelectedPaymentAppt(null);
-            loadPatientFile();
+            setIsPaymentCompleted(true);
+            handleBack();
           }}
         />
       )}

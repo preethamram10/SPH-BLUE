@@ -181,6 +181,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   // Fee Collection Modal State (Immediate payment for Reception)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
   // Keyboard navigation (< Left Arrow, > Right Arrow, Escape)
   useEffect(() => {
@@ -2074,7 +2075,11 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           onClose={() => {
             setIsPaymentModalOpen(false);
             setSelectedPaymentAppt(null);
-            loadPatientFile();
+            if (isCompleted || isPaymentCompleted) {
+              handleBack();
+            } else {
+              loadPatientFile();
+            }
           }}
           onSubmitPayment={async (invoiceData) => {
             const res = await fetch("/api/reception/payment", {
@@ -2086,7 +2091,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             if (!data.success) {
               throw new Error(data.error || "Payment failed");
             }
-            loadPatientFile();
+            setIsPaymentCompleted(true);
             return data;
           }}
         />
