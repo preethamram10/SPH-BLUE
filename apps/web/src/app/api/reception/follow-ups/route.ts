@@ -168,16 +168,14 @@ interface FollowUpRecordItem {
         const dueMonth = my?.month || currentMonth;
         const dueYear = my?.year || currentYear;
 
-        const isOverdue = dueTime > 0 && dueTime < todayTime && a.status !== "COMPLETED";
+        const isOverdue = dueTime > 0 && dueTime < todayTime;
         const isDueToday = normFollowUp === todayDDMMYYYY;
         const isDueTomorrow = normFollowUp === tomorrowDDMMYYYY || dueTime === tomorrowTime;
         const isThisMonth = dueMonth === currentMonth && dueYear === currentYear;
         const isNextMonth = dueMonth === nextMonth && dueYear === nextMonthYear;
 
         let computedStatus: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed" = "Upcoming";
-        if (a.status === "COMPLETED") {
-          computedStatus = "Completed";
-        } else if (isDueToday) {
+        if (isDueToday) {
           computedStatus = "Due Today";
         } else if (isDueTomorrow) {
           computedStatus = "Due Tomorrow" as any;

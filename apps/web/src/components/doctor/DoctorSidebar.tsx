@@ -12,7 +12,6 @@ import {
   Stethoscope,
   Building2,
   Calendar,
-  FileCheck2,
 } from "lucide-react";
 
 interface DoctorSidebarProps {
@@ -95,12 +94,6 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
             name: "Total Revenue",
             href: "/doctor/total-revenue",
             icon: DollarSign,
-          },
-          {
-            id: "fee-requests",
-            name: "Fee Requests",
-            href: "/admin/fee-requests",
-            icon: FileCheck2,
           },
         ]
       : []),

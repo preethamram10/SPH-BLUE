@@ -177,15 +177,13 @@ export async function GET(req: NextRequest) {
         // Determine follow-up status (Overdue = passes the follow-up date)
         let computedStatus: "Due Today" | "Overdue" | "Upcoming" | "Confirmed" | "Scheduled" | "Completed" = "Upcoming";
 
-        const isOverdue = dueTime > 0 && dueTime < todayTime && a.status !== "COMPLETED";
+        const isOverdue = dueTime > 0 && dueTime < todayTime;
         const isDueToday = dueDate === todayDDMMYYYY || dueTime === todayTime;
         const isDueTomorrow = dueDate === tomorrowDDMMYYYY || dueTime === tomorrowTime;
         const isThisMonth = dueYear === currentYear && dueMonth === currentMonth;
         const isNextMonth = dueYear === nextMonthYear && dueMonth === nextMonth;
 
-        if (a.status === "COMPLETED" && dueTime < todayTime) {
-          computedStatus = "Completed";
-        } else if (isDueToday) {
+        if (isDueToday) {
           computedStatus = "Due Today";
         } else if (isDueTomorrow) {
           computedStatus = "Due Tomorrow" as any;

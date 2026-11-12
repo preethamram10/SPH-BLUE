@@ -319,24 +319,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
               </TouchableOpacity>
             )}
 
-            {isHeadDoctor && (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => handleNavigate("/(admin)/fee-requests")}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="receipt-outline"
-                  size={16}
-                  color="#64748b"
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={styles.menuText}>Fee Requests</Text>
-                <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: "auto" }}>
-                  <Text style={{ fontSize: 9, fontWeight: "900", color: "#0284c7" }}>HEAD</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+
 
             <TouchableOpacity
               style={[styles.menuItem, { marginTop: 14, marginBottom: 28, backgroundColor: "#fef2f2", borderLeftColor: "#ef4444", borderLeftWidth: 3 }]}

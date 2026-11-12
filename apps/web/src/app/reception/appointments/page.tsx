@@ -997,6 +997,11 @@ export default function ReceptionAppointmentsPage() {
     setFoundProfile(null);
     setPatientSuggestions([]);
     setShowSuggestions(false);
+    setMarketingSource("");
+    setConsultationMode("");
+    setSelectedSlot("");
+    setSelectedDoctor(null);
+    setIsRebackMode(false);
   };
 
   // Submit Booking

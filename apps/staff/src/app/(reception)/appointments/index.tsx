@@ -935,6 +935,10 @@ export default function ReceptionBookAppointmentScreen() {
     setFoundProfile(null);
     setPatientSuggestions([]);
     setSelectedSlot("");
+    setSelectedDoctor(null);
+    setMarketingSource("");
+    setConsultationMode("");
+    setIsRebackMode(false);
   };
 
   // Appointment Submission

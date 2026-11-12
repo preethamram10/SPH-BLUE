@@ -1046,7 +1046,27 @@ function ReceptionFollowUpsContent() {
                 </span>
               </button>
 
-              {/* 3. Next Month */}
+              {/* 3. This Month */}
+              <button
+                onClick={() => handlePeriodChange("this_month")}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                  periodFilter === "this_month"
+                    ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
+                    : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>This Month</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
+                  }`}
+                >
+                  {stats.thisMonth}
+                </span>
+              </button>
+
+              {/* 4. Next Month */}
               <button
                 onClick={() => handlePeriodChange("next_month")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1066,7 +1086,7 @@ function ReceptionFollowUpsContent() {
                 </span>
               </button>
 
-              {/* 4. Overdue */}
+              {/* 5. Overdue */}
               <button
                 onClick={() => handlePeriodChange("overdue")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1086,7 +1106,7 @@ function ReceptionFollowUpsContent() {
                 </span>
               </button>
 
-              {/* 5. Custom Month */}
+              {/* 6. Custom Month */}
               <button
                 onClick={() => handlePeriodChange("month")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1104,7 +1124,7 @@ function ReceptionFollowUpsContent() {
                 )}
               </button>
 
-              {/* 6. Custom Date */}
+              {/* 7. Custom Date */}
               <button
                 onClick={() => handlePeriodChange("range")}
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
@@ -1120,26 +1140,6 @@ function ReceptionFollowUpsContent() {
                     Active
                   </span>
                 )}
-              </button>
-
-              {/* 7. This Month */}
-              <button
-                onClick={() => handlePeriodChange("this_month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
-                  periodFilter === "this_month"
-                    ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
-                    : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>This Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
-                  }`}
-                >
-                  {stats.thisMonth}
-                </span>
               </button>
 
               {/* 8. All Follow-Ups (MOVED TO LAST) */}
