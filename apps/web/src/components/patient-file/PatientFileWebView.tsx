@@ -33,6 +33,12 @@ import {
   Send,
   Sparkles,
   Package,
+  FolderOpen,
+  Link2,
+  ExternalLink,
+  Copy,
+  Check,
+  Share2,
 } from "lucide-react";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
@@ -151,6 +157,21 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const [dietPlan, setDietPlan] = useState("");
   const [dietPlanFee, setDietPlanFee] = useState<number>(0);
 
+  // Shared Media Integration
+  const [attachedSharedLinks, setAttachedSharedLinks] = useState<Array<{ id: string; name: string; url: string }>>([]);
+  const [isSharedMediaPickerOpen, setIsSharedMediaPickerOpen] = useState(false);
+  const [sharedFolders, setSharedFolders] = useState<any[]>([]);
+  const [loadingSharedFolders, setLoadingSharedFolders] = useState(false);
+  const [selectedSharedLinksMap, setSelectedSharedLinksMap] = useState<Record<string, { id: string; name: string; url: string }>>({});
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+
+  // Save to Shared Media state
+  const [isSaveToSharedOpen, setIsSaveToSharedOpen] = useState(false);
+  const [imageToSave, setImageToSave] = useState<string | null>(null);
+  const [saveToFolderId, setSaveToFolderId] = useState<string>("");
+  const [saveLinkName, setSaveLinkName] = useState<string>("");
+  const [isSavingToShared, setIsSavingToShared] = useState(false);
+
   // History
   const [historyTab, setHistoryTab] = useState<"all" | "prescriptions" | "payments">("all");
   const [patientHistory, setPatientHistory] = useState<any[]>([]);
@@ -241,6 +262,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           }
 
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
+          if (pf.sharedMediaLinks && Array.isArray(pf.sharedMediaLinks)) setAttachedSharedLinks(pf.sharedMediaLinks);
           if (pf.prescriptionText) setPrescriptionText(pf.prescriptionText);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
@@ -444,6 +466,115 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
     }
   };
 
+  // Shared Media Picker & Link Handlers
+  const openSharedMediaPicker = async () => {
+    setIsSharedMediaPickerOpen(true);
+    setLoadingSharedFolders(true);
+    try {
+      const res = await fetch("/api/shared-media", { cache: "no-store" });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.folders)) {
+        setSharedFolders(data.folders);
+      }
+    } catch (err) {
+      console.error("Failed to fetch shared media folders:", err);
+    } finally {
+      setLoadingSharedFolders(false);
+    }
+  };
+
+  const toggleSelectSharedLink = (link: { id: string; name: string; url: string }) => {
+    setSelectedSharedLinksMap((prev) => {
+      const copy = { ...prev };
+      if (copy[link.id]) {
+        delete copy[link.id];
+      } else {
+        copy[link.id] = link;
+      }
+      return copy;
+    });
+  };
+
+  const handleAttachSelectedSharedMedia = () => {
+    const selectedList = Object.values(selectedSharedLinksMap);
+    if (selectedList.length === 0) {
+      setIsSharedMediaPickerOpen(false);
+      return;
+    }
+
+    setAttachedSharedLinks((prev) => {
+      const existingIds = new Set(prev.map((l) => l.id || l.url));
+      const newItems = selectedList.filter((s) => !existingIds.has(s.id) && !existingIds.has(s.url));
+      return [...prev, ...newItems];
+    });
+
+    setSelectedSharedLinksMap({});
+    setIsSharedMediaPickerOpen(false);
+  };
+
+  const handleRemoveAttachedLink = (index: number) => {
+    setAttachedSharedLinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCopyAttachedLink = (url: string, id: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedLinkId(id);
+    setTimeout(() => setCopiedLinkId(null), 2000);
+  };
+
+  const openSaveToSharedModal = async (imgSrc: string) => {
+    setImageToSave(imgSrc);
+    setSaveLinkName(`Prescription - ${patientData.patientName} (${new Date().toLocaleDateString("en-IN")})`);
+    setIsSaveToSharedOpen(true);
+    if (sharedFolders.length === 0) {
+      try {
+        const res = await fetch("/api/shared-media", { cache: "no-store" });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.folders) && data.folders.length > 0) {
+          setSharedFolders(data.folders);
+          setSaveToFolderId(data.folders[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load shared folders for save:", err);
+      }
+    } else {
+      setSaveToFolderId(sharedFolders[0]?.id || "");
+    }
+  };
+
+  const handleConfirmSaveToShared = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imageToSave || !saveToFolderId || !saveLinkName.trim()) return;
+
+    setIsSavingToShared(true);
+    try {
+      const res = await fetch("/api/shared-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_link",
+          folderId: saveToFolderId,
+          name: saveLinkName.trim(),
+          url: imageToSave,
+          createdBy: role === "DOCTOR" ? "Doctor" : "Reception",
+          createdBranch: patientData.branch || "Clinic",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("Image saved to Shared Media folder successfully! Accessible by all branches.");
+        setIsSaveToSharedOpen(false);
+        setImageToSave(null);
+      } else {
+        alert(data.error || "Failed to save to Shared Media");
+      }
+    } catch (err: any) {
+      alert("Error saving: " + (err.message || ""));
+    } finally {
+      setIsSavingToShared(false);
+    }
+  };
+
   // Canvas Drawing Handlers (Web)
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -552,6 +683,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
         body: JSON.stringify({
           id: appointmentId || "temp-id",
           prescriptionImages: uploadedImages,
+          sharedMediaLinks: attachedSharedLinks,
           prescriptionText,
           followUpInterval: effectiveInterval,
           followUpDate,
@@ -632,6 +764,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
         body: JSON.stringify({
           id: appointmentId || "temp-id",
           prescriptionImages: uploadedImages,
+          sharedMediaLinks: attachedSharedLinks,
           prescriptionText,
           followUpInterval: effectiveInterval,
           followUpDate,
@@ -967,7 +1100,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                   <p className="text-xs text-slate-500">
                     Upload lab reports, scans, patient diet charts, or past medical records.
                   </p>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -983,6 +1116,14 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                     >
                       <Camera className="w-3.5 h-3.5 text-slate-600" />
                       <span>Camera</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openSharedMediaPicker}
+                      className="px-3.5 py-2 rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Select from Shared Media</span>
                     </button>
                   </div>
                   {uploadedImages.length > 0 ? (
@@ -1013,12 +1154,103 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
                           >
                             ✕
                           </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openSaveToSharedModal(src);
+                            }}
+                            title="Save this file to Shared Media for all branches"
+                            className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-lg bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] font-bold flex items-center gap-1 shadow-xs transition-opacity"
+                          >
+                            <Share2 className="w-3 h-3 text-sky-300" />
+                            <span>Share</span>
+                          </button>
                         </div>
                       ))}
                     </div>
                   ) : (
                     <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
                       No documents or files uploaded yet.
+                    </div>
+                  )}
+
+                  {/* Attached Shared Media Links Section */}
+                  {attachedSharedLinks.length > 0 && (
+                    <div className="pt-4 border-t border-slate-100 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                          <Link2 className="w-3.5 h-3.5 text-sky-600" />
+                          <span>Attached Shared Media Links ({attachedSharedLinks.length})</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={openSharedMediaPicker}
+                          className="text-[11px] font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                        >
+                          + Add More
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {attachedSharedLinks.map((item, idx) => (
+                          <div
+                            key={item.id || idx}
+                            className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-white flex items-center justify-between gap-3 shadow-2xs transition-all"
+                          >
+                            <div className="min-w-0 flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                                <Link2 className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-900 truncate">{item.name}</p>
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-sky-600 hover:underline truncate block"
+                                >
+                                  {item.url}
+                                </a>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyAttachedLink(item.url, item.id || String(idx))}
+                                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600"
+                                title="Copy URL"
+                              >
+                                {copiedLinkId === (item.id || String(idx)) ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-sky-600"
+                                title="Open URL"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAttachedLink(idx)}
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-600"
+                                title="Remove link"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2095,6 +2327,241 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
             return data;
           }}
         />
+      )}
+
+      {/* SELECT FROM SHARED MEDIA MODAL */}
+      {isSharedMediaPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] flex flex-col animate-scaleIn">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Select from Shared Media Library
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pick resource links, diet charts, or documents to attach to {patientData.patientName}&apos;s file
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSharedMediaPickerOpen(false);
+                  setSelectedSharedLinksMap({});
+                }}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Folder List with Links */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {loadingSharedFolders ? (
+                <div className="p-8 text-center text-slate-500 font-bold text-xs flex flex-col items-center gap-2">
+                  <RotateCw className="w-5 h-5 animate-spin text-sky-600" />
+                  <span>Loading Shared Folders...</span>
+                </div>
+              ) : sharedFolders.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                  No folders or links in the Shared Media Library yet.
+                </div>
+              ) : (
+                sharedFolders.map((folder: any) => {
+                  const links = folder.links || [];
+                  return (
+                    <div
+                      key={folder.id}
+                      className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-sky-600" />
+                          <span className="text-xs font-black text-slate-900">{folder.name}</span>
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                            {links.length} {links.length === 1 ? "Link" : "Links"}
+                          </span>
+                        </div>
+                        {folder.description && (
+                          <span className="text-[11px] text-slate-400 truncate max-w-xs">
+                            {folder.description}
+                          </span>
+                        )}
+                      </div>
+
+                      {links.length === 0 ? (
+                        <p className="text-[11px] text-slate-400 italic pl-6">No links in this folder</p>
+                      ) : (
+                        <div className="space-y-1.5 pl-2">
+                          {links.map((link: any) => {
+                            const isSelected = Boolean(selectedSharedLinksMap[link.id]);
+                            return (
+                              <div
+                                key={link.id}
+                                onClick={() => toggleSelectSharedLink(link)}
+                                className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                  isSelected
+                                    ? "bg-sky-50 border-sky-400 text-sky-900 shadow-2xs"
+                                    : "bg-white border-slate-200 hover:border-slate-300 text-slate-700"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div
+                                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                                      isSelected
+                                        ? "bg-sky-600 border-sky-600 text-white"
+                                        : "border-slate-300 bg-white"
+                                    }`}
+                                  >
+                                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold truncate">{link.name}</p>
+                                    <p className="text-[10.5px] text-slate-400 truncate">{link.url}</p>
+                                  </div>
+                                </div>
+
+                                <a
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sky-600 hover:text-sky-800 p-1 shrink-0"
+                                  title="Open Link"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bottom Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <span className="text-xs font-bold text-slate-500">
+                {Object.keys(selectedSharedLinksMap).length} selected
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSharedMediaPickerOpen(false);
+                    setSelectedSharedLinksMap({});
+                  }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAttachSelectedSharedMedia}
+                  disabled={Object.keys(selectedSharedLinksMap).length === 0}
+                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs disabled:opacity-50"
+                >
+                  Attach Selected ({Object.keys(selectedSharedLinksMap).length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SAVE IMAGE TO SHARED MEDIA MODAL */}
+      {isSaveToSharedOpen && imageToSave && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-6 space-y-4 animate-scaleIn">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Save to Shared Media
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Make this file accessible across all branches
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSaveToSharedOpen(false);
+                  setImageToSave(null);
+                }}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSaveToShared} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Destination Shared Folder <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={saveToFolderId}
+                  onChange={(e) => setSaveToFolderId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+                >
+                  {sharedFolders.map((f: any) => (
+                    <option key={f.id} value={f.id}>
+                      📁 {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  File / Document Title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Spine MRI Report, Diet Chart"
+                  value={saveLinkName}
+                  onChange={(e) => setSaveLinkName(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSaveToSharedOpen(false);
+                    setImageToSave(null);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingToShared || !saveLinkName.trim()}
+                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs disabled:opacity-50"
+                >
+                  {isSavingToShared ? "Saving..." : "Save to Shared Media"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

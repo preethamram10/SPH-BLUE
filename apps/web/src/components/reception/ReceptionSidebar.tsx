@@ -17,6 +17,7 @@ import {
   Crown,
   ChevronLeft,
   ChevronRight,
+  FolderOpen,
 } from "lucide-react";
 
 interface ReceptionSidebarProps {
@@ -103,6 +104,12 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
       name: "Medical Requests",
       href: "/reception/medical-requests",
       icon: ClipboardList,
+    },
+    {
+      id: "shared-media",
+      name: "Shared Media",
+      href: "/reception/shared-media",
+      icon: FolderOpen,
     },
     {
       id: "doctor-no-show",

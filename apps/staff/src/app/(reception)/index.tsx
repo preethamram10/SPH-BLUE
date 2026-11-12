@@ -680,6 +680,12 @@ export default function ReceptionDashboard() {
       route: "/(reception)/medical-requests",
     },
     {
+      id: "shared-media",
+      title: "Shared Media",
+      icon: "folder-open-outline",
+      route: "/(reception)/shared-media",
+    },
+    {
       id: "doctor-no-show",
       title: "Doctor No-Show",
       icon: "person-remove-outline",

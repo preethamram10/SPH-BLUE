@@ -13,6 +13,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
+  Linking,
+  Share,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -153,6 +155,13 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState(false);
 
+  // Shared Media Integration
+  const [attachedSharedLinks, setAttachedSharedLinks] = useState<Array<{ id: string; name: string; url: string }>>([]);
+  const [isSharedMediaPickerOpen, setIsSharedMediaPickerOpen] = useState(false);
+  const [sharedFolders, setSharedFolders] = useState<any[]>([]);
+  const [loadingSharedFolders, setLoadingSharedFolders] = useState(false);
+  const [selectedSharedLinksMap, setSelectedSharedLinksMap] = useState<Record<string, { id: string; name: string; url: string }>>({});
+
   const [followUpInterval, setFollowUpInterval] = useState<"No Follow-up" | "1 Month" | "2 Months" | "3 Months" | "4 Months" | "Custom Date" | string>("No Follow-up");
   const [followUpDate, setFollowUpDate] = useState("");
   const [consultationFee, setConsultationFee] = useState("");
@@ -222,6 +231,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           }
 
           if (pf.prescriptionImages) setUploadedImages(pf.prescriptionImages);
+          if (pf.sharedMediaLinks && Array.isArray(pf.sharedMediaLinks)) setAttachedSharedLinks(pf.sharedMediaLinks);
           if (pf.prescriptionText) setPrescriptionText(pf.prescriptionText);
           if (pf.followUpInterval) setFollowUpInterval(pf.followUpInterval);
           if (pf.followUpDate || pf.activeFollowUpDate) setFollowUpDate(pf.followUpDate || pf.activeFollowUpDate);
@@ -522,6 +532,55 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     setUploadedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Shared Media Picker & Link Handlers
+  const openSharedMediaPicker = async () => {
+    setIsSharedMediaPickerOpen(true);
+    setLoadingSharedFolders(true);
+    try {
+      const res = await apiFetch<any>("/shared-media");
+      if (res && res.success && Array.isArray(res.folders)) {
+        setSharedFolders(res.folders);
+      }
+    } catch (err) {
+      console.error("Failed to fetch shared media folders:", err);
+    } finally {
+      setLoadingSharedFolders(false);
+    }
+  };
+
+  const toggleSelectSharedLink = (link: { id: string; name: string; url: string }) => {
+    setSelectedSharedLinksMap((prev) => {
+      const copy = { ...prev };
+      if (copy[link.id]) {
+        delete copy[link.id];
+      } else {
+        copy[link.id] = link;
+      }
+      return copy;
+    });
+  };
+
+  const handleAttachSelectedSharedMedia = () => {
+    const selectedList = Object.values(selectedSharedLinksMap);
+    if (selectedList.length === 0) {
+      setIsSharedMediaPickerOpen(false);
+      return;
+    }
+
+    setAttachedSharedLinks((prev) => {
+      const existingIds = new Set(prev.map((l) => l.id || l.url));
+      const newItems = selectedList.filter((s) => !existingIds.has(s.id) && !existingIds.has(s.url));
+      return [...prev, ...newItems];
+    });
+
+    setSelectedSharedLinksMap({});
+    setIsSharedMediaPickerOpen(false);
+  };
+
+  const handleRemoveAttachedLink = (index: number) => {
+    setAttachedSharedLinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Send to Reception & Collect Fee (Core CTA)
   const handleSendToReception = async () => {
     // 1. Mandatory Prescription check for OPD patients (Doctor only)
@@ -549,6 +608,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       const payload = {
         id: targetId,
         prescriptionImages: uploadedImages,
+        sharedMediaLinks: attachedSharedLinks,
         prescriptionText,
         followUpInterval: effectiveInterval,
         followUpDate,
@@ -635,6 +695,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       const payload = {
         id: targetId,
         prescriptionImages: uploadedImages,
+        sharedMediaLinks: attachedSharedLinks,
         prescriptionText,
         followUpInterval: effectiveInterval,
         followUpDate,
@@ -994,14 +1055,132 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             {/* TAB CONTENT: SHARE MEDIA */}
             {activeTab === "media" && (
               <View style={styles.sectionCard}>
-                <Text style={styles.sectionCardTitle}>Share Media / Patient Reports</Text>
-                <Text style={styles.fieldLabel}>Lab reports, x-rays, or case photographs</Text>
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={styles.sectionCardTitle}>Share Media / Patient Reports</Text>
+                  <Text style={[styles.fieldLabel, { marginTop: 0 }]}>
+                    {uploadedImages.length} files • {attachedSharedLinks.length} links
+                  </Text>
+                </View>
+                <Text style={styles.fieldLabel}>Lab reports, x-rays, diet guidelines, or case photographs</Text>
+
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                   <TouchableOpacity style={styles.uploadWhiteBtn} onPress={handlePickImage} activeOpacity={0.7}>
-                    <Ionicons name="cloud-upload-outline" size={17} color="#0284c7" />
-                    <Text style={styles.uploadWhiteBtnText}>Select File</Text>
+                    <Ionicons name="cloud-upload-outline" size={16} color="#0284c7" />
+                    <Text style={styles.uploadWhiteBtnText}>Upload File</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.uploadWhiteBtn} onPress={handleCameraCapture} activeOpacity={0.7}>
+                    <Ionicons name="camera-outline" size={16} color="#0284c7" />
+                    <Text style={styles.uploadWhiteBtnText}>Camera</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.uploadWhiteBtn, { backgroundColor: "#e0f2fe", borderColor: "#bae6fd" }]}
+                    onPress={openSharedMediaPicker}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="folder-open-outline" size={16} color="#0369a1" />
+                    <Text style={[styles.uploadWhiteBtnText, { color: "#0369a1" }]}>+ From Shared Media</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Uploaded Images Gallery */}
+                {uploadedImages.length > 0 && (
+                  <View style={{ marginTop: 14 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#334155", marginBottom: 6 }}>
+                      Attached Photos &amp; Documents ({uploadedImages.length})
+                    </Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                      {uploadedImages.map((uri, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.thumbnailWrapper}
+                          onPress={() => {
+                            setViewerInitialIndex(idx);
+                            setIsViewerOpen(true);
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <ExpoImage source={resolvePrescriptionImageUrl(uri)} style={styles.thumbnailImg} contentFit="cover" />
+                          <TouchableOpacity
+                            style={styles.removeImgBtn}
+                            onPress={() => handleRemoveImage(idx)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="close-circle" size={18} color="#ef4444" />
+                          </TouchableOpacity>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Attached Shared Links */}
+                {attachedSharedLinks.length > 0 && (
+                  <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#f1f5f9" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: "#334155" }}>
+                        Attached Shared Links ({attachedSharedLinks.length})
+                      </Text>
+                      <TouchableOpacity onPress={openSharedMediaPicker}>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7" }}>+ Add More</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {attachedSharedLinks.map((item, idx) => (
+                      <View
+                        key={item.id || idx}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: 10,
+                          backgroundColor: "#f8fafc",
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: "#e2e8f0",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <TouchableOpacity
+                          style={{ flex: 1, marginRight: 8 }}
+                          onPress={async () => {
+                            if (item.url) {
+                              try {
+                                await Linking.openURL(item.url);
+                              } catch {}
+                            }
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#0f172a" }} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: "#0284c7", marginTop: 2 }} numberOfLines={1}>
+                            {item.url}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <TouchableOpacity
+                            style={{ padding: 6, borderRadius: 6, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0" }}
+                            onPress={() => {
+                              Share.share({ title: item.name, message: `${item.name}\n${item.url}` });
+                            }}
+                          >
+                            <Ionicons name="share-outline" size={14} color="#64748b" />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={{ padding: 6, borderRadius: 6, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0" }}
+                            onPress={() => handleRemoveAttachedLink(idx)}
+                          >
+                            <Ionicons name="trash-outline" size={14} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
@@ -1838,6 +2017,145 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
           }}
         />
       )}
+
+      {/* SELECT FROM SHARED MEDIA MODAL (MOBILE) */}
+      <Modal
+        visible={isSharedMediaPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsSharedMediaPickerOpen(false);
+          setSelectedSharedLinksMap({});
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "center", alignItems: "center", padding: 16 }}
+        >
+          <View style={{ backgroundColor: "#ffffff", borderRadius: 20, width: "100%", maxWidth: 440, padding: 18, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 1, borderBottomColor: "#f1f5f9", paddingBottom: 12, marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ backgroundColor: "#e0f2fe", width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="folder-open" size={18} color="#0284c7" />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>Shared Media Library</Text>
+                  <Text style={{ fontSize: 11, color: "#64748b" }}>Attach links to patient file</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsSharedMediaPickerOpen(false);
+                  setSelectedSharedLinksMap({});
+                }}
+              >
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }}>
+              {loadingSharedFolders ? (
+                <View style={{ padding: 30, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color="#0284c7" />
+                  <Text style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Loading shared folders...</Text>
+                </View>
+              ) : sharedFolders.length === 0 ? (
+                <View style={{ padding: 30, alignItems: "center" }}>
+                  <Text style={{ fontSize: 12, color: "#94a3b8" }}>No shared folders found</Text>
+                </View>
+              ) : (
+                sharedFolders.map((folder: any) => {
+                  const links = folder.links || [];
+                  return (
+                    <View key={folder.id} style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="folder" size={16} color="#0284c7" />
+                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>{folder.name}</Text>
+                        </View>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#64748b" }}>{links.length} links</Text>
+                      </View>
+
+                      {links.length === 0 ? (
+                        <Text style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic", marginLeft: 22 }}>Empty folder</Text>
+                      ) : (
+                        links.map((link: any) => {
+                          const isSelected = Boolean(selectedSharedLinksMap[link.id]);
+                          return (
+                            <TouchableOpacity
+                              key={link.id}
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                backgroundColor: isSelected ? "#e0f2fe" : "#ffffff",
+                                borderWidth: 1,
+                                borderColor: isSelected ? "#38bdf8" : "#cbd5e1",
+                                borderRadius: 8,
+                                padding: 8,
+                                marginTop: 6,
+                              }}
+                              onPress={() => toggleSelectSharedLink(link)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                                <Ionicons
+                                  name={isSelected ? "checkbox" : "square-outline"}
+                                  size={18}
+                                  color={isSelected ? "#0284c7" : "#94a3b8"}
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#0f172a" }} numberOfLines={1}>
+                                    {link.name}
+                                  </Text>
+                                  <Text style={{ fontSize: 10.5, color: "#64748b" }} numberOfLines={1}>
+                                    {link.url}
+                                  </Text>
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: "#f1f5f9", paddingTop: 12, marginTop: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: "#64748b" }}>
+                {Object.keys(selectedSharedLinksMap).length} selected
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#cbd5e1" }}
+                  onPress={() => {
+                    setIsSharedMediaPickerOpen(false);
+                    setSelectedSharedLinksMap({});
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#64748b" }}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: "#0284c7",
+                    opacity: Object.keys(selectedSharedLinksMap).length === 0 ? 0.5 : 1,
+                  }}
+                  disabled={Object.keys(selectedSharedLinksMap).length === 0}
+                  onPress={handleAttachSelectedSharedMedia}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: "#ffffff" }}>Attach</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       </KeyboardAvoidingView>
 

@@ -1696,6 +1696,11 @@ export interface AppointmentRecord {
   diagnosisNotes?: string;
   prescriptionText?: string;
   prescriptionImages?: string[];
+  sharedMediaLinks?: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
   followUpInterval?: string;
   followUpDate?: string;
   isFollowUpBooked?: boolean;
@@ -2754,6 +2759,7 @@ export const appointmentService = {
       diagnosisNotes?: string;
       prescriptionText?: string;
       prescriptionImages?: string[];
+      sharedMediaLinks?: Array<{ id: string; name: string; url: string }>;
       followUpInterval?: string;
       followUpDate?: string;
       consultationFee?: number;
@@ -2770,6 +2776,7 @@ export const appointmentService = {
     if (data.diagnosisNotes !== undefined) appt.diagnosisNotes = data.diagnosisNotes;
     if (data.prescriptionText !== undefined) appt.prescriptionText = data.prescriptionText;
     if (data.prescriptionImages !== undefined) appt.prescriptionImages = data.prescriptionImages;
+    if (data.sharedMediaLinks !== undefined) appt.sharedMediaLinks = data.sharedMediaLinks;
     if (data.followUpInterval !== undefined) appt.followUpInterval = data.followUpInterval;
     if (data.consultationFee !== undefined) appt.consultationFee = data.consultationFee;
     if (data.dietPlan !== undefined) appt.dietPlan = data.dietPlan;
@@ -5577,6 +5584,226 @@ export const telecallerCallLogService = {
     };
   },
 };
+
+// ==========================================
+// SHARED MEDIA SYSTEM (Global All-Branches)
+// ==========================================
+
+export interface SharedMediaLink {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: string;
+  createdBy?: string;
+  createdBranch?: string;
+}
+
+export interface SharedMediaFolder {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string; // e.g. "sky", "emerald", "amber", "indigo", "rose", "purple"
+  createdAt: string;
+  createdBy?: string;
+  createdBranch?: string;
+  links: SharedMediaLink[];
+}
+
+declare global {
+  var __sphSharedMediaStore: SharedMediaFolder[] | undefined;
+}
+
+export const INITIAL_SHARED_MEDIA_FOLDERS: SharedMediaFolder[] = [
+  {
+    id: "folder-diet-guides",
+    name: "Diet & Nutrition Guides",
+    description: "Standard clinic diet recommendations and healthy food charts",
+    color: "emerald",
+    createdAt: new Date().toISOString(),
+    createdBy: "Clinical Admin",
+    createdBranch: "Head Office",
+    links: [
+      {
+        id: "link-general-diet",
+        name: "General Chronic Care Diet Chart",
+        url: "https://drive.google.com/file/d/sample-diet-guide/view",
+        createdAt: new Date().toISOString(),
+        createdBy: "Head Office",
+        createdBranch: "Head Office",
+      },
+    ],
+  },
+  {
+    id: "folder-exercise-physio",
+    name: "Exercise & Physiotherapy",
+    description: "Rehabilitation and physical movement reference videos",
+    color: "sky",
+    createdAt: new Date().toISOString(),
+    createdBy: "Clinical Admin",
+    createdBranch: "Head Office",
+    links: [],
+  },
+  {
+    id: "folder-test-templates",
+    name: "Lab Test Templates & Forms",
+    description: "Common diagnostic requisition forms and testing guidelines",
+    color: "indigo",
+    createdAt: new Date().toISOString(),
+    createdBy: "Clinical Admin",
+    createdBranch: "Head Office",
+    links: [],
+  },
+  {
+    id: "folder-patient-brochures",
+    name: "Patient Education & FAQs",
+    description: "Homeopathic treatment awareness and medicine dosage guidelines",
+    color: "amber",
+    createdAt: new Date().toISOString(),
+    createdBy: "Clinical Admin",
+    createdBranch: "Head Office",
+    links: [],
+  },
+];
+
+function getSharedMediaCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "shared_media_store.json"))) {
+    return path.join(webCache, "shared_media_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "shared_media_store.json"))) {
+    return path.join(rootCache, "shared_media_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "shared_media_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".shared_media_store.json");
+    }
+  }
+  return path.join(rootCache, "shared_media_store.json");
+}
+
+function saveSharedMediaToDisk(data: SharedMediaFolder[]): void {
+  const file = getSharedMediaCachePath();
+  safeAtomicWrite(file, data);
+}
+
+function getSharedMediaStore(): SharedMediaFolder[] {
+  if (global.__sphSharedMediaStore && global.__sphSharedMediaStore.length > 0) {
+    return global.__sphSharedMediaStore;
+  }
+  const file = getSharedMediaCachePath();
+  if (fs.existsSync(file)) {
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        global.__sphSharedMediaStore = parsed;
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Failed to load shared media from disk:", e);
+    }
+  }
+  const initial = JSON.parse(JSON.stringify(INITIAL_SHARED_MEDIA_FOLDERS));
+  global.__sphSharedMediaStore = initial;
+  saveSharedMediaToDisk(initial);
+  return initial;
+}
+
+export const sharedMediaService = {
+  async getAllFolders(): Promise<SharedMediaFolder[]> {
+    return getSharedMediaStore();
+  },
+
+  async createFolder(data: {
+    name: string;
+    description?: string;
+    color?: string;
+    createdBy?: string;
+    createdBranch?: string;
+  }): Promise<SharedMediaFolder> {
+    const store = getSharedMediaStore();
+    const newFolder: SharedMediaFolder = {
+      id: `folder-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: data.name.trim(),
+      description: data.description ? data.description.trim() : "",
+      color: data.color || "sky",
+      createdAt: new Date().toISOString(),
+      createdBy: data.createdBy || "Reception",
+      createdBranch: data.createdBranch || "Clinic",
+      links: [],
+    };
+    store.push(newFolder);
+    global.__sphSharedMediaStore = store;
+    saveSharedMediaToDisk(store);
+    return newFolder;
+  },
+
+  async deleteFolder(folderId: string): Promise<boolean> {
+    let store = getSharedMediaStore();
+    const beforeLen = store.length;
+    store = store.filter((f) => f.id !== folderId);
+    if (store.length !== beforeLen) {
+      global.__sphSharedMediaStore = store;
+      saveSharedMediaToDisk(store);
+      return true;
+    }
+    return false;
+  },
+
+  async addLinkToFolder(
+    folderId: string,
+    data: {
+      name: string;
+      url: string;
+      createdBy?: string;
+      createdBranch?: string;
+    }
+  ): Promise<SharedMediaLink | null> {
+    const store = getSharedMediaStore();
+    const folder = store.find((f) => f.id === folderId);
+    if (!folder) return null;
+
+    if (!Array.isArray(folder.links)) {
+      folder.links = [];
+    }
+
+    const newLink: SharedMediaLink = {
+      id: `link-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: data.name.trim(),
+      url: data.url.trim(),
+      createdAt: new Date().toISOString(),
+      createdBy: data.createdBy || "Reception",
+      createdBranch: data.createdBranch || "Clinic",
+    };
+
+    folder.links.unshift(newLink);
+    global.__sphSharedMediaStore = store;
+    saveSharedMediaToDisk(store);
+    return newLink;
+  },
+
+  async deleteLinkFromFolder(folderId: string, linkId: string): Promise<boolean> {
+    const store = getSharedMediaStore();
+    const folder = store.find((f) => f.id === folderId);
+    if (!folder || !Array.isArray(folder.links)) return false;
+
+    const beforeLen = folder.links.length;
+    folder.links = folder.links.filter((l) => l.id !== linkId);
+    if (folder.links.length !== beforeLen) {
+      global.__sphSharedMediaStore = store;
+      saveSharedMediaToDisk(store);
+      return true;
+    }
+    return false;
+  },
+};
+
 
 
 
