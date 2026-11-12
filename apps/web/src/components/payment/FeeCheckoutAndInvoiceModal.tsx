@@ -2033,7 +2033,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 min="0"
                                 max={effectivePaidToday}
                                 value={splitCash || ""}
-                                onChange={(e) => setSplitCash(Math.max(0, parseFloat(e.target.value) || 0))}
+                                onChange={(e) => {
+                                  const raw = parseFloat(e.target.value) || 0;
+                                  const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                                (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                  const maxAllowed = Math.max(0, effectivePaidToday - other);
+                                  setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
+                                }}
                                 placeholder="0"
                                 className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
                               />
@@ -2074,7 +2081,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 min="0"
                                 max={effectivePaidToday}
                                 value={splitCounterUpi || ""}
-                                onChange={(e) => setSplitCounterUpi(Math.max(0, parseFloat(e.target.value) || 0))}
+                                onChange={(e) => {
+                                  const raw = parseFloat(e.target.value) || 0;
+                                  const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                                (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                  const maxAllowed = Math.max(0, effectivePaidToday - other);
+                                  setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                }}
                                 placeholder="0"
                                 className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
                               />
@@ -2119,7 +2133,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 max={effectivePaidToday}
                                 disabled={isSplitUpiPaid}
                                 value={splitUpi || ""}
-                                onChange={(e) => setSplitUpi(Math.max(0, parseFloat(e.target.value) || 0))}
+                                onChange={(e) => {
+                                  const raw = parseFloat(e.target.value) || 0;
+                                  const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                  const maxAllowed = Math.max(0, effectivePaidToday - other);
+                                  setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                }}
                                 placeholder="0"
                                 className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
                               />
@@ -2203,7 +2224,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 max={effectivePaidToday}
                                 disabled={isSplitCardPaid}
                                 value={splitCard || ""}
-                                onChange={(e) => setSplitCard(Math.max(0, parseFloat(e.target.value) || 0))}
+                                onChange={(e) => {
+                                  const raw = parseFloat(e.target.value) || 0;
+                                  const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
+                                  const maxAllowed = Math.max(0, effectivePaidToday - other);
+                                  setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
+                                }}
                                 placeholder="0"
                                 className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
                               />

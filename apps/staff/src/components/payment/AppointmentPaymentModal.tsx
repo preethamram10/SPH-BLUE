@@ -2668,7 +2668,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   keyboardType="numeric"
                                   placeholder="0"
                                   value={splitCash > 0 ? String(splitCash) : ""}
-                                  onChangeText={(txt) => setSplitCash(Math.max(0, parseFloat(txt) || 0))}
+                                  onChangeText={(txt) => {
+                                    const raw = parseFloat(txt) || 0;
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                    const maxAllowed = Math.max(0, targetToPay - other);
+                                    setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
+                                  }}
                                 />
                               </View>
                               <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Physical cash collected at counter desk</Text>
@@ -2705,7 +2713,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   keyboardType="numeric"
                                   placeholder="0"
                                   value={splitCounterUpi > 0 ? String(splitCounterUpi) : ""}
-                                  onChangeText={(txt) => setSplitCounterUpi(Math.max(0, parseFloat(txt) || 0))}
+                                  onChangeText={(txt) => {
+                                    const raw = parseFloat(txt) || 0;
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                    const maxAllowed = Math.max(0, targetToPay - other);
+                                    setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                  }}
                                 />
                               </View>
                               <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Patient scans printed counter QR directly (Same as Cash)</Text>
@@ -2744,7 +2760,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   placeholder="0"
                                   editable={!isSplitUpiPaid}
                                   value={splitUpi > 0 ? String(splitUpi) : ""}
-                                  onChangeText={(txt) => setSplitUpi(Math.max(0, parseFloat(txt) || 0))}
+                                  onChangeText={(txt) => {
+                                    const raw = parseFloat(txt) || 0;
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                  (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                    const maxAllowed = Math.max(0, targetToPay - other);
+                                    setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                  }}
                                 />
                               </View>
 
@@ -2861,7 +2885,15 @@ ${upiUri}`);
                                   placeholder="0"
                                   editable={!isSplitCardPaid}
                                   value={splitCard > 0 ? String(splitCard) : ""}
-                                  onChangeText={(txt) => setSplitCard(Math.max(0, parseFloat(txt) || 0))}
+                                  onChangeText={(txt) => {
+                                    const raw = parseFloat(txt) || 0;
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                                  (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
+                                    const maxAllowed = Math.max(0, targetToPay - other);
+                                    setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
+                                  }}
                                 />
                               </View>
 
@@ -3143,7 +3175,14 @@ ${upiUri}`);
                           placeholderTextColor="#94a3b8"
                           keyboardType="numeric"
                           value={discountRequestedAmount}
-                          onChangeText={setDiscountRequestedAmount}
+                          onChangeText={(txt) => {
+                            const val = parseFloat(txt) || 0;
+                            if (val > baseTotal) {
+                              setDiscountRequestedAmount(String(baseTotal));
+                            } else {
+                              setDiscountRequestedAmount(txt);
+                            }
+                          }}
                         />
 
                         <Text style={styles.inputFieldLabel}>Reason / Notes:</Text>
@@ -3319,7 +3358,14 @@ ${upiUri}`);
                               placeholder="0"
                               placeholderTextColor="#94a3b8"
                               value={amountPaidNow}
-                              onChangeText={setAmountPaidNow}
+                              onChangeText={(txt) => {
+                                const val = parseFloat(txt) || 0;
+                                if (val > totalAmountDue) {
+                                  setAmountPaidNow(String(totalAmountDue));
+                                } else {
+                                  setAmountPaidNow(txt);
+                                }
+                              }}
                             />
                           </View>
                         </View>
