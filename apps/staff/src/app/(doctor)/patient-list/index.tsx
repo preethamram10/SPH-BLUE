@@ -97,7 +97,7 @@ export default function DoctorPatientListScreen() {
           if (doctorName) params.set("doctorName", doctorName);
           const data = await apiFetch<any>(`/doctor/patients?${params.toString()}`);
           if (data.success) counts[tab] = data.totalCount || 0;
-        } catch {}
+        } catch { }
       })
     );
     setSessionCounts(counts);
@@ -158,14 +158,14 @@ export default function DoctorPatientListScreen() {
 
   const filteredPatients = searchTerm.trim()
     ? patients.filter((p) => {
-        const q = searchTerm.toLowerCase();
-        return (
-          (p.name || p.patientName || "").toLowerCase().includes(q) ||
-          (p.phone || "").includes(q) ||
-          (p.id || p.registrationId || "").toLowerCase().includes(q) ||
-          (p.diseases || p.primarySymptoms || "").toLowerCase().includes(q)
-        );
-      })
+      const q = searchTerm.toLowerCase();
+      return (
+        (p.name || p.patientName || "").toLowerCase().includes(q) ||
+        (p.phone || "").includes(q) ||
+        (p.id || p.registrationId || "").toLowerCase().includes(q) ||
+        (p.diseases || p.primarySymptoms || "").toLowerCase().includes(q)
+      );
+    })
     : patients;
 
   const renderCard = ({ item: p, index: idx }: { item: any; index: number }) => {
@@ -336,10 +336,10 @@ export default function DoctorPatientListScreen() {
                   {searchTerm
                     ? `No patient records match "${searchTerm}".`
                     : session === "TODAY"
-                    ? "No patients consulted today."
-                    : session === "YESTERDAY"
-                    ? "No patients consulted yesterday."
-                    : "No consulted patients registered under your profile yet."}
+                      ? "No patients consulted today."
+                      : session === "YESTERDAY"
+                        ? "No patients consulted yesterday."
+                        : "No consulted patients registered under your profile yet."}
                 </Text>
               </View>
             }
