@@ -424,6 +424,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       setConsultationFee(target);
       setIncludeMedicine(false);
       setMedicineFee(0);
+      if (medicines.length <= 1) {
+        setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: target }]);
+      }
     } else if (type === "split") {
       // Split 50/50 between Consultation and Medicine
       setIncludeConsult(true);
@@ -431,8 +434,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       const half = Math.round(target / 2);
       setConsultationFee(half);
       setMedicineFee(target - half);
-      if (medicines.length === 1) {
-        setMedicines([{ ...medicines[0], amount: target - half }]);
+      if (medicines.length <= 1) {
+        setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: target - half }]);
       }
     }
   };
@@ -444,12 +447,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     if (paymentType === "consultation" || paymentType === "consult_and_med") {
       setConsultationFee(target);
       setMedicineFee(0);
+      if (paymentType === "consult_and_med" && medicines.length <= 1) {
+        setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: target }]);
+      }
     } else if (paymentType === "split") {
       const half = Math.round(target / 2);
       setConsultationFee(half);
       setMedicineFee(target - half);
-      if (medicines.length === 1) {
-        setMedicines([{ ...medicines[0], amount: target - half }]);
+      if (medicines.length <= 1) {
+        setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: target - half }]);
       }
     }
   };
@@ -516,17 +522,21 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const handleConsultFeeChange = (val: string) => {
     const rawConsult = parseFloat(val) || 0;
     const target = parseFloat(targetAmount) || 0;
-    // Cannot exceed target amount when target is set
+    if (paymentType === "split") {
+      const clampedConsult = Math.max(0, Math.min(rawConsult, target));
+      setConsultationFee(clampedConsult);
+      const remaining = Math.max(0, target - clampedConsult);
+      setMedicineFee(remaining);
+      if (medicines.length <= 1) {
+        setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: remaining }]);
+      }
+      return;
+    }
     const consult = target > 0 ? Math.min(rawConsult, target) : rawConsult;
     setConsultationFee(consult);
     if (paymentType === "consultation" || paymentType === "package") {
       if (target <= 0) setTargetAmount(val);
       return;
-    }
-    const remaining = Math.max(0, target - consult);
-    setMedicineFee(remaining);
-    if (medicines.length === 1) {
-      setMedicines([{ ...medicines[0], amount: remaining }]);
     }
   };
 
@@ -1775,12 +1785,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           <View style={styles.amountInputBox}>
                             <Text style={styles.inputRupee}>₹</Text>
                             <TextInput
-                              style={styles.amountInputText}
+                              style={[
+                                styles.amountInputText,
+                                (paymentType === "consultation" || paymentType === "consult_and_med") && { color: "#64748b" },
+                              ]}
                               keyboardType="numeric"
-                              editable={includeConsult}
+                              editable={includeConsult && paymentType === "split"}
                               placeholder="0"
                               placeholderTextColor="#94a3b8"
-                              value={consultationFee > 0 ? String(consultationFee) : ""}
+                              value={consultationFee > 0 ? String(consultationFee) : (paymentType === "consultation" || paymentType === "consult_and_med" ? (targetAmount || "0") : "")}
                               onChangeText={handleConsultFeeChange}
                             />
                           </View>
@@ -1862,18 +1875,56 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         <Text style={styles.dropdownMiniText} numberOfLines={1}>{med.timing || "Timing"}</Text>
                                         <Ionicons name="chevron-down" size={12} color="#64748b" />
                                       </TouchableOpacity>
+
+                                      <View style={styles.medAmountBox}>
+                                        <Text style={styles.inputRupee}>₹</Text>
+                                        <TextInput
+                                          style={styles.medAmountText}
+                                          keyboardType="numeric"
+                                          placeholder="0"
+                                          placeholderTextColor="#94a3b8"
+                                          value={med.amount !== undefined && med.amount !== 0 ? String(med.amount) : ""}
+                                          onChangeText={(txt) => {
+                                            const num = parseFloat(txt) || 0;
+                                            const target = parseFloat(targetAmount) || 0;
+                                            const otherSum = medicines.filter((m) => m.id !== med.id).reduce((acc, m) => acc + (m.amount || 0), 0);
+                                            const maxAllowed = target > 0 ? Math.max(0, target - otherSum) : num;
+                                            const effectiveVal = target > 0 ? Math.min(num, maxAllowed) : num;
+                                            handleUpdateMedicine(med.id, { amount: effectiveVal });
+                                          }}
+                                        />
+                                      </View>
                                     </View>
                                   </View>
                                 ))}
 
-                                <TouchableOpacity
-                                  onPress={() => setShowDetailedMedicines(false)}
-                                  style={{ alignSelf: "flex-start", marginTop: 2 }}
-                                >
-                                  <Text style={{ fontSize: 10, color: "#64748b", fontWeight: "600" }}>
-                                    Hide Medicine Details
-                                  </Text>
-                                </TouchableOpacity>
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                                  <TouchableOpacity
+                                    onPress={() => setShowDetailedMedicines(false)}
+                                    style={{ alignSelf: "flex-start" }}
+                                  >
+                                    <Text style={{ fontSize: 10, color: "#64748b", fontWeight: "600" }}>
+                                      Hide Medicine Details
+                                    </Text>
+                                  </TouchableOpacity>
+
+                                  <View style={{
+                                    backgroundColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#ecfdf5" : "#fffbeb",
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 3,
+                                    borderRadius: 6,
+                                    borderWidth: 1,
+                                    borderColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#a7f3d0" : "#fde68a"
+                                  }}>
+                                    <Text style={{
+                                      fontSize: 10,
+                                      fontWeight: "800",
+                                      color: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#047857" : "#b45309"
+                                    }}>
+                                      Total Remedies: ₹{medicines.reduce((acc, m) => acc + (m.amount || 0), 0)} / ₹{parseFloat(targetAmount) || 0}
+                                    </Text>
+                                  </View>
+                                </View>
                               </View>
                             ) : (
                               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -1905,17 +1956,22 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           <View style={styles.feeCardHeaderRow}>
                             <TouchableOpacity
                               style={styles.feeCardCheckboxTouch}
-                              onPress={handleToggleMedicine}
+                              onPress={() => {
+                                if (paymentType !== "consultation") handleToggleMedicine();
+                              }}
+                              disabled={paymentType === "consultation"}
                               activeOpacity={0.7}
                             >
                               <Ionicons
-                                name={includeMedicine ? "checkmark-circle" : "ellipse-outline"}
+                                name={includeMedicine && paymentType !== "consultation" ? "checkmark-circle" : "ellipse-outline"}
                                 size={22}
-                                color={includeMedicine ? "#0284c7" : "#cbd5e1"}
+                                color={includeMedicine && paymentType !== "consultation" ? "#0284c7" : "#cbd5e1"}
                               />
                               <View style={styles.feeCardTextCol}>
-                                <Text style={styles.feeCardTitle}>Prescribed Medicines</Text>
-                                <Text style={styles.feeCardSub}>Prescribed Remedies / Pharmacy Fee</Text>
+                                <Text style={[styles.feeCardTitle, paymentType === "consultation" && { color: "#94a3b8" }]}>Prescribed Medicines</Text>
+                                <Text style={styles.feeCardSub}>
+                                  {paymentType === "consultation" ? "Disabled in Consultation Only mode" : "Prescribed Remedies / Pharmacy Fee"}
+                                </Text>
                               </View>
                             </TouchableOpacity>
 
@@ -1924,15 +1980,22 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                               <TextInput
                                 style={styles.amountInputText}
                                 keyboardType="numeric"
-                                editable={includeMedicine}
+                                editable={includeMedicine && paymentType === "split"}
                                 value={String(medicineFee)}
                                 onChangeText={(val) => {
                                   const num = parseFloat(val) || 0;
                                   const target = parseFloat(targetAmount) || 0;
-                                  const maxAllowed = target > 0
-                                    ? (paymentType === "split" && includeConsult ? Math.max(0, target - consultationFee) : target)
-                                    : num;
-                                  const effectiveVal = target > 0 ? Math.min(num, maxAllowed) : num;
+                                  if (paymentType === "split") {
+                                    const clampedMed = Math.max(0, Math.min(num, target));
+                                    setMedicineFee(clampedMed);
+                                    const remainingConsult = Math.max(0, target - clampedMed);
+                                    setConsultationFee(remainingConsult);
+                                    if (medicines.length <= 1) {
+                                      setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: clampedMed }]);
+                                    }
+                                    return;
+                                  }
+                                  const effectiveVal = target > 0 ? Math.min(num, target) : num;
                                   setMedicineFee(effectiveVal);
                                   if (medicines.length === 1) {
                                     setMedicines([{ ...medicines[0], amount: effectiveVal }]);

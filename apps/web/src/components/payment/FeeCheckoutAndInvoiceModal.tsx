@@ -364,13 +364,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setConsultationFee(val);
       setIncludeConsultFee(true);
       setIncludeMedicineFee(false);
+      if (paymentType === "consult_and_med" && medicineItems.length <= 1) {
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: val }]);
+      }
     } else if (paymentType === "split") {
       const half = Math.round(val / 2);
       setConsultationFee(half);
       setIncludeConsultFee(true);
       setIncludeMedicineFee(true);
       if (medicineItems.length <= 1) {
-        setMedicineItems([{ ...medicineItems[0], amount: val - half }]);
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: val - half }]);
       }
     }
   };
@@ -401,44 +404,59 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       setIncludeConsultFee(true);
       setConsultationFee(target);
       setIncludeMedicineFee(false);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: target }]);
+      }
     } else if (type === "split") {
       setIncludeConsultFee(true);
       setIncludeMedicineFee(true);
       const half = Math.round(target / 2);
       setConsultationFee(half);
       if (medicineItems.length <= 1) {
-        setMedicineItems([{ ...medicineItems[0], amount: target - half }]);
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: target - half }]);
       }
     }
   };
 
   const handleConsultFeeChange = (val: number) => {
     const target = targetAmount || 0;
-    // Restrict consultation fee to target amount if target is set
+    if (paymentType === "split") {
+      const clampedConsult = Math.max(0, Math.min(val, target));
+      setConsultationFee(clampedConsult);
+      const remainingMed = Math.max(0, target - clampedConsult);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: remainingMed }]);
+      } else {
+        const diff = remainingMed - totalMedicineAmount;
+        setMedicineItems((prev) =>
+          prev.map((m, idx) => (idx === 0 ? { ...m, amount: Math.max(0, (Number(m.amount) || 0) + diff) } : m))
+        );
+      }
+      return;
+    }
     const clampedVal = target > 0 ? Math.min(val, target) : val;
     setConsultationFee(clampedVal);
-    if (paymentType === "split") {
-      const remaining = Math.max(0, target - clampedVal);
-      if (medicineItems.length <= 1) {
-        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: remaining }]);
-      }
-    }
   };
 
   const handleMedicineFeeInputChange = (val: number) => {
     const target = targetAmount || 0;
-    const maxAllowed = target > 0
-      ? (paymentType === "split" && includeConsultFee ? Math.max(0, target - consultationFee) : target)
-      : val;
-    const effectiveVal = target > 0 ? Math.min(val, maxAllowed) : val;
-
+    if (paymentType === "split") {
+      const clampedMed = Math.max(0, Math.min(val, target));
+      const remainingConsult = Math.max(0, target - clampedMed);
+      setConsultationFee(remainingConsult);
+      if (medicineItems.length <= 1) {
+        setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: clampedMed }]);
+      } else {
+        const diff = clampedMed - totalMedicineAmount;
+        setMedicineItems((prev) =>
+          prev.map((m, idx) => (idx === 0 ? { ...m, amount: Math.max(0, (Number(m.amount) || 0) + diff) } : m))
+        );
+      }
+      return;
+    }
+    const effectiveVal = target > 0 ? Math.min(val, target) : val;
     if (medicineItems.length <= 1) {
       setMedicineItems([{ ...(medicineItems[0] || { id: "1", name: "", type: "Pills", timing: "M - N - N" }), amount: effectiveVal }]);
-    } else {
-      const diff = effectiveVal - totalMedicineAmount;
-      setMedicineItems((prev) =>
-        prev.map((m, idx) => (idx === 0 ? { ...m, amount: Math.max(0, (Number(m.amount) || 0) + diff) } : m))
-      );
     }
   };
 
@@ -1181,9 +1199,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         <input
                           type="checkbox"
                           id="incConsult"
+                          disabled={paymentType === "consultation" || paymentType === "consult_and_med"}
                           checked={includeConsultFee}
                           onChange={(e) => handleToggleConsult(e.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:opacity-50"
                         />
                         <div>
                           <label htmlFor="incConsult" className="text-xs font-black text-slate-800 cursor-pointer block">
@@ -1191,7 +1210,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           </label>
                           <p className="text-[11px] text-slate-500 font-medium">
                             {paymentType === "consult_and_med"
-                              ? "Combined Doctor Consultation & Prescribed Remedies Fee"
+                              ? "Combined Doctor Consultation & Prescribed Remedies Fee (Locked to Target)"
                               : "Doctor Requested Consultation Fee"}
                           </p>
                         </div>
@@ -1200,11 +1219,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         <span className="text-xs font-bold text-slate-400">₹</span>
                         <input
                           type="number"
-                          disabled={!includeConsultFee}
-                          value={consultationFee > 0 ? consultationFee : ""}
+                          disabled={!includeConsultFee || paymentType === "consultation" || paymentType === "consult_and_med"}
+                          value={consultationFee > 0 ? consultationFee : (paymentType === "consultation" || paymentType === "consult_and_med" ? (targetAmount || 0) : "")}
                           onChange={(e) => handleConsultFeeChange(Math.max(0, Number(e.target.value)))}
                           placeholder="0"
-                          className="w-24 text-right text-xs md:text-sm font-black text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 bg-transparent focus:outline-none"
+                          className="w-24 text-right text-xs md:text-sm font-black text-slate-800 disabled:bg-slate-100 disabled:text-slate-500 bg-transparent focus:outline-none"
                         />
                       </div>
                     </div>
@@ -1287,6 +1306,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                   <option value="N only">N only</option>
                                   <option value="SOS">SOS</option>
                                 </select>
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white w-24">
+                                  <span className="text-xs font-bold text-slate-400">₹</span>
+                                  <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={item.amount !== undefined && item.amount !== 0 ? item.amount : ""}
+                                    onChange={(e) => handleUpdateMedicine(item.id, "amount", Math.max(0, Number(e.target.value)))}
+                                    className="w-full text-right text-xs md:text-sm font-black text-slate-800 bg-transparent focus:outline-none"
+                                  />
+                                </div>
                                 {medicineItems.length > 1 && (
                                   <button
                                     type="button"
@@ -1307,9 +1336,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               >
                                 Hide Medicine Details
                               </button>
-                              <span className="text-xs text-slate-500 italic">
-                                Fee is included in Consultation & Medicine total
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-extrabold ${medicineItems.reduce((acc, m) => acc + (Number(m.amount) || 0), 0) === (targetAmount || 0) ? "text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" : "text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"}`}>
+                                  Total Remedies: ₹{medicineItems.reduce((acc, m) => acc + (Number(m.amount) || 0), 0)} / ₹{targetAmount || 0}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -1325,9 +1356,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <input
                             type="checkbox"
                             id="incMed"
-                            checked={includeMedicineFee}
+                            disabled={paymentType === "consultation"}
+                            checked={paymentType === "consultation" ? false : includeMedicineFee}
                             onChange={(e) => handleToggleMedicine(e.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                            className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer disabled:opacity-50"
                           />
                           <div>
                             <label htmlFor="incMed" className="text-xs font-black text-slate-800 cursor-pointer block">
