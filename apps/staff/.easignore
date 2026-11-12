@@ -1,7 +1,14 @@
+node_modules/
+.expo/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
 .gradle/
 **/.gradle/
 **/build/
 **/.cxx/
 **/intermediates/
 *.lock
-
+android/.gradle
+android/app/build
+android/build
