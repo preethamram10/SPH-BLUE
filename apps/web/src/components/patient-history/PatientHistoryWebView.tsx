@@ -28,6 +28,7 @@ import {
   ArrowUpDown,
   Maximize2,
   Trash2,
+  Stethoscope,
 } from "lucide-react";
 import Link from "next/link";
 import FeeCheckoutAndInvoiceModal from "@/components/payment/FeeCheckoutAndInvoiceModal";
@@ -743,7 +744,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         </span>
                       </div>
 
-                      {/* Doctor, Branch, Mobile & Source Details */}
+                      {/* Doctor, Branch, Mobile & Consultation Mode Details */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
                           <Activity className="w-3.5 h-3.5 text-[#0284c7]" />
@@ -761,8 +762,8 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
-                          <Users className="w-3.5 h-3.5 text-purple-500" />
-                          <span>Source: {item.marketingSource || item.source || patient.source || "Old Patient"}</span>
+                          <Stethoscope className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Mode: {item.consultationMode || item.mode || "Offline"}</span>
                         </div>
                       </div>
 

@@ -149,6 +149,8 @@ export async function GET(req: NextRequest) {
         doctorName: a.doctorName,
         branch: a.branch || patient?.branch,
         phone: a.phone || patient?.phone || cleanPhone,
+        consultationMode: a.consultationMode || "Offline",
+        mode: a.consultationMode || "Offline",
         marketingSource: a.marketingSource || patient?.source || "Walk-in",
         source: a.marketingSource || patient?.source || "Walk-in",
         status: a.status,

@@ -636,16 +636,16 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           </View>
                         </View>
 
-                        {/* Visit Meta Row: Mobile & Source */}
+                        {/* Visit Meta Row: Mobile & Consultation Mode */}
                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 2, marginTop: 2, marginBottom: 4 }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                             <Ionicons name="call-outline" size={12} color="#0284c7" />
                             <Text style={{ fontSize: 11, color: "#475569", fontWeight: "600" }}>{cleanPhone || "N/A"}</Text>
                           </View>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f3e8ff", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: "#e9d5ff" }}>
-                            <Ionicons name="funnel-outline" size={10} color="#7c3aed" />
-                            <Text style={{ fontSize: 10, color: "#7c3aed", fontWeight: "800" }}>
-                              {item.marketingSource || item.source || patient.source || "Old Patient"}
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#f0fdf4", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: "#bbf7d0" }}>
+                            <Ionicons name="medkit-outline" size={11} color="#16a34a" />
+                            <Text style={{ fontSize: 10, color: "#16a34a", fontWeight: "800" }}>
+                              Mode: {item.consultationMode || item.mode || "Offline"}
                             </Text>
                           </View>
                         </View>
