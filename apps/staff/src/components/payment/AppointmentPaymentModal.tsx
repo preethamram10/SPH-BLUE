@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { apiFetch } from "../../services/auth";
 import { getBranchPhone } from "../../app/(reception)/medical-requests/pdf/generateMedicineRequestPDF";
 
@@ -76,14 +77,13 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   onPaymentSuccess,
   onOpenPatientFile,
 }) => {
-  const rxImages = appointment?.prescriptionImages || [];
+  const [currentRxImages, setCurrentRxImages] = useState<string[]>(appointment?.prescriptionImages || []);
+  const [isUploadingRx, setIsUploadingRx] = useState<boolean>(false);
+  const rxImages = currentRxImages.length > 0 ? currentRxImages : (appointment?.prescriptionImages || []);
   const hasPrescription =
     rxImages.length > 0 ||
     Boolean(appointment?.hasPackage) ||
-    Boolean(appointment?.activePackage) ||
-    Boolean(appointment?.isSentToReception) ||
-    Boolean(appointment?.diagnosisNotes) ||
-    Boolean(appointment?.consultationFee);
+    Boolean(appointment?.activePackage);
 
   // Initial Target Amount from Doctor (no hardcoded default - blank if not entered)
   const initialDoctorFee =
@@ -95,7 +95,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     initialDoctorFee > 0 ? String(initialDoctorFee) : ""
   );
   const [paymentType, setPaymentType] = useState<"consultation" | "consult_and_med" | "split" | "package">(
-    "consultation"
+    "consult_and_med"
   );
 
   // Fees Breakdown
@@ -206,6 +206,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   useEffect(() => {
     if (visible && appointment) {
       setCompletedInvoice(appointment);
+      setCurrentRxImages(appointment.prescriptionImages || []);
       const isPaid = Boolean(
         appointment.isFeeCollected ||
         appointment.status === "COMPLETED" ||
@@ -332,11 +333,11 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         const medFee = appointment.medicineFee || 0;
         const total = (docFee > 0 ? docFee : 0) + medFee;
         setTargetAmount(total > 0 ? String(total) : "");
-        setConsultationFee(docFee > 0 ? docFee : 0);
-        setMedicineFee(medFee);
-        setIncludeConsult(docFee > 0);
-        setIncludeMedicine(medFee > 0 || loadedMeds.length > 0);
-        setPaymentType(docFee > 0 && medFee > 0 ? "split" : docFee > 0 ? "consultation" : "split");
+        setConsultationFee(total > 0 ? total : 0);
+        setMedicineFee(0);
+        setIncludeConsult(true);
+        setIncludeMedicine(false);
+        setPaymentType("consult_and_med");
       }
 
       setSelectedMethod(null);
@@ -353,6 +354,67 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       setDiscountApprovedAmount(appointment.discountApproved || 0);
     }
   }, [visible, appointment]);
+
+  const handlePickImage = async (useCamera: boolean) => {
+    if (!appointment?.id) return;
+    try {
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission needed", "Camera permission is required to capture prescription.");
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission needed", "Photo library permission is required.");
+          return;
+        }
+      }
+
+      setIsUploadingRx(true);
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+            base64: true,
+          });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+
+        const uploadRes = await apiFetch<any>("/patient-file/upload", {
+          method: "POST",
+          body: JSON.stringify({ fileData: base64Data, contentType: "image/jpeg" }),
+        });
+        const finalUrl = uploadRes?.success && uploadRes?.url ? uploadRes.url : base64Data;
+        const updatedList = [...currentRxImages, finalUrl];
+
+        await apiFetch<any>("/patient-file", {
+          method: "POST",
+          body: JSON.stringify({
+            id: appointment.id,
+            prescriptionImages: updatedList,
+          }),
+        });
+
+        setCurrentRxImages(updatedList);
+        Alert.alert("Success", "Prescription image attached successfully!");
+      }
+    } catch (err: any) {
+      Alert.alert("Upload Failed", err.message || "Failed to attach prescription.");
+    } finally {
+      setIsUploadingRx(false);
+    }
+  };
 
   const handleSelectBillingMode = (mode: "package" | "regular") => {
     setBillingMode(mode);
@@ -698,6 +760,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         payLaterNotes: isPayLater ? payLaterNotes : undefined,
         previousDuePaid: previousDueAmount,
         hasPackage: isPackageMode,
+        prescriptionImages: rxImages,
         isRegularBilling: !isPackageMode,
         skipPackagePayment: !isPackageMode,
         packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
@@ -978,6 +1041,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         payLaterNotes: isPayLater ? payLaterNotes : undefined,
         previousDuePaid: previousDueAmount,
         hasPackage: isPackageMode,
+        prescriptionImages: rxImages,
         isRegularBilling: !isPackageMode,
         skipPackagePayment: !isPackageMode,
         packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
@@ -2306,22 +2370,62 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                     </>
                   )}
 
-                  {/* 7. MANDATORY PRESCRIPTION CHECK BANNER (Matching Screenshot 2) */}
-                  {!hasPrescription && (
-                    <TouchableOpacity
-                      style={styles.rxWarningBanner}
-                      onPress={() => {
-                        onClose();
-                        if (onOpenPatientFile) onOpenPatientFile();
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Ionicons name="warning" size={16} color="#ffffff" />
-                        <Text style={styles.rxWarningTitle}>UPLOAD PRESCRIPTION REQUIRED</Text>
+                  {/* 7. MANDATORY PRESCRIPTION CHECK & UPLOAD BANNER */}
+                  {!hasPrescription ? (
+                    <View style={styles.rxWarningBanner}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          onClose();
+                          if (onOpenPatientFile) onOpenPatientFile();
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="warning" size={16} color="#ffffff" />
+                          <Text style={styles.rxWarningTitle}>UPLOAD PRESCRIPTION REQUIRED</Text>
+                        </View>
+                        <Text style={styles.rxWarningSub}>Tap here to open Patient File & upload →</Text>
+                      </TouchableOpacity>
+
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 8, alignSelf: "flex-end" }}>
+                        <TouchableOpacity
+                          style={styles.rxQuickUploadBtn}
+                          onPress={() => handlePickImage(true)}
+                          disabled={isUploadingRx}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="camera" size={13} color="#78350f" />
+                          <Text style={styles.rxQuickUploadBtnText}>
+                            {isUploadingRx ? "Uploading..." : "Camera"}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.rxQuickUploadBtn}
+                          onPress={() => handlePickImage(false)}
+                          disabled={isUploadingRx}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="image" size={13} color="#78350f" />
+                          <Text style={styles.rxQuickUploadBtnText}>Gallery</Text>
+                        </TouchableOpacity>
                       </View>
-                      <Text style={styles.rxWarningSub}>Upload Prescription to Collect Fee (Mandatory) →</Text>
-                    </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.rxSuccessBanner}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                        <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                        <Text style={styles.rxSuccessText}>
+                          Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handlePickImage(false)}
+                        disabled={isUploadingRx}
+                      >
+                        <Text style={styles.rxAddMoreText}>+ Add More</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
 
                   {/* PAY LATER COMPACT BUTTON & SUMMARY */}
@@ -3310,7 +3414,9 @@ ${upiUri}`);
                     {isSubmitting ? (
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
-                      <Text style={styles.confirmFooterText}>Confirm Payment & Generate Invoice ✓</Text>
+                      <Text style={styles.confirmFooterText}>
+                        {!hasPrescription ? "Prescription Required" : "Confirm Payment & Generate Invoice ✓"}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -4047,23 +4153,64 @@ const styles = StyleSheet.create({
     color: "#b45309",
   },
   rxWarningBanner: {
-    backgroundColor: "#dc2626",
-    borderRadius: 8,
-    padding: 8,
-    alignItems: "center",
-    marginBottom: 6,
+    backgroundColor: "#d97706",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
   },
   rxWarningTitle: {
     color: "#ffffff",
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0.3,
   },
   rxWarningSub: {
-    color: "#fee2e2",
-    fontSize: 10,
+    color: "#fef3c7",
+    fontSize: 10.5,
     fontWeight: "700",
-    marginTop: 1,
+    marginTop: 2,
+  },
+  rxQuickUploadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  rxQuickUploadBtnText: {
+    color: "#78350f",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  rxSuccessBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  rxSuccessText: {
+    color: "#065f46",
+    fontSize: 11.5,
+    fontWeight: "800",
+  },
+  rxAddMoreText: {
+    color: "#047857",
+    fontSize: 11,
+    fontWeight: "800",
+    textDecorationLine: "underline",
   },
   methodsSection: {
     marginBottom: 6,

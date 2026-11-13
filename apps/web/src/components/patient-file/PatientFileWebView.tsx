@@ -657,18 +657,6 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   };
 
   const handleSendToReception = async () => {
-    // 1. Mandatory Prescription check for OPD appointments (Doctor view only)
-    const hasRxImages = uploadedImages.length > 0;
-    const hasRxText = Boolean(prescriptionText && prescriptionText.trim().length > 0);
-    const isOpd = patientData.consultationMode !== "ONLINE";
-
-    if (role === "DOCTOR" && isOpd && !hasRxImages && !hasRxText) {
-      alert(
-        "⚠️ Prescription is mandatory for OPD patients!\n\nPlease draw on the Digital Pad, upload a prescription file, or enter prescription remedies before sending to reception."
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const hasDiet = Boolean(dietPlan && dietPlan.trim().length > 0);

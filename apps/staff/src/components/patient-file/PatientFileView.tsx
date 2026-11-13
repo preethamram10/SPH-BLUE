@@ -583,19 +583,6 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Send to Reception & Collect Fee (Core CTA)
   const handleSendToReception = async () => {
-    // 1. Mandatory Prescription check for OPD patients (Doctor only)
-    const hasRxImages = uploadedImages.length > 0;
-    const hasRxText = Boolean(prescriptionText && prescriptionText.trim().length > 0);
-    const isOpd = patientData.consultationMode !== "ONLINE";
-
-    if (role === "DOCTOR" && isOpd && !hasRxImages && !hasRxText) {
-      Alert.alert(
-        "Prescription Required",
-        "⚠️ Prescription is mandatory for OPD patients!\n\nPlease draw on the Digital Pad, capture a photo, or enter prescription remedies before sending to reception."
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const targetId = appointmentId || "temp-appt-id";

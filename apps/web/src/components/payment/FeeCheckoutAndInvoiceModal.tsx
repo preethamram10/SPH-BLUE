@@ -25,6 +25,9 @@ import {
   Globe,
   RefreshCw,
   AlertTriangle,
+  Upload,
+  ExternalLink,
+  Camera,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
@@ -95,6 +98,7 @@ export interface FeeCheckoutModalProps {
   appointment: PatientAppointment | null;
   onClose: () => void;
   onSubmitPayment?: (invoiceData: any) => Promise<{ success: boolean; invoiceId?: string; appointment?: any }>;
+  onOpenPatientFile?: () => void;
 }
 
 export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
@@ -102,6 +106,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   appointment,
   onClose,
   onSubmitPayment,
+  onOpenPatientFile,
 }) => {
   // View state: 'collect_fee' vs 'invoice_receipt'
   const [currentStep, setCurrentStep] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
@@ -185,22 +190,18 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const rawDietFee = Number(appointment?.dietPlanFee ?? (appointment as any)?.dietFee ?? 0);
   const canChargeDiet = hasPrescribedDiet && rawDietFee > 0;
 
-  // Target Total Amount & Payment Type Mode (Matching Mobile App)
+  // Target Total Amount & Payment Type Mode (Matching Mobile App - Default: Consultation & Medicine)
   const [targetAmount, setTargetAmount] = useState<number>(0);
-  const [paymentType, setPaymentType] = useState<"consultation" | "consult_and_med" | "split" | "package">("split");
+  const [paymentType, setPaymentType] = useState<"consultation" | "consult_and_med" | "split" | "package">("consult_and_med");
   const [showDetailedMedicines, setShowDetailedMedicines] = useState<boolean>(false);
 
-  // Mandatory Prescription Check
-  const rxImages = appointment?.prescriptionImages || [];
+  // Mandatory Prescription Image State & Check
+  const [currentRxImages, setCurrentRxImages] = useState<string[]>(appointment?.prescriptionImages || []);
+  const [isUploadingRx, setIsUploadingRx] = useState<boolean>(false);
+  const rxImages = currentRxImages.length > 0 ? currentRxImages : (appointment?.prescriptionImages || []);
   const hasPrescription =
     rxImages.length > 0 ||
-    Boolean(appointment?.hasPackage) ||
-    Boolean(appointment?.prescriptionText) ||
-    Boolean(appointment?.medicinesList && appointment.medicinesList.length > 0) ||
-    Boolean(appointment?.medicines && appointment.medicines.length > 0) ||
-    Boolean(appointment?.prescriptionPdfUrl) ||
-    Boolean(appointment?.consultationDetails) ||
-    Boolean(appointment?.diagnosis);
+    Boolean(appointment?.hasPackage);
 
   // --- PAY LATER STATES ---
   const [isPayLater, setIsPayLater] = useState<boolean>(false);
@@ -216,6 +217,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   useEffect(() => {
     if (isOpen && appointment) {
       setCompletedInvoice(appointment);
+      setCurrentRxImages(appointment.prescriptionImages || []);
       const isPaid = Boolean(
         appointment.isFeeCollected ||
         appointment.status === "COMPLETED" ||
@@ -337,11 +339,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         setPackageInstallmentAmount(pkgPending > 0 ? pkgPending : 0);
       } else {
         setBillingMode("regular");
-        setPaymentType("split");
-        const half = Math.round(initialTarget / 2);
-        setConsultationFee(half);
+        setPaymentType("consult_and_med");
+        setConsultationFee(initialTarget);
         setIncludeConsultFee(true);
-        setIncludeMedicineFee(true);
+        setIncludeMedicineFee(false);
         if (meds.length <= 1) {
           setMedicineItems([
             {
@@ -349,13 +350,67 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
               name: (meds[0] && meds[0].name) || "",
               type: (meds[0] && meds[0].type) || "Pills",
               timing: (meds[0] && meds[0].timing) || "M - N - N",
-              amount: initialTarget - half,
+              amount: initialTarget,
             },
           ]);
         }
       }
     }
   }, [isOpen, appointment]);
+
+  const handleDirectRxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !appointment) return;
+    setIsUploadingRx(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64Data = ev.target?.result as string;
+        if (!base64Data) {
+          setIsUploadingRx(false);
+          return;
+        }
+
+        // Upload to S3 / API
+        const upRes = await fetch("/api/patient-file/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileData: base64Data, contentType: file.type || "image/jpeg" }),
+        });
+        const upData = await upRes.json();
+        const uploadedUrl = upData.url || base64Data;
+
+        // Persist to patient-file
+        const updatedList = [...(currentRxImages || []), uploadedUrl];
+        await fetch("/api/patient-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: appointment.id,
+            prescriptionImages: updatedList,
+          }),
+        });
+
+        setCurrentRxImages(updatedList);
+        setIsUploadingRx(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      alert("Failed to upload prescription image: " + err.message);
+      setIsUploadingRx(false);
+    }
+  };
+
+  const handleRefreshRx = async () => {
+    if (!appointment?.id) return;
+    try {
+      const res = await fetch(`/api/patient-file?id=${encodeURIComponent(appointment.id)}`);
+      const data = await res.json();
+      if (data.success && data.patient && Array.isArray(data.patient.prescriptionImages)) {
+        setCurrentRxImages(data.patient.prescriptionImages);
+      }
+    } catch (_) {}
+  };
 
   // Adjust Fees Based on Target Amount change
   const handleTargetAmountChange = (val: number) => {
@@ -737,6 +792,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         dueDate: isPayLater ? new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0] : undefined,
         payLaterNotes: isPayLater ? payLaterNotes : undefined,
         hasPackage: isPackageMode,
+        prescriptionImages: rxImages,
         isRegularBilling: !isPackageMode,
         skipPackagePayment: !isPackageMode,
         packageInstallmentPaid: isPackageMode ? effectivePaidToday : undefined,
@@ -1643,16 +1699,73 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 </button>
               </div>
 
-              {/* MANDATORY PRESCRIPTION CHECK BANNER */}
-              {!hasPrescription && (
-                <div className="rounded-xl bg-amber-500 text-white p-3.5 flex items-center justify-between shadow-xs">
-                  <div className="flex items-center gap-2.5">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
+              {/* MANDATORY PRESCRIPTION CHECK & UPLOAD BANNER */}
+              {!hasPrescription ? (
+                <div className="rounded-2xl bg-amber-500 text-white p-4 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-6 h-6 text-white" />
+                    </div>
                     <div>
                       <span className="text-xs font-black uppercase tracking-wider block">UPLOAD PRESCRIPTION REQUIRED</span>
-                      <span className="text-[11px] opacity-90">Upload prescription in Patient File to collect fee (Mandatory)</span>
+                      <span className="text-[11.5px] opacity-95">Prescription image must be uploaded to collect fee (Mandatory)</span>
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2 self-stretch sm:self-center shrink-0">
+                    {/* 1. Quick File / Camera Upload directly inside modal */}
+                    <label className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white text-amber-900 hover:bg-amber-50 text-xs font-black cursor-pointer shadow-sm transition">
+                      <Upload size={14} />
+                      <span>{isUploadingRx ? "Uploading..." : "Upload Photo"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleDirectRxUpload}
+                        disabled={isUploadingRx}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {/* 2. Open Patient File in new tab */}
+                    <a
+                      href={`/reception/patient-file?id=${appointment.id}&name=${encodeURIComponent(appointment.patientName || "")}&phone=${encodeURIComponent(appointment.phone || appointment.phoneNumber || "")}&branch=${encodeURIComponent(appointment.branch || "")}&registrationId=${encodeURIComponent(appointment.registrationId || "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shadow-xs"
+                    >
+                      <span>Patient File</span>
+                      <ExternalLink size={13} />
+                    </a>
+
+                    {/* 3. Re-check / Refresh */}
+                    <button
+                      type="button"
+                      onClick={handleRefreshRx}
+                      title="Refresh prescription check"
+                      className="p-2 rounded-xl bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <CheckCircle2 size={16} className="text-emerald-600" />
+                    <span>Prescription image attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})</span>
+                  </div>
+                  <label className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer underline flex items-center gap-1">
+                    <Upload size={12} />
+                    <span>+ Add Another</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleDirectRxUpload}
+                      disabled={isUploadingRx}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
               )}
 
@@ -2497,7 +2610,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-black text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-600 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <CheckCircle2 size={16} />
-                  <span>{isSubmitting ? "Recording..." : "Confirm & Generate Bill"}</span>
+                  <span>
+                    {isSubmitting
+                      ? "Recording..."
+                      : !hasPrescription
+                      ? "Prescription Required"
+                      : "Confirm & Generate Bill"}
+                  </span>
                 </button>
               </div>
 

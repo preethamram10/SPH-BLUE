@@ -92,7 +92,7 @@ export default function TelecallerAccountsPage() {
           setBranchOptions(["All Branches", ...Array.from(new Set(names))]);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const openAddModal = () => {
@@ -309,11 +309,10 @@ export default function TelecallerAccountsPage() {
                         </td>
                         <td className="py-3.5 px-4">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${
-                              t.branchName === "All Branches"
+                            className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border ${t.branchName === "All Branches"
                                 ? "bg-purple-50 text-purple-700 border-purple-200"
                                 : "bg-blue-50 text-[#0284c7] border-blue-200"
-                            }`}
+                              }`}
                           >
                             {t.branchName}
                           </span>
