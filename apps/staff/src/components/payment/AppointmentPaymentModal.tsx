@@ -27,6 +27,7 @@ export const MEDICINE_TYPE_OPTIONS = [
   "Pills",
   "Drops",
   "Dilution",
+  "Reserve",
   "Syrup",
   "Powder",
   "Tablet",
@@ -42,6 +43,7 @@ export const TIMING_OPTIONS = [
   { label: "M - N", desc: "Morning - Night" },
   { label: "1 - 0 - 1", desc: "Morning & Night" },
   { label: "1 - 1 - 1", desc: "Three times a day" },
+  { label: "Reserve", desc: "Reserve / SOS dose as directed" },
   { label: "M only", desc: "Morning only" },
   { label: "N only", desc: "Night only" },
   { label: "SOS", desc: "As needed / Emergency" },
@@ -567,6 +569,19 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const itemizedTotal = medicines.reduce((sum, m) => sum + (m.amount || 0), 0);
   const isMedicineTotalMatching = isPackageMode || !includeMedicine || medicineFee === 0 || !showDetailedMedicines || itemizedTotal === medicineFee;
 
+  const getMedsToSend = () => {
+    const validMeds = (Array.isArray(medicines) ? medicines : []).filter(
+      (m) =>
+        (m.name && m.name.trim().length > 0) ||
+        Number(m.amount) > 0 ||
+        (m.type && m.type.toLowerCase() === "reserve") ||
+        (m.timing && m.timing.toLowerCase() === "reserve")
+    );
+    if (validMeds.length > 0) return validMeds;
+    if (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) return medicines;
+    return [];
+  };
+
   const previousDueAmount = includePreviousDue ? Number(previousPendingBalance) || 0 : 0;
 
   // Total Due calculation with approved discount and previous due
@@ -709,7 +724,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           upiTxId: splitUpiRef || undefined,
           cardTxId: splitCardRef || undefined,
         } : undefined,
-        medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+        medicinesList: getMedsToSend(),
+        medicines: getMedsToSend(),
         medicineDuration,
         discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
         discountNotes,
@@ -722,7 +738,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       });
 
       if (res && res.success) {
-        const updated = res.appointment || {
+        const medsToSend = getMedsToSend();
+        const updated = res.appointment ? {
+          ...res.appointment,
+          medicines: res.appointment.medicines || res.appointment.medicinesList || medsToSend,
+          medicinesList: res.appointment.medicinesList || res.appointment.medicines || medsToSend,
+        } : {
           ...appointment,
           status: "COMPLETED",
           isFeeCollected: true,
@@ -734,6 +755,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           paymentMode: method,
           paidAt: new Date().toISOString(),
           invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+          medicines: medsToSend,
+          medicinesList: medsToSend,
         };
         setCompletedInvoice(updated);
         setCurrentView("invoice_receipt");
@@ -798,7 +821,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             status: "COMPLETED",
             isFeeCollected: true,
-            medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+            medicinesList: getMedsToSend(),
+            medicines: getMedsToSend(),
             medicineDuration,
             discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
             discountNotes,
@@ -808,7 +832,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             method: "POST",
             body: JSON.stringify(payload),
           });
-          const updated = saveRes?.appointment || res.appointment || {
+          const medsToSend = getMedsToSend();
+          const updated = (saveRes?.appointment || res.appointment) ? {
+            ...(saveRes?.appointment || res.appointment),
+            medicines: (saveRes?.appointment || res.appointment).medicines || (saveRes?.appointment || res.appointment).medicinesList || medsToSend,
+            medicinesList: (saveRes?.appointment || res.appointment).medicinesList || (saveRes?.appointment || res.appointment).medicines || medsToSend,
+          } : {
             ...appointment,
             status: "COMPLETED",
             isFeeCollected: true,
@@ -819,6 +848,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             paidAt: new Date().toISOString(),
             invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+            medicines: medsToSend,
+            medicinesList: medsToSend,
           };
           setCompletedInvoice(updated);
           setCurrentView("invoice_receipt");
@@ -876,7 +907,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           paymentMode: method,
           status: "COMPLETED",
           isFeeCollected: true,
-          medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+          medicinesList: getMedsToSend(),
+          medicines: getMedsToSend(),
           medicineDuration,
           discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
           discountNotes,
@@ -886,7 +918,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           method: "POST",
           body: JSON.stringify(payload),
         });
-        const updated = saveRes?.appointment || res.appointment || {
+        const medsToSend = getMedsToSend();
+        const updated = (saveRes?.appointment || res.appointment) ? {
+          ...(saveRes?.appointment || res.appointment),
+          medicines: (saveRes?.appointment || res.appointment).medicines || (saveRes?.appointment || res.appointment).medicinesList || medsToSend,
+          medicinesList: (saveRes?.appointment || res.appointment).medicinesList || (saveRes?.appointment || res.appointment).medicines || medsToSend,
+        } : {
           ...appointment,
           status: "COMPLETED",
           isFeeCollected: true,
@@ -898,6 +935,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           paymentMode: method,
           paidAt: new Date().toISOString(),
           invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+          medicines: medsToSend,
+          medicinesList: medsToSend,
         };
         setCompletedInvoice(updated);
         setCurrentView("invoice_receipt");
@@ -946,7 +985,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         paymentMode: "Card",
         status: "COMPLETED",
         isFeeCollected: true,
-        medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+        medicinesList: getMedsToSend(),
+        medicines: getMedsToSend(),
         medicineDuration,
         discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
         discountNotes,
@@ -956,7 +996,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         method: "POST",
         body: JSON.stringify(payload),
       });
-      const updated = saveRes?.appointment || {
+      const medsToSend = getMedsToSend();
+      const updated = saveRes?.appointment ? {
+        ...saveRes.appointment,
+        medicines: saveRes.appointment.medicines || saveRes.appointment.medicinesList || medsToSend,
+        medicinesList: saveRes.appointment.medicinesList || saveRes.appointment.medicines || medsToSend,
+      } : {
         ...appointment,
         status: "COMPLETED",
         isFeeCollected: true,
@@ -968,6 +1013,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         paymentMode: "Card",
         paidAt: new Date().toISOString(),
         invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+        medicines: medsToSend,
+        medicinesList: medsToSend,
       };
       setCompletedInvoice(updated);
       setCurrentView("invoice_receipt");
@@ -1013,7 +1060,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             status: "COMPLETED",
             isFeeCollected: true,
-            medicinesList: (!isPackageMode && (includeMedicine || paymentType === "consult_and_med")) ? medicines : [],
+            medicinesList: getMedsToSend(),
+            medicines: getMedsToSend(),
             medicineDuration,
             discountApproved: (!isPackageMode && discountStatus === "APPROVED") ? discountApprovedAmount : 0,
             discountNotes,
@@ -1023,7 +1071,12 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             method: "POST",
             body: JSON.stringify(payload),
           });
-          const updated = saveRes?.appointment || res.appointment || {
+          const medsToSend = getMedsToSend();
+          const updated = (saveRes?.appointment || res.appointment) ? {
+            ...(saveRes?.appointment || res.appointment),
+            medicines: (saveRes?.appointment || res.appointment).medicines || (saveRes?.appointment || res.appointment).medicinesList || medsToSend,
+            medicinesList: (saveRes?.appointment || res.appointment).medicinesList || (saveRes?.appointment || res.appointment).medicines || medsToSend,
+          } : {
             ...appointment,
             status: "COMPLETED",
             isFeeCollected: true,
@@ -1035,6 +1088,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             paidAt: new Date().toISOString(),
             invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+            medicines: medsToSend,
+            medicinesList: medsToSend,
           };
           setCompletedInvoice(updated);
           setCurrentView("invoice_receipt");
@@ -1074,6 +1129,16 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     const targetBranch = completedInvoice?.branch || appointment?.branch || "KPHB Branch";
     const branchPhone = getBranchPhone(targetBranch);
 
+    const rawMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || medicines || [];
+    const validReceiptMeds = Array.isArray(rawMeds)
+      ? rawMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+      : [];
+    const medsBreakdown = validReceiptMeds.length > 0
+      ? validReceiptMeds.map((m: any, i: number) => `• ${m.name || (m.type === "Reserve" ? "Reserve Medicine" : "Medicine")} (${m.type || "Pills"}${m.timing ? ` - ${m.timing}` : ""}): ₹${Number(m.amount || 0).toFixed(2)}\n`).join("")
+      : (Number(completedInvoice?.medicineFee ?? medicineFee) > 0
+        ? `• Medicine Fee (${completedInvoice?.medicineDuration || medicineDuration || "1 Month"}): ₹${Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}\n`
+        : "");
+
     const message = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
       `--------------------------------\n` +
@@ -1096,9 +1161,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       (Number(completedInvoice?.consultationFee ?? consultationFee) > 0
         ? `• Consultation Fee: ₹${Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}\n`
         : "") +
-      (Number(completedInvoice?.medicineFee ?? medicineFee) > 0
-        ? `• Medicine Fee (${completedInvoice?.medicineDuration || medicineDuration || "1 Month"}): ₹${Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}\n`
-        : "") +
+      medsBreakdown +
       (Number(completedInvoice?.dietPlanFee ?? dietFee) > 0
         ? `• Diet Plan: ₹${Number(completedInvoice?.dietPlanFee ?? dietFee).toFixed(2)}\n`
         : "") +
@@ -1147,6 +1210,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     const targetBranch = completedInvoice?.branch || appointment?.branch || "KPHB Branch";
     const branchPhone = getBranchPhone(targetBranch);
 
+    const rawMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || medicines || [];
+    const validReceiptMeds = Array.isArray(rawMeds)
+      ? rawMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+      : [];
+    const medsSummary = validReceiptMeds.length > 0
+      ? `Medicines:\n` + validReceiptMeds.map((m: any, i: number) => `  ${i + 1}. ${m.name || (m.type === "Reserve" ? "Reserve Medicine" : "Medicine")} (${m.type || "Pills"}${m.timing ? ` - ${m.timing}` : ""}) - ₹${Number(m.amount || 0).toFixed(2)}`).join("\n") + `\n`
+      : "";
+
     const summary =
       `SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT\n` +
       `Receipt No: ${invoiceNum}\n` +
@@ -1154,6 +1225,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
       `Branch: ${targetBranch}\n` +
       `Date: ${dateStr}\n` +
+      (medsSummary ? `${medsSummary}` : "") +
       `TOTAL PAID: ₹${totalPaidNum} (VIA ${method})\n` +
       `Status: ${Number(completedInvoice?.payLaterAmount) > 0 ? "PARTIAL PAID" : "PAID ✓"}\n` +
       (Number(completedInvoice?.payLaterAmount) > 0 ? `Remaining Need to Pay (Pay Later): ₹${Number(completedInvoice.payLaterAmount).toFixed(2)}\n` : "") +
@@ -1381,25 +1453,39 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                         )}
 
                         {/* Medicines */}
-                        {completedInvoice?.medicines && completedInvoice.medicines.length > 0 ? (
-                          completedInvoice.medicines.map((m: any, idx: number) => (
-                            <View key={idx} style={styles.breakdownRow}>
-                              <Text style={styles.breakdownRowDesc}>
-                                {m.name || "Prescribed Medicine"} {m.type ? `(${m.type})` : ""}
-                              </Text>
-                              <Text style={styles.breakdownRowAmount}>₹{Number(m.amount).toFixed(2)}</Text>
-                            </View>
-                          ))
-                        ) : Number(completedInvoice?.medicineFee ?? medicineFee) > 0 ? (
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownRowDesc}>
-                              Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
-                            </Text>
-                            <Text style={styles.breakdownRowAmount}>
-                              ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
-                            </Text>
-                          </View>
-                        ) : null}
+                        {(() => {
+                          const invoiceMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || [];
+                          const validMeds = Array.isArray(invoiceMeds)
+                            ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+                            : [];
+
+                          if (validMeds.length > 0) {
+                            return validMeds.map((m: any, idx: number) => (
+                              <View key={idx} style={styles.breakdownRow}>
+                                <View style={{ flex: 1, paddingRight: 8 }}>
+                                  <Text style={styles.breakdownRowDesc}>
+                                    {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")} {m.type ? `(${m.type})` : ""}
+                                  </Text>
+                                  {m.timing ? <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Timing: {m.timing}</Text> : null}
+                                </View>
+                                <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
+                              </View>
+                            ));
+                          }
+                          if (Number(completedInvoice?.medicineFee ?? medicineFee) > 0) {
+                            return (
+                              <View style={styles.breakdownRow}>
+                                <Text style={styles.breakdownRowDesc}>
+                                  Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                                </Text>
+                                <Text style={styles.breakdownRowAmount}>
+                                  ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                </Text>
+                              </View>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {/* Diet Plan */}
                         {Number(completedInvoice?.dietPlanFee ?? dietFee) > 0 && (

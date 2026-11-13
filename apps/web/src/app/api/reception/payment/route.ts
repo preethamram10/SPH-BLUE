@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
       paymentMethod: finalMethod,
       paymentMode: finalMethod,
       medicinesList: effectiveMedicines,
+      medicines: effectiveMedicines,
       medicineDuration: medicineDuration || "1 Month",
       discount: effectiveDiscount,
       discountApproved: effectiveDiscount,

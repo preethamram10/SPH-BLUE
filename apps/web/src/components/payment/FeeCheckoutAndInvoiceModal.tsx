@@ -699,6 +699,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       const nowIso = new Date().toISOString();
       const phoneNum = (appointment.phoneNumber || appointment.phone || "").replace(/\D/g, "").slice(-10);
 
+      const validWebMeds = (Array.isArray(medicineItems) ? medicineItems : []).filter(
+        (m) =>
+          (m.name && m.name.trim().length > 0) ||
+          Number(m.amount) > 0 ||
+          (m.type && m.type.toLowerCase() === "reserve") ||
+          (m.timing && m.timing.toLowerCase() === "reserve")
+      );
+      const webMedsToSend = validWebMeds.length > 0
+        ? validWebMeds
+        : (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med") ? medicineItems : []);
+
       const invoicePayload = {
         appointmentId: appointment.id,
         patientName: appointment.patientName,
@@ -712,8 +723,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         consultationFee: isPackageMode ? 0 : (includeConsultFee ? Number(consultationFee) || 0 : 0),
         medicineFee: isPackageMode ? 0 : totalMedicineAmount,
         medicineDuration: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineDuration : undefined,
-        medicines: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineItems : [],
-        medicinesList: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineItems : [],
+        medicines: webMedsToSend,
+        medicinesList: webMedsToSend,
         dietFee: isPackageMode ? 0 : (canChargeDiet && includeDietFee ? (Number(dietFee) || 0) : 0),
         dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDietFee ? (Number(dietFee) || 0) : 0),
         otherCharges: Number(otherCharges) || 0,
@@ -797,6 +808,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     const targetBranch = activeInvoice.branch || appointment?.branch || "KPHB Branch";
     const branchPhone = getBranchPhone(targetBranch);
 
+    const rawMeds = activeInvoice.medicines || activeInvoice.medicinesList || [];
+    const validReceiptMeds = Array.isArray(rawMeds)
+      ? rawMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+      : [];
+    const medsBreakdown = validReceiptMeds.length > 0
+      ? validReceiptMeds.map((m: any) => `• ${m.name || (m.type === "Reserve" ? "Reserve Medicine" : "Medicine")} (${m.type || "Pills"}${m.timing ? ` - ${m.timing}` : ""}): ₹${Number(m.amount || 0).toFixed(2)}\n`).join("")
+      : (Number(activeInvoice.medicineFee) > 0
+        ? `• Medicine Fee (${activeInvoice.medicineDuration || "1 Month"}): ₹${Number(activeInvoice.medicineFee).toFixed(2)}\n`
+        : "");
+
     const message = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
       `--------------------------------\n` +
@@ -819,9 +840,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       (Number(activeInvoice.consultationFee) > 0
         ? `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`
         : "") +
-      (Number(activeInvoice.medicineFee) > 0
-        ? `• Medicine Fee (${activeInvoice.medicineDuration || "1 Month"}): ₹${Number(activeInvoice.medicineFee).toFixed(2)}\n`
-        : "") +
+      medsBreakdown +
       (Number(activeInvoice.dietFee || activeInvoice.dietPlanFee) > 0
         ? `• Diet Plan: ₹${Number(activeInvoice.dietFee || activeInvoice.dietPlanFee).toFixed(2)}\n`
         : "") +
@@ -1286,6 +1305,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                   <option value="Pills">Pills</option>
                                   <option value="Drops">Drops</option>
                                   <option value="Dilution">Dilution</option>
+                                  <option value="Reserve">Reserve</option>
                                   <option value="Tincture">Tincture</option>
                                   <option value="Syrup">Syrup</option>
                                   <option value="Kit">Kit</option>
@@ -1302,6 +1322,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                   <option value="M - N">M - N</option>
                                   <option value="1 - 0 - 1">1 - 0 - 1</option>
                                   <option value="1 - 1 - 1">1 - 1 - 1</option>
+                                  <option value="Reserve">Reserve</option>
                                   <option value="M only">M only</option>
                                   <option value="N only">N only</option>
                                   <option value="SOS">SOS</option>
@@ -1438,6 +1459,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     <option value="Pills">Pills</option>
                                     <option value="Drops">Drops</option>
                                     <option value="Dilution">Dilution</option>
+                                    <option value="Reserve">Reserve</option>
                                     <option value="Tincture">Tincture</option>
                                     <option value="Syrup">Syrup</option>
                                     <option value="Kit">Kit</option>
@@ -1454,6 +1476,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     <option value="M - N">M - N</option>
                                     <option value="1 - 0 - 1">1 - 0 - 1</option>
                                     <option value="1 - 1 - 1">1 - 1 - 1</option>
+                                    <option value="Reserve">Reserve</option>
                                     <option value="M only">M only</option>
                                     <option value="N only">N only</option>
                                     <option value="SOS">SOS</option>
@@ -2679,27 +2702,42 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         )}
 
                         {/* Medicine Items itemized or grouped with duration */}
-                        {activeInvoice.medicines && activeInvoice.medicines.length > 0 ? (
-                          activeInvoice.medicines.map((m, idx) => (
-                            <tr key={idx}>
-                              <td className="py-2.5">
-                                {m.name || "Prescribed Medicine"} {m.type ? `(${m.type})` : ""} {m.timing ? `- ${m.timing}` : ""}
-                              </td>
-                              <td className="py-2.5 text-right font-black text-slate-900">
-                                ₹{Number(m.amount).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))
-                        ) : Number(activeInvoice.medicineFee) > 0 ? (
-                          <tr>
-                            <td className="py-2.5">
-                              Medicine Fee ({activeInvoice.medicineDuration || "1 Month"})
-                            </td>
-                            <td className="py-2.5 text-right font-black text-slate-900">
-                              ₹{Number(activeInvoice.medicineFee).toFixed(2)}
-                            </td>
-                          </tr>
-                        ) : null}
+                        {(() => {
+                          const invoiceMeds = activeInvoice.medicines || activeInvoice.medicinesList || [];
+                          const validMeds = Array.isArray(invoiceMeds)
+                            ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+                            : [];
+
+                          if (validMeds.length > 0) {
+                            return validMeds.map((m: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="py-2.5">
+                                  <span className="font-semibold text-slate-800">
+                                    {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")}
+                                  </span>
+                                  {m.type ? <span className="ml-1 text-xs text-slate-500 font-medium">({m.type})</span> : null}
+                                  {m.timing ? <span className="ml-1.5 text-xs text-slate-400 font-normal">• {m.timing}</span> : null}
+                                </td>
+                                <td className="py-2.5 text-right font-black text-slate-900">
+                                  ₹{Number(m.amount || 0).toFixed(2)}
+                                </td>
+                              </tr>
+                            ));
+                          }
+                          if (Number(activeInvoice.medicineFee) > 0) {
+                            return (
+                              <tr>
+                                <td className="py-2.5">
+                                  Medicine Fee ({activeInvoice.medicineDuration || "1 Month"})
+                                </td>
+                                <td className="py-2.5 text-right font-black text-slate-900">
+                                  ₹{Number(activeInvoice.medicineFee).toFixed(2)}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {/* Diet plan fee */}
                         {Number(activeInvoice.dietFee || activeInvoice.dietPlanFee) > 0 && (
@@ -3113,11 +3151,23 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             return;
           }
           try {
+            const validWebMeds = (Array.isArray(medicineItems) ? medicineItems : []).filter(
+              (m) =>
+                (m.name && m.name.trim().length > 0) ||
+                Number(m.amount) > 0 ||
+                (m.type && m.type.toLowerCase() === "reserve") ||
+                (m.timing && m.timing.toLowerCase() === "reserve")
+            );
+            const webMedsToSend = validWebMeds.length > 0
+              ? validWebMeds
+              : (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med") ? medicineItems : []);
+
             const invoicePayload = {
               appointmentId: appointment?.id,
               consultationFee: includeConsultFee ? consultationFee : 0,
               medicineFee: includeMedicineFee ? totalMedicineAmount : 0,
-              medicinesList: (includeMedicineFee || paymentType === "consult_and_med") ? medicineItems : [],
+              medicines: webMedsToSend,
+              medicinesList: webMedsToSend,
               medicineDuration: (includeMedicineFee || paymentType === "consult_and_med") ? medicineDuration : "",
               dietPlanFee: dietFee,
               otherCharges,

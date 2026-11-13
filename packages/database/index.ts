@@ -1751,6 +1751,12 @@ export interface AppointmentRecord {
     timing: string;
     amount: number;
   }>;
+  medicines?: Array<{
+    name: string;
+    type: string;
+    timing: string;
+    amount: number;
+  }>;
   medicineDuration?: string;
   discountRequested?: number;
   discountApproved?: number;
@@ -2618,6 +2624,12 @@ export const appointmentService = {
         timing: string;
         amount: number;
       }>;
+      medicines?: Array<{
+        name: string;
+        type: string;
+        timing: string;
+        amount: number;
+      }>;
       medicineDuration?: string;
       discountRequested?: number;
       discountApproved?: number;
@@ -2653,7 +2665,11 @@ export const appointmentService = {
     if (data.totalAmountDue !== undefined) appt.totalAmountDue = data.totalAmountDue;
     if (data.paymentMethod !== undefined) appt.paymentMethod = data.paymentMethod;
     if ((data as any).splitDetails !== undefined) appt.splitDetails = (data as any).splitDetails;
-    if (data.medicinesList !== undefined) appt.medicinesList = data.medicinesList;
+    const medItems = data.medicinesList !== undefined ? data.medicinesList : (data as any).medicines;
+    if (medItems !== undefined) {
+      appt.medicinesList = medItems;
+      appt.medicines = medItems;
+    }
     if (data.medicineDuration !== undefined) appt.medicineDuration = data.medicineDuration;
     if (data.discountRequested !== undefined) appt.discountRequested = data.discountRequested;
     if (data.discountApproved !== undefined) appt.discountApproved = data.discountApproved;

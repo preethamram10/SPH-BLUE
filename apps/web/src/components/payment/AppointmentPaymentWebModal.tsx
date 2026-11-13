@@ -32,8 +32,8 @@ export type PaymentMethod =
 export interface MedicineItem {
   id: string;
   name: string;
-  type: "Pills" | "Syrup" | "Powder" | "Drops" | "Ointment" | "Oil" | "Tablet" | "Other";
-  timing: "M-A-N" | "M--E" | "M--N" | "M-A-" | "M---" | "-A-" | "--E-" | "--N";
+  type: "Pills" | "Drops" | "Dilution" | "Reserve" | "Syrup" | "Powder" | "Ointment" | "Oil" | "Tablet" | "Other" | string;
+  timing: "M-A-N" | "M--E" | "M--N" | "M-A-" | "M---" | "-A-" | "--E-" | "--N" | "Reserve" | string;
   amount: number;
 }
 
@@ -481,6 +481,17 @@ export function AppointmentPaymentWebModal({
 
     setIsSubmitting(true);
     try {
+      const validMeds = (Array.isArray(medicines) ? medicines : []).filter(
+        (m) =>
+          (m.name && m.name.trim().length > 0) ||
+          Number(m.amount) > 0 ||
+          (m.type && m.type.toLowerCase() === "reserve") ||
+          (m.timing && m.timing.toLowerCase() === "reserve")
+      );
+      const medsToSend = validMeds.length > 0
+        ? validMeds
+        : (!isPackageMode && includeMedicine ? medicines : []);
+
       const payload = {
         appointmentId: appointment.id,
         targetAmount: parseFloat(targetAmount) || 0,
@@ -506,7 +517,8 @@ export function AppointmentPaymentWebModal({
           cardTxId: splitCardRef || undefined,
         } : undefined,
         medicineDuration: (!isPackageMode && includeMedicine) ? medicineDuration : undefined,
-        medicinesList: (!isPackageMode && includeMedicine) ? medicines : [],
+        medicinesList: medsToSend,
+        medicines: medsToSend,
       };
 
       const res = await fetch("/api/reception/payment", {
@@ -927,7 +939,7 @@ export function AppointmentPaymentWebModal({
                           onChange={(e) => handleUpdateMedicine(med.id, "type", e.target.value as any)}
                           className="p-1.5 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 text-[10px] focus:outline-none"
                         >
-                          {["Pills", "Syrup", "Powder", "Drops", "Ointment", "Oil", "Tablet", "Other"].map(
+                          {["Pills", "Drops", "Dilution", "Reserve", "Syrup", "Powder", "Ointment", "Oil", "Tablet", "Other"].map(
                             (t) => (
                               <option key={t} value={t}>
                                 {t}
@@ -942,7 +954,7 @@ export function AppointmentPaymentWebModal({
                           onChange={(e) => handleUpdateMedicine(med.id, "timing", e.target.value as any)}
                           className="p-1.5 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 text-[10px] focus:outline-none"
                         >
-                          {["M-A-N", "M--E", "M--N", "M-A-", "M---", "-A-", "--E-", "--N"].map((tm) => (
+                          {["M-A-N", "M--E", "M--N", "M-A-", "M---", "-A-", "--E-", "--N", "Reserve"].map((tm) => (
                             <option key={tm} value={tm}>
                               {tm}
                             </option>
