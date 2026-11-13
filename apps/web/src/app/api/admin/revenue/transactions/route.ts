@@ -18,6 +18,7 @@ export interface TransactionRecord {
   paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
+  consultationMode?: "In-Clinic" | "Online" | string;
   timestamp: string; // YYYY-MM-DD
   dateTime: string;
   status: "PAID" | "PENDING" | "COMPLETED";
@@ -259,6 +260,7 @@ export async function GET(req: Request) {
         paymentMethod: method,
         displayPaymentMethod: displayMethod,
         splitDetails: (a as any).splitDetails,
+        consultationMode: (a.consultationMode || (a as any).mode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic",
         timestamp: dt,
         dateTime: `${dt}, ${formattedTime}`,
         status: isPaid ? "PAID" : "PENDING",

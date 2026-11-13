@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
         service: a.diseases ? `Consultation (${a.diseases})` : "Standard Consultation",
         amount: amt,
         paymentMode: a.paymentMethod || (idx % 2 === 0 ? "UPI" : "Cash"),
+        consultationMode: (a.consultationMode || (a as any).mode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic",
         status: "Collected",
       };
     });

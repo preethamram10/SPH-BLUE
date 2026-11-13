@@ -57,6 +57,7 @@ export interface TransactionRecord {
   paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
+  consultationMode?: "In-Clinic" | "Online" | string;
   timestamp: string;
   dateTime: string;
   status: "PAID" | "PENDING" | "COMPLETED";
@@ -106,6 +107,7 @@ export function MobileRevenueLedgerView({
   const [selectedSplitType, setSelectedSplitType] = useState("all");
   const [selectedSource, setSelectedSource] = useState("all");
   const [selectedAmountRange, setSelectedAmountRange] = useState("all");
+  const [selectedConsultationMode, setSelectedConsultationMode] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [showFiltersModal, setShowFiltersModal] = useState(false);
@@ -189,6 +191,7 @@ export function MobileRevenueLedgerView({
     setSelectedSplitType("all");
     setSelectedSource("all");
     setSelectedAmountRange("all");
+    setSelectedConsultationMode("all");
     setCustomFrom("");
     setCustomTo("");
     setCurrentPage(1);
@@ -203,9 +206,10 @@ export function MobileRevenueLedgerView({
     if (selectedSplitType !== "all") count++;
     if (selectedSource !== "all") count++;
     if (selectedAmountRange !== "all") count++;
+    if (selectedConsultationMode !== "all") count++;
     if (datePreset === "CUSTOM") count++;
     return count;
-  }, [selectedBranch, selectedDoctor, doctorFilterName, selectedMethod, selectedSplitType, selectedSource, selectedAmountRange, datePreset]);
+  }, [selectedBranch, selectedDoctor, doctorFilterName, selectedMethod, selectedSplitType, selectedSource, selectedAmountRange, selectedConsultationMode, datePreset]);
 
   // Comprehensive branch list from registered branches + transactions (strictly deduplicated by normalized key)
   const combinedBranchList = useMemo(() => {
@@ -343,7 +347,14 @@ export function MobileRevenueLedgerView({
         return false;
       }
 
-      // 8. Date Presets Filter
+      // 8. Consultation Mode Filter (In-Clinic vs Online)
+      if (selectedConsultationMode !== "all") {
+        const isOnline = (tx.consultationMode || "").toLowerCase().includes("online");
+        if (selectedConsultationMode === "Online" && !isOnline) return false;
+        if (selectedConsultationMode === "In-Clinic" && isOnline) return false;
+      }
+
+      // 9. Date Presets Filter
       const cleanDate = (tx.timestamp || "").replace(/\//g, "-").trim();
       const parts = cleanDate.split("-");
       let txDate = cleanDate;
@@ -381,6 +392,7 @@ export function MobileRevenueLedgerView({
     selectedSplitType,
     selectedSource,
     selectedAmountRange,
+    selectedConsultationMode,
     datePreset,
     customFrom,
     customTo,
@@ -394,6 +406,11 @@ export function MobileRevenueLedgerView({
     let onlineUpiTotal = 0;
     let cardTotal = 0;
 
+    let inClinicTotal = 0;
+    let inClinicCount = 0;
+    let onlineTotal = 0;
+    let onlineCount = 0;
+
     let splitConsultation = 0;
     let splitConsultationMed = 0;
     let splitCarePackage = 0;
@@ -402,6 +419,15 @@ export function MobileRevenueLedgerView({
     filteredTransactions.forEach((tx) => {
       const amt = Number(tx.totalAmount) || 0;
       grandTotal += amt;
+
+      const isOnline = (tx.consultationMode || "").toLowerCase().includes("online");
+      if (isOnline) {
+        onlineTotal += amt;
+        onlineCount++;
+      } else {
+        inClinicTotal += amt;
+        inClinicCount++;
+      }
 
       const disp = (tx.displayPaymentMethod || "").toLowerCase();
       if (tx.paymentMethod === "cash" || disp.includes("cash")) {
@@ -441,6 +467,10 @@ export function MobileRevenueLedgerView({
       counterUpiTotal,
       onlineUpiTotal,
       cardTotal,
+      inClinicTotal,
+      inClinicCount,
+      onlineTotal,
+      onlineCount,
       splitConsultation,
       splitConsultationMed,
       splitCarePackage,
@@ -561,9 +591,61 @@ export function MobileRevenueLedgerView({
               <Text style={styles.heroStripVal}>₹{metrics.cardTotal.toLocaleString("en-IN")}</Text>
             </View>
           </View>
+
+          {/* In-Clinic vs Online Breakdown Strip */}
+          <View style={styles.heroModeBreakdown}>
+            <View style={styles.heroModeBoxInClinic}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="business-outline" size={12} color="#0369a1" />
+                <Text style={styles.heroModeLabelInClinic}>IN-CLINIC ({metrics.inClinicCount})</Text>
+              </View>
+              <Text style={styles.heroModeValInClinic}>₹{metrics.inClinicTotal.toLocaleString("en-IN")}</Text>
+            </View>
+
+            <View style={styles.heroModeBoxOnline}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="globe-outline" size={12} color="#7e22ce" />
+                <Text style={styles.heroModeLabelOnline}>ONLINE ({metrics.onlineCount})</Text>
+              </View>
+              <Text style={styles.heroModeValOnline}>₹{metrics.onlineTotal.toLocaleString("en-IN")}</Text>
+            </View>
+          </View>
         </View>
 
-        {/* 2. SEARCH & FILTER ACTION BAR (DIRECTLY BELOW TOTAL REVENUE) */}
+        {/* 2. QUICK CONSULTATION MODE SELECTOR BAR */}
+        <View style={styles.quickModeBar}>
+          {(
+            [
+              { id: "all", label: "All Modes", icon: "layers-outline" },
+              { id: "In-Clinic", label: "In-Clinic", icon: "business-outline" },
+              { id: "Online", label: "Online", icon: "globe-outline" },
+            ] as const
+          ).map((m) => {
+            const isSel = selectedConsultationMode === m.id;
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={[styles.quickModeBtn, isSel && styles.quickModeBtnActive]}
+                onPress={() => {
+                  setSelectedConsultationMode(m.id);
+                  setCurrentPage(1);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={m.icon as any}
+                  size={12}
+                  color={isSel ? "#ffffff" : REVENUE_COLORS.slate600}
+                />
+                <Text style={[styles.quickModeBtnText, isSel && styles.quickModeBtnTextActive]}>
+                  {m.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* 3. SEARCH & FILTER ACTION BAR (DIRECTLY BELOW TOTAL REVENUE) */}
         <View style={styles.searchFilterRow}>
           <View style={styles.searchBox}>
             <Ionicons name="search" size={16} color={REVENUE_COLORS.slate400} />
@@ -812,6 +894,34 @@ export function MobileRevenueLedgerView({
                 </View>
               </ScrollView>
             </View>
+
+            {/* Consultation Mode */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionLabel}>CONSULTATION MODE</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.chipsRow}>
+                  {[
+                    { id: "all", label: "All Modes (In-Clinic & Online)" },
+                    { id: "In-Clinic", label: "In-Clinic" },
+                    { id: "Online", label: "Online" },
+                  ].map((m) => {
+                    const isSel = selectedConsultationMode === m.id;
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[styles.filterChip, isSel && styles.filterChipActive]}
+                        onPress={() => {
+                          setSelectedConsultationMode(m.id);
+                          setCurrentPage(1);
+                        }}
+                      >
+                        <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>{m.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
           </View>
         )}
 
@@ -903,8 +1013,28 @@ export function MobileRevenueLedgerView({
                       {tx.branchName} • {tx.doctorName || "Doctor"}
                     </Text>
 
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
                       <Text style={styles.txDateText}>{tx.dateTime || tx.timestamp}</Text>
+                      {/* Consultation Mode Badge */}
+                      <View
+                        style={[
+                          styles.modeBadge,
+                          (tx.consultationMode || "").toLowerCase().includes("online")
+                            ? styles.modeBadgeOnline
+                            : styles.modeBadgeInClinic,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.modeBadgeText,
+                            (tx.consultationMode || "").toLowerCase().includes("online")
+                              ? styles.modeBadgeTextOnline
+                              : styles.modeBadgeTextInClinic,
+                          ]}
+                        >
+                          {(tx.consultationMode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic"}
+                        </Text>
+                      </View>
                       {tx.revenueSplit ? (
                         <View style={styles.splitBadge}>
                           <Text style={styles.splitBadgeText}>{tx.revenueSplit}</Text>
@@ -1112,6 +1242,87 @@ const styles = StyleSheet.create({
     width: 1,
     height: 18,
     backgroundColor: "#e2e8f0",
+  },
+  heroModeBreakdown: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  heroModeBoxInClinic: {
+    flex: 1,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  heroModeLabelInClinic: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#0369a1",
+    letterSpacing: 0.5,
+  },
+  heroModeValInClinic: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0c4a6e",
+    marginTop: 2,
+  },
+  heroModeBoxOnline: {
+    flex: 1,
+    backgroundColor: "#faf5ff",
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#e9d5ff",
+  },
+  heroModeLabelOnline: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#7e22ce",
+    letterSpacing: 0.5,
+  },
+  heroModeValOnline: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#581c87",
+    marginTop: 2,
+  },
+
+  /* Quick Consultation Mode Bar */
+  quickModeBar: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 10,
+  },
+  quickModeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  quickModeBtnActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  quickModeBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  quickModeBtnTextActive: {
+    color: "#ffffff",
+    fontWeight: "800",
   },
 
   /* Search & Filter Bar */
@@ -1442,6 +1653,30 @@ const styles = StyleSheet.create({
   splitBadgeText: {
     fontSize: 9,
     fontWeight: "800",
+    color: "#7c3aed",
+  },
+  modeBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  modeBadgeInClinic: {
+    backgroundColor: "#f0f9ff",
+    borderColor: "#bae6fd",
+  },
+  modeBadgeOnline: {
+    backgroundColor: "#faf5ff",
+    borderColor: "#e9d5ff",
+  },
+  modeBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  modeBadgeTextInClinic: {
+    color: "#0284c7",
+  },
+  modeBadgeTextOnline: {
     color: "#7c3aed",
   },
   txCardRight: {

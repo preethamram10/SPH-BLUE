@@ -37,6 +37,7 @@ export interface TransactionRecord {
   paymentMethod: "cash" | "upi" | "card" | "split" | "counter_upi";
   displayPaymentMethod?: string;
   splitDetails?: { cash?: number; upi?: number; card?: number; counterUpi?: number };
+  consultationMode?: "In-Clinic" | "Online" | string;
   timestamp: string;    // YYYY-MM-DD
   dateTime: string;     // Formatted display date e.g. "07/11/2026, 11:30 AM"
   status: "PAID" | "PENDING" | "COMPLETED";
@@ -87,6 +88,7 @@ export default function AdminTotalRevenuePage() {
   const [revenueMethod, setRevenueMethod] = useState("all");
   const [revenueSplitType, setRevenueSplitType] = useState("all");
   const [revenueAmountRange, setRevenueAmountRange] = useState("all");
+  const [revenueConsultationMode, setRevenueConsultationMode] = useState("all");
   const [dateMode, setDateMode] = useState<
     "this_month" | "prev_month" | "this_year" | "prev_year" | "today" | "custom" | "all"
   >("this_month");
@@ -171,6 +173,7 @@ export default function AdminTotalRevenuePage() {
     setRevenueMethod("all");
     setRevenueSplitType("all");
     setRevenueAmountRange("all");
+    setRevenueConsultationMode("all");
     setDateMode("this_month");
     setSortField("date");
     setSortDirection("desc");
@@ -324,6 +327,13 @@ export default function AdminTotalRevenuePage() {
         // Amount Range
         if (!checkAmountRange(t.totalAmount, revenueAmountRange)) return false;
 
+        // Consultation Mode (In-Clinic vs Online)
+        if (revenueConsultationMode !== "all") {
+          const isOnline = (t.consultationMode || "").toLowerCase().includes("online");
+          if (revenueConsultationMode === "Online" && !isOnline) return false;
+          if (revenueConsultationMode === "In-Clinic" && isOnline) return false;
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -366,6 +376,7 @@ export default function AdminTotalRevenuePage() {
     revenueMethod,
     revenueSplitType,
     revenueAmountRange,
+    revenueConsultationMode,
     dateMode,
     todayStr,
     thisMonthPrefix,
@@ -383,6 +394,11 @@ export default function AdminTotalRevenuePage() {
     let onlineUpiTotal = 0;
     let cardTotal = 0;
 
+    let inClinicTotal = 0;
+    let inClinicCount = 0;
+    let onlineTotal = 0;
+    let onlineCount = 0;
+
     let splitConsultation = 0;
     let splitConsultationMed = 0;
     let splitCarePackage = 0;
@@ -392,6 +408,15 @@ export default function AdminTotalRevenuePage() {
 
     filteredTransactions.forEach((t) => {
       grandTotal += t.totalAmount;
+
+      const isOnline = (t.consultationMode || "").toLowerCase().includes("online");
+      if (isOnline) {
+        onlineTotal += t.totalAmount;
+        onlineCount++;
+      } else {
+        inClinicTotal += t.totalAmount;
+        inClinicCount++;
+      }
 
       // Mode Breakdown (Separate Counter UPI from Online UPI)
       const disp = (t.displayPaymentMethod || "").toLowerCase();
@@ -464,6 +489,10 @@ export default function AdminTotalRevenuePage() {
       counterUpiTotal,
       onlineUpiTotal,
       cardTotal,
+      inClinicTotal,
+      inClinicCount,
+      onlineTotal,
+      onlineCount,
       splitConsultation,
       splitConsultationMed,
       splitCarePackage,
@@ -481,6 +510,7 @@ export default function AdminTotalRevenuePage() {
       "Phone",
       "Branch",
       "Doctor",
+      "Mode",
       "Revenue Split",
       "Source",
       "Amount",
@@ -496,6 +526,7 @@ export default function AdminTotalRevenuePage() {
       `"${t.phone}"`,
       `"${t.branchName}"`,
       `"${t.doctorName}"`,
+      `"${(t.consultationMode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic"}"`,
       `"${t.revenueSplit}"`,
       `"${t.source}"`,
       t.totalAmount,
@@ -550,35 +581,64 @@ export default function AdminTotalRevenuePage() {
               </div>
             </div>
 
-            {/* Quick Date Selector Pills */}
-            <div className="flex items-center flex-wrap gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/70">
-              {(
-                [
-                  { id: "this_month", label: "This Month" },
-                  { id: "prev_month", label: "Prev Month" },
-                  { id: "this_year", label: "This Year" },
-                  { id: "prev_year", label: "Prev Year" },
-                  { id: "today", label: "Today" },
-                  { id: "custom", label: "Custom Range" },
-                  { id: "all", label: "All Time" },
-                ] as const
-              ).map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => {
-                    setDateMode(id);
-                    setRevenueDate("");
-                    setCurrentPage(1);
-                  }}
-                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition ${
-                    dateMode === id
-                      ? "bg-white text-emerald-700 shadow-2xs font-bold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            {/* Quick Filters (Consultation Mode & Date Presets) */}
+            <div className="flex items-center flex-wrap gap-2">
+              {/* Quick Consultation Mode Toggle (All / In-Clinic / Online) */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/70">
+                {(
+                  [
+                    { id: "all", label: "All Modes" },
+                    { id: "In-Clinic", label: "In-Clinic" },
+                    { id: "Online", label: "Online" },
+                  ] as const
+                ).map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      setRevenueConsultationMode(id);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition cursor-pointer ${
+                      revenueConsultationMode === id
+                        ? "bg-sky-600 text-white shadow-2xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Quick Date Selector Pills */}
+              <div className="flex items-center flex-wrap gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/70">
+                {(
+                  [
+                    { id: "this_month", label: "This Month" },
+                    { id: "prev_month", label: "Prev Month" },
+                    { id: "this_year", label: "This Year" },
+                    { id: "prev_year", label: "Prev Year" },
+                    { id: "today", label: "Today" },
+                    { id: "custom", label: "Custom Range" },
+                    { id: "all", label: "All Time" },
+                  ] as const
+                ).map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      setDateMode(id);
+                      setRevenueDate("");
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition ${
+                      dateMode === id
+                        ? "bg-white text-emerald-700 shadow-2xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -596,8 +656,27 @@ export default function AdminTotalRevenuePage() {
                 <div className="text-xl font-extrabold text-slate-900 mt-1">
                   ₹{revenueSummary.grandTotal.toLocaleString("en-IN")}
                 </div>
+                {/* Consultation Mode Breakdown (In-Clinic vs Online) */}
+                <div className="mt-2.5 pt-2 border-t border-slate-100 grid grid-cols-2 gap-1.5 text-[10.5px]">
+                  <div className="bg-sky-50/70 p-1.5 rounded-lg border border-sky-100">
+                    <span className="text-slate-500 font-semibold block text-[9px] uppercase tracking-wide">
+                      In-Clinic ({revenueSummary.inClinicCount})
+                    </span>
+                    <span className="font-extrabold text-sky-700">
+                      ₹{revenueSummary.inClinicTotal.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="bg-purple-50/70 p-1.5 rounded-lg border border-purple-100">
+                    <span className="text-slate-500 font-semibold block text-[9px] uppercase tracking-wide">
+                      Online ({revenueSummary.onlineCount})
+                    </span>
+                    <span className="font-extrabold text-purple-700">
+                      ₹{revenueSummary.onlineTotal.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 mt-3 font-medium">
+              <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 mt-2.5 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>{filteredTransactions.length} Transactions Recorded</span>
               </div>
@@ -950,6 +1029,25 @@ export default function AdminTotalRevenuePage() {
                   <option value="5000+">Above ₹5,000</option>
                 </select>
               </div>
+
+              {/* 11. Consultation Mode */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">
+                  Consultation Mode
+                </label>
+                <select
+                  value={revenueConsultationMode}
+                  onChange={(e) => {
+                    setRevenueConsultationMode(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-semibold text-slate-800"
+                >
+                  <option value="all">All Modes (In-Clinic & Online)</option>
+                  <option value="In-Clinic">In-Clinic</option>
+                  <option value="Online">Online</option>
+                </select>
+              </div>
             </div>
 
             {/* Custom Date Range Picker (shown when 'Custom Range' is active) */}
@@ -1032,6 +1130,7 @@ export default function AdminTotalRevenuePage() {
                       </div>
                     </th>
                     <th className="py-2.5 px-3">Doctor</th>
+                    <th className="py-2.5 px-3">Mode</th>
                     <th className="py-2.5 px-3">Revenue Split</th>
                     <th className="py-2.5 px-3">Source</th>
                     <th
@@ -1060,7 +1159,7 @@ export default function AdminTotalRevenuePage() {
                 <tbody className="divide-y divide-slate-100 text-slate-700 text-[11px]">
                   {paginatedTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-9 text-center text-slate-400 text-xs">
+                      <td colSpan={12} className="py-9 text-center text-slate-400 text-xs">
                         No transactions found matching your criteria. Click <b>Reset</b> to view all.
                       </td>
                     </tr>
@@ -1079,6 +1178,17 @@ export default function AdminTotalRevenuePage() {
                         <td className="py-2 px-3 text-slate-600 font-medium">{t.phone}</td>
                         <td className="py-2 px-3 font-semibold text-slate-700">{t.branchName}</td>
                         <td className="py-2 px-3 text-slate-800">{t.doctorName}</td>
+                        <td className="py-2 px-3 whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                              (t.consultationMode || "").toLowerCase().includes("online")
+                                ? "bg-purple-50 text-purple-700 border-purple-200"
+                                : "bg-sky-50 text-sky-700 border-sky-200"
+                            }`}
+                          >
+                            {(t.consultationMode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic"}
+                          </span>
+                        </td>
                         <td className="py-2 px-3">
                           <span
                             className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] border ${
