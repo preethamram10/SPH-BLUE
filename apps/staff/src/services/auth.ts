@@ -1,6 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { API_BASE_URL } from "../config/api";
 import { getBranchPhone } from "../utils/branchPhone";
+import { clearAllSessionData } from "./appSession";
 
 const TOKEN_KEY = "spiritualhomeo_staff_token";
 const ACTIVE_BRANCH_KEY = "spiritualhomeo_active_branch";
@@ -45,6 +46,9 @@ export async function clearAllAuthData(): Promise<void> {
   } catch {}
   try {
     await SecureStore.deleteItemAsync(ACTIVE_STAFF_KEY);
+  } catch {}
+  try {
+    await clearAllSessionData();
   } catch {}
 }
 

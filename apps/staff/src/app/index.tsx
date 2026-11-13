@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { getAuthToken, getUserRole, clearAllAuthData } from "../services/auth";
+import { getActiveRoute } from "../services/appSession";
 import { API_BASE_URL } from "../config/api";
 
 export default function RootIndex() {
@@ -51,6 +52,16 @@ export default function RootIndex() {
           else if (lower.includes("hr")) targetRoute = "/(hr)";
           else if (lower.includes("staff")) targetRoute = "/(staff)";
           else if (lower.includes("doctor")) targetRoute = "/(doctor)";
+        }
+
+        // Check if resuming from Recent Apps within session window (e.g. Patient History, Book Appointment, etc.)
+        const recentSession = await getActiveRoute();
+        if (recentSession && recentSession.pathname) {
+          router.replace({
+            pathname: recentSession.pathname as any,
+            params: recentSession.params || {},
+          });
+          return;
         }
 
         // 2. If we have a target route from persistent session, navigate immediately

@@ -27,6 +27,7 @@ import { PrescriptionViewerModal } from "./PrescriptionViewerModal";
 import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
 import { MobileDietPlanView } from "./MobileDietPlanView";
 import { API_BASE_URL } from "../../config/api";
+import { saveActiveRoute, clearActiveRoute, saveDraft, getDraft, clearDraft } from "../../services/appSession";
 
 export const resolvePrescriptionImageUrl = (url: string) => {
   if (!url) return "";
@@ -179,12 +180,54 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Stack Back Navigation
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace(role === "DOCTOR" ? "/(doctor)" : ("/(reception)" as any));
     }
   };
+
+  useEffect(() => {
+    saveActiveRoute(role === "DOCTOR" ? "/(doctor)/patient-file" : "/(reception)/patient-file", {
+      id: appointmentId,
+      name: initialName,
+      phone: initialPhone,
+      registrationId: initialRegId,
+      branch: initialBranch,
+    });
+
+    if (appointmentId) {
+      getDraft<any>(`patient_file_${appointmentId}`).then((draft) => {
+        if (draft) {
+          if (draft.uploadedImages?.length) setUploadedImages(draft.uploadedImages);
+          if (draft.prescriptionText) setPrescriptionText(draft.prescriptionText);
+          if (draft.followUpInterval) setFollowUpInterval(draft.followUpInterval);
+          if (draft.followUpDate) setFollowUpDate(draft.followUpDate);
+          if (draft.consultationFee) setConsultationFee(draft.consultationFee);
+          if (draft.dietPlan) setDietPlan(draft.dietPlan);
+          if (draft.dietPlanFee) setDietPlanFee(draft.dietPlanFee);
+        }
+      });
+    }
+  }, [appointmentId]);
+
+  // Auto-save draft when fields change
+  useEffect(() => {
+    if (!appointmentId) return;
+    const timeout = setTimeout(() => {
+      saveDraft(`patient_file_${appointmentId}`, {
+        uploadedImages,
+        prescriptionText,
+        followUpInterval,
+        followUpDate,
+        consultationFee,
+        dietPlan,
+        dietPlanFee,
+      });
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [appointmentId, uploadedImages, prescriptionText, followUpInterval, followUpDate, consultationFee, dietPlan, dietPlanFee]);
 
   useEffect(() => {
     const onBackPress = () => {
@@ -611,6 +654,8 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
       });
 
       if (res.success) {
+        clearDraft(`patient_file_${targetId}`);
+        clearActiveRoute();
         if (role === "RECEPTION") {
           // Reception clicked Send to Reception / Save & Collect Fee:
           // Immediately open the fee payment modal right in Patient File

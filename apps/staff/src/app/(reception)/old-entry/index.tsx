@@ -20,6 +20,7 @@ import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { PrescriptionViewerModal } from "../../../components/patient-file/PrescriptionViewerModal";
+import { saveActiveRoute, clearActiveRoute, saveDraft, getDraft, clearDraft } from "../../../services/appSession";
 
 const COLORS = {
   primary: "#0284c7",
@@ -118,9 +119,42 @@ export default function MobileOldPrescriptionEntryScreen() {
       .catch(() => {
         // Fallback to DEFAULT_DOCTORS
       });
+
+    saveActiveRoute("/(reception)/old-entry");
+
+    getDraft<any>("old_entry").then((draft) => {
+      if (draft) {
+        if (draft.regId) setRegId(draft.regId);
+        if (draft.phone) setPhone(draft.phone);
+        if (draft.patientName) setPatientName(draft.patientName);
+        if (draft.consultationMode) setConsultationMode(draft.consultationMode);
+        if (draft.source) setSource(draft.source);
+        if (draft.subject) setSubject(draft.subject);
+        if (draft.visitDate) setVisitDate(draft.visitDate);
+        if (draft.uploadedImages?.length) setUploadedImages(draft.uploadedImages);
+      }
+    });
   }, []);
 
+  useEffect(() => {
+    if (!regId && !phone && !patientName && (!uploadedImages || !uploadedImages.length)) return;
+    const timeout = setTimeout(() => {
+      saveDraft("old_entry", {
+        regId,
+        phone,
+        patientName,
+        consultationMode,
+        source,
+        subject,
+        visitDate,
+        uploadedImages,
+      });
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [regId, phone, patientName, consultationMode, source, subject, visitDate, uploadedImages]);
+
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) router.back();
     else router.replace("/(reception)" as any);
   };
@@ -436,6 +470,8 @@ export default function MobileOldPrescriptionEntryScreen() {
         const savedId = res.patient?.regId || regId;
         const savedName = res.patient?.name || patientName;
         const savedPhone = phone;
+
+        clearDraft("old_entry");
 
         Alert.alert(
           "Success",

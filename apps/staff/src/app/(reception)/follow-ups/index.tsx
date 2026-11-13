@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { ReceptionBottomNav } from "../../../components/reception/ReceptionBottomNav";
 import AnalogClockPicker from "../../../components/AnalogClockPicker";
+import { saveActiveRoute, clearActiveRoute, saveFilters, getFilters } from "../../../services/appSession";
 
 interface FollowUpItem {
   id: string;
@@ -312,8 +313,17 @@ export default function ReceptionFollowUpsScreen() {
     return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
   }, []);
 
-  // Load Branch Info (Strictly lock to Reception's Branch)
+  // Load Branch Info & saved filters
   useEffect(() => {
+    saveActiveRoute("/(reception)/follow-ups");
+    getFilters<any>("reception_follow_ups").then((f) => {
+      if (f) {
+        if (f.periodFilter) setPeriodFilter(f.periodFilter);
+        if (f.selectedMonth !== undefined) setSelectedMonth(f.selectedMonth);
+        if (f.search !== undefined) setSearch(f.search);
+      }
+    });
+
     getActiveBranch().then((b) => {
       if (b && b.name) {
         setActiveBranch(b);
@@ -322,6 +332,10 @@ export default function ReceptionFollowUpsScreen() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    saveFilters("reception_follow_ups", { periodFilter, selectedMonth, search });
+  }, [periodFilter, selectedMonth, search]);
 
   // Fetch Follow-ups synced with Web backend (strictly locked to clinic branch)
   const loadFollowUps = async () => {
@@ -765,6 +779,7 @@ export default function ReceptionFollowUpsScreen() {
   };
 
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) {
       router.back();
     } else {

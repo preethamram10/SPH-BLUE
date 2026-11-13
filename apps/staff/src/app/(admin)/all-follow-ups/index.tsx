@@ -19,6 +19,7 @@ import { apiFetch, getUserRole } from "../../../services/auth";
 import { AdminBottomNav } from "../../../components/admin/AdminBottomNav";
 import { HRBottomNav } from "../../../components/hr/HRBottomNav";
 import AnalogClockPicker from "../../../components/AnalogClockPicker";
+import { saveActiveRoute, clearActiveRoute, saveFilters, getFilters } from "../../../services/appSession";
 
 export interface FollowUpItem {
   id: string;
@@ -328,6 +329,22 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
       setIsLoading(false);
     }
   }, [periodFilter, selectedMonth, startDate, endDate, selectedBranch, search]);
+
+  useEffect(() => {
+    saveActiveRoute("/(admin)/all-follow-ups");
+    getFilters<any>("admin_follow_ups").then((f) => {
+      if (f) {
+        if (f.periodFilter) setPeriodFilter(f.periodFilter);
+        if (f.selectedMonth !== undefined) setSelectedMonth(f.selectedMonth);
+        if (f.selectedBranch) setSelectedBranch(f.selectedBranch);
+        if (f.search !== undefined) setSearch(f.search);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    saveFilters("admin_follow_ups", { periodFilter, selectedMonth, selectedBranch, search });
+  }, [periodFilter, selectedMonth, selectedBranch, search]);
 
   useEffect(() => {
     loadFollowUps();
@@ -718,6 +735,7 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
   };
 
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) {
       router.back();
     } else {

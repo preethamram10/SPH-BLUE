@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { ReceptionBottomNav } from "../../../components/reception/ReceptionBottomNav";
 import { normalizeDateStr } from "../../../utils/dateUtils";
+import { saveActiveRoute, clearActiveRoute, saveFilters, getFilters } from "../../../services/appSession";
 
 const PAGE_SIZE = 25;
 
@@ -51,12 +52,24 @@ export default function ReceptionAllPatientsScreen() {
   const [activeBranch, setActiveBranch] = useState<any>(null);
   const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number>>({ TODAY: 0, YESTERDAY: 0, ALL: 0 });
 
-  // Load branch on mount
+  // Load branch and saved filters on mount
   useEffect(() => {
+    saveActiveRoute("/(reception)/all-patients");
+    getFilters<any>("all_patients").then((f) => {
+      if (f) {
+        if (f.search !== undefined) setSearch(f.search);
+        if (f.session) setSession(f.session);
+      }
+    });
+
     getActiveBranch().then((b) => {
       if (b) setActiveBranch(b);
     });
   }, []);
+
+  useEffect(() => {
+    saveFilters("all_patients", { search, session });
+  }, [search, session]);
 
   // Fetch patients for the current tab/page
   const fetchPatients = useCallback(

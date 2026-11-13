@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../config/api";
+import { saveFilters, getFilters } from "../../services/appSession";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -172,6 +173,32 @@ export function MobileRevenueLedgerView({
       setRefreshing(false);
     }
   }, []);
+
+  useEffect(() => {
+    getFilters<any>(`revenue_filters_${role}`).then((f) => {
+      if (f) {
+        if (f.searchQuery !== undefined) setSearchQuery(f.searchQuery);
+        if (f.datePreset) setDatePreset(f.datePreset);
+        if (f.selectedBranch) setSelectedBranch(f.selectedBranch);
+        if (f.selectedDoctor && !doctorFilterName) setSelectedDoctor(f.selectedDoctor);
+        if (f.selectedMethod) setSelectedMethod(f.selectedMethod);
+        if (f.selectedSplitType) setSelectedSplitType(f.selectedSplitType);
+        if (f.selectedSource) setSelectedSource(f.selectedSource);
+      }
+    });
+  }, [role]);
+
+  useEffect(() => {
+    saveFilters(`revenue_filters_${role}`, {
+      searchQuery,
+      datePreset,
+      selectedBranch,
+      selectedDoctor,
+      selectedMethod,
+      selectedSplitType,
+      selectedSource,
+    });
+  }, [role, searchQuery, datePreset, selectedBranch, selectedDoctor, selectedMethod, selectedSplitType, selectedSource]);
 
   useEffect(() => {
     fetchBranches();

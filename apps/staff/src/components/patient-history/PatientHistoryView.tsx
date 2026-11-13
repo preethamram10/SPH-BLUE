@@ -21,6 +21,7 @@ import { apiFetch } from "../../services/auth";
 import { resolvePrescriptionImageUrl } from "../patient-file/PatientFileView";
 import { PrescriptionViewerModal } from "../patient-file/PrescriptionViewerModal";
 import { AppointmentPaymentModal } from "../payment/AppointmentPaymentModal";
+import { saveActiveRoute, clearActiveRoute } from "../../services/appSession";
 
 interface PatientHistoryViewProps {
   role: "DOCTOR" | "RECEPTION";
@@ -123,16 +124,29 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
 
   useEffect(() => {
     loadData(false, currentPatientId);
+    saveActiveRoute(role === "DOCTOR" ? "/(doctor)/patient-history" : "/(reception)/patient-history", {
+      id: currentPatientId || patientId,
+      name: paramName,
+      phone: paramPhone,
+      branch: paramBranch,
+    });
   }, [currentPatientId]);
 
   const handleSwitchProfile = (newRegId: string) => {
     if ((newRegId || "").trim().toUpperCase() === (currentPatientId || "").trim().toUpperCase()) return;
     setCurrentPatientId(newRegId);
     loadData(false, newRegId);
+    saveActiveRoute(role === "DOCTOR" ? "/(doctor)/patient-history" : "/(reception)/patient-history", {
+      id: newRegId,
+      name: paramName,
+      phone: paramPhone,
+      branch: paramBranch,
+    });
   };
 
   // Back Navigation
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) {
       router.back();
     } else {

@@ -24,6 +24,7 @@ import { removeAuthToken, getActiveBranch, removeActiveBranch, saveActiveBranch 
 import { API_BASE_URL } from "../../../config/api";
 import { generateRegistrationId } from "../../../utils/idGenerator";
 import AnalogClockPicker from "../../../components/AnalogClockPicker";
+import { saveActiveRoute, clearActiveRoute, saveDraft, getDraft, clearDraft } from "../../../services/appSession";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
@@ -336,6 +337,40 @@ export default function ReceptionBookAppointmentScreen() {
       setLoadingDoctors(false);
     }
   };
+
+  useEffect(() => {
+    saveActiveRoute("/(reception)/appointments");
+
+    getDraft<any>("book_appointment").then((draft) => {
+      if (draft) {
+        if (draft.patientName) setPatientName(draft.patientName);
+        if (draft.phoneNumber) setPhoneNumber(draft.phoneNumber);
+        if (draft.diseases) setDiseases(draft.diseases);
+        if (draft.marketingSource) setMarketingSource(draft.marketingSource);
+        if (draft.consultationMode) setConsultationMode(draft.consultationMode);
+        if (draft.manualRegId) setManualRegId(draft.manualRegId);
+        if (draft.isRebackMode !== undefined) setIsRebackMode(draft.isRebackMode);
+        if (draft.appointmentDate) setAppointmentDate(draft.appointmentDate);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!patientName && !phoneNumber && !diseases && !manualRegId) return;
+    const timeout = setTimeout(() => {
+      saveDraft("book_appointment", {
+        patientName,
+        phoneNumber,
+        diseases,
+        marketingSource,
+        consultationMode,
+        manualRegId,
+        isRebackMode,
+        appointmentDate,
+      });
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [patientName, phoneNumber, diseases, marketingSource, consultationMode, manualRegId, isRebackMode, appointmentDate]);
 
   useEffect(() => {
     getActiveBranch().then((b) => {
@@ -939,6 +974,7 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   const handleClearForm = () => {
+    clearDraft("book_appointment");
     setPatientName("");
     setPhoneNumber("");
     setDiseases("");
@@ -1109,6 +1145,7 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   const handleBack = () => {
+    clearActiveRoute();
     if (router.canGoBack()) {
       router.back();
     } else {
