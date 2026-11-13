@@ -1978,7 +1978,7 @@ export default function ReceptionAppointmentsPage() {
       {/* PROFILES POP-UP MODAL (CHECK PROFILES / MULTI-PROFILE POPUP) */}
       {isProfilesModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-5 max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-5 h-[85vh] max-h-[92vh] min-h-[580px] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -2065,7 +2065,7 @@ export default function ReceptionAppointmentsPage() {
             )}
 
             {/* Modal Body: Profiles List or Merge Mode */}
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 min-h-[360px]">
               {isLoadingProfiles ? (
                 <div className="p-8 text-center text-xs text-slate-400 font-medium">
                   Loading patient profiles...

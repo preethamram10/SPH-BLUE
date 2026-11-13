@@ -2107,17 +2107,21 @@ export default function ReceptionBookAppointmentScreen() {
           <View style={styles.modalOverlay}>
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={{ width: "100%", alignItems: "center" }}
+              style={{ width: "100%", alignItems: "center", justifyContent: "center" }}
             >
             <View
               style={{
                 backgroundColor: "#ffffff",
                 borderRadius: 24,
                 padding: 18,
-                width: "92%",
-                maxWidth: 420,
-                maxHeight: "85%",
+                width: "94%",
+                maxWidth: 480,
+                height: "82%",
+                maxHeight: "88%",
+                minHeight: 520,
                 gap: 12,
+                display: "flex",
+                flexDirection: "column",
               }}
             >
               {/* Header */}
@@ -2224,7 +2228,7 @@ export default function ReceptionBookAppointmentScreen() {
               </View>
 
               {/* Body: Profiles List or Merge Mode */}
-              <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={true}>
                 {isLoadingProfiles ? (
                   <View style={{ padding: 24, alignItems: "center" }}>
                     <ActivityIndicator size="small" color="#0284c7" />
