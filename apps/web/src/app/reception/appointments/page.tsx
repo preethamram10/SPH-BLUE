@@ -892,21 +892,27 @@ export default function ReceptionAppointmentsPage() {
   };
 
   const handleSaveEditedName = async (regId: string) => {
-    if (!editingNameVal.trim()) return;
+    const updated = editingNameVal.trim();
+    if (!updated) return;
     try {
       const res = await fetch("/api/reception/patients/manage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "UPDATE_NAME", regId, newName: editingNameVal.trim() }),
+        body: JSON.stringify({ action: "UPDATE_NAME", regId, newName: updated }),
       });
       const data = await res.json();
       if (data.success) {
-        setModalFeedback({ type: "success", text: "Profile name updated successfully!" });
+        setModalFeedback({ type: "success", text: "Profile name updated across all records and appointments!" });
         setEditingProfileRegId(null);
+        setPhoneProfiles((prev) =>
+          prev.map((prof) => (prof.regId === regId ? { ...prof, name: updated } : prof))
+        );
         if (foundProfile && foundProfile.regId === regId) {
-          setPatientName(editingNameVal.trim());
+          setFoundProfile((prev) => (prev ? { ...prev, name: updated } : null));
+          setPatientName(updated);
         }
-        fetchAndOpenProfiles(phoneNumber, false);
+        const targetQuery = modalSearchInput.trim() || phoneNumber;
+        fetchAndOpenProfiles(targetQuery, false);
       } else {
         setModalFeedback({ type: "error", text: data.error || "Failed to update name." });
       }
@@ -1990,7 +1996,7 @@ export default function ReceptionAppointmentsPage() {
       {/* PROFILES POP-UP MODAL (CHECK PROFILES / MULTI-PROFILE POPUP) */}
       {isProfilesModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-5 h-[85vh] max-h-[92vh] min-h-[580px] flex flex-col">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-5 h-[85vh] max-h-[92vh] min-h-[580px] flex flex-col">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
@@ -2171,43 +2177,35 @@ export default function ReceptionAppointmentsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           {isEditing ? (
-                            <div className="flex items-center gap-2 max-w-sm">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 max-w-md bg-white p-2 rounded-xl border border-[#0284c7] shadow-xs mb-2">
                               <input
                                 type="text"
                                 value={editingNameVal}
                                 onChange={(e) => setEditingNameVal(e.target.value)}
-                                className="px-2.5 py-1 text-xs font-extrabold text-slate-900 border border-[#0284c7] rounded-lg bg-white focus:outline-none"
-                                placeholder="Enter updated name"
+                                className="flex-1 px-3 py-1.5 text-xs font-extrabold text-slate-900 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0284c7]"
+                                placeholder="Enter updated full name"
+                                autoFocus
                               />
-                              <button
-                                type="button"
-                                onClick={() => handleSaveEditedName(p.regId)}
-                                className="px-2.5 py-1 bg-[#0284c7] text-white rounded-lg text-xs font-bold cursor-pointer hover:bg-[#0369a1]"
-                              >
-                                Save
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingProfileRegId(null)}
-                                className="px-2.5 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer hover:bg-slate-300"
-                              >
-                                Cancel
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditedName(p.regId)}
+                                  className="px-3 py-1.5 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-lg text-xs font-extrabold cursor-pointer shadow-xs"
+                                >
+                                  Save & Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingProfileRegId(null)}
+                                  className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <div className="flex items-center gap-2">
                               <h4 className="text-sm font-extrabold text-slate-900">{p.name}</h4>
-                              <button
-                                type="button"
-                                title="Edit patient name"
-                                onClick={() => {
-                                  setEditingProfileRegId(p.regId);
-                                  setEditingNameVal(p.name);
-                                }}
-                                className="text-slate-400 hover:text-[#0284c7] p-0.5 cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
                             </div>
                           )}
 
@@ -2231,6 +2229,20 @@ export default function ReceptionAppointmentsPage() {
 
                         {/* Actions for this profile */}
                         <div className="flex items-center gap-2 shrink-0">
+                          {/* Dedicated Edit Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProfileRegId(p.regId);
+                              setEditingNameVal(p.name);
+                            }}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 flex items-center gap-1.5"
+                            title="Edit patient name across all records"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-[#0284c7]" />
+                            <span>Edit</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleSelectProfile(p)}

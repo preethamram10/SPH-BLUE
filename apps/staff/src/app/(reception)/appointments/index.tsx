@@ -836,21 +836,27 @@ export default function ReceptionBookAppointmentScreen() {
   };
 
   const handleSaveEditedName = async (regId: string) => {
-    if (!editingNameVal.trim()) return;
+    const updated = editingNameVal.trim();
+    if (!updated) return;
     try {
       const res = await fetch(`${API_BASE_URL}/reception/patients/manage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "UPDATE_NAME", regId, newName: editingNameVal.trim() }),
+        body: JSON.stringify({ action: "UPDATE_NAME", regId, newName: updated }),
       });
       const data = await res.json();
       if (data.success) {
-        Alert.alert("Success", "Profile name updated successfully!");
+        Alert.alert("Success", "Profile name updated across all records and appointments!");
         setEditingProfileRegId(null);
+        setPhoneProfiles((prev) =>
+          prev.map((prof) => (prof.regId === regId ? { ...prof, name: updated } : prof))
+        );
         if (foundProfile && foundProfile.regId === regId) {
-          setPatientName(editingNameVal.trim());
+          setFoundProfile((prev) => (prev ? { ...prev, name: updated } : null));
+          setPatientName(updated);
         }
-        fetchAndOpenProfiles(phoneNumber, false);
+        const targetQuery = modalSearchInput.trim() || phoneNumber;
+        fetchAndOpenProfiles(targetQuery, false);
       } else {
         Alert.alert("Error", data.error || "Failed to update name.");
       }
@@ -2119,8 +2125,8 @@ export default function ReceptionBookAppointmentScreen() {
                 backgroundColor: "#ffffff",
                 borderRadius: 24,
                 padding: 18,
-                width: "94%",
-                maxWidth: 480,
+                width: "96%",
+                maxWidth: 540,
                 height: "82%",
                 maxHeight: "88%",
                 minHeight: 520,
@@ -2427,7 +2433,30 @@ export default function ReceptionBookAppointmentScreen() {
                             </View>
 
                             {/* Action Buttons */}
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setEditingProfileRegId(p.regId);
+                                  setEditingNameVal(p.name);
+                                }}
+                                style={{
+                                  backgroundColor: "#f1f5f9",
+                                  borderWidth: 1,
+                                  borderColor: "#cbd5e1",
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 5,
+                                  borderRadius: 8,
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 3,
+                                }}
+                              >
+                                <Feather name="edit-2" size={11} color="#0284c7" />
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#334155" }}>
+                                  Edit
+                                </Text>
+                              </TouchableOpacity>
+
                               <TouchableOpacity
                                 onPress={() => handleSelectProfile(p)}
                                 style={{

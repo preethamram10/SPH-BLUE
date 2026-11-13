@@ -2020,24 +2020,100 @@ export const patientService = {
     const idx = store.findIndex((p) => p.regId.trim().toUpperCase() === cleanReg);
     if (idx === -1) return null;
 
+    const oldName = store[idx].name;
+    const patientPhone = store[idx].phone;
+
     store[idx].name = trimmedName;
     store[idx].updatedAt = new Date().toISOString();
     global.__sphPatientsStore = store;
     savePatientsToDisk(store);
 
-    // Update in appointments store too
-    const appts = getAppointmentsStore();
-    let apptUpdated = false;
-    appts.forEach((a) => {
-      if (a.registrationId.trim().toUpperCase() === cleanReg) {
-        a.patientName = trimmedName;
-        apptUpdated = true;
+    // 1. Update in appointments store across all appointments
+    try {
+      const appts = getAppointmentsStore();
+      let apptUpdated = false;
+      appts.forEach((a) => {
+        const matchReg = (a.registrationId || "").trim().toUpperCase() === cleanReg;
+        const matchPhone = patientPhone && a.phone === patientPhone && a.patientName === oldName;
+        if (matchReg || matchPhone) {
+          a.patientName = trimmedName;
+          apptUpdated = true;
+        }
+      });
+      if (apptUpdated) {
+        global.__sphAppointmentsStore = appts;
+        saveAppointmentsToDisk(appts);
       }
-    });
-    if (apptUpdated) {
-      global.__sphAppointmentsStore = appts;
-      saveAppointmentsToDisk(appts);
-    }
+    } catch (_) {}
+
+    // 2. Update in pay later store
+    try {
+      const payLaterList = getPayLaterStore();
+      let plUpdated = false;
+      payLaterList.forEach((pl) => {
+        const matchReg = (pl.registrationId || pl.patientId || "").trim().toUpperCase() === cleanReg;
+        const matchPhone = patientPhone && pl.phone === patientPhone && pl.patientName === oldName;
+        if (matchReg || matchPhone) {
+          pl.patientName = trimmedName;
+          plUpdated = true;
+        }
+      });
+      if (plUpdated) {
+        global.__sphPayLaterStore = payLaterList;
+        savePayLaterToDisk(payLaterList);
+      }
+    } catch (_) {}
+
+    // 3. Update in medicine requests store
+    try {
+      const medReqs = getMedicineRequestsStore();
+      let medUpdated = false;
+      medReqs.forEach((mr) => {
+        const matchPhone = patientPhone && mr.phone === patientPhone && mr.patientName === oldName;
+        if (matchPhone) {
+          mr.patientName = trimmedName;
+          medUpdated = true;
+        }
+      });
+      if (medUpdated) {
+        global.__sphMedicineRequestsStore = medReqs;
+        saveMedicineRequestsToDisk(medReqs);
+      }
+    } catch (_) {}
+
+    // 4. Update in package members store
+    try {
+      const pkgList = getPackageMembersStore();
+      let pkgUpdated = false;
+      pkgList.forEach((pm) => {
+        const matchReg = (pm.registrationId || "").trim().toUpperCase() === cleanReg;
+        const matchPhone = patientPhone && pm.phone === patientPhone && pm.patientName === oldName;
+        if (matchReg || matchPhone) {
+          pm.patientName = trimmedName;
+          pkgUpdated = true;
+        }
+      });
+      if (pkgUpdated) {
+        global.__sphPackageMembersStore = pkgList;
+        savePackageMembersToDisk(pkgList);
+      }
+    } catch (_) {}
+
+    // 5. Update PostgreSQL relational tables (Prisma & raw SQL)
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Appointment" SET "patientName" = '${trimmedName}' WHERE "registrationId" = '${cleanReg}' OR "patientName" = '${oldName}';`
+      ).catch(() => {});
+      await prisma.$executeRawUnsafe(
+        `UPDATE "PatientProfile" SET "name" = '${trimmedName}' WHERE "mrn" = '${cleanReg}' OR "name" = '${oldName}';`
+      ).catch(() => {});
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Patient" SET "name" = '${trimmedName}' WHERE "registrationId" = '${cleanReg}' OR "name" = '${oldName}';`
+      ).catch(() => {});
+      await prisma.$executeRawUnsafe(
+        `UPDATE "Invoice" SET "patientName" = '${trimmedName}' WHERE "patientName" = '${oldName}';`
+      ).catch(() => {});
+    } catch (_) {}
 
     return store[idx];
   },
