@@ -40,7 +40,10 @@ interface PayLaterRecord {
 function normalizeBranchKey(str: string): string {
   if (!str) return "";
   let c = str.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/branch/gi, "").trim();
+  if (c.includes("chandanagar") || c.includes("chanda")) return "chandanagar";
   if (c === "kpb" || c === "kphb") return "kphb";
+  if (c.includes("dilshuk")) return "dilshuknagar";
+  if (c.includes("nalla")) return "nallagandla";
   return c;
 }
 
@@ -111,7 +114,10 @@ export default function MobilePayLaterScreen() {
     const seen = new Set<string>();
 
     const addBranch = (b: string) => {
-      const trimmed = (b || "").trim();
+      let trimmed = (b || "").trim();
+      if (trimmed.toLowerCase().includes("chandanagar nagar")) {
+        trimmed = "Chandanagar Branch";
+      }
       if (!trimmed || trimmed === "All" || trimmed === "All Branches") return;
       const key = normalizeBranchKey(trimmed);
       if (!seen.has(key)) {

@@ -272,7 +272,13 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
     apiFetch<any>("/branches")
       .then((res) => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          const names: string[] = res.data.map((b: any) => b.name).filter(Boolean);
+          const names: string[] = res.data
+            .map((b: any) => {
+              let n = b.name || "";
+              if (n.toLowerCase().includes("chandanagar nagar")) n = "Chandanagar Branch";
+              return n;
+            })
+            .filter(Boolean);
           const uniqueNames = Array.from(new Set(names));
           setBranchOptions(["All Branches", ...uniqueNames]);
         }
@@ -307,7 +313,11 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
           setStats(res.stats);
         }
         if (Array.isArray(res.branches) && res.branches.length > 0) {
-          setBranchOptions((prev) => Array.from(new Set([...prev, ...res.branches])));
+          const cleanBranches = res.branches.map((b: string) => {
+            if (b && b.toLowerCase().includes("chandanagar nagar")) return "Chandanagar Branch";
+            return b;
+          });
+          setBranchOptions((prev) => Array.from(new Set([...prev, ...cleanBranches])));
         }
       } else {
         setFollowUps([]);

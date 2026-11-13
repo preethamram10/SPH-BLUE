@@ -157,21 +157,52 @@ const DEFAULT_BRANCHES_STORE: BranchRecord[] = [
   },
 ];
 
-function cascadeBranchRename(oldName: string, newName: string): void {
+async function cascadeBranchRename(oldName: string, newName: string): Promise<void> {
   if (!oldName || !newName) return;
   const cleanOld = normalizeBranchName(oldName);
   const cleanNew = normalizeBranchName(newName);
+  const isChandanagar = cleanOld.includes("chanda") || cleanNew.includes("chanda") || oldName.toLowerCase().includes("chanda");
+  const targetNewName = isChandanagar ? "Chandanagar Branch" : newName;
 
-  // 1. Appointments Store
+  // 1. Update Branch table via prisma
+  try {
+    await prisma.branch.updateMany({
+      where: {
+        OR: [
+          { name: oldName },
+          { name: { contains: "Chandanagar Nagar", mode: "insensitive" } },
+        ],
+      },
+      data: { name: targetNewName },
+    });
+  } catch (err) {}
+
+  // 2. Direct database updates via raw SQL for any database tables
+  try {
+    const rawQueries = [
+      `UPDATE "Appointment" SET "branch" = '${targetNewName}' WHERE "branch" ILIKE '%${oldName}%' OR "branch" ILIKE '%Chandanagar Nagar%'`,
+      `UPDATE "Employee" SET "branchName" = '${targetNewName}' WHERE "branchName" ILIKE '%${oldName}%' OR "branchName" ILIKE '%Chandanagar Nagar%'`,
+      `UPDATE "Patient" SET "branch" = '${targetNewName}' WHERE "branch" ILIKE '%${oldName}%' OR "branch" ILIKE '%Chandanagar Nagar%'`,
+      `UPDATE "CleaningTask" SET "branchName" = '${targetNewName}' WHERE "branchName" ILIKE '%${oldName}%' OR "branchName" ILIKE '%Chandanagar Nagar%'`,
+      `UPDATE "BranchTarget" SET "branch" = '${targetNewName}' WHERE "branch" ILIKE '%${oldName}%' OR "branch" ILIKE '%Chandanagar Nagar%'`,
+      `UPDATE "PackageMember" SET "branch" = '${targetNewName}' WHERE "branch" ILIKE '%${oldName}%' OR "branch" ILIKE '%Chandanagar Nagar%'`,
+    ];
+    for (const q of rawQueries) {
+      await prisma.$executeRawUnsafe(q).catch(() => {});
+    }
+  } catch (err) {}
+
+  // 1. Appointments Store (in-memory / cache)
   try {
     const appts = getAppointmentsStore();
     let changed = false;
     appts.forEach((a) => {
       const matchOld = a.branch === oldName || (cleanOld && normalizeBranchName(a.branch) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(a.branch) === cleanNew;
-      if (matchOld || matchNew) {
-        if (a.branch !== newName) {
-          a.branch = newName;
+      const matchChandaNagar = isChandanagar && (a.branch || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (a.branch !== targetNewName) {
+          a.branch = targetNewName;
           changed = true;
         }
       }
@@ -191,9 +222,10 @@ function cascadeBranchRename(oldName: string, newName: string): void {
     targets.forEach((t) => {
       const matchOld = t.branch === oldName || (cleanOld && normalizeBranchName(t.branch) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(t.branch) === cleanNew;
-      if (matchOld || matchNew) {
-        if (t.branch !== newName) {
-          t.branch = newName;
+      const matchChandaNagar = isChandanagar && (t.branch || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (t.branch !== targetNewName) {
+          t.branch = targetNewName;
           changed = true;
         }
       }
@@ -206,7 +238,6 @@ function cascadeBranchRename(oldName: string, newName: string): void {
         targetMap.set(key, t);
       } else {
         const prev = targetMap.get(key)!;
-        // keep the one with higher or updated target
         if (t.targetAmount > prev.targetAmount || t.updatedAt > prev.updatedAt) {
           targetMap.set(key, t);
         }
@@ -229,9 +260,10 @@ function cascadeBranchRename(oldName: string, newName: string): void {
     tasks.forEach((t) => {
       const matchOld = t.branchName === oldName || (cleanOld && normalizeBranchName(t.branchName) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(t.branchName) === cleanNew;
-      if (matchOld || matchNew) {
-        if (t.branchName !== newName) {
-          t.branchName = newName;
+      const matchChandaNagar = isChandanagar && (t.branchName || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (t.branchName !== targetNewName) {
+          t.branchName = targetNewName;
           changed = true;
         }
       }
@@ -253,17 +285,19 @@ function cascadeBranchRename(oldName: string, newName: string): void {
         doc.branchSchedules.forEach((bs) => {
           const matchOld = bs.branchName === oldName || (cleanOld && normalizeBranchName(bs.branchName) === cleanOld);
           const matchNew = cleanNew && normalizeBranchName(bs.branchName) === cleanNew;
-          if (matchOld || matchNew) {
-            if (bs.branchName !== newName) {
-              bs.branchName = newName;
+          const matchChandaNagar = isChandanagar && (bs.branchName || "").toLowerCase().includes("chandanagar nagar");
+          if (matchOld || matchNew || matchChandaNagar) {
+            if (bs.branchName !== targetNewName) {
+              bs.branchName = targetNewName;
               changed = true;
             }
           }
           const tOld = (bs as any).targetBranch === oldName || (cleanOld && normalizeBranchName((bs as any).targetBranch) === cleanOld);
           const tNew = cleanNew && normalizeBranchName((bs as any).targetBranch) === cleanNew;
-          if (tOld || tNew) {
-            if ((bs as any).targetBranch !== newName) {
-              (bs as any).targetBranch = newName;
+          const tChanda = isChandanagar && ((bs as any).targetBranch || "").toLowerCase().includes("chandanagar nagar");
+          if (tOld || tNew || tChanda) {
+            if ((bs as any).targetBranch !== targetNewName) {
+              (bs as any).targetBranch = targetNewName;
               changed = true;
             }
           }
@@ -285,9 +319,10 @@ function cascadeBranchRename(oldName: string, newName: string): void {
     emps.forEach((e) => {
       const matchOld = e.branchName === oldName || (cleanOld && normalizeBranchName(e.branchName) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(e.branchName) === cleanNew;
-      if (matchOld || matchNew) {
-        if (e.branchName !== newName) {
-          e.branchName = newName;
+      const matchChandaNagar = isChandanagar && (e.branchName || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (e.branchName !== targetNewName) {
+          e.branchName = targetNewName;
           changed = true;
         }
       }
@@ -307,9 +342,10 @@ function cascadeBranchRename(oldName: string, newName: string): void {
     pats.forEach((p) => {
       const matchOld = p.branch === oldName || (cleanOld && normalizeBranchName(p.branch) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(p.branch) === cleanNew;
-      if (matchOld || matchNew) {
-        if (p.branch !== newName) {
-          p.branch = newName;
+      const matchChandaNagar = isChandanagar && (p.branch || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (p.branch !== targetNewName) {
+          p.branch = targetNewName;
           changed = true;
         }
       }
@@ -329,9 +365,10 @@ function cascadeBranchRename(oldName: string, newName: string): void {
     pkgMembers.forEach((p) => {
       const matchOld = p.branch === oldName || (cleanOld && normalizeBranchName(p.branch) === cleanOld);
       const matchNew = cleanNew && normalizeBranchName(p.branch) === cleanNew;
-      if (matchOld || matchNew) {
-        if (p.branch !== newName) {
-          p.branch = newName;
+      const matchChandaNagar = isChandanagar && (p.branch || "").toLowerCase().includes("chandanagar nagar");
+      if (matchOld || matchNew || matchChandaNagar) {
+        if (p.branch !== targetNewName) {
+          p.branch = targetNewName;
           changed = true;
         }
       }
@@ -408,6 +445,9 @@ export const branchService = {
     // Deduplicate branches by normalized name (keeps the latest canonical one)
     const seen = new Map<string, BranchRecord>();
     branches.forEach((b) => {
+      if (b.name && b.name.toLowerCase().includes("chandanagar nagar")) {
+        b.name = "Chandanagar Branch";
+      }
       const key = normalizeBranchName(b.name);
       if (!seen.has(key)) {
         seen.set(key, b);
@@ -571,7 +611,7 @@ export const branchService = {
       saveBranchesToDisk(cleanedStore);
 
       if (oldBranchName && newBranchName) {
-        cascadeBranchRename(oldBranchName, newBranchName);
+        await cascadeBranchRename(oldBranchName, newBranchName);
       }
 
       return store[idx];
@@ -580,16 +620,25 @@ export const branchService = {
   },
 
   // Cascade rename to all relational stores
-  cascadeBranchRename(oldName: string, newName: string): void {
-    cascadeBranchRename(oldName, newName);
+  async cascadeBranchRename(oldName: string, newName: string): Promise<void> {
+    await cascadeBranchRename(oldName, newName);
   },
 
   // Synchronize and clean all branches across all cache stores
-  syncAllStoresToCanonicalBranches(): void {
-    const branches = getMemoryStore();
-    branches.forEach((b) => {
-      cascadeBranchRename(b.name, b.name);
-    });
+  async syncAllStoresToCanonicalBranches(): Promise<void> {
+    try {
+      await cascadeBranchRename("Chandanagar Nagar", "Chandanagar Branch");
+      await cascadeBranchRename("Chandanagar Nagar Branch", "Chandanagar Branch");
+      const branches = getMemoryStore();
+      for (const b of branches) {
+        if (b.name && b.name.toLowerCase().includes("chandanagar nagar")) {
+          b.name = "Chandanagar Branch";
+        }
+        await cascadeBranchRename(b.name, b.name);
+      }
+    } catch (e) {
+      console.warn("Failed syncAllStoresToCanonicalBranches:", e);
+    }
   },
 
   // Delete branch
@@ -865,9 +914,14 @@ function normalizeBranchName(name: string): string {
     .toLowerCase()
     .replace(/spiritual\s*homeopathy/gi, "")
     .replace(/\bbranch\b/gi, "")
+    .replace(/chandanagar\s*nagar/gi, "chandanagar")
+    .replace(/chandanagarnagar/gi, "chandanagar")
     .replace(/[^a-z0-9]/g, "")
     .trim();
-  if (clean === "kpb") clean = "kphb";
+  if (clean.includes("chanda")) clean = "chandanagar";
+  if (clean.includes("nalla") || clean.includes("nlg")) clean = "nallagandla";
+  if (clean.includes("dilshuk") || clean.includes("dilsukh") || clean.includes("dsnr")) clean = "dilshuknagar";
+  if (clean.includes("kphb") || clean.includes("kpb") || clean.includes("kukatpally")) clean = "kphb";
   return clean;
 }
 

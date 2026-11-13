@@ -340,9 +340,14 @@ export default function ReceptionBookAppointmentScreen() {
   useEffect(() => {
     getActiveBranch().then((b) => {
       if (b && b.name) {
+        let name = b.name;
+        if (name.toLowerCase().includes("chandanagar nagar")) {
+          name = "Chandanagar Branch";
+          b = { ...b, name };
+        }
         setActiveBranch(b);
-        setBranchesList([b.name]);
-        fetchDoctorsAndNoShows(b.name, appointmentDate);
+        setBranchesList([name]);
+        fetchDoctorsAndNoShows(name, appointmentDate);
       } else {
         fetch(`${API_BASE_URL}/branches`)
           .then((res) => res.json())

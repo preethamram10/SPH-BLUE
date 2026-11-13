@@ -41,6 +41,13 @@ export default function TelecallerAccountsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [branchFilter, setBranchFilter] = useState("All");
+  const [branchOptions, setBranchOptions] = useState<string[]>([
+    "All Branches",
+    "KPHB Branch",
+    "Chandanagar Branch",
+    "Dilshuknagar Branch",
+    "Nallagandla Branch",
+  ]);
   const [nextId, setNextId] = useState("TC01");
 
   // Modal State
@@ -76,6 +83,16 @@ export default function TelecallerAccountsPage() {
 
   useEffect(() => {
     fetchTelecallers();
+    fetch("/api/branches")
+      .then((r) => r.json())
+      .then((d) => {
+        const list = Array.isArray(d?.data) ? d.data : [];
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => String(b.name || "").trim()).filter(Boolean);
+          setBranchOptions(["All Branches", ...Array.from(new Set(names))]);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const openAddModal = () => {
@@ -190,11 +207,11 @@ export default function TelecallerAccountsPage() {
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none"
               >
-                <option value="All">All Branches</option>
-                <option value="KPHB">KPHB Branch</option>
-                <option value="Chandanagar">Chandanagar Branch</option>
-                <option value="Dilshuknagar">Dilshuknagar Branch</option>
-                <option value="Nallagandla">Nallagandla Branch</option>
+                {branchOptions.map((b) => (
+                  <option key={b} value={b === "All Branches" ? "All" : b}>
+                    {b}
+                  </option>
+                ))}
               </select>
 
               <button
@@ -402,7 +419,7 @@ export default function TelecallerAccountsPage() {
                     onChange={(e) => setFormData({ ...formData, branchName: e.target.value })}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30"
                   >
-                    {BRANCH_OPTIONS.map((b) => (
+                    {branchOptions.map((b) => (
                       <option key={b} value={b}>
                         {b}
                       </option>

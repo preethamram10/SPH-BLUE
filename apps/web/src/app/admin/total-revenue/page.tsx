@@ -213,9 +213,15 @@ export default function AdminTotalRevenuePage() {
   // Branch options computed dynamically from registered branches + recorded transactions
   const branchOptions = useMemo(() => {
     const set = new Set<string>();
-    availableBranches.forEach((b) => set.add(b));
+    availableBranches.forEach((b) => {
+      let bName = b;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) bName = "Chandanagar Branch";
+      set.add(bName);
+    });
     transactions.forEach((t) => {
-      if (t.branchName && t.branchName !== "Clinic Branch") set.add(t.branchName);
+      let bName = t.branchName;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) bName = "Chandanagar Branch";
+      if (bName && bName !== "Clinic Branch") set.add(bName);
     });
     return Array.from(set);
   }, [availableBranches, transactions]);

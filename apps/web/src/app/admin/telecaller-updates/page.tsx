@@ -41,6 +41,13 @@ export default function TelecallerUpdatesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState("All");
   const [branchFilter, setBranchFilter] = useState("All");
+  const [branchOptions, setBranchOptions] = useState<string[]>([
+    "All Branches",
+    "KPHB Branch",
+    "Chandanagar Branch",
+    "Dilshuknagar Branch",
+    "Nallagandla Branch",
+  ]);
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "patient" | "outcome">("newest");
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
@@ -63,6 +70,16 @@ export default function TelecallerUpdatesPage() {
 
   useEffect(() => {
     fetchLogs();
+    fetch("/api/branches")
+      .then((r) => r.json())
+      .then((d) => {
+        const list = Array.isArray(d?.data) ? d.data : [];
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => String(b.name || "").trim()).filter(Boolean);
+          setBranchOptions(["All Branches", ...Array.from(new Set(names))]);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Reset to page 1 on search or filter change
@@ -241,11 +258,11 @@ export default function TelecallerUpdatesPage() {
                 onChange={(e) => setBranchFilter(e.target.value)}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none"
               >
-                <option value="All">All Branches</option>
-                <option value="KPHB">KPHB Branch</option>
-                <option value="Chandanagar">Chandanagar Branch</option>
-                <option value="Dilshuknagar">Dilshuknagar Branch</option>
-                <option value="Nallagandla">Nallagandla Branch</option>
+                {branchOptions.map((b) => (
+                  <option key={b} value={b === "All Branches" ? "All" : b}>
+                    {b}
+                  </option>
+                ))}
               </select>
 
               {/* Sort By Dropdown */}

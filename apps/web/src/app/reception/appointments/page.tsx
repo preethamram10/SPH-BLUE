@@ -358,12 +358,21 @@ export default function ReceptionAppointmentsPage() {
     const role = typeof window !== "undefined" ? localStorage.getItem("user_role") || "RECEPTION" : "RECEPTION";
     setUserRole(role);
 
-    const assigned = typeof window !== "undefined"
+    let assigned = typeof window !== "undefined"
       ? localStorage.getItem("user_assigned_branch") ||
         localStorage.getItem("user_branch") ||
         localStorage.getItem("branch_name") ||
         ""
       : "";
+
+    if (assigned && assigned.toLowerCase().includes("chandanagar nagar")) {
+      assigned = "Chandanagar Branch";
+      try {
+        localStorage.setItem("user_assigned_branch", "Chandanagar Branch");
+        localStorage.setItem("user_branch", "Chandanagar Branch");
+        localStorage.setItem("branch_name", "Chandanagar Branch");
+      } catch {}
+    }
 
     fetch("/api/branches")
       .then((res) => res.json())
@@ -373,12 +382,15 @@ export default function ReceptionAppointmentsPage() {
           const cleanAssigned = (assigned || "")
             .toLowerCase()
             .replace(/spiritual|homeopathy|branch/gi, "")
+            .replace(/chandanagar\s*nagar/gi, "chandanagar")
+            .replace(/chandanagarnagar/gi, "chandanagar")
             .replace(/[^a-z0-9]/g, "")
             .trim();
           const matchedBranch = allBranchNames.find((b) => {
-            const cb = b.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/[^a-z0-9]/g, "").trim();
+            const cb = b.toLowerCase().replace(/spiritual|homeopathy|branch/gi, "").replace(/chandanagar\s*nagar/gi, "chandanagar").replace(/chandanagarnagar/gi, "chandanagar").replace(/[^a-z0-9]/g, "").trim();
             const isKpbMatch = (cleanAssigned === "kpb" || cleanAssigned === "kphb") && (cb === "kpb" || cb === "kphb");
-            return cb === cleanAssigned || isKpbMatch;
+            const isChandaMatch = cleanAssigned.includes("chanda") && cb.includes("chanda");
+            return cb === cleanAssigned || isKpbMatch || isChandaMatch;
           });
           const validBranch = matchedBranch || allBranchNames[0] || assigned || "Kphb Branch";
 

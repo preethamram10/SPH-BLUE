@@ -68,9 +68,26 @@ export default function AdminStaffManagementScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState("Kphb Branch");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([
+    "Kphb Branch",
+    "Chandanagar Branch",
+    "Dilshuknagar Branch",
+    "Nallagandla Branch",
+  ]);
   const [role, setRole] = useState(ROLES[0]);
   const [shift, setShift] = useState("09:00 AM - 06:00 PM");
   const [salary, setSalary] = useState("20000");
+
+  const fetchBranches = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>("/branches");
+      const list = res?.data || res?.branches || [];
+      if (Array.isArray(list) && list.length > 0) {
+        const names = list.map((b: any) => (typeof b === "string" ? b : b.name)).filter(Boolean);
+        if (names.length > 0) setAvailableBranches(names);
+      }
+    } catch {}
+  }, []);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -92,11 +109,13 @@ export default function AdminStaffManagementScreen() {
 
   useEffect(() => {
     fetchStaff();
-  }, [fetchStaff]);
+    fetchBranches();
+  }, [fetchStaff, fetchBranches]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchStaff();
+    fetchBranches();
   };
 
   const handleAddStaff = async () => {
@@ -362,13 +381,29 @@ export default function AdminStaffManagementScreen() {
                   />
 
                   <Text style={styles.label}>Branch</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Kphb Branch"
-                    placeholderTextColor={COLORS.textLight}
-                    value={branch}
-                    onChangeText={setBranch}
-                  />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {availableBranches.map((b) => (
+                        <TouchableOpacity
+                          key={b}
+                          style={[
+                            styles.roleChip,
+                            branch === b && styles.roleChipSelected,
+                          ]}
+                          onPress={() => setBranch(b)}
+                        >
+                          <Text
+                            style={[
+                              styles.roleChipText,
+                              branch === b && styles.roleChipTextSelected,
+                            ]}
+                          >
+                            {b}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
 
                   <Text style={styles.label}>Designation / Role</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>

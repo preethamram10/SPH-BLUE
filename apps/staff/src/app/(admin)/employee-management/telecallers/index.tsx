@@ -62,8 +62,25 @@ export default function AdminTelecallersManagementScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState("KPHB Branch");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([
+    "KPHB Branch",
+    "Chandanagar Branch",
+    "Dilshuknagar Branch",
+    "Nallagandla Branch",
+  ]);
   const [quota, setQuota] = useState("60 calls/day");
   const [suggestedId, setSuggestedId] = useState("");
+
+  const fetchBranches = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>("/branches");
+      const list = res?.data || res?.branches || [];
+      if (Array.isArray(list) && list.length > 0) {
+        const names = list.map((b: any) => (typeof b === "string" ? b : b.name)).filter(Boolean);
+        if (names.length > 0) setAvailableBranches(names);
+      }
+    } catch {}
+  }, []);
 
   const fetchTelecallers = useCallback(async () => {
     try {
@@ -85,11 +102,13 @@ export default function AdminTelecallersManagementScreen() {
 
   useEffect(() => {
     fetchTelecallers();
-  }, [fetchTelecallers]);
+    fetchBranches();
+  }, [fetchTelecallers, fetchBranches]);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchTelecallers();
+    fetchBranches();
   };
 
   const handleAddTelecaller = async () => {
@@ -363,13 +382,29 @@ export default function AdminTelecallersManagementScreen() {
                   />
 
                   <Text style={styles.label}>Branch / Hub Location</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="KPHB Branch"
-                    placeholderTextColor={COLORS.textLight}
-                    value={branch}
-                    onChangeText={setBranch}
-                  />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {availableBranches.map((b) => (
+                        <TouchableOpacity
+                          key={b}
+                          style={[
+                            styles.branchChip,
+                            branch === b && styles.branchChipSelected,
+                          ]}
+                          onPress={() => setBranch(b)}
+                        >
+                          <Text
+                            style={[
+                              styles.branchChipText,
+                              branch === b && styles.branchChipTextSelected,
+                            ]}
+                          >
+                            {b}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
 
                   <Text style={styles.label}>Daily Target Quota</Text>
                   <TextInput
@@ -681,6 +716,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textDark,
     backgroundColor: COLORS.white,
+  },
+  branchChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  branchChipSelected: {
+    backgroundColor: COLORS.purple,
+    borderColor: COLORS.purple,
+  },
+  branchChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textDark,
+  },
+  branchChipTextSelected: {
+    color: COLORS.white,
   },
   submitBtn: {
     backgroundColor: COLORS.purple,

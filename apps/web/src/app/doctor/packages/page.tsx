@@ -48,9 +48,15 @@ export default function DoctorPackagesPage() {
 
   const branchOptions = useMemo(() => {
     const set = new Set<string>();
-    availableBranches.forEach((b) => set.add(b));
+    availableBranches.forEach((b) => {
+      let bName = b;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) bName = "Chandanagar Branch";
+      set.add(bName);
+    });
     members.forEach((m) => {
-      if (m.branch) set.add(m.branch);
+      let bName = m.branch;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) bName = "Chandanagar Branch";
+      if (bName) set.add(bName);
     });
     if (set.size === 0) {
       ["Kphb Branch", "Chandanagar Branch", "Dilshuknagar Branch", "Nallagandla Branch"].forEach((b) => set.add(b));

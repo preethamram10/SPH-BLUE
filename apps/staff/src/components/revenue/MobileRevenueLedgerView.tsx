@@ -78,9 +78,14 @@ const normalizeBranchKey = (name: string): string => {
   let c = (name || "")
     .toLowerCase()
     .replace(/spiritual|homeopathy|clinic|branch/gi, "")
+    .replace(/chandanagar\s*nagar/gi, "chandanagar")
+    .replace(/chandanagarnagar/gi, "chandanagar")
     .replace(/[^a-z0-9]/g, "")
     .trim();
-  if (c === "kpb") c = "kphb";
+  if (c.includes("chanda")) c = "chandanagar";
+  if (c === "kpb" || c.includes("kukatpally")) c = "kphb";
+  if (c.includes("nalla") || c.includes("nlg")) c = "nallagandla";
+  if (c.includes("dilshuk") || c.includes("dilsukh") || c.includes("dsnr")) c = "dilshuknagar";
   return c;
 };
 
@@ -217,16 +222,24 @@ export function MobileRevenueLedgerView({
 
     // 1. Registered branches from backend API (highest priority for official names)
     allRegisteredBranches.forEach((b) => {
-      const k = normalizeBranchKey(b);
-      if (k) map.set(k, b);
+      let bName = b;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) {
+        bName = "Chandanagar Branch";
+      }
+      const k = normalizeBranchKey(bName);
+      if (k) map.set(k, bName);
     });
 
     // 2. Transaction branch names
     transactions.forEach((t) => {
-      if (t.branchName && t.branchName !== "Clinic Branch") {
-        const k = normalizeBranchKey(t.branchName);
+      let bName = t.branchName;
+      if (bName && bName.toLowerCase().includes("chandanagar nagar")) {
+        bName = "Chandanagar Branch";
+      }
+      if (bName && bName !== "Clinic Branch") {
+        const k = normalizeBranchKey(bName);
         if (k && !map.has(k)) {
-          map.set(k, t.branchName);
+          map.set(k, bName);
         }
       }
     });

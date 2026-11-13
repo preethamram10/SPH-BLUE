@@ -70,12 +70,24 @@ export default function AdminPayCutsPage() {
   const fetchPayCuts = async () => {
     try {
       setLoading(true);
-      const [pcRes, empRes] = await Promise.all([
+      const [pcRes, empRes, branchRes] = await Promise.all([
         fetch("/api/admin/pay-cuts"),
         fetch("/api/admin/employees"),
+        fetch("/api/branches").catch(() => null),
       ]);
       const pcData = await pcRes.json();
       const empData = await empRes.json();
+
+      if (branchRes && branchRes.ok) {
+        try {
+          const bData = await branchRes.json();
+          const list = Array.isArray(bData.data) ? bData.data : [];
+          if (list.length > 0) {
+            const names: string[] = list.map((b: any) => String(b.name || "").trim()).filter(Boolean);
+            setBranches(["All Branches", ...Array.from(new Set(names))]);
+          }
+        } catch (_) {}
+      }
 
       if (pcData.success && Array.isArray(pcData.payCuts)) {
         setPayCuts(pcData.payCuts);

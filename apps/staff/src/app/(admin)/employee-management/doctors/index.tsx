@@ -133,6 +133,7 @@ export default function AdminDoctorsManagementScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchDoctors();
+    fetchBranches();
   };
 
   // Open modal for adding

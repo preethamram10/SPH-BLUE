@@ -229,20 +229,24 @@ export async function GET(req: NextRequest) {
     // Branch filter first (scoped to branch if selected)
     let branchFollowUps = followUpsList;
     if (branchFilter && branchFilter !== "All Branches" && branchFilter !== "ALL") {
-      const normFilter = branchFilter
+      let bFilter = branchFilter;
+      if (bFilter.toLowerCase().includes("chandanagar nagar")) bFilter = "Chandanagar Branch";
+      let normFilter = bFilter
         .toLowerCase()
         .replace(/spiritual\s*homeopathy/gi, "")
         .replace(/\bbranch\b/gi, "")
         .replace(/[^a-z0-9]/g, "")
         .trim();
+      if (normFilter.includes("chandanagar") || normFilter.includes("chanda")) normFilter = "chandanagar";
       branchFollowUps = branchFollowUps.filter((f) => {
-        const normF = f.branch
+        let normF = f.branch
           .toLowerCase()
           .replace(/spiritual\s*homeopathy/gi, "")
           .replace(/\bbranch\b/gi, "")
           .replace(/[^a-z0-9]/g, "")
           .trim();
-        return normF === normFilter || f.branch.toLowerCase().includes(branchFilter.toLowerCase());
+        if (normF.includes("chandanagar") || normF.includes("chanda")) normF = "chandanagar";
+        return normF === normFilter || f.branch.toLowerCase().includes(bFilter.toLowerCase());
       });
     }
 

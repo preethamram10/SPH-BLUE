@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     // Run store synchronization to ensure existing records match canonical branch names
-    branchService.syncAllStoresToCanonicalBranches();
+    await branchService.syncAllStoresToCanonicalBranches();
 
     const branches = await branchService.getAllBranches();
 

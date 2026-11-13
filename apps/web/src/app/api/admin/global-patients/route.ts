@@ -101,10 +101,13 @@ export async function GET(req: NextRequest) {
         );
         const latest = sortedAppts[0] || a;
 
-        const rawB = String(a.branch || "Kphb Branch");
-        const normB = rawB.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+        let rawB = String(a.branch || "Kphb Branch");
+        if (rawB.toLowerCase().includes("chandanagar nagar")) rawB = "Chandanagar Branch";
+        let normB = rawB.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+        if (normB.includes("chandanagar") || normB.includes("chanda")) normB = "chandanagar";
         const matchedB = rawBranches.find((rb) => {
-          const normRb = (rb.name || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+          let normRb = (rb.name || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\bbranch\b/gi, "").replace(/[^a-z0-9]/g, "").trim();
+          if (normRb.includes("chandanagar") || normRb.includes("chanda")) normRb = "chandanagar";
           return normRb === normB || (normRb.length >= 3 && normB.length >= 3 && (normRb.startsWith(normB) || normB.startsWith(normRb)));
         });
         const cleanBranch = matchedB ? matchedB.name : rawB;
@@ -134,9 +137,27 @@ export async function GET(req: NextRequest) {
 
     // Apply filtering if provided in query
     if (branchFilter && branchFilter !== "All Branches") {
-      allPatients = allPatients.filter((p) =>
-        String(p.registeredBranch).toLowerCase().includes(branchFilter.toLowerCase())
-      );
+      let bFilter = branchFilter;
+      if (bFilter.toLowerCase().includes("chandanagar nagar")) bFilter = "Chandanagar Branch";
+      let normFilter = bFilter
+        .toLowerCase()
+        .replace(/spiritual|homeopathy|branch/gi, "")
+        .replace(/[^a-z0-9]/g, "")
+        .trim();
+      if (normFilter.includes("chandanagar") || normFilter.includes("chanda")) normFilter = "chandanagar";
+
+      allPatients = allPatients.filter((p) => {
+        let normP = String(p.registeredBranch || "")
+          .toLowerCase()
+          .replace(/spiritual|homeopathy|branch/gi, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+        if (normP.includes("chandanagar") || normP.includes("chanda")) normP = "chandanagar";
+        return (
+          normP === normFilter ||
+          String(p.registeredBranch || "").toLowerCase().includes(bFilter.toLowerCase())
+        );
+      });
     }
 
     if (query) {

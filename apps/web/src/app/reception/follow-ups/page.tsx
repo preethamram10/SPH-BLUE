@@ -305,15 +305,34 @@ function ReceptionFollowUpsContent() {
   });
 
   useEffect(() => {
-    const saved =
+    let saved =
       localStorage.getItem("user_assigned_branch") ||
       localStorage.getItem("user_branch") ||
       localStorage.getItem("branch_name");
+    if (saved && saved.toLowerCase().includes("chandanagar nagar")) {
+      saved = "Chandanagar Branch";
+      try {
+        localStorage.setItem("user_assigned_branch", "Chandanagar Branch");
+        localStorage.setItem("user_branch", "Chandanagar Branch");
+        localStorage.setItem("branch_name", "Chandanagar Branch");
+      } catch {}
+    }
     if (saved) {
       setBranchName(saved);
       setSelectedBranch(saved);
       setBookBranch(saved);
     }
+
+    fetch("/api/branches")
+      .then((r) => r.json())
+      .then((d) => {
+        const list = Array.isArray(d?.data) ? d.data : [];
+        if (list.length > 0) {
+          const names: string[] = list.map((b: any) => String(b.name || "").trim()).filter(Boolean);
+          setBranches(["All Branches", ...Array.from(new Set(names))]);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch live follow-ups from database (strictly locked to clinic branch)

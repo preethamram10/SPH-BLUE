@@ -46,6 +46,7 @@ const normalizeBranchKey = (name: string): string => {
     .replace(/spiritual|homeopathy|clinic|branch/gi, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+  if (c.includes("chandanagar") || c.includes("chanda")) c = "chandanagar";
   if (c === "kpb") c = "kphb";
   return c;
 };
@@ -129,14 +130,21 @@ export default function AdminPayLaterPage() {
   // Comprehensive branch list from registered branches + records
   const dynamicBranches = useMemo(() => {
     const map = new Map<string, string>();
-    availableBranches.forEach((b) => {
+    const cleanBranch = (b: string) => {
+      let bName = (b || "").trim();
+      if (bName.toLowerCase().includes("chandanagar nagar")) bName = "Chandanagar Branch";
+      return bName;
+    };
+    availableBranches.forEach((rawB) => {
+      const b = cleanBranch(rawB);
       const k = normalizeBranchKey(b);
       if (k) map.set(k, b);
     });
     records.forEach((r) => {
       if (r.branch) {
-        const k = normalizeBranchKey(r.branch);
-        if (k && !map.has(k)) map.set(k, r.branch);
+        const b = cleanBranch(r.branch);
+        const k = normalizeBranchKey(b);
+        if (k && !map.has(k)) map.set(k, b);
       }
     });
     if (map.size === 0) {
