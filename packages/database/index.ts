@@ -1420,7 +1420,7 @@ export function matchPatientProfile(
 export const doctorNoShowService = {
   async getAllNoShows(branch?: string, date?: string): Promise<DoctorNoShowRecord[]> {
     let store = getDoctorNoShowsStore();
-    if (branch) {
+    if (branch && branch.toUpperCase() !== "ALL" && branch.toLowerCase() !== "all branches") {
       const cleanBranch = branch.toLowerCase().replace(/branch/gi, "").trim();
       store = store.filter((item) => {
         const itemBranch = item.branch.toLowerCase().replace(/branch/gi, "").trim();

@@ -9,9 +9,11 @@ export async function GET(req: NextRequest) {
 
     const noShows = await doctorNoShowService.getAllNoShows(branch, date);
 
-    // If branch is provided, fetch doctors configured specifically for this branch
+    const isSpecificBranch = branch && branch.toUpperCase() !== "ALL" && branch.toLowerCase() !== "all branches";
+
+    // If branch is provided and specific, fetch doctors configured specifically for this branch
     let doctors: any[] = [];
-    if (branch) {
+    if (isSpecificBranch) {
       doctors = await doctorNoShowService.getDoctorsAvailableForBranch(branch);
       // Fallback: If no doctors are mapped yet in master doctor timings, load all doctor employees
       if (doctors.length === 0) {
@@ -25,6 +27,16 @@ export async function GET(req: NextRequest) {
           days: {},
         }));
       }
+    } else {
+      const allDocEmployees = await employeeService.getAllEmployees("DOCTOR");
+      doctors = allDocEmployees.map((e) => ({
+        doctorId: e.id,
+        doctorName: e.name,
+        phone: e.phone,
+        scheduledDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        scheduleSummary: "All Branches",
+        days: {},
+      }));
     }
 
     return NextResponse.json({

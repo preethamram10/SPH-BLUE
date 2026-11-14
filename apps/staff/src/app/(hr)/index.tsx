@@ -243,6 +243,7 @@ export default function HRDashboard() {
           <View style={styles.quickStrip}>
             {[
               { label: "Book Appt", route: "/(hr)/appointments", icon: "calendar" },
+              { label: "Doc No-Show", route: "/(hr)/doctor-no-show", icon: "person-remove" },
               { label: "Follow-Ups", route: "/(hr)/all-follow-ups", icon: "calendar" },
               { label: "Staff Mgmt", route: "/(hr)/employee-management", icon: "people" },
               { label: "Doctor Timings", route: "/(hr)/doctor-timings", icon: "time" },
@@ -420,6 +421,22 @@ export default function HRDashboard() {
             <View style={styles.menuTextContainer}>
               <Text style={styles.menuTitle}>Doctor Timings &amp; Duty Schedules</Text>
               <Text style={styles.menuDesc}>OPD consultation hours, branch rotations and slots</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+          </TouchableOpacity>
+
+          {/* Doctor No-Show */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/(hr)/doctor-no-show" as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.menuIconCircle, { backgroundColor: "#f3e8ff" }]}>
+              <Ionicons name="person-remove-outline" size={22} color="#7c3aed" />
+            </View>
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuTitle}>Doctor No-Show Management</Text>
+              <Text style={styles.menuDesc}>Assign leaves or slot blocks for a specific branch or all clinics</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
           </TouchableOpacity>
@@ -630,6 +647,18 @@ export default function HRDashboard() {
                   <Ionicons name="time-outline" size={18} color="#d97706" />
                 </View>
                 <Text style={styles.drawerMenuText}>Doctor Timings & OPD</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(hr)/doctor-no-show")}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.drawerIconBox, { backgroundColor: "#f3e8ff" }]}>
+                  <Ionicons name="person-remove-outline" size={18} color="#7c3aed" />
+                </View>
+                <Text style={styles.drawerMenuText}>Doctor No-Show</Text>
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 

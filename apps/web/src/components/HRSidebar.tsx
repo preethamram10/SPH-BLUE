@@ -16,6 +16,7 @@ import {
   Briefcase,
   LayoutDashboard,
   Target,
+  UserX,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -73,6 +74,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
       items: [
         { label: "Dashboard", href: "/hr/dashboard", icon: LayoutDashboard },
         { label: "Book Appointment", href: "/hr/appointments", icon: CalendarCheck },
+        { label: "Doctor No-Show", href: "/hr/doctor-no-show", icon: UserX },
         { label: "Branch Management", href: "/hr/branch-management", icon: Building2 },
         { label: "Staff Management", href: "/hr/employee-management", icon: Users },
         { label: "Doctor Timings", href: "/hr/doctor-timings", icon: Clock },
