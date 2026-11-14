@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-export type HRTabType = "dashboard" | "leave-approvals" | "total-revenue";
+export type HRTabType = "dashboard" | "appointments" | "leave-approvals" | "total-revenue";
 
 interface HRBottomNavProps {
   activeTab?: HRTabType;
@@ -50,6 +50,27 @@ export const HRBottomNav: React.FC<HRBottomNavProps> = ({ activeTab = "dashboard
           ]}
         >
           Dashboard
+        </Text>
+      </TouchableOpacity>
+
+      {/* 2. Book Appt */}
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => handlePress("appointments", "/(hr)/appointments")}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={activeTab === "appointments" ? "calendar" : "calendar-outline"}
+          size={21}
+          color={activeTab === "appointments" ? "#0284c7" : "#64748b"}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            activeTab === "appointments" ? styles.tabLabelActive : styles.tabLabelInactive,
+          ]}
+        >
+          Book Appt
         </Text>
       </TouchableOpacity>
 

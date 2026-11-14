@@ -242,6 +242,7 @@ export default function HRDashboard() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickStripScroll}>
           <View style={styles.quickStrip}>
             {[
+              { label: "Book Appt", route: "/(hr)/appointments", icon: "calendar" },
               { label: "Follow-Ups", route: "/(hr)/all-follow-ups", icon: "calendar" },
               { label: "Staff Mgmt", route: "/(hr)/employee-management", icon: "people" },
               { label: "Doctor Timings", route: "/(hr)/doctor-timings", icon: "time" },
@@ -375,6 +376,22 @@ export default function HRDashboard() {
         {/* HR Operations Menu */}
         <Text style={styles.sectionTitle}>HR OPERATIONS &amp; MANAGEMENT</Text>
         <View style={styles.menu}>
+          {/* Book Appointment (Central Booking) */}
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/(hr)/appointments" as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.menuIconCircle, { backgroundColor: "#e0f2fe" }]}>
+              <Ionicons name="calendar-outline" size={22} color={COLORS.blue} />
+            </View>
+            <View style={styles.menuTextContainer}>
+              <Text style={styles.menuTitle}>Book Appointment (All Branches)</Text>
+              <Text style={styles.menuDesc}>Centralized appointment booking with branch selection</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+          </TouchableOpacity>
+
           {/* Staff Management */}
           <TouchableOpacity
             style={styles.menuItem}
@@ -578,6 +595,18 @@ export default function HRDashboard() {
                   Dashboard Overview
                 </Text>
                 <Ionicons name="chevron-forward" size={16} color="#0284c7" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(hr)/appointments")}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.drawerIconBox, { backgroundColor: "#e0f2fe" }]}>
+                  <Ionicons name="calendar-outline" size={18} color="#0284c7" />
+                </View>
+                <Text style={styles.drawerMenuText}>Book Appointment</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
               <TouchableOpacity

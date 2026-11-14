@@ -72,6 +72,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
       title: "OVERVIEW & CLINIC",
       items: [
         { label: "Dashboard", href: "/hr/dashboard", icon: LayoutDashboard },
+        { label: "Book Appointment", href: "/hr/appointments", icon: CalendarCheck },
         { label: "Branch Management", href: "/hr/branch-management", icon: Building2 },
         { label: "Staff Management", href: "/hr/employee-management", icon: Users },
         { label: "Doctor Timings", href: "/hr/doctor-timings", icon: Clock },
