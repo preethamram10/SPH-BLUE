@@ -8,6 +8,7 @@ export interface TransactionRecord {
   phone: string;
   branchName: string;
   doctorName: string;
+  paymentType?: string;
   revenueSplit: string;
   source: string;
   consultationFee: number;
@@ -160,9 +161,16 @@ export async function GET(req: Request) {
         total = Math.max(0, cFee + mFee + dFee + oFee - disc);
       }
 
+      const pType = (a as any).paymentType;
       let split = "Consultation";
-      if (isPkg || total >= 5000 || (a.notes && a.notes.toLowerCase().includes("package"))) {
+      if (pType === "package" || isPkg || (a.notes && a.notes.toLowerCase().includes("package"))) {
         split = "Package";
+      } else if (pType === "consult_and_med") {
+        split = "Consultation & Medicine";
+      } else if (pType === "consultation") {
+        split = "Consultation";
+      } else if (pType === "split") {
+        split = "Consultation & Medicine";
       } else if (dFee > 0 && cFee === 0 && mFee === 0) {
         split = "Diet Plan";
       } else if (mFee > 0 && cFee > 0) {
@@ -171,6 +179,8 @@ export async function GET(req: Request) {
         split = "Consultation & Medicine";
       } else if (dFee > 0) {
         split = "Diet Plan";
+      } else if (total >= 5000) {
+        split = "Package";
       } else {
         split = "Consultation";
       }
@@ -250,6 +260,7 @@ export async function GET(req: Request) {
         phone: a.phone || "N/A",
         branchName: a.branch || "Clinic Branch",
         doctorName: a.doctorName || "Dr. Prashanth K Vaidya",
+        paymentType: pType || (isPkg ? "package" : (split === "Consultation & Medicine" ? "consult_and_med" : "consultation")),
         revenueSplit: split,
         source: a.marketingSource || "Walk-in",
         consultationFee: isPkg ? 0 : cFee,

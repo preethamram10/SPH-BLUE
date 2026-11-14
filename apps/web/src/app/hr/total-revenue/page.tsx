@@ -27,6 +27,7 @@ export interface TransactionRecord {
   phone: string;
   branchName: string;
   doctorName: string;
+  paymentType?: string;
   revenueSplit: string; // 'Consultation' | 'Consultation & Medicine Fee' | 'Package' | 'Diet Plan'
   source: string;       // 'Walk-in' | 'Old Patient' | 'Instagram' | 'Google' | 'Referral' | etc.
   consultationFee: number;
@@ -317,14 +318,18 @@ export default function AdminTotalRevenuePage() {
         if (revenueSplitType !== "all") {
           const sLower = (t.revenueSplit || "").toLowerCase();
           const qLower = revenueSplitType.toLowerCase();
+          const pType = (t as any).paymentType;
           if (qLower.includes("diet")) {
             if (!sLower.includes("diet") && (!t.dietFee || t.dietFee <= 0)) return false;
           } else if (qLower.includes("medicine")) {
-            if (!sLower.includes("medicine") && (!t.medicineFee || t.medicineFee <= 0)) return false;
+            const isConsultMed = pType === "consult_and_med" || pType === "split" || sLower.includes("medicine");
+            if (!isConsultMed) return false;
           } else if (qLower.includes("package")) {
-            if (!sLower.includes("package") && (!t.packageFee || t.packageFee <= 0)) return false;
-          } else if (qLower.includes("consultation")) {
-            if (!sLower.includes("consultation") && (!t.consultationFee || t.consultationFee <= 0)) return false;
+            const isPkg = pType === "package" || sLower.includes("package") || (t.packageFee && t.packageFee > 0);
+            if (!isPkg) return false;
+          } else if (qLower === "consultation" || qLower === "consultation only") {
+            const isPureConsult = pType === "consultation" || (sLower.includes("consultation") && !sLower.includes("medicine"));
+            if (!isPureConsult) return false;
           } else if (!sLower.includes(qLower)) {
             return false;
           }
@@ -450,30 +455,41 @@ export default function AdminTotalRevenuePage() {
 
       // Split Breakdown
       const sLower = (t.revenueSplit || "").toLowerCase();
+      const pType = (t as any).paymentType;
       const pkgAmount = (t.packageFee && t.packageFee > 0) ? t.packageFee : 0;
       const dietAmount = (t.dietFee && t.dietFee > 0) ? t.dietFee : 0;
       const medAmount = (t.medicineFee && t.medicineFee > 0) ? t.medicineFee : 0;
       const consultAmount = (t.consultationFee && t.consultationFee > 0) ? t.consultationFee : 0;
 
-      if (pkgAmount > 0 || sLower.includes("package")) {
+      if (pType === "package" || pkgAmount > 0 || sLower.includes("package")) {
         // Full Package payment or package installment
         splitCarePackage += t.totalAmount;
+      } else if (pType === "consult_and_med" || (sLower.includes("medicine") && pType !== "split")) {
+        // Patient opted Consultation & Medicine combined
+        splitConsultationMed += t.totalAmount;
+      } else if (pType === "consultation" || (sLower.includes("consultation") && !sLower.includes("medicine"))) {
+        // Patient opted Consultation Only
+        splitConsultation += t.totalAmount;
+      } else if (pType === "split") {
+        // Explicitly split: consultation fee to consultation, medicine fee to consult+med
+        if (consultAmount > 0) splitConsultation += consultAmount;
+        if (medAmount > 0) splitConsultationMed += medAmount;
+        if (dietAmount > 0) splitDietPlan += dietAmount;
+        if (consultAmount <= 0 && medAmount <= 0) splitConsultationMed += t.totalAmount;
       } else {
-        // Check if individual fee items are recorded
+        // Legacy fallback
         const hasSpecificFee = (dietAmount > 0 || medAmount > 0 || consultAmount > 0);
-
         if (hasSpecificFee) {
-          if (dietAmount > 0) {
-            splitDietPlan += dietAmount;
-          }
-          if (medAmount > 0) {
-            // Consult + Med visit
-            splitConsultationMed += (medAmount + consultAmount);
+          if (dietAmount > 0) splitDietPlan += dietAmount;
+          if (medAmount > 0 && consultAmount > 0) {
+            splitConsultation += consultAmount;
+            splitConsultationMed += medAmount;
+          } else if (medAmount > 0) {
+            splitConsultationMed += medAmount;
           } else if (consultAmount > 0) {
             splitConsultation += consultAmount;
           }
         } else {
-          // Fallback based on split label
           if (sLower.includes("diet")) {
             splitDietPlan += t.totalAmount;
           } else if (sLower.includes("medicine")) {

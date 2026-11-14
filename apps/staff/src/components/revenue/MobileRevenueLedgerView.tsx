@@ -48,6 +48,7 @@ export interface TransactionRecord {
   phone: string;
   branchName: string;
   doctorName: string;
+  paymentType?: string;
   revenueSplit: string;
   source: string;
   consultationFee: number;
@@ -371,10 +372,20 @@ export function MobileRevenueLedgerView({
       // 5. Revenue Split Filter
       if (selectedSplitType !== "all") {
         const sLower = (tx.revenueSplit || "").toLowerCase();
-        if (selectedSplitType === "Consultation" && !sLower.includes("consultation")) return false;
-        if (selectedSplitType === "Consultation & Medicine" && !sLower.includes("medicine")) return false;
-        if (selectedSplitType === "Package" && !sLower.includes("package")) return false;
-        if (selectedSplitType === "Diet Plan" && !sLower.includes("diet")) return false;
+        const pType = (tx as any).paymentType;
+        if (selectedSplitType === "Consultation") {
+          const isPureConsult = pType === "consultation" || (sLower.includes("consultation") && !sLower.includes("medicine"));
+          if (!isPureConsult) return false;
+        } else if (selectedSplitType === "Consultation & Medicine") {
+          const isConsultMed = pType === "consult_and_med" || pType === "split" || sLower.includes("medicine");
+          if (!isConsultMed) return false;
+        } else if (selectedSplitType === "Package") {
+          const isPkg = pType === "package" || sLower.includes("package") || (tx.packageFee && tx.packageFee > 0);
+          if (!isPkg) return false;
+        } else if (selectedSplitType === "Diet Plan") {
+          const isDiet = sLower.includes("diet") || (tx.dietFee && tx.dietFee > 0);
+          if (!isDiet) return false;
+        }
       }
 
       // 6. Source Filter
@@ -488,16 +499,31 @@ export function MobileRevenueLedgerView({
       }
 
       const sLower = (tx.revenueSplit || "").toLowerCase();
-      if (sLower.includes("package") || (tx.packageFee && tx.packageFee > 0)) {
+      const pType = (tx as any).paymentType;
+
+      if (pType === "package" || sLower.includes("package") || (tx.packageFee && tx.packageFee > 0)) {
         splitCarePackage += amt;
-      } else if (tx.consultationFee > 0 || tx.medicineFee > 0 || (tx.dietFee && tx.dietFee > 0)) {
-        if (tx.dietFee && tx.dietFee > 0) splitDietPlan += tx.dietFee;
-        if (tx.medicineFee > 0) splitConsultationMed += tx.medicineFee;
+      } else if (pType === "consult_and_med" || (sLower.includes("medicine") && pType !== "split")) {
+        // Opted Consultation & Medicine combined
+        splitConsultationMed += amt;
+      } else if (pType === "consultation" || (sLower.includes("consultation") && !sLower.includes("medicine"))) {
+        // Opted Consultation Only
+        splitConsultation += amt;
+      } else if (pType === "split") {
+        // Explicitly split: consultation fee to consultation, medicine fee to consult+med
         if (tx.consultationFee > 0) splitConsultation += tx.consultationFee;
+        if (tx.medicineFee > 0) splitConsultationMed += tx.medicineFee;
+        if (tx.dietFee && tx.dietFee > 0) splitDietPlan += tx.dietFee;
+        if (tx.consultationFee <= 0 && tx.medicineFee <= 0) splitConsultationMed += amt;
+      } else if (sLower.includes("diet") || (tx.dietFee && tx.dietFee > 0 && tx.consultationFee === 0 && tx.medicineFee === 0)) {
+        splitDietPlan += amt;
+      } else if (tx.medicineFee > 0 && tx.consultationFee > 0) {
+        splitConsultation += tx.consultationFee;
+        splitConsultationMed += tx.medicineFee;
+      } else if (tx.medicineFee > 0) {
+        splitConsultationMed += amt;
       } else {
-        if (sLower.includes("diet")) splitDietPlan += amt;
-        else if (sLower.includes("medicine")) splitConsultationMed += amt;
-        else splitConsultation += amt;
+        splitConsultation += amt;
       }
     });
 
