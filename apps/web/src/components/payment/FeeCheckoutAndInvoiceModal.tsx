@@ -70,6 +70,7 @@ export interface PatientAppointment {
   totalAmountDue?: number;
   paymentMode?: string;
   paymentMethod?: string;
+  paymentType?: "consultation" | "consult_and_med" | "split" | "package" | string;
   invoiceId?: string;
   paidAt?: string;
   prescriptionImages?: string[];
@@ -775,6 +776,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         branch: appointment.branch || "KPHB Branch",
         appointmentDate: appointment.appointmentDate || nowIso.split("T")[0],
         timeSlot: appointment.timeSlot || "02:30 PM",
+        paymentType: isPackageMode ? "package" : paymentType,
         consultationFee: isPackageMode ? 0 : (includeConsultFee ? Number(consultationFee) || 0 : 0),
         medicineFee: isPackageMode ? 0 : totalMedicineAmount,
         medicineDuration: (!isPackageMode && (includeMedicineFee || paymentType === "consult_and_med")) ? medicineDuration : undefined,
@@ -874,6 +876,27 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         ? `• Medicine Fee (${activeInvoice.medicineDuration || "1 Month"}): ₹${Number(activeInvoice.medicineFee).toFixed(2)}\n`
         : "");
 
+    const effectivePaymentType = activeInvoice.paymentType || (isPackageMode ? "package" : paymentType);
+    let feeBreakdownStr = "";
+    if (activeInvoice.hasPackage || isPackageMode || effectivePaymentType === "package") {
+      feeBreakdownStr = `• Package Treatment Installment: ₹${totalPaidNum}\n`;
+    } else if (effectivePaymentType === "consult_and_med") {
+      const combinedAmount = Number(activeInvoice.consultationFee || activeInvoice.totalPaid || activeInvoice.totalAmountDue || grandTotalDue).toFixed(2);
+      feeBreakdownStr = `• Consultation & Medicine: ₹${combinedAmount}\n`;
+    } else if (effectivePaymentType === "split") {
+      if (Number(activeInvoice.consultationFee) > 0) {
+        feeBreakdownStr += `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`;
+      }
+      feeBreakdownStr += medsBreakdown;
+    } else {
+      if (Number(activeInvoice.consultationFee) > 0) {
+        feeBreakdownStr += `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`;
+      }
+      if (effectivePaymentType !== "consultation") {
+        feeBreakdownStr += medsBreakdown;
+      }
+    }
+
     const message = encodeURIComponent(
       `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
       `--------------------------------\n` +
@@ -893,10 +916,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         : "") +
       `--------------------------------\n` +
       `*Fee Breakdown:*\n` +
-      (Number(activeInvoice.consultationFee) > 0
-        ? `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`
-        : "") +
-      medsBreakdown +
+      feeBreakdownStr +
       (Number(activeInvoice.dietFee || activeInvoice.dietPlanFee) > 0
         ? `• Diet Plan: ₹${Number(activeInvoice.dietFee || activeInvoice.dietPlanFee).toFixed(2)}\n`
         : "") +
@@ -2796,7 +2816,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
                         {/* Package installment if package member */}
-                        {activeInvoice.hasPackage && (
+                        {(activeInvoice.hasPackage || isPackageMode || activeInvoice.paymentType === "package") && (
                           <tr>
                             <td className="py-2.5">
                               <div>Package Treatment Installment</div>
@@ -2810,52 +2830,95 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           </tr>
                         )}
 
-                        {/* Consultation fee if included */}
-                        {Number(activeInvoice.consultationFee) > 0 && (
-                          <tr>
-                            <td className="py-2.5">Consultation Fee</td>
-                            <td className="py-2.5 text-right font-black text-slate-900">
-                              ₹{Number(activeInvoice.consultationFee).toFixed(2)}
-                            </td>
-                          </tr>
-                        )}
+                        {/* Regular Billing Breakdown */}
+                        {!(activeInvoice.hasPackage || isPackageMode || activeInvoice.paymentType === "package") && (() => {
+                          const effectiveType = activeInvoice.paymentType || paymentType;
 
-                        {/* Medicine Items itemized or grouped with duration */}
-                        {(() => {
-                          const invoiceMeds = activeInvoice.medicines || activeInvoice.medicinesList || [];
-                          const validMeds = Array.isArray(invoiceMeds)
-                            ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
-                            : [];
-
-                          if (validMeds.length > 0) {
-                            return validMeds.map((m: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="py-2.5">
-                                  <span className="font-semibold text-slate-800">
-                                    {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")}
-                                  </span>
-                                  {m.type ? <span className="ml-1 text-xs text-slate-500 font-medium">({m.type})</span> : null}
-                                  {m.timing ? <span className="ml-1.5 text-xs text-slate-400 font-normal">• {m.timing}</span> : null}
-                                </td>
-                                <td className="py-2.5 text-right font-black text-slate-900">
-                                  ₹{Number(m.amount || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                            ));
-                          }
-                          if (Number(activeInvoice.medicineFee) > 0) {
+                          // 1. COMBINED: Consultation & Medicine
+                          if (effectiveType === "consult_and_med") {
+                            const combinedAmount = Number(activeInvoice.consultationFee || activeInvoice.totalAmountDue || activeInvoice.totalPaid || grandTotalDue);
                             return (
                               <tr>
                                 <td className="py-2.5">
-                                  Medicine Fee ({activeInvoice.medicineDuration || "1 Month"})
+                                  <div className="font-semibold text-slate-900">Consultation &amp; Medicine</div>
+                                  <div className="text-[10px] text-slate-500 font-medium">Combined Consultation &amp; Prescribed Medicines</div>
                                 </td>
                                 <td className="py-2.5 text-right font-black text-slate-900">
-                                  ₹{Number(activeInvoice.medicineFee).toFixed(2)}
+                                  ₹{combinedAmount.toFixed(2)}
                                 </td>
                               </tr>
                             );
                           }
-                          return null;
+
+                          // 2. SPLIT: Separate Consultation Fee and Medicine items / Medicine Fee
+                          if (effectiveType === "split") {
+                            const invoiceMeds = activeInvoice.medicines || activeInvoice.medicinesList || [];
+                            const validMeds = Array.isArray(invoiceMeds)
+                              ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+                              : [];
+
+                            return (
+                              <>
+                                {Number(activeInvoice.consultationFee) > 0 && (
+                                  <tr>
+                                    <td className="py-2.5">Consultation Fee</td>
+                                    <td className="py-2.5 text-right font-black text-slate-900">
+                                      ₹{Number(activeInvoice.consultationFee).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                )}
+                                {validMeds.length > 0 ? (
+                                  validMeds.map((m: any, idx: number) => (
+                                    <tr key={idx}>
+                                      <td className="py-2.5">
+                                        <span className="font-semibold text-slate-800">
+                                          {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")}
+                                        </span>
+                                        {m.type ? <span className="ml-1 text-xs text-slate-500 font-medium">({m.type})</span> : null}
+                                        {m.timing ? <span className="ml-1.5 text-xs text-slate-400 font-normal">• {m.timing}</span> : null}
+                                      </td>
+                                      <td className="py-2.5 text-right font-black text-slate-900">
+                                        ₹{Number(m.amount || 0).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : Number(activeInvoice.medicineFee) > 0 ? (
+                                  <tr>
+                                    <td className="py-2.5">
+                                      Medicine Fee ({activeInvoice.medicineDuration || "1 Month"})
+                                    </td>
+                                    <td className="py-2.5 text-right font-black text-slate-900">
+                                      ₹{Number(activeInvoice.medicineFee).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </>
+                            );
+                          }
+
+                          // 3. CONSULTATION ONLY (or default)
+                          return (
+                            <>
+                              {Number(activeInvoice.consultationFee) > 0 && (
+                                <tr>
+                                  <td className="py-2.5">Consultation Fee</td>
+                                  <td className="py-2.5 text-right font-black text-slate-900">
+                                    ₹{Number(activeInvoice.consultationFee).toFixed(2)}
+                                  </td>
+                                </tr>
+                              )}
+                              {effectiveType !== "consultation" && Number(activeInvoice.medicineFee) > 0 && (
+                                <tr>
+                                  <td className="py-2.5">
+                                    Medicine Fee ({activeInvoice.medicineDuration || "1 Month"})
+                                  </td>
+                                  <td className="py-2.5 text-right font-black text-slate-900">
+                                    ₹{Number(activeInvoice.medicineFee).toFixed(2)}
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          );
                         })()}
 
                         {/* Diet plan fee */}
@@ -3283,6 +3346,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
             const invoicePayload = {
               appointmentId: appointment?.id,
+              paymentType: isPackageMode ? "package" : paymentType,
               consultationFee: includeConsultFee ? consultationFee : 0,
               medicineFee: includeMedicineFee ? totalMedicineAmount : 0,
               medicines: webMedsToSend,

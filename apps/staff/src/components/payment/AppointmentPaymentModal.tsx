@@ -751,6 +751,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       const method = overrideMethod || selectedMethod || "Counter UPI";
       const payload = {
         appointmentId: appointment.id,
+        paymentType: isPackageMode ? "package" : paymentType,
         consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
         medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
         dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDiet ? dietFee : 0),
@@ -818,6 +819,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           paymentMode: method,
           paidAt: new Date().toISOString(),
           invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+          paymentType: isPackageMode ? "package" : paymentType,
           medicines: medsToSend,
           medicinesList: medsToSend,
         };
@@ -868,6 +870,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           const method = selectedMethod || "Counter UPI";
           const payload = {
             appointmentId: appointment.id,
+            paymentType: isPackageMode ? "package" : paymentType,
             consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
             medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
             dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDiet ? dietFee : 0),
@@ -911,6 +914,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             paidAt: new Date().toISOString(),
             invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+            paymentType: isPackageMode ? "package" : paymentType,
             medicines: medsToSend,
             medicinesList: medsToSend,
           };
@@ -998,6 +1002,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           paymentMode: method,
           paidAt: new Date().toISOString(),
           invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+          paymentType: isPackageMode ? "package" : paymentType,
           medicines: medsToSend,
           medicinesList: medsToSend,
         };
@@ -1032,6 +1037,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       const targetAmount = isPayLater ? effectivePaidToday : totalAmountDue;
       const payload = {
         appointmentId: appointment?.id,
+        paymentType: isPackageMode ? "package" : paymentType,
         consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
         medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
         dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDiet ? dietFee : 0),
@@ -1077,6 +1083,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         paymentMode: "Card",
         paidAt: new Date().toISOString(),
         invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+        paymentType: isPackageMode ? "package" : paymentType,
         medicines: medsToSend,
         medicinesList: medsToSend,
       };
@@ -1108,6 +1115,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           const method = selectedMethod || "Card";
           const payload = {
             appointmentId: appointment.id,
+            paymentType: isPackageMode ? "package" : paymentType,
             consultationFee: isPackageMode ? 0 : (includeConsult ? consultationFee : 0),
             medicineFee: isPackageMode ? 0 : (includeMedicine ? medicineFee : 0),
             dietPlanFee: isPackageMode ? 0 : (canChargeDiet && includeDiet ? dietFee : 0),
@@ -1152,6 +1160,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             paymentMode: method,
             paidAt: new Date().toISOString(),
             invoiceId: `INV-${Date.now().toString().slice(-6)}`,
+            paymentType: isPackageMode ? "package" : paymentType,
             medicines: medsToSend,
             medicinesList: medsToSend,
           };
@@ -1282,6 +1291,31 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       ? `Medicines:\n` + validReceiptMeds.map((m: any, i: number) => `  ${i + 1}. ${m.name || (m.type === "Reserve" ? "Reserve Medicine" : "Medicine")} (${m.type || "Pills"}${m.timing ? ` - ${m.timing}` : ""}) - ₹${Number(m.amount || 0).toFixed(2)}`).join("\n") + `\n`
       : "";
 
+    const effectiveType = completedInvoice?.paymentType || (isPackageMode ? "package" : paymentType);
+    let feeBreakdownText = "";
+    if (isPackageMode || completedInvoice?.hasPackage || effectiveType === "package") {
+      feeBreakdownText = `Package Treatment Installment: ₹${totalPaidNum}\n`;
+    } else if (effectiveType === "consult_and_med") {
+      const combinedAmt = Number(completedInvoice?.consultationFee ?? completedInvoice?.totalPaid ?? consultationFee ?? displayTotal).toFixed(2);
+      feeBreakdownText = `Consultation & Medicine: ₹${combinedAmt}\n`;
+    } else if (effectiveType === "split") {
+      if (Number(completedInvoice?.consultationFee ?? consultationFee) > 0) {
+        feeBreakdownText += `Consultation Fee: ₹${Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}\n`;
+      }
+      if (medsSummary) {
+        feeBreakdownText += medsSummary;
+      } else if (Number(completedInvoice?.medicineFee ?? medicineFee) > 0) {
+        feeBreakdownText += `Medicine Fee: ₹${Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}\n`;
+      }
+    } else {
+      if (Number(completedInvoice?.consultationFee ?? consultationFee) > 0) {
+        feeBreakdownText += `Consultation Fee: ₹${Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}\n`;
+      }
+      if (effectiveType !== "consultation") {
+        if (medsSummary) feeBreakdownText += medsSummary;
+      }
+    }
+
     const summary =
       `SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT\n` +
       `Receipt No: ${invoiceNum}\n` +
@@ -1289,7 +1323,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
       `Branch: ${targetBranch}\n` +
       `Date: ${dateStr}\n` +
-      (medsSummary ? `${medsSummary}` : "") +
+      feeBreakdownText +
       `TOTAL PAID: ₹${totalPaidNum} (VIA ${method})\n` +
       `Status: ${Number(completedInvoice?.payLaterAmount) > 0 ? "PARTIAL PAID" : "PAID ✓"}\n` +
       (Number(completedInvoice?.payLaterAmount) > 0 ? `Remaining Need to Pay (Pay Later): ₹${Number(completedInvoice.payLaterAmount).toFixed(2)}\n` : "") +
@@ -1494,7 +1528,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                         </View>
 
                         {/* Package Installment */}
-                        {(isPackageMode || completedInvoice?.hasPackage) && (
+                        {(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (
                           <View style={styles.breakdownRow}>
                             <View style={{ flex: 1 }}>
                               <Text style={styles.breakdownRowDesc}>Package Treatment Installment</Text>
@@ -1506,49 +1540,92 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           </View>
                         )}
 
-                        {/* Consultation Fee */}
-                        {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
-                            <Text style={styles.breakdownRowAmount}>
-                              ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
+                        {/* Regular Billing Breakdown */}
+                        {!(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (() => {
+                          const effectiveType = completedInvoice?.paymentType || paymentType;
 
-                        {/* Medicines */}
-                        {(() => {
-                          const invoiceMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || [];
-                          const validMeds = Array.isArray(invoiceMeds)
-                            ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
-                            : [];
-
-                          if (validMeds.length > 0) {
-                            return validMeds.map((m: any, idx: number) => (
-                              <View key={idx} style={styles.breakdownRow}>
-                                <View style={{ flex: 1, paddingRight: 8 }}>
-                                  <Text style={styles.breakdownRowDesc}>
-                                    {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")} {m.type ? `(${m.type})` : ""}
-                                  </Text>
-                                  {m.timing ? <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Timing: {m.timing}</Text> : null}
-                                </View>
-                                <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
-                              </View>
-                            ));
-                          }
-                          if (Number(completedInvoice?.medicineFee ?? medicineFee) > 0) {
+                          // 1. COMBINED: Consultation & Medicine
+                          if (effectiveType === "consult_and_med") {
+                            const combinedAmount = Number(completedInvoice?.consultationFee ?? displayTotal);
                             return (
                               <View style={styles.breakdownRow}>
-                                <Text style={styles.breakdownRowDesc}>
-                                  Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
-                                </Text>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.breakdownRowDesc}>Consultation &amp; Medicine</Text>
+                                  <Text style={{ fontSize: 9.5, color: "#64748b" }}>Combined Consultation &amp; Prescribed Medicines</Text>
+                                </View>
                                 <Text style={styles.breakdownRowAmount}>
-                                  ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                  ₹{combinedAmount.toFixed(2)}
                                 </Text>
                               </View>
                             );
                           }
-                          return null;
+
+                          // 2. SPLIT: Separate Consultation Fee and Medicine items / Medicine Fee
+                          if (effectiveType === "split") {
+                            const invoiceMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || [];
+                            const validMeds = Array.isArray(invoiceMeds)
+                              ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+                              : [];
+
+                            return (
+                              <>
+                                {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                                  <View style={styles.breakdownRow}>
+                                    <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
+                                    <Text style={styles.breakdownRowAmount}>
+                                      ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                                    </Text>
+                                  </View>
+                                )}
+                                {validMeds.length > 0 ? (
+                                  validMeds.map((m: any, idx: number) => (
+                                    <View key={idx} style={styles.breakdownRow}>
+                                      <View style={{ flex: 1, paddingRight: 8 }}>
+                                        <Text style={styles.breakdownRowDesc}>
+                                          {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")} {m.type ? `(${m.type})` : ""}
+                                        </Text>
+                                        {m.timing ? <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Timing: {m.timing}</Text> : null}
+                                      </View>
+                                      <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
+                                    </View>
+                                  ))
+                                ) : Number(completedInvoice?.medicineFee ?? medicineFee) > 0 ? (
+                                  <View style={styles.breakdownRow}>
+                                    <Text style={styles.breakdownRowDesc}>
+                                      Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                                    </Text>
+                                    <Text style={styles.breakdownRowAmount}>
+                                      ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </>
+                            );
+                          }
+
+                          // 3. CONSULTATION ONLY (or default)
+                          return (
+                            <>
+                              {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                                <View style={styles.breakdownRow}>
+                                  <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
+                                  <Text style={styles.breakdownRowAmount}>
+                                    ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                                  </Text>
+                                </View>
+                              )}
+                              {effectiveType !== "consultation" && Number(completedInvoice?.medicineFee ?? medicineFee) > 0 && (
+                                <View style={styles.breakdownRow}>
+                                  <Text style={styles.breakdownRowDesc}>
+                                    Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                                  </Text>
+                                  <Text style={styles.breakdownRowAmount}>
+                                    ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                  </Text>
+                                </View>
+                              )}
+                            </>
+                          );
                         })()}
 
                         {/* Diet Plan */}

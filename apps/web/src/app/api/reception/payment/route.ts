@@ -6,6 +6,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       appointmentId,
+      paymentType,
       consultationFee,
       medicineFee,
       dietPlanFee,
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
     const finalMethod = (paymentMethod || paymentMode || "Counter UPI") as any;
 
     const updated = await appointmentService.recordAppointmentPayment(appointmentId, {
+      paymentType: paymentType || (hasPackage ? "package" : "consult_and_med"),
       consultationFee: typeof consultationFee === "number" ? consultationFee : parseFloat(consultationFee) || 0,
       medicineFee: typeof medicineFee === "number" ? medicineFee : parseFloat(medicineFee) || 0,
       dietPlanFee: effectiveDietFee,
