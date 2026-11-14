@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { apiFetch } from "../../services/auth";
 import { Image as ExpoImage } from "expo-image";
 import { DrawingCanvasModal } from "./DrawingCanvasModal";
@@ -138,6 +139,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
 
   // Form Fields & Prescriptions
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const base64CacheRef = useRef<Record<string, string>>({});
   const [prescriptionText, setPrescriptionText] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
@@ -489,7 +491,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
     }
   };
 
-  // Upload Photo from Gallery with Smart Compression & S3 Sync
+  // Upload Photo from Gallery with Smart Compression & Local Attachment (Uploads to S3 on Save)
   const handlePickImage = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -508,23 +510,19 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         const asset = result.assets[0];
         const localUri = asset.uri;
 
-        // Optimistically add to gallery
-        setUploadedImages((prev) => [...prev, localUri]);
-
-        // Background upload to AWS S3
         if (asset.base64) {
-          const s3Url = await uploadToS3(asset.base64, false);
-          if (s3Url) {
-            setUploadedImages((prev) => prev.map((img) => (img === localUri ? s3Url : img)));
-          }
+          base64CacheRef.current[localUri] = asset.base64;
         }
+
+        // Add to local gallery (uploaded to S3 when clicking Send to Reception / Save)
+        setUploadedImages((prev) => [...prev, localUri]);
       }
     } catch (err) {
       console.error("Gallery picker error:", err);
     }
   };
 
-  // Capture Photo with Camera with Smart Compression & S3 Sync
+  // Capture Photo with Camera with Smart Compression & Local Attachment (Uploads to S3 on Save)
   const handleCameraCapture = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -542,32 +540,21 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         const asset = result.assets[0];
         const localUri = asset.uri;
 
-        // Optimistically add to gallery
-        setUploadedImages((prev) => [...prev, localUri]);
-
-        // Background upload to AWS S3
         if (asset.base64) {
-          const s3Url = await uploadToS3(asset.base64, false);
-          if (s3Url) {
-            setUploadedImages((prev) => prev.map((img) => (img === localUri ? s3Url : img)));
-          }
+          base64CacheRef.current[localUri] = asset.base64;
         }
+
+        // Add to local gallery (uploaded to S3 when clicking Send to Reception / Save)
+        setUploadedImages((prev) => [...prev, localUri]);
       }
     } catch (err) {
       console.error("Camera error:", err);
     }
   };
 
-  // Save Canvas Drawing & Upload to AWS S3
+  // Save Canvas Drawing & Attach (Uploads to S3 on Save)
   const handleSaveCanvasDrawing = async (svgDataUri: string) => {
-    // Optimistically add to gallery
     setUploadedImages((prev) => [...prev, svgDataUri]);
-
-    // Background upload to AWS S3
-    const s3Url = await uploadToS3(svgDataUri, true);
-    if (s3Url) {
-      setUploadedImages((prev) => prev.map((img) => (img === svgDataUri ? s3Url : img)));
-    }
   };
 
   // Remove uploaded image
@@ -635,9 +622,45 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
         (!followUpInterval || followUpInterval === "Custom Date" || (followUpInterval === "No Follow-up" && followUpDate))
           ? (followUpDate || "1 Month")
           : followUpInterval;
+
+      // 1. Upload any pending local images or canvas drawings to AWS S3
+      const finalS3Urls: string[] = [];
+      for (let i = 0; i < uploadedImages.length; i++) {
+        const imgUri = uploadedImages[i];
+        if (imgUri.startsWith("http://") || imgUri.startsWith("https://")) {
+          finalS3Urls.push(imgUri);
+          continue;
+        }
+
+        if (imgUri.startsWith("data:image/svg") || imgUri.includes("<svg")) {
+          const s3Url = await uploadToS3(imgUri, true);
+          if (s3Url) finalS3Urls.push(s3Url);
+          continue;
+        }
+
+        let base64 = base64CacheRef.current[imgUri];
+        if (!base64) {
+          try {
+            base64 = await FileSystem.readAsStringAsync(imgUri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          } catch (readErr) {
+            console.warn("Failed to read local image for upload:", readErr);
+          }
+        }
+
+        if (base64) {
+          const s3Url = await uploadToS3(base64, false);
+          if (s3Url) finalS3Urls.push(s3Url);
+        }
+      }
+
+      setUploadedImages(finalS3Urls);
+      base64CacheRef.current = {};
+
       const payload = {
         id: targetId,
-        prescriptionImages: uploadedImages,
+        prescriptionImages: finalS3Urls,
         sharedMediaLinks: attachedSharedLinks,
         prescriptionText,
         followUpInterval: effectiveInterval,
@@ -674,7 +697,7 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
             dietPlan: hasDiet ? dietPlan : "",
             dietPlanFee: effectiveDietFee,
             dietFee: effectiveDietFee,
-            prescriptionImages: uploadedImages,
+            prescriptionImages: finalS3Urls,
             hasPackage: patientData.hasPackage,
             packageName: patientData.packageName || patientData.activePackage?.packageName,
             packageTotalAmount: patientData.activePackage?.totalAmount,
