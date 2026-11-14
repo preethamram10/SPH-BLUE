@@ -135,6 +135,24 @@ interface FollowUpRecordItem {
         return false;
       }
 
+      // If there is ANY newer appointment for this patient,
+      // then this older appointment's follow-up was already attended and superseded!
+      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const aApptTime = a.appointmentDate ? parseDDMMYYYYToTime(a.appointmentDate) : 0;
+      const aTime = aCreated || aApptTime;
+
+      const hasNewerAppointment = (all as any[]).some((other: any) => {
+        if (other.id === a.id || other.isDeleted || other.status === "CANCELLED") return false;
+        if (!matchPatientProfile(a, other)) return false;
+        const otherCreated = other.createdAt ? new Date(other.createdAt).getTime() : 0;
+        const otherApptTime = other.appointmentDate ? parseDDMMYYYYToTime(other.appointmentDate) : 0;
+        const otherTime = otherCreated || otherApptTime;
+        return otherTime > aTime;
+      });
+      if (hasNewerAppointment) {
+        return false;
+      }
+
       return true;
     });
 
@@ -219,8 +237,22 @@ interface FollowUpRecordItem {
         };
       });
 
+    // Strictly ONE follow-up per patient profile (latest active follow-up)
+    const latestByPatient = new Map<string, FollowUpRecordItem>();
+    for (const item of followUpsList) {
+      const patKey = item.mrn && item.mrn !== "SPH-REG" && item.mrn !== "SPH-GEN"
+        ? item.mrn.trim().toUpperCase()
+        : `${(item.phone || "").replace(/\D/g, "").slice(-10)}_${item.patientName.trim().toLowerCase()}`;
+
+      const existing = latestByPatient.get(patKey);
+      if (!existing || item.dueTime > existing.dueTime) {
+        latestByPatient.set(patKey, item);
+      }
+    }
+    const deduplicatedFollowUps = Array.from(latestByPatient.values());
+
     // Branch filter first (scoped to Reception branch)
-    let branchFollowUps = followUpsList;
+    let branchFollowUps = deduplicatedFollowUps;
     if (branchFilter && branchFilter !== "All Branches" && branchFilter !== "ALL") {
       const normFilter = branchFilter
         .toLowerCase()

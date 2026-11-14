@@ -2607,6 +2607,7 @@ export const appointmentService = {
     if (patientIdentifier) {
       for (const a of store) {
         if (
+          a.id !== bookedAppointmentId &&
           !a.isFollowUpBooked &&
           (a.followUpDate || a.followUpInterval) &&
           matchPatientProfile(a, patientIdentifier)
@@ -3102,6 +3103,15 @@ export const appointmentService = {
     if (appt.followUpDate) {
       if (!appt.followUpInterval || appt.followUpInterval === "Custom Date" || appt.followUpInterval === "No Follow-up") {
         appt.followUpInterval = appt.followUpDate;
+      }
+    }
+
+    // When a consultation or follow-up date is saved, mark any older appointments of this patient as fulfilled/booked
+    for (const older of store) {
+      if (older.id !== appt.id && !older.isFollowUpBooked && matchPatientProfile(appt, older)) {
+        older.isFollowUpBooked = true;
+        older.followUpBookedAppointmentId = appt.id;
+        older.followUpBookedAt = new Date().toISOString();
       }
     }
 
