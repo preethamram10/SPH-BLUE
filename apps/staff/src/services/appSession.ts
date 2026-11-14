@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import * as FileSystem from "expo-file-system/legacy";
 import { AppState, AppStateStatus } from "react-native";
 
 export interface ActiveSessionRoute {
@@ -83,8 +84,16 @@ export async function clearActiveRoute(): Promise<void> {
   } catch {}
 }
 
+const getDraftFilePath = (formKey: string) => {
+  if (FileSystem.documentDirectory) {
+    return `${FileSystem.documentDirectory}sph_draft_${formKey}.json`;
+  }
+  return null;
+};
+
 /**
  * Save form draft (e.g. Book Appointment, Old Rx, Patient File)
+ * Uses FileSystem to avoid Android SecureStore 2KB limitation!
  */
 export async function saveDraft(formKey: string, data: any): Promise<void> {
   try {
@@ -94,7 +103,13 @@ export async function saveDraft(formKey: string, data: any): Promise<void> {
       timestamp: Date.now(),
     };
     memoryCache[key] = payload;
-    await SecureStore.setItemAsync(key, JSON.stringify(payload));
+
+    const filePath = getDraftFilePath(formKey);
+    if (filePath) {
+      await FileSystem.writeAsStringAsync(filePath, JSON.stringify(payload));
+    } else {
+      await SecureStore.setItemAsync(key, JSON.stringify(payload));
+    }
   } catch (err) {
     console.warn(`saveDraft for ${formKey} failed:`, err);
   }
@@ -107,6 +122,21 @@ export async function getDraft<T>(formKey: string): Promise<T | null> {
   try {
     const key = `${KEYS.DRAFT_PREFIX}${formKey}`;
     let payload = memoryCache[key];
+
+    if (!payload) {
+      const filePath = getDraftFilePath(formKey);
+      if (filePath) {
+        const info = await FileSystem.getInfoAsync(filePath);
+        if (info.exists) {
+          const raw = await FileSystem.readAsStringAsync(filePath);
+          if (raw) {
+            payload = JSON.parse(raw);
+            memoryCache[key] = payload;
+          }
+        }
+      }
+    }
+
     if (!payload) {
       const raw = await SecureStore.getItemAsync(key);
       if (raw) {
@@ -137,7 +167,13 @@ export async function clearDraft(formKey: string): Promise<void> {
   try {
     const key = `${KEYS.DRAFT_PREFIX}${formKey}`;
     delete memoryCache[key];
-    await SecureStore.deleteItemAsync(key);
+    const filePath = getDraftFilePath(formKey);
+    if (filePath) {
+      await FileSystem.deleteAsync(filePath, { idempotent: true });
+    }
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch {}
   } catch {}
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { PrescriptionViewerModal } from "../../../components/patient-file/PrescriptionViewerModal";
 import { saveActiveRoute, clearActiveRoute, saveDraft, getDraft, clearDraft } from "../../../services/appSession";
@@ -87,6 +88,7 @@ export default function MobileOldPrescriptionEntryScreen() {
 
   // Prescription Scans & AWS S3
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const base64CacheRef = useRef<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadSuccessToast, setUploadSuccessToast] = useState<string | null>(null);
@@ -124,7 +126,13 @@ export default function MobileOldPrescriptionEntryScreen() {
 
     getDraft<any>("old_entry").then((draft) => {
       if (draft) {
-        if (draft.regId) setRegId(draft.regId);
+        if (draft.regId) {
+          setRegId(draft.regId);
+          if (draft.hasGeneratedId) {
+            setHasGeneratedId(true);
+            setIdStatus("NEW");
+          }
+        }
         if (draft.phone) setPhone(draft.phone);
         if (draft.patientName) setPatientName(draft.patientName);
         if (draft.consultationMode) setConsultationMode(draft.consultationMode);
@@ -132,6 +140,7 @@ export default function MobileOldPrescriptionEntryScreen() {
         if (draft.subject) setSubject(draft.subject);
         if (draft.visitDate) setVisitDate(draft.visitDate);
         if (draft.uploadedImages?.length) setUploadedImages(draft.uploadedImages);
+        if (draft.selectedDoctor) setSelectedDoctor(draft.selectedDoctor);
       }
     });
   }, []);
@@ -141,6 +150,7 @@ export default function MobileOldPrescriptionEntryScreen() {
     const timeout = setTimeout(() => {
       saveDraft("old_entry", {
         regId,
+        hasGeneratedId,
         phone,
         patientName,
         consultationMode,
@@ -148,10 +158,11 @@ export default function MobileOldPrescriptionEntryScreen() {
         subject,
         visitDate,
         uploadedImages,
+        selectedDoctor,
       });
-    }, 500);
+    }, 400);
     return () => clearTimeout(timeout);
-  }, [regId, phone, patientName, consultationMode, source, subject, visitDate, uploadedImages]);
+  }, [regId, hasGeneratedId, phone, patientName, consultationMode, source, subject, visitDate, uploadedImages, selectedDoctor]);
 
   const handleBack = () => {
     clearActiveRoute();
@@ -321,26 +332,14 @@ export default function MobileOldPrescriptionEntryScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        setIsUploading(true);
-
-        const uploadRes = await apiFetch<any>("/patient-file/upload", {
-          method: "POST",
-          body: JSON.stringify({
-            base64: asset.base64,
-            contentType: "image/jpeg",
-            patientId: regId || "SPH-OLD",
-          }),
-        });
-
-        if (uploadRes.success && uploadRes.url) {
-          setUploadedImages((prev) => [...prev, uploadRes.url]);
-          setUploadSuccessToast("✓ Prescription scan uploaded successfully!");
-          setTimeout(() => {
-            setUploadSuccessToast(null);
-          }, 4000);
-        } else {
-          Alert.alert("Upload Failed", "Could not upload image to server.");
+        if (asset.base64) {
+          base64CacheRef.current[asset.uri] = asset.base64;
         }
+        setUploadedImages((prev) => [...prev, asset.uri]);
+        setUploadSuccessToast("✓ Prescription scan attached (will upload on save)");
+        setTimeout(() => {
+          setUploadSuccessToast(null);
+        }, 3000);
       }
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to process photo.");
@@ -446,6 +445,41 @@ export default function MobileOldPrescriptionEntryScreen() {
       setIsSubmitting(true);
       const branchName = activeBranch?.name || activeBranch?.branch || "Clinic Branch";
 
+      // 1. Upload attached local images to AWS S3
+      const finalS3Urls: string[] = [];
+      for (let i = 0; i < uploadedImages.length; i++) {
+        const imgUri = uploadedImages[i];
+        if (imgUri.startsWith("http://") || imgUri.startsWith("https://")) {
+          finalS3Urls.push(imgUri);
+          continue;
+        }
+
+        let base64 = base64CacheRef.current[imgUri];
+        if (!base64) {
+          try {
+            base64 = await FileSystem.readAsStringAsync(imgUri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          } catch (readErr) {
+            console.warn("Failed to read local image for upload:", readErr);
+          }
+        }
+
+        if (base64) {
+          const uploadRes = await apiFetch<any>("/patient-file/upload", {
+            method: "POST",
+            body: JSON.stringify({
+              base64,
+              contentType: "image/jpeg",
+              patientId: regId.trim().toUpperCase() || "SPH-OLD",
+            }),
+          });
+          if (uploadRes?.success && uploadRes?.url) {
+            finalS3Urls.push(uploadRes.url);
+          }
+        }
+      }
+
       const res = await apiFetch<any>("/reception/old-entry", {
         method: "POST",
         body: JSON.stringify({
@@ -462,7 +496,7 @@ export default function MobileOldPrescriptionEntryScreen() {
           doctorName: selectedDoctor.name,
           doctorId: selectedDoctor.id,
           consultationFee: 0,
-          prescriptionImages: uploadedImages,
+          prescriptionImages: finalS3Urls,
         }),
       });
 
@@ -471,7 +505,24 @@ export default function MobileOldPrescriptionEntryScreen() {
         const savedName = res.patient?.name || patientName;
         const savedPhone = phone;
 
-        clearDraft("old_entry");
+        await clearDraft("old_entry");
+        base64CacheRef.current = {};
+
+        const resetForm = () => {
+          setRegId("");
+          setPatientName("");
+          setPhone("");
+          setSubject("");
+          setSource("Old Patient");
+          setConsultationMode("In-Clinic");
+          setUploadedImages([]);
+          setIdStatus("IDLE");
+          setExistingPatient(null);
+          setFamilyProfiles([]);
+          setHasGeneratedId(false);
+          base64CacheRef.current = {};
+          clearDraft("old_entry");
+        };
 
         Alert.alert(
           "Success",
@@ -480,25 +531,16 @@ export default function MobileOldPrescriptionEntryScreen() {
             {
               text: "View Patient History",
               onPress: () => {
+                resetForm();
                 router.push(
                   `/(reception)/patient-history?id=${encodeURIComponent(savedId)}&name=${encodeURIComponent(savedName)}&phone=${encodeURIComponent(savedPhone)}&branch=${encodeURIComponent(branchName)}` as any
                 );
               },
             },
             {
-              text: "Enter Another",
+              text: "OK",
               onPress: () => {
-                setRegId("");
-                setPatientName("");
-                setPhone("");
-                setSubject("");
-                setSource("Old Patient");
-                setConsultationMode("In-Clinic");
-                setUploadedImages([]);
-                setIdStatus("IDLE");
-                setExistingPatient(null);
-                setFamilyProfiles([]);
-                setHasGeneratedId(false);
+                resetForm();
               },
             },
           ]
@@ -841,23 +883,17 @@ export default function MobileOldPrescriptionEntryScreen() {
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <View>
-                <Text style={styles.fieldLabel}>PRESCRIPTION SCANS (AWS S3)</Text>
-                <Text style={styles.fieldSub}>Tap thumbnail to view full screen with &lt; &gt; navigation</Text>
+                <Text style={styles.fieldLabel}>PRESCRIPTION SCANS</Text>
+                <Text style={styles.fieldSub}>Attached locally and uploaded to AWS S3 on save</Text>
               </View>
               <TouchableOpacity
                 style={styles.uploadBtn}
                 onPress={handlePickScan}
-                disabled={isUploading}
+                disabled={isSubmitting}
                 activeOpacity={0.8}
               >
-                {isUploading ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
-                ) : (
-                  <>
-                    <Ionicons name="camera-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
-                    <Text style={styles.uploadBtnText}>+ Add Scan</Text>
-                  </>
-                )}
+                <Ionicons name="camera-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
+                <Text style={styles.uploadBtnText}>+ Add Scan</Text>
               </TouchableOpacity>
             </View>
 
@@ -899,20 +935,23 @@ export default function MobileOldPrescriptionEntryScreen() {
               <View style={styles.emptyScansBox}>
                 <Ionicons name="images-outline" size={28} color="#cbd5e1" />
                 <Text style={styles.emptyScansText}>No prescription images attached yet</Text>
-                <Text style={styles.emptyScansSub}>Take photo or pick from gallery to upload</Text>
+                <Text style={styles.emptyScansSub}>Take photo or pick from gallery to attach</Text>
               </View>
             )}
           </View>
 
           {/* SUBMIT BUTTON */}
           <TouchableOpacity
-            style={[styles.saveBtn, (isSubmitting || isUploading) && { opacity: 0.6 }]}
+            style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
             onPress={handleSave}
-            disabled={isSubmitting || isUploading}
+            disabled={isSubmitting}
             activeOpacity={0.8}
           >
             {isSubmitting ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <ActivityIndicator size="small" color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.saveBtnText}>Uploading Scans & Saving Record...</Text>
+              </View>
             ) : (
               <>
                 <Ionicons name="cloud-upload" size={18} color="#ffffff" style={{ marginRight: 6 }} />
