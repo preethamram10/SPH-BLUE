@@ -393,11 +393,19 @@ export default function ReceptionDashboard() {
 
   // Fetch live appointments for the active branch and selected date
   const fetchAppointments = async (branch: string, dt: string, isSilent: boolean = false) => {
+    if (!branch || !dt) {
+      if (!isSilent) setIsLoadingAppointments(false);
+      return;
+    }
+    const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
+    if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
+      if (!isSilent) setIsLoadingAppointments(false);
+      return;
+    }
     if (!isSilent) {
       setIsLoadingAppointments(true);
     }
     try {
-      const cleanBranch = (branch || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
       const data = await apiFetch(`/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
       if (data.success && Array.isArray(data.appointments)) {
         setAppointments(data.appointments);
@@ -430,15 +438,11 @@ export default function ReceptionDashboard() {
   // Initial branch load and fetch
   useEffect(() => {
     getActiveBranch().then((b) => {
-      if (b) {
+      if (b && b.name) {
         setActiveBranch(b);
         checkCleaningAuditLockout(b.name);
         fetchAppointments(b.name, selectedDate, appointments.length > 0);
         fetchBranchTarget(b.name);
-      } else {
-        checkCleaningAuditLockout("KPHB");
-        fetchAppointments("KPHB", selectedDate, appointments.length > 0);
-        fetchBranchTarget("KPHB");
       }
     });
   }, [selectedDate]);
@@ -447,10 +451,9 @@ export default function ReceptionDashboard() {
   useEffect(() => {
     let isMounted = true;
     const interval = setInterval(() => {
-      if (isMounted) {
-        const bName = activeBranch?.name || "KPHB";
-        fetchAppointments(bName, selectedDate, true); // SILENT: updates in-place without triggering loading spinner
-        fetchBranchTarget(bName);
+      if (isMounted && activeBranch?.name) {
+        fetchAppointments(activeBranch.name, selectedDate, true); // SILENT: updates in-place without triggering loading spinner
+        fetchBranchTarget(activeBranch.name);
       }
     }, 10000);
 
@@ -463,8 +466,9 @@ export default function ReceptionDashboard() {
   // When screen comes into focus (e.g. after booking an appointment), immediately reload appointments silently
   useFocusEffect(
     useCallback(() => {
-      const bName = activeBranch?.name || "KPHB";
-      fetchAppointments(bName, selectedDate, true);
+      if (activeBranch?.name) {
+        fetchAppointments(activeBranch.name, selectedDate, true);
+      }
     }, [activeBranch, selectedDate])
   );
 

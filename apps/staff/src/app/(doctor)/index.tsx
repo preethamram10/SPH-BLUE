@@ -35,7 +35,7 @@ const COLORS = {
 export default function DoctorDashboard() {
   const router = useRouter();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [doctorName, setDoctorName] = useState("");
   const [branchName, setBranchName] = useState("All Branches");
   const [selectedDate, setSelectedDate] = useState("");
   const [todayStr, setTodayStr] = useState("");
@@ -135,7 +135,10 @@ export default function DoctorDashboard() {
   };
 
   const fetchDoctorAppointments = async (dt: string, isSilent = false) => {
-    if (!dt) return;
+    if (!dt || !doctorName) {
+      if (!isSilent) setIsLoading(false);
+      return;
+    }
     if (!isSilent) setIsLoading(true);
     try {
       const dateParam = dt === "ALL" ? "&date=ALL" : `&date=${encodeURIComponent(dt)}`;
@@ -157,11 +160,13 @@ export default function DoctorDashboard() {
   };
 
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || !doctorName) return;
     fetchDoctorAppointments(selectedDate, appointments.length > 0);
 
     const interval = setInterval(() => {
-      fetchDoctorAppointments(selectedDate, true);
+      if (doctorName && selectedDate) {
+        fetchDoctorAppointments(selectedDate, true);
+      }
     }, 10000);
 
     return () => clearInterval(interval);
@@ -169,7 +174,7 @@ export default function DoctorDashboard() {
 
   useFocusEffect(
     useCallback(() => {
-      if (selectedDate) {
+      if (selectedDate && doctorName) {
         fetchDoctorAppointments(selectedDate, true);
       }
     }, [doctorName, branchName, selectedDate])

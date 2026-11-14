@@ -17,7 +17,17 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { saveAuthToken, saveActiveBranch, saveActiveDoctor, saveActiveStaff, saveUserRole, getAuthToken, getUserRole } from "../../services/auth";
+import {
+  saveAuthToken,
+  saveActiveBranch,
+  saveActiveDoctor,
+  saveActiveStaff,
+  saveUserRole,
+  removeActiveDoctor,
+  removeActiveBranch,
+  getAuthToken,
+  getUserRole,
+} from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 
 type TabType = "doctor_reception" | "admin_hr" | "staff" | "telecaller";
@@ -190,12 +200,14 @@ export default function StaffLoginScreen() {
 
       if (activeTab === "doctor_reception") {
         if (returnedRole === "DOCTOR") {
+          await removeActiveBranch();
           await saveUserRole("DOCTOR");
           if (validatedData?.doctor) {
             await saveActiveDoctor(validatedData.doctor);
           }
           router.replace("/(doctor)" as any);
         } else {
+          await removeActiveDoctor();
           await saveUserRole("RECEPTION");
           if (validatedData?.branch) {
             await saveActiveBranch(validatedData.branch);

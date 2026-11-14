@@ -24,8 +24,22 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawDoc = searchParams.get("doctorName") || searchParams.get("doctorId");
-    const isAllDocs = !rawDoc || rawDoc === "ALL" || rawDoc === "All Doctors" || rawDoc.toLowerCase() === "all";
-    const doctorName = isAllDocs ? undefined : rawDoc;
+
+    // Strict doctor scoping guard:
+    // If doctorName is missing or empty, do NOT leak all patients across the clinic.
+    // Return empty list unless caller explicitly requested "ALL" or "All Doctors" (e.g. Admin portal).
+    const isAllDocs = rawDoc === "ALL" || rawDoc === "All Doctors" || rawDoc?.toLowerCase() === "all";
+    if (!rawDoc || rawDoc.trim() === "") {
+      return NextResponse.json({
+        success: true,
+        patients: [],
+        totalCount: 0,
+        totalPages: 1,
+        currentPage: 1,
+        sessionCounts: { TODAY: 0, YESTERDAY: 0, TREATED: 0, ALL: 0 },
+      });
+    }
+    const doctorName = isAllDocs ? undefined : rawDoc.trim();
 
     const rawBranch = searchParams.get("branch");
     const isAllBranches = !rawBranch || rawBranch === "ALL" || rawBranch === "All Branches" || rawBranch.toLowerCase() === "all";

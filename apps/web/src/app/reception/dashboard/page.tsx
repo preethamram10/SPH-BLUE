@@ -82,7 +82,7 @@ const renderVisitBadge = (appt: any) => {
 
 export default function ReceptionDashboardPage() {
   const router = useRouter();
-  const [branchName, setBranchName] = useState("Spiritual Homeopathy Clinic");
+  const [branchName, setBranchName] = useState("");
   const [currentDate, setCurrentDate] = useState("");
 
   // Date Helpers (DD-MM-YYYY)
@@ -550,12 +550,13 @@ export default function ReceptionDashboardPage() {
 
   // Fetch appointments live from API
   const fetchAppointments = async (branch: string, dt: string, isSilent: boolean = false) => {
-    if (!dt) return;
+    if (!dt || !branch) return;
+    const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
+    if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") return;
     if (!isSilent) {
       setIsLoadingAppointments(true);
     }
     try {
-      const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
       const res = await fetch(`/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
       if (!res.ok) return;
       const data = await res.json();
@@ -606,20 +607,24 @@ export default function ReceptionDashboardPage() {
   };
 
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || !branchName || branchName.toLowerCase() === "clinic" || branchName === "Spiritual Homeopathy Clinic") return;
     // Initial fetch for the selected date & branch target
     fetchAppointments(branchName, selectedDate, appointments.length > 0);
     fetchBranchTarget(branchName);
 
     // Auto-sync silently in the background every 10 seconds without showing loading spinner or flashing the table
     const interval = setInterval(() => {
-      fetchAppointments(branchName, selectedDate, true);
-      fetchBranchTarget(branchName);
+      if (branchName && selectedDate) {
+        fetchAppointments(branchName, selectedDate, true);
+        fetchBranchTarget(branchName);
+      }
     }, 10000);
 
     const handleFocus = () => {
-      fetchAppointments(branchName, selectedDate, true);
-      fetchBranchTarget(branchName);
+      if (branchName && selectedDate) {
+        fetchAppointments(branchName, selectedDate, true);
+        fetchBranchTarget(branchName);
+      }
     };
     window.addEventListener("focus", handleFocus);
 

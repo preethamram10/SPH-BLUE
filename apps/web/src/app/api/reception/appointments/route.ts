@@ -11,10 +11,20 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const branch = searchParams.get("branch") || undefined;
+    const rawBranch = searchParams.get("branch");
     const date = searchParams.get("date") || undefined;
     const doctorId = searchParams.get("doctorId") || undefined;
 
+    // Strict branch guard:
+    // If no branch provided or it's a generic placeholder like "Spiritual Homeopathy Clinic",
+    // do NOT return appointments from all branches. Return empty array unless branch is explicitly "ALL" or "All Branches".
+    const isExplicitAll = rawBranch === "ALL" || rawBranch === "All Branches" || rawBranch?.toLowerCase() === "all";
+    const cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+    if (!isExplicitAll && (!cleanBranch || cleanBranch.toLowerCase() === "clinic")) {
+      return NextResponse.json({ success: true, appointments: [] });
+    }
+
+    const branch = isExplicitAll ? undefined : cleanBranch;
     const appointments = await appointmentService.getAppointments(branch, date, doctorId);
     return NextResponse.json({ success: true, appointments });
   } catch (error: any) {

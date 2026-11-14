@@ -56,6 +56,11 @@ export default function DoctorPatientListScreen() {
 
   const fetchPatients = useCallback(
     async (tab: SessionTab, page: number, isRefresh = false) => {
+      if (!activeDoctor) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
       if (isRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       try {
@@ -64,7 +69,7 @@ export default function DoctorPatientListScreen() {
           activeDoctor?.isHeadDoctor === true ||
           (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
           (activeDoctor?.name || "").toLowerCase().includes("head");
-        const doctorName = isHead ? "" : (activeDoctor?.name || "");
+        const doctorName = isHead ? "ALL" : (activeDoctor?.name || "");
 
         const params = new URLSearchParams({
           session: tab,
@@ -74,7 +79,7 @@ export default function DoctorPatientListScreen() {
         if (branchName && branchName !== "All Branches" && branchName !== "ALL") {
           params.set("branch", branchName);
         }
-        if (doctorName && doctorName !== "All Doctors" && doctorName !== "ALL") {
+        if (doctorName) {
           params.set("doctorName", doctorName);
         }
 
@@ -96,12 +101,13 @@ export default function DoctorPatientListScreen() {
   );
 
   const fetchSessionCounts = useCallback(async () => {
+    if (!activeDoctor) return;
     const branchName = activeBranch?.name || activeBranch?.branch || "";
     const isHead =
       activeDoctor?.isHeadDoctor === true ||
       (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
       (activeDoctor?.name || "").toLowerCase().includes("head");
-    const doctorName = isHead ? "" : (activeDoctor?.name || "");
+    const doctorName = isHead ? "ALL" : (activeDoctor?.name || "");
 
     const tabs: SessionTab[] = ["TODAY", "YESTERDAY", "TREATED", "ALL"];
     const counts: Record<SessionTab, number> = { TODAY: 0, YESTERDAY: 0, TREATED: 0, ALL: 0 };
@@ -112,7 +118,7 @@ export default function DoctorPatientListScreen() {
           if (branchName && branchName !== "All Branches" && branchName !== "ALL") {
             params.set("branch", branchName);
           }
-          if (doctorName && doctorName !== "All Doctors" && doctorName !== "ALL") {
+          if (doctorName) {
             params.set("doctorName", doctorName);
           }
           const data = await apiFetch<any>(`/doctor/patients?${params.toString()}`);

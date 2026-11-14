@@ -7,8 +7,16 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawDoc = searchParams.get("doctorName") || searchParams.get("doctorId");
-    const isAllDocs = !rawDoc || rawDoc === "All Doctors" || rawDoc === "ALL" || rawDoc.toLowerCase() === "all";
-    const doctorName = isAllDocs ? undefined : rawDoc;
+
+    // Strict doctor scoping guard:
+    // If doctorName is missing or empty, do NOT leak all appointments across the clinic.
+    // Return empty list unless caller explicitly requested "ALL" or "All Doctors" (e.g. Admin portal).
+    const isAllDocs = rawDoc === "All Doctors" || rawDoc === "ALL" || rawDoc?.toLowerCase() === "all";
+    if (!rawDoc || rawDoc.trim() === "") {
+      return NextResponse.json({ success: true, appointments: [] });
+    }
+    const doctorName = isAllDocs ? undefined : rawDoc.trim();
+
     const rawBranch = searchParams.get("branch") || undefined;
     const branch = (rawBranch && rawBranch !== "All Branches" && rawBranch !== "ALL") ? rawBranch : undefined;
     const rawDate = searchParams.get("date");

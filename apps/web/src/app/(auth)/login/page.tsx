@@ -138,9 +138,20 @@ export default function WebLoginPage() {
         if (validatedData?.doctor?.doctorCategory) {
           localStorage.setItem("doctor_category", validatedData.doctor.doctorCategory);
         }
+        if (validatedData?.doctor?.branch) {
+          localStorage.setItem("branch_name", validatedData.doctor.branch);
+        }
         window.location.href = "/doctor/dashboard";
       } else if (returnedRole === "RECEPTION") {
         localStorage.setItem("user_role", "RECEPTION");
+        localStorage.removeItem("doctor_name");
+        localStorage.removeItem("doctor_id");
+        localStorage.removeItem("is_head_doctor");
+        localStorage.removeItem("doctor_category");
+        if (validatedData?.branch?.name) {
+          localStorage.setItem("branch_name", validatedData.branch.name);
+          localStorage.setItem("branch_id", validatedData.branch.id || "");
+        }
         window.location.href = "/reception/dashboard";
       } else if (returnedRole === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");

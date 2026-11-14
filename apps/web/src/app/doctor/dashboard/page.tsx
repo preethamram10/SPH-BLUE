@@ -107,7 +107,7 @@ const fromISODate = (yyyymmdd: string) => {
 
 export default function DoctorDashboardPage() {
   const router = useRouter();
-  const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [doctorName, setDoctorName] = useState("");
   const [branchName, setBranchName] = useState("All Branches");
   const [branchesList, setBranchesList] = useState<string[]>(DEFAULT_BRANCHES);
   const [selectedDate, setSelectedDate] = useState("");
@@ -186,7 +186,10 @@ export default function DoctorDashboardPage() {
   };
 
   const fetchDoctorAppointments = async (dt: string, isSilent = false) => {
-    if (!dt) return;
+    if (!dt || !doctorName) {
+      if (!isSilent) setIsLoading(false);
+      return;
+    }
     if (!isSilent) setIsLoading(true);
     try {
       const docParam = `doctorName=${encodeURIComponent(doctorName)}`;
@@ -208,11 +211,13 @@ export default function DoctorDashboardPage() {
   };
 
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || !doctorName) return;
     fetchDoctorAppointments(selectedDate, appointments.length > 0);
 
     const interval = setInterval(() => {
-      fetchDoctorAppointments(selectedDate, true);
+      if (doctorName && selectedDate) {
+        fetchDoctorAppointments(selectedDate, true);
+      }
     }, 10000);
 
     return () => clearInterval(interval);
