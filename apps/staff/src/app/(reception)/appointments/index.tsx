@@ -161,6 +161,7 @@ export default function ReceptionBookAppointmentScreen() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const searchDebounceRef = useRef<any>(null);
 
   const currentBranchName = activeBranch?.name || "KPHB Branch";
 
@@ -722,25 +723,30 @@ export default function ReceptionBookAppointmentScreen() {
     }
   }, [generatedSlots]);
 
-  // Autocomplete patient search
-  const handlePatientNameChange = async (text: string) => {
+  // Autocomplete patient search (debounced 300ms)
+  const handlePatientNameChange = (text: string) => {
     setPatientName(text);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
     if (text.trim().length >= 2) {
-      try {
-        const cleanB = currentBranchName.replace(/Spiritual Homeopathy/gi, "").trim();
-        const res = await fetch(`${API_BASE_URL}/reception/patients?query=${encodeURIComponent(text.trim())}&branch=${encodeURIComponent(cleanB)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.suggestions)) {
-            setPatientSuggestions(data.suggestions);
-            setShowSuggestions(data.suggestions.length > 0);
-            return;
+      searchDebounceRef.current = setTimeout(async () => {
+        try {
+          const cleanB = currentBranchName.replace(/Spiritual Homeopathy/gi, "").trim();
+          const res = await fetch(`${API_BASE_URL}/reception/patients?query=${encodeURIComponent(text.trim())}&branch=${encodeURIComponent(cleanB)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.suggestions)) {
+              setPatientSuggestions(data.suggestions);
+              setShowSuggestions(data.suggestions.length > 0);
+              return;
+            }
           }
+          setShowSuggestions(false);
+        } catch {
+          setShowSuggestions(false);
         }
-        setShowSuggestions(false);
-      } catch {
-        setShowSuggestions(false);
-      }
+      }, 300);
     } else {
       setShowSuggestions(false);
     }

@@ -99,15 +99,19 @@ export default function ReceptionAllPatientsPage() {
 
   // Fetch patients for selected session tab and page
   const fetchPatients = useCallback(
-    async (tab: SessionTab, page: number) => {
+    async (tab: SessionTab, page: number, queryStr?: string) => {
       setIsLoading(true);
       try {
         const savedBranch = localStorage.getItem("branch_name") || branchName;
+        const currentQuery = queryStr !== undefined ? queryStr : searchQuery;
         const params = new URLSearchParams({
           session: tab,
           page: String(page),
           pageSize: String(PAGE_SIZE),
         });
+        if (currentQuery.trim()) {
+          params.set("search", currentQuery.trim());
+        }
         if (savedBranch) params.set("branch", savedBranch);
 
         const res = await fetch(`/api/reception/patients?${params.toString()}`);
@@ -142,7 +146,7 @@ export default function ReceptionAllPatientsPage() {
         setIsLoading(false);
       }
     },
-    [branchName]
+    [branchName, searchQuery]
   );
 
   // Fetch counts for Today, Yesterday, All
@@ -171,11 +175,20 @@ export default function ReceptionAllPatientsPage() {
     setSessionCounts(counts);
   }, [branchName]);
 
-  // Initial load and tab change effect
+  // Initial load on session change
   useEffect(() => {
-    fetchPatients(session, 1);
+    fetchPatients(session, 1, searchQuery);
     fetchSessionCounts();
-  }, [session, fetchPatients, fetchSessionCounts]);
+  }, [session]);
+
+  // Debounced server search across all 12,000 patients when user types phone, MRN or name
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchPatients(session, 1, searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleTabChange = (tab: SessionTab) => {
     setSession(tab);
@@ -184,19 +197,19 @@ export default function ReceptionAllPatientsPage() {
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
-      fetchPatients(session, currentPage - 1);
+      fetchPatients(session, currentPage - 1, searchQuery);
     }
   };
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
-      fetchPatients(session, currentPage + 1);
+      fetchPatients(session, currentPage + 1, searchQuery);
     }
   };
 
   const handlePageSelect = (page: number) => {
     if (page !== currentPage && page >= 1 && page <= totalPages) {
-      fetchPatients(session, page);
+      fetchPatients(session, page, searchQuery);
     }
   };
 
@@ -247,17 +260,8 @@ export default function ReceptionAllPatientsPage() {
     }
   };
 
-  // Filter local patients on the current loaded page by search query
-  const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return patients;
-    return patients.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.mrn.toLowerCase().includes(q) ||
-        p.phone.includes(q)
-    );
-  }, [patients, searchQuery]);
+  // Display patients returned from server search
+  const filtered = patients;
 
   // Generate page numbers for pagination
   const pageNumbers = useMemo(() => {

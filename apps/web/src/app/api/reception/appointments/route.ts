@@ -66,14 +66,12 @@ export async function POST(req: NextRequest) {
       isReback,
       notes,
     } = body;
-
     if (!patientName || !phoneNumber || !appointmentDate || !selectedTimeSlot) {
       return NextResponse.json(
         { success: false, error: "Missing required fields (patientName, phoneNumber, appointmentDate, selectedTimeSlot)" },
         { status: 400 }
       );
     }
-
     // Past dates & past time slots validation (Old Entry / Old Patient RX is used for historical records)
     const now = new Date();
     const todayYYYYMMDD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -90,7 +88,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-
     if (normalizedAptDate === todayYYYYMMDD && selectedTimeSlot) {
       const slotMin = parseTimeToMinutes(selectedTimeSlot);
       const currentMin = now.getHours() * 60 + now.getMinutes();
@@ -121,8 +118,8 @@ export async function POST(req: NextRequest) {
     const finalRegId = matchedPatient?.regId
       ? matchedPatient.regId
       : registrationId && registrationId !== "SPH-GEN"
-      ? registrationId.trim().toUpperCase()
-      : await registrationSequenceService.getNextRegistrationId(branch || "KPB");
+        ? registrationId.trim().toUpperCase()
+        : await registrationSequenceService.getNextRegistrationId(branch || "KPB");
 
     const finalIsReback = Boolean(isReback || matchedPatient);
 

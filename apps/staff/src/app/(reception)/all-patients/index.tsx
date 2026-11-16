@@ -73,16 +73,18 @@ export default function ReceptionAllPatientsScreen() {
 
   // Fetch patients for the current tab/page
   const fetchPatients = useCallback(
-    async (tab: SessionTab, page: number, isRefresh = false) => {
+    async (tab: SessionTab, page: number, isRefresh = false, searchQuery?: string) => {
       if (isRefresh) setIsRefreshing(true);
       else setIsLoading(true);
       try {
         const branchName = activeBranch?.name || activeBranch?.branch || "";
+        const queryText = searchQuery !== undefined ? searchQuery.trim() : search.trim();
         const params = new URLSearchParams({
           session: tab,
           page: String(page),
           pageSize: String(PAGE_SIZE),
         });
+        if (queryText) params.set("search", queryText);
         if (branchName) params.set("branch", branchName);
 
         const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
@@ -99,7 +101,7 @@ export default function ReceptionAllPatientsScreen() {
         setIsRefreshing(false);
       }
     },
-    [activeBranch]
+    [activeBranch, search]
   );
 
   // Fetch counts for each session tab
@@ -123,10 +125,21 @@ export default function ReceptionAllPatientsScreen() {
   // On branch load / tab change — reset to page 1
   useEffect(() => {
     if (activeBranch !== null) {
-      fetchPatients(session, 1);
+      fetchPatients(session, 1, false, search);
       fetchSessionCounts();
     }
   }, [activeBranch, session]);
+
+  // Debounced server search across all 12,000 patients when user enters full phone, MRN or name
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeBranch !== null) {
+        fetchPatients(session, 1, false, search);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const handleTabChange = (tab: SessionTab) => {
     setSession(tab);
@@ -134,26 +147,17 @@ export default function ReceptionAllPatientsScreen() {
   };
 
   const handlePrevPage = () => {
-    if (currentPage > 1) fetchPatients(session, currentPage - 1);
+    if (currentPage > 1) fetchPatients(session, currentPage - 1, false, search);
   };
 
   const handleNextPage = () => {
-    if (currentPage < totalPages) fetchPatients(session, currentPage + 1);
+    if (currentPage < totalPages) fetchPatients(session, currentPage + 1, false, search);
   };
 
-  const handleRefresh = () => fetchPatients(session, currentPage, true);
+  const handleRefresh = () => fetchPatients(session, currentPage, true, search);
 
-  // Local search filter on current page
-  const filteredPatients = search.trim()
-    ? patients.filter((p) => {
-        const q = search.toLowerCase();
-        return (
-          (p.name || p.patientName || "").toLowerCase().includes(q) ||
-          (p.phone || "").includes(q) ||
-          (p.regId || p.registrationId || "").toLowerCase().includes(q)
-        );
-      })
-    : patients;
+  // Results returned from server search
+  const filteredPatients = patients;
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();

@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "25", 10)));
 
     // 1. Fetch real patients and appointments from database
+    const isSearching = !!query;
     const [rawPatients, rawAppointments, rawBranches] = await Promise.all([
-      patientService.getAllPatients(),
+      isSearching ? patientService.searchPatients(query, branchFilter, 300) : patientService.getAllPatients(),
       appointmentService.getAppointments(undefined, undefined, undefined, false),
       branchService.getAllBranches(),
     ]);

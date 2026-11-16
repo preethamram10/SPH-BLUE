@@ -16,6 +16,10 @@ declare global {
   // eslint-disable-next-line no-var
   var __sphPatientsStore: any[] | undefined;
   // eslint-disable-next-line no-var
+  var __sphPatientsPhoneIndex: Map<string, any[]> | undefined;
+  // eslint-disable-next-line no-var
+  var __sphPatientsRegIdIndex: Map<string, any> | undefined;
+  // eslint-disable-next-line no-var
   var __sphAppointmentsStore: any[] | undefined;
   // eslint-disable-next-line no-var
   var __sphRegistrationSequencesStore: Record<string, number> | undefined;
@@ -1325,11 +1329,19 @@ function safeAtomicWrite(filePath: string, data: any): void {
       fs.mkdirSync(dir, { recursive: true });
     }
     const tempFile = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), "utf-8");
+    const jsonStr =
+      Array.isArray(data) && data.length > 500
+        ? JSON.stringify(data)
+        : JSON.stringify(data, null, 2);
+    fs.writeFileSync(tempFile, jsonStr, "utf-8");
     fs.renameSync(tempFile, filePath);
   } catch (err) {
     try {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+      const jsonStr =
+        Array.isArray(data) && data.length > 500
+          ? JSON.stringify(data)
+          : JSON.stringify(data, null, 2);
+      fs.writeFileSync(filePath, jsonStr, "utf-8");
     } catch (fallbackErr) {
       console.warn("Failed to write cache safely:", fallbackErr);
     }
@@ -1888,14 +1900,62 @@ function loadPatientsFromDisk(): PatientRecord[] {
   return [];
 }
 
+function rebuildPatientIndices(store?: PatientRecord[]): void {
+  const data = store || (global.__sphPatientsStore ? global.__sphPatientsStore : loadPatientsFromDisk());
+  const phoneMap = new Map<string, PatientRecord[]>();
+  const regIdMap = new Map<string, PatientRecord>();
+
+  for (let i = 0; i < data.length; i++) {
+    const p = data[i];
+    if (p.isDeleted) continue;
+
+    const cleanReg = (p.regId || "").trim().toUpperCase();
+    if (cleanReg) {
+      regIdMap.set(cleanReg, p);
+    }
+
+    const digits = normalizePhone(p.phone || "");
+    if (digits && digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      let list = phoneMap.get(last10);
+      if (!list) {
+        list = [];
+        phoneMap.set(last10, list);
+      }
+      list.push(p);
+    }
+  }
+
+  global.__sphPatientsPhoneIndex = phoneMap;
+  global.__sphPatientsRegIdIndex = regIdMap;
+}
+
+function getPatientsPhoneIndex(): Map<string, PatientRecord[]> {
+  if (!global.__sphPatientsPhoneIndex) {
+    rebuildPatientIndices();
+  }
+  return global.__sphPatientsPhoneIndex!;
+}
+
+function getPatientsRegIdIndex(): Map<string, PatientRecord> {
+  if (!global.__sphPatientsRegIdIndex) {
+    rebuildPatientIndices();
+  }
+  return global.__sphPatientsRegIdIndex!;
+}
+
 function savePatientsToDisk(data: PatientRecord[]): void {
   const file = getPatientsCachePath();
   safeAtomicWrite(file, data);
+  rebuildPatientIndices(data);
 }
 
 function getPatientsStore(): PatientRecord[] {
   if (!global.__sphPatientsStore) {
     global.__sphPatientsStore = loadPatientsFromDisk();
+  }
+  if (!global.__sphPatientsPhoneIndex || !global.__sphPatientsRegIdIndex) {
+    rebuildPatientIndices(global.__sphPatientsStore);
   }
   return global.__sphPatientsStore;
 }
@@ -1914,19 +1974,58 @@ export const patientService = {
 
   async getByRegId(regId: string): Promise<PatientRecord | null> {
     const clean = regId.trim().toUpperCase();
+    if (!clean) return null;
+    const regIndex = getPatientsRegIdIndex();
+    const found = regIndex.get(clean);
+    if (found && !found.isDeleted) return found;
     const store = getPatientsStore();
     return store.find((p) => p.regId.trim().toUpperCase() === clean && !p.isDeleted) || null;
   },
 
-  async searchPatients(query: string, branch?: string): Promise<PatientRecord[]> {
+  async searchPatients(query: string, branch?: string, limit = 50): Promise<PatientRecord[]> {
     const q = query.trim().toLowerCase();
     if (!q) return [];
+
+    const cleanDigits = q.replace(/\D/g, "");
+    const cleanReg = q.toUpperCase();
+
+    // 1. Exact or 10-digit phone lookup -> instant O(1) hash map hit
+    if (cleanDigits.length >= 10) {
+      const phoneIndex = getPatientsPhoneIndex();
+      const exactMatches = phoneIndex.get(cleanDigits.slice(-10));
+      if (exactMatches && exactMatches.length > 0) {
+        const activeMatches = exactMatches.filter((p) => !p.isDeleted);
+        if (!branch || branch === "All Branches" || branch.toLowerCase() === "all") return activeMatches;
+        const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
+        return activeMatches.filter((p) => {
+          const pb = p.branch.toLowerCase().replace(/branch/gi, "").trim();
+          return pb === cleanB || cleanB.includes(pb) || pb.includes(cleanB);
+        });
+      }
+    }
+
+    // 2. Exact RegId lookup -> instant O(1) hit
+    const regIndex = getPatientsRegIdIndex();
+    const exactReg = regIndex.get(cleanReg);
+    if (exactReg && !exactReg.isDeleted) {
+      return [exactReg];
+    }
+
+    // 3. Fast search across active patients (capped by limit to prevent huge payloads)
     let list = await this.getAllPatients(branch);
-    return list.filter((p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.phone.includes(q) ||
-      p.regId.toLowerCase().includes(q)
-    );
+    const results: PatientRecord[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      if (
+        p.phone.includes(q) ||
+        p.name.toLowerCase().includes(q) ||
+        p.regId.toLowerCase().includes(q)
+      ) {
+        results.push(p);
+        if (limit > 0 && results.length >= limit) break;
+      }
+    }
+    return results;
   },
 
   /**
@@ -1936,10 +2035,8 @@ export const patientService = {
     const cleanPhone = normalizePhone(phone);
     if (!cleanPhone || cleanPhone.length < 10) return [];
     const last10 = cleanPhone.slice(-10);
-    const store = getPatientsStore();
-    const active = store.filter(
-      (p) => !p.isDeleted && normalizePhone(p.phone).endsWith(last10)
-    );
+    const phoneIndex = getPatientsPhoneIndex();
+    const active = (phoneIndex.get(last10) || []).filter((p) => !p.isDeleted);
     const appointments = getAppointmentsStore();
 
     return active.map((patient) => {
@@ -2378,15 +2475,33 @@ export function decorateAppointmentWithVisitInfo(
   const patients = patientsStore || getPatientsStore();
   const packages = pkgStore || getPackageMembersStore();
 
-  const pat = patients.find((p) => matchPatientProfile(a, p));
+  const regIndex = getPatientsRegIdIndex();
+  const phoneIndex = getPatientsPhoneIndex();
+  const aReg = (a.registrationId || "").trim().toUpperCase();
+  const aDigits = normalizePhone(a.phone || "");
+  const aPhone = aDigits.length >= 10 ? aDigits.slice(-10) : "";
+
+  const pat =
+    (aReg && regIndex.get(aReg)) ||
+    (aPhone && phoneIndex.get(aPhone)?.[0]) ||
+    patients.find((p) => matchPatientProfile(a, p));
 
   // Prior completed visits (or visits where fee was collected or marked completed)
   const priorCompleted = store.filter(
-    (past) =>
-      past.id !== a.id &&
-      !past.isDeleted &&
-      (past.status === "COMPLETED" || past.isFeeCollected || (typeof past.totalPaid === "number" && past.totalPaid > 0)) &&
-      matchPatientProfile(a, past)
+    (past) => {
+      if (past.id === a.id || past.isDeleted) return false;
+      const isCompleted =
+        past.status === "COMPLETED" ||
+        past.isFeeCollected ||
+        (typeof past.totalPaid === "number" && past.totalPaid > 0);
+      if (!isCompleted) return false;
+      const pReg = (past.registrationId || "").trim().toUpperCase();
+      if (aReg && pReg && aReg === pReg) return true;
+      const pDigits = normalizePhone(past.phone || "");
+      const pPhone = pDigits.length >= 10 ? pDigits.slice(-10) : "";
+      if (aPhone && pPhone && aPhone === pPhone) return true;
+      return matchPatientProfile(a, past);
+    }
   );
 
   let completedCount = priorCompleted.length;
@@ -2396,7 +2511,15 @@ export function decorateAppointmentWithVisitInfo(
 
   // Check any prior appointments (even if not yet marked completed, e.g. historical records)
   const anyPrior = store.filter(
-    (past) => past.id !== a.id && !past.isDeleted && matchPatientProfile(a, past)
+    (past) => {
+      if (past.id === a.id || past.isDeleted) return false;
+      const pReg = (past.registrationId || "").trim().toUpperCase();
+      if (aReg && pReg && aReg === pReg) return true;
+      const pDigits = normalizePhone(past.phone || "");
+      const pPhone = pDigits.length >= 10 ? pDigits.slice(-10) : "";
+      if (aPhone && pPhone && aPhone === pPhone) return true;
+      return matchPatientProfile(a, past);
+    }
   );
 
   // Active follow-up date resolution

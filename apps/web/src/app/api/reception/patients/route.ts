@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const regId = searchParams.get("regId");
     const query = searchParams.get("query");
+    const search = (searchParams.get("search") || "").trim();
     const branch = searchParams.get("branch") || undefined;
     const session = searchParams.get("session") || "ALL"; // TODAY | YESTERDAY | ALL
     const page = parseInt(searchParams.get("page") || "1", 10);
@@ -22,14 +23,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, patient });
     }
 
-    // Search by text query (autocomplete)
+    // Autocomplete quick search (returns suggestions array capped at 15 items)
     if (query) {
-      const suggestions = await patientService.searchPatients(query, branch);
+      const suggestions = await patientService.searchPatients(query, branch, 15);
       return NextResponse.json({ success: true, suggestions });
     }
 
-    // List all patients for this branch
-    let all = await patientService.getAllPatients(branch);
+    // List patients: if search query is provided, search across all records using hash maps
+    let all: any[] = [];
+    if (search) {
+      all = await patientService.searchPatients(search, branch, 200);
+    } else {
+      all = await patientService.getAllPatients(branch);
+    }
+
+    // Session filter: for TODAY / YESTERDAY (only if not actively searching for a specific patient)
+    if (!search && (session === "TODAY" || session === "YESTERDAY")) {
+      const now = new Date();
+      let targetDate: Date;
+      if (session === "TODAY") {
+        targetDate = now;
+      } else {
+        targetDate = new Date(now);
+        targetDate.setDate(now.getDate() - 1);
+      }
+      const targetDateStr = toDateStr(targetDate);
+
+      // Get all appointments for this branch on the target date
+      const appts = await appointmentService.getAppointments(branch, targetDateStr);
+      const regIdsWithAppt = new Set(appts.map((a) => (a.registrationId || "").trim().toUpperCase()));
+
+      // Keep only patients who had an appointment on that day
+      all = all.filter((p) => regIdsWithAppt.has((p.regId || "").trim().toUpperCase()));
+    }
 
     // Fetch appointments to map visit counts & latest doctor/date
     const allAppts = await appointmentService.getAppointments();
@@ -57,26 +83,6 @@ export async function GET(req: NextRequest) {
         lastDoctorName: latest?.doctorName || "",
       };
     });
-
-    // Session filter: for TODAY / YESTERDAY, filter patients who had an appointment that day
-    if (session === "TODAY" || session === "YESTERDAY") {
-      const now = new Date();
-      let targetDate: Date;
-      if (session === "TODAY") {
-        targetDate = now;
-      } else {
-        targetDate = new Date(now);
-        targetDate.setDate(now.getDate() - 1);
-      }
-      const targetDateStr = toDateStr(targetDate);
-
-      // Get all appointments for this branch on the target date
-      const appts = await appointmentService.getAppointments(branch, targetDateStr);
-      const regIdsWithAppt = new Set(appts.map((a) => (a.registrationId || "").trim().toUpperCase()));
-
-      // Keep only patients who had an appointment on that day
-      enriched = enriched.filter((p) => regIdsWithAppt.has(p.regId.trim().toUpperCase()));
-    }
 
     // Sort: newest first by createdAt
     enriched = enriched.sort((a, b) => {

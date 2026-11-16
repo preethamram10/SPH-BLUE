@@ -103,6 +103,7 @@ export default function ReceptionAppointmentsPage() {
   const [patientSuggestions, setPatientSuggestions] = useState<PatientSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<any>(null);
   // Appointment Details
   const [appointmentDate, setAppointmentDate] = useState("");
   const [availableDoctors, setAvailableDoctors] = useState<DoctorOption[]>([]);
@@ -775,25 +776,30 @@ export default function ReceptionAppointmentsPage() {
     }
   }, [generatedSlots]);
 
-  // Autocomplete patient search
-  const handlePatientNameChange = async (text: string) => {
+  // Autocomplete patient search (debounced 250ms)
+  const handlePatientNameChange = (text: string) => {
     setPatientName(text);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
     if (text.trim().length >= 2) {
-      try {
-        const cleanB = branchName.replace(/Spiritual Homeopathy/gi, "").trim();
-        const res = await fetch(`/api/reception/patients?query=${encodeURIComponent(text.trim())}&branch=${encodeURIComponent(cleanB)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.suggestions)) {
-            setPatientSuggestions(data.suggestions);
-            setShowSuggestions(data.suggestions.length > 0);
-            return;
+      searchDebounceRef.current = setTimeout(async () => {
+        try {
+          const cleanB = branchName.replace(/Spiritual Homeopathy/gi, "").trim();
+          const res = await fetch(`/api/reception/patients?query=${encodeURIComponent(text.trim())}&branch=${encodeURIComponent(cleanB)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.suggestions)) {
+              setPatientSuggestions(data.suggestions);
+              setShowSuggestions(data.suggestions.length > 0);
+              return;
+            }
           }
+          setShowSuggestions(false);
+        } catch {
+          setShowSuggestions(false);
         }
-        setShowSuggestions(false);
-      } catch {
-        setShowSuggestions(false);
-      }
+      }, 250);
     } else {
       setShowSuggestions(false);
     }
