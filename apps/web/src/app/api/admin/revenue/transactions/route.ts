@@ -75,10 +75,21 @@ function isHistoricalOrUploadPlaceholder(a: any): boolean {
 
 export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const startDate = searchParams.get("startDate")?.trim();
+    const endDate = searchParams.get("endDate")?.trim();
+    const month = searchParams.get("month")?.trim();
+    const year = searchParams.get("year")?.trim();
+    const branchFilter = searchParams.get("branch")?.trim().toLowerCase();
+    const limitParam = searchParams.get("limit");
+    const limit = limitParam ? Math.max(1, parseInt(limitParam, 10)) : undefined;
+
+    // Use decorate = false to bypass heavy visit history / package decoration for ledger calculation
     const appointments = await appointmentService.getAppointments(
       undefined,
       undefined,
       undefined,
+      false,
       false
     );
 
@@ -278,7 +289,35 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(realTransactions);
+    // Sort newest transactions first
+    realTransactions.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    let filtered = realTransactions;
+
+    if (branchFilter && branchFilter !== "all" && branchFilter !== "all branches") {
+      filtered = filtered.filter((t) => t.branchName.toLowerCase().includes(branchFilter));
+    }
+
+    if (startDate) {
+      filtered = filtered.filter((t) => t.timestamp >= startDate);
+    }
+    if (endDate) {
+      filtered = filtered.filter((t) => t.timestamp <= endDate);
+    }
+    if (month) {
+      // YYYY-MM
+      filtered = filtered.filter((t) => t.timestamp.startsWith(month));
+    }
+    if (year) {
+      // YYYY
+      filtered = filtered.filter((t) => t.timestamp.startsWith(year));
+    }
+
+    if (limit && limit > 0) {
+      filtered = filtered.slice(0, limit);
+    }
+
+    return NextResponse.json(filtered);
   } catch (err: any) {
     return NextResponse.json([]);
   }

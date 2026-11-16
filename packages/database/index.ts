@@ -2563,7 +2563,7 @@ export function decorateAppointmentWithVisitInfo(
 }
 
 export const appointmentService = {
-  async getAppointments(branch?: string, date?: string, doctorId?: string, includeDeleted = false): Promise<AppointmentRecord[]> {
+  async getAppointments(branch?: string, date?: string, doctorId?: string, includeDeleted = false, decorate = true): Promise<AppointmentRecord[]> {
     let list = getAppointmentsStore();
     if (!includeDeleted) {
       list = list.filter((a) => !a.isDeleted);
@@ -2603,6 +2603,10 @@ export const appointmentService = {
           targetName.includes(dName)
         );
       });
+    }
+
+    if (!decorate) {
+      return list;
     }
 
     const allStore = getAppointmentsStore();

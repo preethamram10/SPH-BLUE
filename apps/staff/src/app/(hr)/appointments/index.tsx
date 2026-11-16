@@ -397,7 +397,6 @@ export default function HRBookAppointmentScreen() {
         }
         setActiveBranch(b);
         setBranchesList([name]);
-        fetchDoctorsAndNoShows(name, appointmentDate);
       } else {
         fetch(`${API_BASE_URL}/branches`)
           .then((res) => res.json())
@@ -406,24 +405,23 @@ export default function HRBookAppointmentScreen() {
               const def = data.data[0].name;
               setActiveBranch({ name: def });
               setBranchesList([def]);
-              fetchDoctorsAndNoShows(def, appointmentDate);
             }
           })
           .catch(() => {
             const def = "Kphb Branch";
             setActiveBranch({ name: def });
             setBranchesList([def]);
-            fetchDoctorsAndNoShows(def, appointmentDate);
           });
       }
     });
   }, []);
 
   useEffect(() => {
-    const bName = activeBranch?.name || "KPHB Branch";
+    const bName = activeBranch?.name;
+    if (!bName) return;
     fetchDoctorsAndNoShows(bName, appointmentDate, consultationMode);
     setSelectedSlot("");
-  }, [appointmentDate, activeBranch, consultationMode]);
+  }, [appointmentDate, activeBranch?.name, consultationMode]);
 
   // Fetch temporary slots and existing appointments count for this branch, doctor, and date
   useEffect(() => {

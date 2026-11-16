@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "35", 10)));
 
     const [allAppts, rawBranches] = await Promise.all([
-      appointmentService.getAppointments(undefined, undefined, undefined, false),
+      appointmentService.getAppointments(undefined, undefined, undefined, false, false),
       branchService.getAllBranches(),
     ]);
 
@@ -81,6 +81,56 @@ export async function GET(req: NextRequest) {
     const tomorrowDDMMYYYY = `${String(tomorrow.getDate()).padStart(2, "0")}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${tomorrow.getFullYear()}`;
     const tomorrowTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate()).getTime();
 
+    // PERFORMANCE INDEX: Build O(1) patient lookup buckets by phone & regId
+    // This turns a 200,000,000 quadratic iteration server-freeze into an instant O(N) lookup!
+    const patientBuckets = new Map<string, typeof allAppts>();
+    for (const appt of allAppts) {
+      const reg = (appt.registrationId || (appt as any).regId || (appt as any).patientId || "").trim().toUpperCase();
+      if (reg.length >= 3) {
+        const k = `reg:${reg}`;
+        const b = patientBuckets.get(k);
+        if (b) b.push(appt);
+        else patientBuckets.set(k, [appt]);
+      }
+      const rawPhone = String(appt.phone || (appt as any).phoneNumber || "").replace(/\D/g, "");
+      if (rawPhone.length >= 10) {
+        const k = `ph:${rawPhone.slice(-10)}`;
+        const b = patientBuckets.get(k);
+        if (b) b.push(appt);
+        else patientBuckets.set(k, [appt]);
+      }
+    }
+
+    const getCandidateSiblings = (a: (typeof allAppts)[0]) => {
+      const candidates: typeof allAppts = [];
+      const seenIds = new Set<string>();
+      const reg = (a.registrationId || (a as any).regId || (a as any).patientId || "").trim().toUpperCase();
+      if (reg.length >= 3) {
+        const list = patientBuckets.get(`reg:${reg}`);
+        if (list) {
+          for (const item of list) {
+            if (item.id !== a.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              candidates.push(item);
+            }
+          }
+        }
+      }
+      const rawPhone = String(a.phone || (a as any).phoneNumber || "").replace(/\D/g, "");
+      if (rawPhone.length >= 10) {
+        const list = patientBuckets.get(`ph:${rawPhone.slice(-10)}`);
+        if (list) {
+          for (const item of list) {
+            if (item.id !== a.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              candidates.push(item);
+            }
+          }
+        }
+      }
+      return candidates;
+    };
+
     // Map follow-up records: Exclude deleted, cancelled, already-booked follow-ups,
     // active prospective appointments (which belong to Appointments desk), and patients who already have an upcoming booked appointment
     const followUpsList = allAppts
@@ -99,10 +149,11 @@ export async function GET(req: NextRequest) {
           return false;
         }
 
+        const siblingAppts = getCandidateSiblings(a);
+
         // Check if this patient already has an active upcoming appointment confirmed/scheduled
-        const hasUpcomingBooked = allAppts.some(
+        const hasUpcomingBooked = siblingAppts.some(
           (other) =>
-            other.id !== a.id &&
             !other.isDeleted &&
             other.status !== "CANCELLED" &&
             other.status !== "COMPLETED" &&
@@ -119,8 +170,8 @@ export async function GET(req: NextRequest) {
         const aApptTime = a.appointmentDate ? parseDDMMYYYYToTime(a.appointmentDate) : 0;
         const aTime = aCreated || aApptTime;
 
-        const hasNewerAppointment = allAppts.some((other) => {
-          if (other.id === a.id || other.isDeleted || other.status === "CANCELLED") return false;
+        const hasNewerAppointment = siblingAppts.some((other) => {
+          if (other.isDeleted || other.status === "CANCELLED") return false;
           if (!matchPatientProfile(a, other)) return false;
           const otherCreated = other.createdAt ? new Date(other.createdAt).getTime() : 0;
           const otherApptTime = other.appointmentDate ? parseDDMMYYYYToTime(other.appointmentDate) : 0;

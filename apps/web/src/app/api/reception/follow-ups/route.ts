@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     const exportAll = searchParams.get("export") === "true";
 
     const [all, rawBranches]: [any[], any[]] = await Promise.all([
-      appointmentService.getAppointments(),
+      appointmentService.getAppointments(undefined, undefined, undefined, false, false),
       branchService.getAllBranches(),
     ]);
 
@@ -84,6 +84,55 @@ export async function GET(req: NextRequest) {
     const tomorrow = new Date(now.getTime() + 86400000);
     const tomorrowDDMMYYYY = `${String(tomorrow.getDate()).padStart(2, "0")}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${tomorrow.getFullYear()}`;
     const tomorrowTime = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate()).getTime();
+
+    // PERFORMANCE INDEX: Build O(1) patient lookup buckets by phone & regId
+    const patientBuckets = new Map<string, any[]>();
+    for (const appt of all) {
+      const reg = (appt.registrationId || appt.regId || appt.patientId || "").trim().toUpperCase();
+      if (reg.length >= 3) {
+        const k = `reg:${reg}`;
+        const b = patientBuckets.get(k);
+        if (b) b.push(appt);
+        else patientBuckets.set(k, [appt]);
+      }
+      const rawPhone = String(appt.phone || appt.phoneNumber || "").replace(/\D/g, "");
+      if (rawPhone.length >= 10) {
+        const k = `ph:${rawPhone.slice(-10)}`;
+        const b = patientBuckets.get(k);
+        if (b) b.push(appt);
+        else patientBuckets.set(k, [appt]);
+      }
+    }
+
+    const getCandidateSiblings = (a: any) => {
+      const candidates: any[] = [];
+      const seenIds = new Set<string>();
+      const reg = (a.registrationId || a.regId || a.patientId || "").trim().toUpperCase();
+      if (reg.length >= 3) {
+        const list = patientBuckets.get(`reg:${reg}`);
+        if (list) {
+          for (const item of list) {
+            if (item.id !== a.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              candidates.push(item);
+            }
+          }
+        }
+      }
+      const rawPhone = String(a.phone || a.phoneNumber || "").replace(/\D/g, "");
+      if (rawPhone.length >= 10) {
+        const list = patientBuckets.get(`ph:${rawPhone.slice(-10)}`);
+        if (list) {
+          for (const item of list) {
+            if (item.id !== a.id && !seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              candidates.push(item);
+            }
+          }
+        }
+      }
+      return candidates;
+    };
 
 interface FollowUpRecordItem {
   id: string;
@@ -121,10 +170,11 @@ interface FollowUpRecordItem {
         return false;
       }
 
+      const siblingAppts = getCandidateSiblings(a);
+
       // Check if patient already has an active upcoming appointment booked/confirmed (takes them off the follow-up list)
-      const hasUpcomingBooked = (all as any[]).some(
+      const hasUpcomingBooked = siblingAppts.some(
         (other: any) =>
-          other.id !== a.id &&
           !other.isDeleted &&
           other.status !== "CANCELLED" &&
           other.status !== "COMPLETED" &&
@@ -141,8 +191,8 @@ interface FollowUpRecordItem {
       const aApptTime = a.appointmentDate ? parseDDMMYYYYToTime(a.appointmentDate) : 0;
       const aTime = aCreated || aApptTime;
 
-      const hasNewerAppointment = (all as any[]).some((other: any) => {
-        if (other.id === a.id || other.isDeleted || other.status === "CANCELLED") return false;
+      const hasNewerAppointment = siblingAppts.some((other: any) => {
+        if (other.isDeleted || other.status === "CANCELLED") return false;
         if (!matchPatientProfile(a, other)) return false;
         const otherCreated = other.createdAt ? new Date(other.createdAt).getTime() : 0;
         const otherApptTime = other.appointmentDate ? parseDDMMYYYYToTime(other.appointmentDate) : 0;

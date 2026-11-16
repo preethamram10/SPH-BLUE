@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const isSearching = !!query;
     const [rawPatients, rawAppointments, rawBranches] = await Promise.all([
       isSearching ? patientService.searchPatients(query, branchFilter, 300) : patientService.getAllPatients(),
-      appointmentService.getAppointments(undefined, undefined, undefined, false),
+      appointmentService.getAppointments(undefined, undefined, undefined, false, false),
       branchService.getAllBranches(),
     ]);
 

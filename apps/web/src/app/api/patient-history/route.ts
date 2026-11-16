@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
     // 3. STRICT FILTERING BY UNIQUE REGISTRATION ID ONLY
     // Multiple profiles can share a phone number, but each profile's history belongs ONLY to its own ID
-    const allAppts = await appointmentService.getAppointments();
+    const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
     const patientAppts = allAppts.filter((a) => {
       if (a.isDeleted) return false;
       if (cleanRegId) {
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
         targetAppt = await appointmentService.getAppointmentById(appointmentId);
       }
       if (!targetAppt && regId) {
-        const allAppts = await appointmentService.getAppointments();
+        const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
         const matches = allAppts
           .filter((a) => !a.isDeleted && (a.registrationId || "").trim().toUpperCase() === regId.trim().toUpperCase())
           .sort((a, b) => (b.appointmentDate || "").localeCompare(a.appointmentDate || ""));
@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
 
       // 2. Fallback: Search all appointments for this regId matching the imageUrl
       if (imageUrl) {
-        const allAppts = await appointmentService.getAppointments();
+        const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
         for (const a of allAppts) {
           if (!a.isDeleted && Array.isArray(a.prescriptionImages) && a.prescriptionImages.includes(imageUrl)) {
             const updated = a.prescriptionImages.filter((url: string) => url !== imageUrl);

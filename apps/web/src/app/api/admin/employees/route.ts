@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (category === "TELECALLER") {
-      const allAppts = await appointmentService.getAppointments();
+      const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
       const countMap: Record<string, number> = {};
       for (const a of allAppts) {
         if (a.bookedByTelecallerId) {

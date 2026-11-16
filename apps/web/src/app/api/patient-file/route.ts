@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     let appt = await appointmentService.getAppointmentById(id);
     if (!appt) {
       // Fallback: check if id is a registrationId or phone
-      const allAppts = await appointmentService.getAppointments();
+      const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
       const cleanSearch = id.trim().toUpperCase();
       const matches = allAppts
         .filter((a) => !a.isDeleted && ((a.registrationId || "").trim().toUpperCase() === cleanSearch || (a.phone || "").replace(/\D/g, "").slice(-10) === id.replace(/\D/g, "").slice(-10)))
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Get all visits for THIS specific patient profile only (isolated by registrationId/name, NOT shared by phone)
-    const all = await appointmentService.getAppointments();
+    const all = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
     const allPatientVisits = all.filter(
       (a) => !a.isDeleted && matchPatientProfile(a, appt)
     );
