@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { payCutService } from "@spiritualhomeo/database";
+import { uploadPayCutProofToS3 } from "@/utils/s3Upload";
 
 export async function GET(req: Request) {
   try {
@@ -26,6 +27,19 @@ export async function POST(req: Request) {
       );
     }
 
+    let finalImageUrl = image;
+    if (typeof image === "string" && image.startsWith("data:")) {
+      try {
+        const match = image.match(/^data:([^;]+);base64,(.+)$/);
+        const contentType = match ? match[1] : "image/jpeg";
+        const base64Data = match ? match[2] : image;
+        const buffer = Buffer.from(base64Data, "base64");
+        finalImageUrl = await uploadPayCutProofToS3(buffer, `proof_${Date.now()}.jpg`, contentType, employeeId);
+      } catch (s3Err) {
+        console.warn("Pay cut S3 upload fallback:", s3Err);
+      }
+    }
+
     const created = await payCutService.createPayCut({
       employeeId,
       employeeName: employeeName || "Staff Member",
@@ -34,7 +48,7 @@ export async function POST(req: Request) {
       reason,
       month: month || new Date().toLocaleString("en-US", { month: "short", year: "numeric" }),
       date: date || new Date().toISOString().split("T")[0],
-      image,
+      image: finalImageUrl,
       issuedBy: issuedBy || "Admin",
     });
 

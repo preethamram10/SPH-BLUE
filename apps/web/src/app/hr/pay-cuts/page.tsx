@@ -16,6 +16,10 @@ import {
   User,
   X,
   Check,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export interface PayCutItem {
@@ -58,9 +62,44 @@ export default function AdminPayCutsPage() {
   const [cutMonth, setCutMonth] = useState("");
   const [cutDate, setCutDate] = useState("");
   const [cutImage, setCutImage] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Attachment Full-Screen Preview Modal
+  const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
 
   // Printable Notice State
   const [selectedSlip, setSelectedSlip] = useState<PayCutItem | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingImage(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      if (selectedEmpId) {
+        formData.append("employeeId", selectedEmpId);
+      }
+
+      const res = await fetch("/api/admin/pay-cuts/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success && data.url) {
+        setCutImage(data.url);
+      } else {
+        alert(data.error || "Failed to upload file to AWS S3.");
+      }
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      alert("Network error while uploading proof to AWS S3.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   useEffect(() => {
     setCutMonth(new Date().toLocaleString("en-US", { month: "short", year: "numeric" }));
@@ -293,14 +332,13 @@ export default function AdminPayCutsPage() {
                         <td className="py-3.5 px-4 max-w-xs text-slate-800">
                           <p className="font-medium">{cut.reason}</p>
                           {cut.image && (
-                            <a
-                              href={cut.image}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[10px] text-sky-600 underline font-semibold mt-0.5 inline-block"
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImageModal(cut.image!)}
+                              className="text-[10px] text-sky-600 hover:text-sky-800 underline font-semibold mt-1 flex items-center gap-1 cursor-pointer"
                             >
-                              View Proof / Receipt
-                            </a>
+                              <Eye className="w-3 h-3" /> View Proof / Memo
+                            </button>
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-right font-black text-rose-600 text-sm whitespace-nowrap">
@@ -434,18 +472,83 @@ export default function AdminPayCutsPage() {
                 />
               </div>
 
-              {/* Optional Image */}
+              {/* Attachment Proof Upload & Preview */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Attachment Proof / Image URL (Optional)
+                  Attachment Proof / Image File (AWS S3)
                 </label>
-                <input
-                  type="text"
-                  placeholder="https://... or data:image/..."
-                  value={cutImage}
-                  onChange={(e) => setCutImage(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
+
+                {cutImage ? (
+                  <div className="relative rounded-xl border border-slate-200 bg-slate-50 p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {cutImage.match(/\.(jpeg|jpg|png|gif|webp)($|\?)/i) || cutImage.startsWith("data:image") ? (
+                        <img
+                          src={cutImage}
+                          alt="Proof"
+                          className="w-12 h-12 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 transition"
+                          onClick={() => setPreviewImageModal(cutImage)}
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                          <FileText className="w-6 h-6" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800 truncate">Proof Uploaded (AWS S3)</p>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImageModal(cutImage)}
+                          className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3" /> Preview Attachment
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCutImage("")}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Remove Attachment"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className={`flex flex-col items-center justify-center w-full px-4 py-3.5 rounded-xl border-2 border-dashed ${uploadingImage ? "border-rose-400 bg-rose-50/50" : "border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300"} transition cursor-pointer`}>
+                      {uploadingImage ? (
+                        <div className="flex flex-col items-center gap-1.5 py-1">
+                          <Loader2 className="w-6 h-6 text-rose-600 animate-spin" />
+                          <span className="text-xs font-bold text-rose-700">Uploading proof to AWS S3...</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 text-center">
+                          <Upload className="w-5 h-5 text-slate-400 mb-0.5" />
+                          <span className="text-xs font-bold text-slate-700">Upload Photo or Document Proof</span>
+                          <span className="text-[10px] text-slate-400">JPG, PNG, PDF up to 10MB (stored securely in AWS S3)</span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        disabled={uploadingImage}
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase">Or Paste URL:</span>
+                      <input
+                        type="text"
+                        placeholder="https://... or image link"
+                        value={cutImage}
+                        onChange={(e) => setCutImage(e.target.value)}
+                        className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -565,6 +668,49 @@ export default function AdminPayCutsPage() {
                   <p className="font-bold">Authorized Signatory</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* ATTACHMENT PROOF LIGHTBOX PREVIEW MODAL                              */}
+      {/* =================================================================== */}
+      {previewImageModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <span className="text-xs font-bold flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-rose-400" /> Pay Cut Attachment Proof (AWS S3)
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImageModal}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" /> Open Full
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageModal(null)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[75vh] overflow-auto">
+              {previewImageModal.match(/\.(pdf)($|\?)/i) ? (
+                <iframe src={previewImageModal} className="w-full h-[65vh] rounded-lg" title="PDF Proof" />
+              ) : (
+                <img
+                  src={previewImageModal}
+                  alt="Attachment Proof"
+                  className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-md"
+                />
+              )}
             </div>
           </div>
         </div>

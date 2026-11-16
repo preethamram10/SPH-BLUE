@@ -141,6 +141,32 @@ export async function uploadAttendancePhotoToS3(
 }
 
 /**
+ * Upload a staff pay cut / disciplinary penalty proof attachment to AWS S3 using attendance credentials
+ */
+export async function uploadPayCutProofToS3(
+  fileBuffer: Buffer,
+  fileName: string,
+  contentType: string,
+  employeeId?: string
+): Promise<string> {
+  const creds = getAttendanceS3Credentials();
+  const safeId = (employeeId || "staff").replace(/[^a-zA-Z0-9-_]/g, "_");
+  const ext = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".")) : ".jpg";
+  const timestamp = Date.now();
+  const key = `pay-cuts/${safeId}/${timestamp}_proof${ext}`;
+
+  return await uploadBufferToS3({
+    buffer: fileBuffer,
+    key,
+    contentType,
+    bucket: creds.bucket,
+    region: creds.region,
+    accessKeyId: creds.accessKeyId,
+    secretAccessKey: creds.secretAccessKey,
+  });
+}
+
+/**
  * Generic AWS S3 V4 signer and uploader.
  * All credentials are supplied via options or resolved from environment variables.
  */

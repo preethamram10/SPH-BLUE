@@ -12,6 +12,7 @@ import {
   Image,
   RefreshControl,
   Platform,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -121,6 +122,21 @@ export default function MobileStaffDashboard() {
   const [punchStatus, setPunchStatus] = useState<"Present" | "Late" | null>(null);
   const [lateMinutes, setLateMinutes] = useState(0);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  // Pay Cuts & Penalties issued by Admin/HR
+  const [staffPayCuts, setStaffPayCuts] = useState<any[]>([]);
+  const [selectedProofImage, setSelectedProofImage] = useState<string | null>(null);
+
+  const fetchStaffPayCuts = useCallback((empId: string) => {
+    fetch(`${API_BASE_URL}/admin/pay-cuts?employeeId=${encodeURIComponent(empId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.payCuts)) {
+          setStaffPayCuts(data.payCuts);
+        }
+      })
+      .catch((err) => console.warn("Failed to fetch staff pay cuts:", err));
+  }, []);
 
   // Daily Attendance Logs for This Month (Nov 2026)
   const thisMonthDailyLogs = useMemo<DailyLogRecord[]>(() => {
@@ -409,9 +425,14 @@ export default function MobileStaffDashboard() {
     // Load active staff profile if available
     getActiveStaff().then((staff) => {
       if (staff) {
-        if (staff.id) setStaffId(staff.id);
+        if (staff.id) {
+          setStaffId(staff.id);
+          fetchStaffPayCuts(staff.id);
+        }
         if (staff.name) setStaffName(staff.name);
         if (staff.branch) setBranchName(staff.branch);
+      } else {
+        fetchStaffPayCuts("EMP-003");
       }
     });
 
@@ -724,7 +745,11 @@ export default function MobileStaffDashboard() {
   const unpaidLeaveDays = leaveStats.approved > 0 ? 1 : 0;
   const leaveDeductionAmount = unpaidLeaveDays * dailyRate;
   const professionalTax = 200;
-  const totalDeductions = lateDeductionAmount + leaveDeductionAmount + professionalTax;
+  const totalMiscPayCuts = useMemo(() => {
+    return staffPayCuts.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+  }, [staffPayCuts]);
+
+  const totalDeductions = lateDeductionAmount + leaveDeductionAmount + professionalTax + totalMiscPayCuts;
   const netTakeHomePay = Math.max(0, Math.round(baseSalary - totalDeductions));
 
   return (
@@ -1127,6 +1152,61 @@ export default function MobileStaffDashboard() {
                 </Text>
               </View>
             </View>
+
+            {/* Disciplinary Penalties & Pay Cuts */}
+            {staffPayCuts.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>DISCIPLINARY PENALTIES &amp; PAY CUTS</Text>
+                <View style={styles.breakdownCard}>
+                  {staffPayCuts.map((cut) => (
+                    <View key={cut.id} style={styles.breakdownRow}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={styles.breakdownLabel}>{cut.reason}</Text>
+                        <Text style={styles.breakdownSub}>
+                          {cut.date} • Issued by {cut.issuedBy}
+                        </Text>
+                        {cut.image && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              if (cut.image.toLowerCase().includes(".pdf")) {
+                                Linking.openURL(cut.image).catch(() => {
+                                  Alert.alert("Notice", "Unable to open PDF link on this device.");
+                                });
+                              } else {
+                                setSelectedProofImage(cut.image);
+                              }
+                            }}
+                            activeOpacity={0.7}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 4,
+                              marginTop: 5,
+                            }}
+                          >
+                            <Ionicons name="document-attach" size={14} color="#0284c7" />
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7" }}>
+                              View Attachment Proof (AWS S3)
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text style={[styles.breakdownVal, { color: "#dc2626" }]}>
+                        -₹{Number(cut.amount).toLocaleString("en-IN")}.00
+                      </Text>
+                    </View>
+                  ))}
+                  <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
+                    <Text style={[styles.breakdownTotalLabel, { color: "#dc2626" }]}>
+                      Total Miscellaneous Penalties
+                    </Text>
+                    <Text style={[styles.breakdownTotalVal, { color: "#dc2626" }]}>
+                      -₹{totalMiscPayCuts.toLocaleString("en-IN")}.00
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
 
             {/* Payout Direct Deposit Information */}
             <View style={styles.payoutInfoCard}>
@@ -1659,6 +1739,41 @@ export default function MobileStaffDashboard() {
               >
                 <Text style={[styles.calQuickBtnText, { color: "#475569" }]}>Close</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Attachment Proof Viewer Modal */}
+      <Modal
+        visible={Boolean(selectedProofImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedProofImage(null)}
+      >
+        <View style={styles.proofModalBackdrop}>
+          <View style={styles.proofModalCard}>
+            <View style={styles.proofModalHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="document-attach" size={18} color="#dc2626" />
+                <Text style={styles.proofModalTitle}>Pay Cut Attachment Proof (AWS S3)</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSelectedProofImage(null)}
+                style={styles.proofModalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.proofModalBody}>
+              {selectedProofImage && (
+                <Image
+                  source={{ uri: selectedProofImage }}
+                  style={styles.proofModalImage}
+                  resizeMode="contain"
+                />
+              )}
             </View>
           </View>
         </View>
@@ -2610,5 +2725,49 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#0284c7",
+  },
+  proofModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  proofModalCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    width: "100%",
+    maxHeight: "85%",
+    overflow: "hidden",
+  },
+  proofModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  proofModalTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  proofModalCloseBtn: {
+    padding: 4,
+  },
+  proofModalBody: {
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 280,
+    backgroundColor: "#0f172a",
+  },
+  proofModalImage: {
+    width: "100%",
+    height: 380,
+    borderRadius: 8,
   },
 });
