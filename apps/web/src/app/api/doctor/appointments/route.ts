@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService } from "@spiritualhomeo/database";
+import { appointmentService, decorateAppointmentWithVisitInfo } from "@spiritualhomeo/database";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +27,12 @@ export async function GET(req: NextRequest) {
 
     // If viewing a specific date (e.g. Today), also include any active IN_CONSULTATION appointments for this doctor from past dates
     if (date) {
-      const allDocAppts = await appointmentService.getAppointments(branch, undefined, doctorName);
+      const allDocAppts = await appointmentService.getAppointments(branch, undefined, doctorName, false, false);
       const activeUnfinishedFromPast = allDocAppts.filter(
         (a) => a.status === "IN_CONSULTATION" && !appointments.some((x) => x.id === a.id)
       );
       if (activeUnfinishedFromPast.length > 0) {
-        appointments = [...activeUnfinishedFromPast, ...appointments];
+        appointments = [...activeUnfinishedFromPast.map((a) => decorateAppointmentWithVisitInfo(a)), ...appointments];
       }
     }
     return NextResponse.json({ success: true, appointments });

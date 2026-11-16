@@ -22,6 +22,10 @@ declare global {
   // eslint-disable-next-line no-var
   var __sphAppointmentsStore: any[] | undefined;
   // eslint-disable-next-line no-var
+  var __sphApptsPhoneIndex: Map<string, any[]> | undefined;
+  // eslint-disable-next-line no-var
+  var __sphApptsRegIdIndex: Map<string, any[]> | undefined;
+  // eslint-disable-next-line no-var
   var __sphRegistrationSequencesStore: Record<string, number> | undefined;
   // eslint-disable-next-line no-var
   var __sphBranchTargetsStore: any[] | undefined;
@@ -2037,12 +2041,10 @@ export const patientService = {
     const last10 = cleanPhone.slice(-10);
     const phoneIndex = getPatientsPhoneIndex();
     const active = (phoneIndex.get(last10) || []).filter((p) => !p.isDeleted);
-    const appointments = getAppointmentsStore();
+    const apptRegIndex = getAppointmentsRegIdIndex();
 
     return active.map((patient) => {
-      const pAppointments = appointments.filter(
-        (a) => a.registrationId.toUpperCase() === patient.regId.toUpperCase()
-      );
+      const pAppointments = (apptRegIndex.get(patient.regId.toUpperCase()) || []).filter((a) => !a.isDeleted);
       const lastAppt = pAppointments[0];
       return {
         ...patient,
@@ -2449,14 +2451,64 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
   return [];
 }
 
+function rebuildAppointmentIndices(): void {
+  const store = global.__sphAppointmentsStore || [];
+  const phoneMap = new Map<string, AppointmentRecord[]>();
+  const regIdMap = new Map<string, AppointmentRecord[]>();
+
+  for (const a of store) {
+    if (a.isDeleted) continue;
+
+    const reg = (a.registrationId || (a as any).regId || (a as any).patientId || "").trim().toUpperCase();
+    if (reg) {
+      let list = regIdMap.get(reg);
+      if (!list) {
+        list = [];
+        regIdMap.set(reg, list);
+      }
+      list.push(a);
+    }
+
+    const digits = normalizePhone(a.phone || (a as any).phoneNumber || "");
+    if (digits && digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      let list = phoneMap.get(last10);
+      if (!list) {
+        list = [];
+        phoneMap.set(last10, list);
+      }
+      list.push(a);
+    }
+  }
+
+  global.__sphApptsPhoneIndex = phoneMap;
+  global.__sphApptsRegIdIndex = regIdMap;
+}
+
+function getAppointmentsPhoneIndex(): Map<string, AppointmentRecord[]> {
+  if (!global.__sphApptsPhoneIndex) {
+    rebuildAppointmentIndices();
+  }
+  return global.__sphApptsPhoneIndex!;
+}
+
+function getAppointmentsRegIdIndex(): Map<string, AppointmentRecord[]> {
+  if (!global.__sphApptsRegIdIndex) {
+    rebuildAppointmentIndices();
+  }
+  return global.__sphApptsRegIdIndex!;
+}
+
 function saveAppointmentsToDisk(data: AppointmentRecord[]): void {
   const file = getAppointmentsCachePath();
   safeAtomicWrite(file, data);
+  rebuildAppointmentIndices();
 }
 
 function getAppointmentsStore(): AppointmentRecord[] {
   if (!global.__sphAppointmentsStore) {
     global.__sphAppointmentsStore = loadAppointmentsFromDisk();
+    rebuildAppointmentIndices();
   }
   return global.__sphAppointmentsStore;
 }
@@ -2486,21 +2538,45 @@ export function decorateAppointmentWithVisitInfo(
     (aPhone && phoneIndex.get(aPhone)?.[0]) ||
     patients.find((p) => matchPatientProfile(a, p));
 
+  // HIGH-PERFORMANCE CANDIDATE LOOKUP:
+  // Instead of scanning all 20,000 appointments twice (O(N)), look up sibling appointments in O(1)
+  const apptPhoneIdx = getAppointmentsPhoneIndex();
+  const apptRegIdx = getAppointmentsRegIdIndex();
+  const candidatePool: AppointmentRecord[] = [];
+  const seenIds = new Set<string>();
+
+  if (aReg) {
+    const list = apptRegIdx.get(aReg);
+    if (list) {
+      for (const item of list) {
+        if (item.id !== a.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          candidatePool.push(item);
+        }
+      }
+    }
+  }
+  if (aPhone) {
+    const list = apptPhoneIdx.get(aPhone);
+    if (list) {
+      for (const item of list) {
+        if (item.id !== a.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          candidatePool.push(item);
+        }
+      }
+    }
+  }
+
   // Prior completed visits (or visits where fee was collected or marked completed)
-  const priorCompleted = store.filter(
+  const priorCompleted = candidatePool.filter(
     (past) => {
-      if (past.id === a.id || past.isDeleted) return false;
+      if (past.isDeleted) return false;
       const isCompleted =
         past.status === "COMPLETED" ||
         past.isFeeCollected ||
         (typeof past.totalPaid === "number" && past.totalPaid > 0);
-      if (!isCompleted) return false;
-      const pReg = (past.registrationId || "").trim().toUpperCase();
-      if (aReg && pReg && aReg === pReg) return true;
-      const pDigits = normalizePhone(past.phone || "");
-      const pPhone = pDigits.length >= 10 ? pDigits.slice(-10) : "";
-      if (aPhone && pPhone && aPhone === pPhone) return true;
-      return matchPatientProfile(a, past);
+      return isCompleted;
     }
   );
 
@@ -2510,17 +2586,7 @@ export function decorateAppointmentWithVisitInfo(
   }
 
   // Check any prior appointments (even if not yet marked completed, e.g. historical records)
-  const anyPrior = store.filter(
-    (past) => {
-      if (past.id === a.id || past.isDeleted) return false;
-      const pReg = (past.registrationId || "").trim().toUpperCase();
-      if (aReg && pReg && aReg === pReg) return true;
-      const pDigits = normalizePhone(past.phone || "");
-      const pPhone = pDigits.length >= 10 ? pDigits.slice(-10) : "";
-      if (aPhone && pPhone && aPhone === pPhone) return true;
-      return matchPatientProfile(a, past);
-    }
-  );
+  const anyPrior = candidatePool.filter((past) => !past.isDeleted);
 
   // Active follow-up date resolution
   let activeFollowUp = pat?.activeFollowUpDate;

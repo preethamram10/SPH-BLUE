@@ -44,11 +44,11 @@ export async function GET(req: Request) {
     const d = String(now.getDate()).padStart(2, "0");
     const todayStr = searchParams.get("date") || `${y}-${m}-${d}`;
 
-    // Parallel fetch from services
+    // Parallel fetch from services (use decorate = false for stats to save CPU/RAM)
     const [branches, allAppointments, employees, attendanceRecords, allLeaves] =
       await Promise.all([
         branchService.getAllBranches(),
-        appointmentService.getAppointments(undefined, undefined, undefined, false),
+        appointmentService.getAppointments(undefined, undefined, undefined, false, false),
         employeeService.getAllEmployees(),
         staffAttendanceService.getAllRecords(undefined, todayStr),
         staffLeaveService.getAllLeaves(),
@@ -82,20 +82,22 @@ export async function GET(req: Request) {
       return clean;
     };
 
+    // Pre-filter today's appointments once in O(N) instead of scanning all 20,000 for each branch
+    const todayAppointments = allAppointments.filter((a) => {
+      if (a.isDeleted || a.status === "CANCELLED") return false;
+      const aDate = normalizeDateToYYYYMMDD(a.appointmentDate || a.createdAt);
+      const aPaidDate = a.paidAt ? normalizeDateToYYYYMMDD(a.paidAt) : "";
+      return aDate === todayStr || aPaidDate === todayStr;
+    });
+
     // Calculate Branch Stats
     const branchStats: BranchStat[] = activeBranches.map((branch) => {
       const bKey = cleanBranch(branch.name);
 
-      // Appointments today for this branch
-      const branchApptsToday = allAppointments.filter((a) => {
-        if (a.isDeleted || a.status === "CANCELLED") return false;
-        const aDate = normalizeDateToYYYYMMDD(a.appointmentDate || a.createdAt);
-        const aPaidDate = a.paidAt ? normalizeDateToYYYYMMDD(a.paidAt) : "";
+      // Appointments today for this branch from the pre-filtered todayAppointments pool
+      const branchApptsToday = todayAppointments.filter((a) => {
         const aBranchKey = cleanBranch(a.branch || "");
-        const matchBranch =
-          !bKey || aBranchKey.includes(bKey) || bKey.includes(aBranchKey);
-        const matchDate = aDate === todayStr || aPaidDate === todayStr;
-        return matchBranch && matchDate;
+        return !bKey || aBranchKey.includes(bKey) || bKey.includes(aBranchKey);
       });
 
       const todayPatients = branchApptsToday.length;
