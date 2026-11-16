@@ -24,6 +24,11 @@ import {
   Copy,
   Download,
 } from "lucide-react";
+import {
+  downloadPayCutPDF,
+  sharePayCutPDF,
+  printPayCutSlip,
+} from "@/utils/generatePayCutPDF";
 
 export interface PayCutItem {
   id: string;
@@ -82,32 +87,29 @@ export default function AdminPayCutsPage() {
   const deductionAmount = Number(selectedSlip?.amount || 0);
   const netSalary = Math.max(0, baseSalary - deductionAmount);
 
-  const handleShareToWhatsApp = () => {
+  const [sharingPdf, setSharingPdf] = useState(false);
+
+  const handleSharePdfAttachment = async () => {
     if (!selectedSlip) return;
-    const cleanPhone = String(empPhone).replace(/\D/g, "");
-    const memoText = `*SPIRITUAL HOMEOPATHY CLINICS*
-*OFFICIAL SALARY DEDUCTION / DISCIPLINARY NOTICE*
+    setSharingPdf(true);
+    try {
+      await sharePayCutPDF(selectedSlip, currentSlipEmp);
+    } catch (err) {
+      console.error("Error sharing PDF memo:", err);
+      downloadPayCutPDF(selectedSlip, currentSlipEmp);
+    } finally {
+      setSharingPdf(false);
+    }
+  };
 
-Dear ${selectedSlip.employeeName},
-Please find below the official details of your disciplinary salary deduction:
+  const handleDownloadPdf = () => {
+    if (!selectedSlip) return;
+    downloadPayCutPDF(selectedSlip, currentSlipEmp);
+  };
 
-• *Memo Ref ID*: ${selectedSlip.id}
-• *Applicable Month*: ${selectedSlip.month}
-• *Incident / Deduction Date*: ${selectedSlip.date}
-• *Branch Location*: ${selectedSlip.branch}
-• *Reason / Note*: ${selectedSlip.reason}
-• *Monthly Base Salary*: ₹${baseSalary.toLocaleString("en-IN")}
-• *Deduction Amount*: -₹${deductionAmount.toLocaleString("en-IN")}
-• *Net Adjusted Pay*: ₹${netSalary.toLocaleString("en-IN")}
-• *Approved By*: ${selectedSlip.issuedBy}
-${selectedSlip.image ? `• *Verified Proof Attachment*: ${selectedSlip.image}\n` : ""}
-_Please reach out to the HR Department if you require further clarification._`;
-
-    const targetUrl = cleanPhone.length >= 10
-      ? `https://wa.me/91${cleanPhone.slice(-10)}?text=${encodeURIComponent(memoText)}`
-      : `https://wa.me/?text=${encodeURIComponent(memoText)}`;
-
-    window.open(targetUrl, "_blank");
+  const handlePrintSlip = () => {
+    if (!selectedSlip) return;
+    printPayCutSlip(selectedSlip, currentSlipEmp);
   };
 
   const handleCopyMemo = () => {
@@ -631,31 +633,35 @@ ${selectedSlip.image ? `Proof: ${selectedSlip.image}` : ""}`;
                 <FileText className="w-4 h-4 text-emerald-400" /> Disciplinary Pay Cut Invoice Memo
               </span>
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Share to WhatsApp */}
+                {/* Share PDF Attachment (Native File Share / WhatsApp Attachment with NO TEXT) */}
                 <button
                   type="button"
-                  onClick={handleShareToWhatsApp}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  title={`Send to ${empPhone || "staff WhatsApp"}`}
+                  onClick={handleSharePdfAttachment}
+                  disabled={sharingPdf}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Share official PDF memo attachment directly (no plain text)"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>Share to Mobile {empPhone ? `(${empPhone.slice(-4)})` : ""}</span>
+                  <span>{sharingPdf ? "Sharing PDF..." : `Share PDF ${empPhone ? `(${empPhone.slice(-4)})` : ""}`}</span>
                 </button>
 
-                {/* Copy Text */}
+                {/* Direct Download PDF */}
                 <button
                   type="button"
-                  onClick={handleCopyMemo}
-                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                  onClick={handleDownloadPdf}
+                  className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Download Salary Deduction Memo PDF"
                 >
-                  <Copy className="w-3.5 h-3.5" /> {copiedMemo ? "Copied!" : "Copy"}
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
                 </button>
 
                 {/* Print / Save as PDF */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={handlePrintSlip}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Open Printable A4 Invoice Sheet"
                 >
                   <Printer className="w-3.5 h-3.5" /> Print / Save PDF
                 </button>
