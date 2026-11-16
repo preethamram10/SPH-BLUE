@@ -20,6 +20,9 @@ import {
   Eye,
   Loader2,
   Image as ImageIcon,
+  Share2,
+  Copy,
+  Download,
 } from "lucide-react";
 
 export interface PayCutItem {
@@ -69,6 +72,61 @@ export default function AdminPayCutsPage() {
 
   // Printable Notice State
   const [selectedSlip, setSelectedSlip] = useState<PayCutItem | null>(null);
+  const [copiedMemo, setCopiedMemo] = useState(false);
+
+  const currentSlipEmp = selectedSlip
+    ? employees.find((e) => e.id === selectedSlip.employeeId || e.name === selectedSlip.employeeName)
+    : null;
+  const empPhone = currentSlipEmp?.phone || currentSlipEmp?.phoneNumber || "";
+  const baseSalary = Number(currentSlipEmp?.salary || currentSlipEmp?.baseSalary || 25000);
+  const deductionAmount = Number(selectedSlip?.amount || 0);
+  const netSalary = Math.max(0, baseSalary - deductionAmount);
+
+  const handleShareToWhatsApp = () => {
+    if (!selectedSlip) return;
+    const cleanPhone = String(empPhone).replace(/\D/g, "");
+    const memoText = `*SPIRITUAL HOMEOPATHY CLINICS*
+*OFFICIAL SALARY DEDUCTION / DISCIPLINARY NOTICE*
+
+Dear ${selectedSlip.employeeName},
+Please find below the official details of your disciplinary salary deduction:
+
+• *Memo Ref ID*: ${selectedSlip.id}
+• *Applicable Month*: ${selectedSlip.month}
+• *Incident / Deduction Date*: ${selectedSlip.date}
+• *Branch Location*: ${selectedSlip.branch}
+• *Reason / Note*: ${selectedSlip.reason}
+• *Monthly Base Salary*: ₹${baseSalary.toLocaleString("en-IN")}
+• *Deduction Amount*: -₹${deductionAmount.toLocaleString("en-IN")}
+• *Net Adjusted Pay*: ₹${netSalary.toLocaleString("en-IN")}
+• *Approved By*: ${selectedSlip.issuedBy}
+${selectedSlip.image ? `• *Verified Proof Attachment*: ${selectedSlip.image}\n` : ""}
+_Please reach out to the HR Department if you require further clarification._`;
+
+    const targetUrl = cleanPhone.length >= 10
+      ? `https://wa.me/91${cleanPhone.slice(-10)}?text=${encodeURIComponent(memoText)}`
+      : `https://wa.me/?text=${encodeURIComponent(memoText)}`;
+
+    window.open(targetUrl, "_blank");
+  };
+
+  const handleCopyMemo = () => {
+    if (!selectedSlip) return;
+    const text = `SPIRITUAL HOMEOPATHY CLINICS - SALARY DEDUCTION NOTICE
+Ref: ${selectedSlip.id}
+Employee: ${selectedSlip.employeeName} (${selectedSlip.branch})
+Mobile: ${empPhone || "On File"}
+Month: ${selectedSlip.month} | Date: ${selectedSlip.date}
+Gross Base: ₹${baseSalary.toLocaleString("en-IN")}
+Deduction: -₹${deductionAmount.toLocaleString("en-IN")}
+Net Adjusted: ₹${netSalary.toLocaleString("en-IN")}
+Reason: ${selectedSlip.reason}
+Approved By: ${selectedSlip.issuedBy}
+${selectedSlip.image ? `Proof: ${selectedSlip.image}` : ""}`;
+    navigator.clipboard.writeText(text);
+    setCopiedMemo(true);
+    setTimeout(() => setCopiedMemo(false), 2000);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -536,17 +594,6 @@ export default function AdminPayCutsPage() {
                         className="hidden"
                       />
                     </label>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase">Or Paste URL:</span>
-                      <input
-                        type="text"
-                        placeholder="https://... or image link"
-                        value={cutImage}
-                        onChange={(e) => setCutImage(e.target.value)}
-                        className="flex-1 px-2.5 py-1 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
-                      />
-                    </div>
                   </div>
                 )}
               </div>
@@ -573,105 +620,255 @@ export default function AdminPayCutsPage() {
       )}
 
       {/* =================================================================== */}
-      {/* FORMAL SALARY DEDUCTION SLIP PRINT MODAL                            */}
+      {/* FORMAL SALARY DEDUCTION SLIP & INVOICE PRINT/SHARE MODAL            */}
       {/* =================================================================== */}
       {selectedSlip && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 my-auto">
+            {/* Action Bar (Hidden on print) */}
+            <div className="p-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 no-print">
               <span className="text-xs font-bold flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-emerald-400" /> Deduction Memo Preview
+                <FileText className="w-4 h-4 text-emerald-400" /> Disciplinary Pay Cut Invoice Memo
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Share to WhatsApp */}
+                <button
+                  type="button"
+                  onClick={handleShareToWhatsApp}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title={`Send to ${empPhone || "staff WhatsApp"}`}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Share to Mobile {empPhone ? `(${empPhone.slice(-4)})` : ""}</span>
+                </button>
+
+                {/* Copy Text */}
+                <button
+                  type="button"
+                  onClick={handleCopyMemo}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" /> {copiedMemo ? "Copied!" : "Copy"}
+                </button>
+
+                {/* Print / Save as PDF */}
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Printer className="w-3.5 h-3.5" /> Print Memo
+                  <Printer className="w-3.5 h-3.5" /> Print / Save PDF
                 </button>
+
+                {/* Close */}
                 <button
                   type="button"
                   onClick={() => setSelectedSlip(null)}
-                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="p-6 bg-white space-y-4 print:p-8">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b-2 border-rose-600 pb-3">
+            {/* Printable Document Sheet */}
+            <div id="printable-pay-cut-slip" className="p-6 sm:p-8 bg-white space-y-4 text-slate-800">
+              {/* Upper Header with Logo */}
+              <div className="flex items-start justify-between border-b-2 border-rose-600 pb-3.5">
                 <div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/assets/SH logo.png" alt="Clinic Logo" className="h-10 w-auto object-contain" />
-                  <p className="text-[10px] text-slate-500 font-bold mt-1">Spiritual Homeopathy Clinics</p>
+                  <img src="/assets/SH logo.png" alt="Clinic Logo" className="h-12 w-auto object-contain" />
+                  <h3 className="font-black text-slate-900 text-sm tracking-tight mt-1">
+                    Spiritual Homeopathy Clinics
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-semibold">
+                    Center of Excellence in Classical Homeopathy
+                  </p>
                 </div>
-                <div className="text-right text-[10px] text-slate-600">
-                  <div className="font-extrabold uppercase text-slate-900">{selectedSlip.branch}</div>
-                  <div>support@spiritualhomeo.com</div>
+                <div className="text-right text-[10.5px] text-slate-600 space-y-0.5">
+                  <div className="font-extrabold text-xs text-rose-600 uppercase tracking-wide">
+                    {selectedSlip.branch}
+                  </div>
+                  <div>Tel: +91 99999 99999</div>
+                  <div>Email: hr@spiritualhomeo.com</div>
+                  <div className="text-[10px] text-slate-400">GSTIN / Reg Clinic Entity</div>
                 </div>
               </div>
 
-              <div className="text-center py-1">
-                <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">
-                  Official Salary Deduction Notice
-                </h4>
-                <p className="text-[10px] text-slate-400 font-medium">Ref No: {selectedSlip.id}</p>
+              {/* Notice Title Banner */}
+              <div className="text-center py-1 border-b border-slate-100">
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-900">
+                  Official Salary Deduction &amp; Disciplinary Memo
+                </h2>
+                <div className="flex items-center justify-center gap-4 text-[10.5px] text-slate-400 font-medium mt-0.5">
+                  <span>Ref No: <strong className="text-slate-700">{selectedSlip.id}</strong></span>
+                  <span>•</span>
+                  <span>Date Generated: <strong className="text-slate-700">{selectedSlip.date}</strong></span>
+                </div>
               </div>
 
-              {/* Employee Details Box */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Employee Name:</span>
-                  <span className="font-bold text-slate-900">{selectedSlip.employeeName}</span>
+              {/* Employee & Incident Information Box */}
+              <div className="grid grid-cols-2 gap-2.5 bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Employee Name</span>
+                  <span className="font-extrabold text-slate-900 text-sm">{selectedSlip.employeeName}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Branch Location:</span>
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Employee ID / Category</span>
+                  <span className="font-bold text-slate-800">{currentSlipEmp?.id || selectedSlip.employeeId} ({currentSlipEmp?.category || "Staff"})</span>
+                </div>
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Branch Location</span>
                   <span className="font-bold text-slate-800">{selectedSlip.branch}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Month:</span>
-                  <span className="font-bold text-slate-800">{selectedSlip.month}</span>
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Mobile Number</span>
+                  <span className="font-bold text-slate-800">{empPhone || "On File (+91)"}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Date Issued:</span>
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Applicable Salary Month</span>
+                  <span className="font-extrabold text-rose-600">{selectedSlip.month}</span>
+                </div>
+                <div>
+                  <span className="text-[10.5px] text-slate-400 font-bold uppercase block">Deduction / Incident Date</span>
                   <span className="font-bold text-slate-800">{selectedSlip.date}</span>
                 </div>
               </div>
 
-              {/* Deduction Table */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
-                <div className="bg-slate-100 p-2.5 font-bold text-slate-700 flex justify-between">
-                  <span>Reason / Description</span>
-                  <span>Amount Deducted</span>
-                </div>
-                <div className="p-3 flex justify-between items-start border-t border-slate-100">
-                  <div className="max-w-xs">
-                    <p className="font-bold text-slate-900">{selectedSlip.reason}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Approved by {selectedSlip.issuedBy}</p>
-                  </div>
-                  <div className="font-black text-rose-600 text-base">
-                    - ₹{Number(selectedSlip.amount).toLocaleString("en-IN")}
-                  </div>
+              {/* Invoice-Style Salary Impact Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden text-xs shadow-2xs">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-100/90 text-slate-700 font-extrabold uppercase text-[10px] border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-4">Salary Component / Description</th>
+                      <th className="py-2.5 px-4 text-center">Type</th>
+                      <th className="py-2.5 px-4 text-right">Amount (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    <tr>
+                      <td className="py-2.5 px-4 font-bold text-slate-800">
+                        Monthly Gross Base Salary
+                        <div className="text-[10.5px] text-slate-400 font-normal">Applicable for {selectedSlip.month}</div>
+                      </td>
+                      <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">Credit</td>
+                      <td className="py-2.5 px-4 text-right font-bold text-slate-900">
+                        ₹{baseSalary.toLocaleString("en-IN")}.00
+                      </td>
+                    </tr>
+                    <tr className="bg-rose-50/50">
+                      <td className="py-2.5 px-4 font-bold text-rose-900">
+                        Disciplinary Penalty / Pay Cut
+                        <div className="text-[10.5px] text-rose-700 font-normal">Ref: {selectedSlip.id}</div>
+                      </td>
+                      <td className="py-2.5 px-4 text-center text-rose-700 font-bold">Deduction</td>
+                      <td className="py-2.5 px-4 text-right font-black text-rose-600 text-sm">
+                        - ₹{deductionAmount.toLocaleString("en-IN")}.00
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900 text-white font-black text-xs">
+                      <td className="py-3 px-4 uppercase tracking-wider" colSpan={2}>
+                        Net Adjusted Payout for {selectedSlip.month}
+                      </td>
+                      <td className="py-3 px-4 text-right text-emerald-400 text-sm">
+                        ₹{netSalary.toLocaleString("en-IN")}.00
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Reason / Incident Description Box */}
+              <div className="bg-amber-50/60 rounded-xl p-3.5 border border-amber-200/80 text-xs space-y-1">
+                <span className="text-[10.5px] font-black text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Reason for Pay Cut &amp; HR Findings
+                </span>
+                <p className="text-slate-800 leading-relaxed font-medium pt-0.5">
+                  {selectedSlip.reason}
+                </p>
+                <div className="text-[10.5px] text-slate-500 pt-1 font-semibold">
+                  Approved &amp; Logged by: <strong className="text-slate-800">{selectedSlip.issuedBy}</strong>
                 </div>
               </div>
 
-              <div className="pt-6 flex justify-between items-end text-[10px] text-slate-500 border-t border-slate-100">
-                <div>
-                  <p className="italic">Computer-generated disciplinary deduction slip.</p>
-                  <p>Spiritual Homeopathy HR Department</p>
+              {/* Proof Image Embedded (If present) */}
+              {selectedSlip.image && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10.5px] font-bold text-slate-600 uppercase flex items-center gap-1">
+                      <ImageIcon className="w-3.5 h-3.5 text-slate-400" /> Attached Incident Proof (AWS S3)
+                    </span>
+                    <a
+                      href={selectedSlip.image}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-sky-600 font-semibold underline flex items-center gap-1"
+                    >
+                      Open Original <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                  {selectedSlip.image.match(/\.(jpeg|jpg|png|gif|webp)($|\?)/i) || selectedSlip.image.startsWith("data:image") ? (
+                    <div className="flex justify-center max-h-48 overflow-hidden rounded-lg border border-slate-200 bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={selectedSlip.image}
+                        alt="Proof"
+                        className="max-h-48 w-auto object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-600 flex items-center gap-2 py-1">
+                      <FileText className="w-4 h-4 text-rose-500" />
+                      <span>Document attachment stored on AWS S3: {selectedSlip.image}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="text-center">
-                  <div className="w-24 border-b border-slate-400 mb-1" />
-                  <p className="font-bold">Authorized Signatory</p>
+              )}
+
+              {/* Lower Clinic Footer & Sign-Off */}
+              <div className="pt-5 border-t border-slate-200 grid grid-cols-2 items-end text-[10px] text-slate-500">
+                <div className="space-y-0.5">
+                  <p className="font-bold text-slate-700">Spiritual Homeopathy Administration</p>
+                  <p className="italic">Computer-generated official disciplinary &amp; salary deduction memo.</p>
+                  <p>Retain this notice for personal accounting and tax filing purposes.</p>
+                </div>
+                <div className="text-right">
+                  <div className="inline-block text-center min-w-36">
+                    <div className="w-36 border-b border-slate-400 mb-1" />
+                    <p className="font-extrabold text-slate-800 text-[11px]">Authorized Signatory</p>
+                    <p className="text-[9.5px] text-slate-400">HR &amp; Finance Department</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Print isolation styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #printable-pay-cut-slip, #printable-pay-cut-slip * {
+            visibility: visible;
+          }
+          #printable-pay-cut-slip {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 24px;
+            box-shadow: none !important;
+            border: none !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
 
       {/* =================================================================== */}
       {/* ATTACHMENT PROOF LIGHTBOX PREVIEW MODAL                              */}

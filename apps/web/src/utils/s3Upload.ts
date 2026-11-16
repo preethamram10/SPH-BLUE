@@ -417,6 +417,3 @@ export async function fetchPrescriptionPhotoFromS3(
   const contentType = response.headers.get("content-type") || "image/jpeg";
   return { buffer: Buffer.from(arrayBuffer), contentType };
 }
-
-
-
