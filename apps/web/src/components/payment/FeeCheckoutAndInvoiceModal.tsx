@@ -29,6 +29,7 @@ import {
   ExternalLink,
   Camera,
   Download,
+  Eye,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
@@ -201,6 +202,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   // Mandatory Prescription Image State & Check
   const [currentRxImages, setCurrentRxImages] = useState<string[]>(appointment?.prescriptionImages || []);
   const [isUploadingRx, setIsUploadingRx] = useState<boolean>(false);
+  const [previewRxUrl, setPreviewRxUrl] = useState<string | null>(null);
   const rxImages = currentRxImages.length > 0 ? currentRxImages : (appointment?.prescriptionImages || []);
   const hasPrescription =
     rxImages.length > 0 ||
@@ -419,6 +421,29 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         setCurrentRxImages(data.patient.prescriptionImages);
       }
     } catch (_) {}
+  };
+
+  const handleDeleteRxImage = async (indexToDelete: number) => {
+    if (!window.confirm("Are you sure you want to remove this prescription image?")) return;
+    try {
+      const updatedList = (currentRxImages || []).filter((_, idx) => idx !== indexToDelete);
+      setCurrentRxImages(updatedList);
+      if (appointment?.id) {
+        await fetch("/api/patient-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: appointment.id,
+            prescriptionImages: updatedList,
+          }),
+        });
+      }
+      if (previewRxUrl && currentRxImages[indexToDelete] === previewRxUrl) {
+        setPreviewRxUrl(null);
+      }
+    } catch (err: any) {
+      alert("Failed to remove prescription image: " + err.message);
+    }
   };
 
   // Adjust Fees Based on Target Amount change
@@ -1784,22 +1809,60 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-bold">
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                    <span>Prescription image attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})</span>
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 shadow-xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-black">
+                      <CheckCircle2 size={16} className="text-emerald-600" />
+                      <span>Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})</span>
+                    </div>
+                    <label className="text-[11px] font-extrabold text-emerald-700 hover:text-emerald-900 cursor-pointer bg-white border border-emerald-200 px-2.5 py-1 rounded-lg shadow-2xs flex items-center gap-1.5 transition">
+                      <Upload size={12} />
+                      <span>{isUploadingRx ? "Uploading..." : "+ Add More"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleDirectRxUpload}
+                        disabled={isUploadingRx}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
-                  <label className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer underline flex items-center gap-1">
-                    <Upload size={12} />
-                    <span>+ Add Another</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleDirectRxUpload}
-                      disabled={isUploadingRx}
-                      className="hidden"
-                    />
-                  </label>
+
+                  {/* Thumbnail Previews with View & Delete */}
+                  {rxImages.length > 0 && (
+                    <div className="flex items-center gap-2.5 overflow-x-auto py-1">
+                      {rxImages.map((imgUrl, idx) => (
+                        <div
+                          key={`web-rx-${idx}`}
+                          className="relative group w-16 h-16 rounded-xl overflow-hidden border border-emerald-300 bg-white shrink-0 shadow-2xs"
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Prescription ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewRxUrl(imgUrl)}
+                              title="View image"
+                              className="w-6 h-6 rounded-full bg-white text-slate-800 flex items-center justify-center hover:bg-slate-100 shadow-xs cursor-pointer"
+                            >
+                              <Eye size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRxImage(idx)}
+                              title="Delete prescription"
+                              className="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center hover:bg-rose-600 shadow-xs cursor-pointer"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3435,6 +3498,42 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           }
         }}
       />
+
+      {/* PRESCRIPTION LIGHTBOX MODAL */}
+      {previewRxUrl && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl p-2 shadow-2xl flex flex-col items-center">
+            <div className="w-full flex items-center justify-between px-3 py-2 border-b border-slate-800 text-white">
+              <span className="text-xs font-bold text-slate-300">Prescription Preview</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewRxUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1"
+                >
+                  <ExternalLink size={12} />
+                  <span>Original</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewRxUrl(null)}
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto max-h-[80vh] p-2 flex items-center justify-center">
+              <img
+                src={previewRxUrl}
+                alt="Prescription preview"
+                className="max-w-full max-h-[75vh] object-contain rounded-lg"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

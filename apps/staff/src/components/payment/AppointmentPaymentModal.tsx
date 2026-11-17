@@ -20,9 +20,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
+import { Image as ExpoImage } from "expo-image";
 import { safeLaunchCamera, safeLaunchImageLibrary } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { getBranchPhone } from "../../app/(reception)/medical-requests/pdf/generateMedicineRequestPDF";
+import { PrescriptionViewerModal } from "../patient-file/PrescriptionViewerModal";
+import { resolvePrescriptionImageUrl } from "../patient-file/PatientFileView";
 
 export type PaymentMethod = "Cash" | "Counter UPI" | "UPI / QR Code" | "Card" | "Split" | "Send Pay to app";
 
@@ -81,6 +84,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
 }) => {
   const [currentRxImages, setCurrentRxImages] = useState<string[]>(appointment?.prescriptionImages || []);
   const [isUploadingRx, setIsUploadingRx] = useState<boolean>(false);
+  const [isViewerOpen, setIsViewerOpen] = useState<boolean>(false);
+  const [viewerInitialIndex, setViewerInitialIndex] = useState<number>(0);
   const rxImages = currentRxImages.length > 0 ? currentRxImages : (appointment?.prescriptionImages || []);
   const hasPrescription =
     rxImages.length > 0 ||
@@ -439,6 +444,41 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     } finally {
       setIsUploadingRx(false);
     }
+  };
+
+  const handleDeleteRxImage = (indexToDelete: number) => {
+    Alert.alert(
+      "Remove Prescription",
+      "Are you sure you want to remove this prescription image?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const updatedList = (currentRxImages || []).filter((_, idx) => idx !== indexToDelete);
+              setCurrentRxImages(updatedList);
+              if (appointment?.id) {
+                await apiFetch<any>("/patient-file", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    id: appointment.id,
+                    prescriptionImages: updatedList,
+                  }),
+                });
+              }
+              if (updatedList.length === 0) {
+                setIsViewerOpen(false);
+              }
+              Alert.alert("Success", "Prescription image removed.");
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to remove prescription image.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSelectBillingMode = (mode: "package" | "regular") => {
@@ -2514,19 +2554,83 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                       </View>
                     </View>
                   ) : (
-                    <View style={styles.rxSuccessBanner}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-                        <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                        <Text style={styles.rxSuccessText}>
-                          Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})
-                        </Text>
+                    <View style={styles.rxAttachedCard}>
+                      <View style={styles.rxAttachedHeader}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                          <Text style={styles.rxSuccessText}>
+                            Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <TouchableOpacity
+                            style={styles.rxSmallActionBtn}
+                            onPress={() => handlePickImage(true)}
+                            disabled={isUploadingRx}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="camera" size={12} color="#065f46" />
+                            <Text style={styles.rxSmallActionBtnText}>
+                              {isUploadingRx ? "..." : "+ Camera"}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.rxSmallActionBtn}
+                            onPress={() => handlePickImage(false)}
+                            disabled={isUploadingRx}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="image" size={12} color="#065f46" />
+                            <Text style={styles.rxSmallActionBtnText}>
+                              {isUploadingRx ? "..." : "+ Gallery"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                      <TouchableOpacity
-                        onPress={() => handlePickImage(false)}
-                        disabled={isUploadingRx}
-                      >
-                        <Text style={styles.rxAddMoreText}>+ Add More</Text>
-                      </TouchableOpacity>
+
+                      {/* Attached Image Thumbnails with View & Delete Options */}
+                      {rxImages.length > 0 && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.rxThumbList}
+                        >
+                          {rxImages.map((imgUri: string, idx: number) => (
+                            <View key={`rx-thumb-${idx}`} style={styles.rxThumbCard}>
+                              <TouchableOpacity
+                                activeOpacity={0.85}
+                                onPress={() => {
+                                  setViewerInitialIndex(idx);
+                                  setIsViewerOpen(true);
+                                }}
+                                style={styles.rxThumbTouch}
+                              >
+                                <ExpoImage
+                                  source={resolvePrescriptionImageUrl(imgUri)}
+                                  style={styles.rxThumbImage}
+                                  contentFit="cover"
+                                />
+                                <View style={styles.rxThumbOverlay}>
+                                  <Ionicons name="eye" size={10} color="#ffffff" />
+                                  <Text style={styles.rxThumbOverlayText}>View</Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              {/* Delete button */}
+                              <TouchableOpacity
+                                style={styles.rxThumbDeleteBtn}
+                                onPress={() => handleDeleteRxImage(idx)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="trash" size={11} color="#ef4444" />
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
                     </View>
                   )}
 
@@ -3829,6 +3933,15 @@ ${upiUri}`);
             )}
           </View>
         </KeyboardAvoidingView>
+
+        {/* FULL-SCREEN INTERACTIVE PRESCRIPTION VIEWER (ZOOM, ROTATE, SLIDER, DELETE) */}
+        <PrescriptionViewerModal
+          visible={isViewerOpen}
+          images={rxImages.map(resolvePrescriptionImageUrl)}
+          initialIndex={viewerInitialIndex}
+          onClose={() => setIsViewerOpen(false)}
+          onDeleteImage={handleDeleteRxImage}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -4313,6 +4426,89 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textDecorationLine: "underline",
+  },
+  rxAttachedCard: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  rxAttachedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  rxSmallActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#d1fae5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: "#a7f3d0",
+  },
+  rxSmallActionBtnText: {
+    color: "#065f46",
+    fontSize: 10.5,
+    fontWeight: "700",
+  },
+  rxThumbList: {
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 2,
+  },
+  rxThumbCard: {
+    position: "relative",
+    width: 68,
+    height: 68,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#6ee7b7",
+    backgroundColor: "#ffffff",
+  },
+  rxThumbTouch: {
+    width: "100%",
+    height: "100%",
+  },
+  rxThumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  rxThumbOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    paddingVertical: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  rxThumbOverlayText: {
+    color: "#ffffff",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  rxThumbDeleteBtn: {
+    position: "absolute",
+    top: 3,
+    right: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 10,
+    padding: 3,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
   },
   methodsSection: {
     marginBottom: 6,
