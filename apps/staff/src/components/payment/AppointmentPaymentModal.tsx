@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
 import { safeLaunchCamera, safeLaunchImageLibrary } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { getBranchPhone } from "../../app/(reception)/medical-requests/pdf/generateMedicineRequestPDF";
@@ -374,30 +375,65 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           });
 
       if (!result) return;
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
       setIsUploadingRx(true);
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+      const asset = result.assets[0];
+      let base64String = asset.base64 || "";
 
-        const uploadRes = await apiFetch<any>("/patient-file/upload", {
-          method: "POST",
-          body: JSON.stringify({ fileData: base64Data, contentType: "image/jpeg" }),
-        });
-        const finalUrl = uploadRes?.success && uploadRes?.url ? uploadRes.url : base64Data;
-        const updatedList = [...currentRxImages, finalUrl];
-
-        await apiFetch<any>("/patient-file", {
-          method: "POST",
-          body: JSON.stringify({
-            id: appointment.id,
-            prescriptionImages: updatedList,
-          }),
-        });
-
-        setCurrentRxImages(updatedList);
-        Alert.alert("Success", "Prescription image attached successfully!");
+      // Fallback: If base64 wasn't attached directly by the picker, read via expo-file-system
+      if (!base64String && asset.uri) {
+        try {
+          const raw = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          if (raw) {
+            base64String = raw;
+          }
+        } catch (fsErr) {
+          console.warn("Failed to read image as base64 via FileSystem:", fsErr);
+        }
       }
+
+      if (!base64String) {
+        throw new Error("Could not extract image data. Please select another image.");
+      }
+
+      const dataUri = base64String.startsWith("data:")
+        ? base64String
+        : `data:image/jpeg;base64,${base64String}`;
+
+      const patientId = appointment.registrationId || appointment.patientId || "SPH-PATIENT";
+
+      const uploadRes = await apiFetch<any>("/patient-file/upload", {
+        method: "POST",
+        body: JSON.stringify({
+          base64: dataUri,
+          fileData: dataUri,
+          image: dataUri,
+          contentType: "image/jpeg",
+          patientId,
+        }),
+      });
+
+      if (!uploadRes?.success || !uploadRes?.url) {
+        throw new Error(uploadRes?.error || "Failed to upload prescription image.");
+      }
+
+      const finalUrl = uploadRes.url;
+      const updatedList = [...(currentRxImages || []), finalUrl];
+
+      await apiFetch<any>("/patient-file", {
+        method: "POST",
+        body: JSON.stringify({
+          id: appointment.id,
+          prescriptionImages: updatedList,
+        }),
+      });
+
+      setCurrentRxImages(updatedList);
+      Alert.alert("Success", "Prescription image attached successfully!");
     } catch (err: any) {
       Alert.alert("Upload Failed", err.message || "Failed to attach prescription.");
     } finally {

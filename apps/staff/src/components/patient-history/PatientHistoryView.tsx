@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
 import { safeLaunchCamera, safeLaunchImageLibrary } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { resolvePrescriptionImageUrl } from "../patient-file/PatientFileView";
@@ -238,11 +239,29 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
         const asset = result.assets[0];
         setIsUploading(true);
 
+        let base64String = asset.base64 || "";
+        if (!base64String && asset.uri) {
+          try {
+            const raw = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            if (raw) base64String = raw;
+          } catch (fsErr) {
+            console.warn("Failed to read history image as base64 via FileSystem:", fsErr);
+          }
+        }
+
+        const dataUri = base64String.startsWith("data:")
+          ? base64String
+          : `data:image/jpeg;base64,${base64String}`;
+
         // Upload to S3 / local upload endpoint
         const uploadRes = await apiFetch<any>("/patient-file/upload", {
           method: "POST",
           body: JSON.stringify({
-            base64: asset.base64,
+            base64: dataUri,
+            image: dataUri,
+            fileData: dataUri,
             contentType: "image/jpeg",
             patientId: patient.regId || "SPH-PATIENT",
           }),

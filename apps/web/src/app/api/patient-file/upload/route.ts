@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     if (contentTypeHeader.includes("application/json")) {
       const body = await req.json();
-      const rawBase64 = body.base64 || body.image || "";
+      const rawBase64 = body.base64 || body.image || body.fileData || body.file || "";
 
       if (!rawBase64) {
         return NextResponse.json(
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      patientId = body.patientId || body.registrationId || "general";
+      patientId = body.patientId || body.registrationId || body.regId || "general";
       if (body.fileName) fileName = body.fileName;
       if (body.contentType) contentType = body.contentType;
 

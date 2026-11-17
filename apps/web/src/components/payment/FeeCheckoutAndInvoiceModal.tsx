@@ -378,7 +378,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         const upRes = await fetch("/api/patient-file/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileData: base64Data, contentType: file.type || "image/jpeg" }),
+          body: JSON.stringify({
+            base64: base64Data,
+            fileData: base64Data,
+            image: base64Data,
+            contentType: file.type || "image/jpeg",
+            patientId: appointment.registrationId || appointment.patientId || "general",
+          }),
         });
         const upData = await upRes.json();
         const uploadedUrl = upData.url || base64Data;
