@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  Truck,
 } from "lucide-react";
 
 interface ReceptionSidebarProps {
@@ -110,6 +111,12 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
       name: "Shared Media",
       href: "/reception/shared-media",
       icon: FolderOpen,
+    },
+    {
+      id: "shiprocket",
+      name: "Shiprocket",
+      href: "/reception/shiprocket",
+      icon: Truck,
     },
     {
       id: "doctor-no-show",

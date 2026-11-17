@@ -26,6 +26,7 @@ import {
   LogOut,
   LayoutDashboard,
   Target,
+  Truck,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -106,6 +107,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
         { label: "Employee Daily Works", href: "/admin/employee-daily-works", icon: Briefcase },
         { label: "Staff Payroll & Penalties", href: "/admin/payroll", icon: DollarSign },
         { label: "Miscellaneous Pay Cuts", href: "/admin/pay-cuts", icon: DollarSign },
+        { label: "Shiprocket Logistics", href: "/admin/shiprocket", icon: Truck },
         { label: "Branch Cleaning", href: "/admin/branch-cleaning", icon: Sparkles },
       ],
     },

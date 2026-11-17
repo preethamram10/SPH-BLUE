@@ -28,6 +28,7 @@ import {
   Headphones,
   Trash2,
   Image as ImageIcon,
+  Truck,
 } from "lucide-react";
 
 interface HRSidebarProps {
@@ -108,6 +109,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
         { label: "Employee Daily Works", href: "/hr/employee-daily-works", icon: Briefcase },
         { label: "Staff Payroll & Penalties", href: "/hr/payroll", icon: DollarSign },
         { label: "Miscellaneous Pay Cuts", href: "/hr/pay-cuts", icon: DollarSign },
+        { label: "Shiprocket Logistics", href: "/hr/shiprocket", icon: Truck },
         { label: "Branch Cleaning", href: "/hr/branch-cleaning", icon: Sparkles },
       ],
     },

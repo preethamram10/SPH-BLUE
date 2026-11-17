@@ -899,6 +899,12 @@ export default function ReceptionDashboard() {
       route: "/(reception)/shared-media",
     },
     {
+      id: "shiprocket",
+      title: "Shiprocket",
+      icon: "cube-outline",
+      route: "/(reception)/shiprocket",
+    },
+    {
       id: "doctor-no-show",
       title: "Doctor No-Show",
       icon: "person-remove-outline",

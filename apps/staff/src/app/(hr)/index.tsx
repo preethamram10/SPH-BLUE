@@ -786,6 +786,18 @@ export default function HRDashboard() {
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(hr)/shiprocket")}
+                activeOpacity={0.75}
+              >
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="cube-outline" size={18} color="#7c3aed" />
+                </View>
+                <Text style={styles.drawerMenuText}>Shiprocket Logistics</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+              </TouchableOpacity>
+
               <Text style={styles.drawerSectionLabel}>TELECALLING DESK</Text>
 
               <TouchableOpacity

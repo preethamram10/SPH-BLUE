@@ -730,6 +730,19 @@ export default function AdminDashboard() {
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
+              {/* Shiprocket Logistics */}
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(admin)/shiprocket")}
+                activeOpacity={0.75}
+              >
+                <View style={styles.drawerIconBox}>
+                  <Ionicons name="cube-outline" size={18} color="#7c3aed" />
+                </View>
+                <Text style={styles.drawerMenuText}>Shiprocket Logistics</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+              </TouchableOpacity>
+
               {/* Reports & Analytics */}
               <TouchableOpacity
                 style={styles.drawerMenuItem}
