@@ -28,11 +28,13 @@ import {
   Upload,
   ExternalLink,
   Camera,
+  Download,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
 import { generate30DayDietSchedule, DayDietPlan } from "../patient-file/dietPlanData";
 import { getBranchPhone } from "../../app/reception/medical-requests/pdf/generateMedicineRequestPDF";
+import { shareInvoicePDF, downloadInvoicePDF } from "@/utils/generateInvoicePDF";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -853,88 +855,79 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
   const activeInvoice = completedInvoice || appointment;
 
-  // --- WHATSAPP SHARE RECEIPT ---
-  const handleShareWhatsApp = () => {
-    const phone = cleanPhone;
-    const invoiceNum = activeInvoice.invoiceId || "INV-RECEIPT";
-    const totalPaidNum = Number(
-      activeInvoice.totalPaid ?? activeInvoice.totalAmountDue ?? grandTotalDue
-    ).toFixed(2);
-    const dateStr = activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10);
-    const timeStr = activeInvoice.timeSlot ? ` at ${activeInvoice.timeSlot}` : "";
+  const [sharingPdf, setSharingPdf] = useState(false);
 
-    const targetBranch = activeInvoice.branch || appointment?.branch || "KPHB Branch";
-    const branchPhone = getBranchPhone(targetBranch);
-
-    const rawMeds = activeInvoice.medicines || activeInvoice.medicinesList || [];
-    const validReceiptMeds = Array.isArray(rawMeds)
-      ? rawMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
-      : [];
-    const medsBreakdown = validReceiptMeds.length > 0
-      ? validReceiptMeds.map((m: any) => `• ${m.name || (m.type === "Reserve" ? "Reserve Medicine" : "Medicine")} (${m.type || "Pills"}${m.timing ? ` - ${m.timing}` : ""}): ₹${Number(m.amount || 0).toFixed(2)}\n`).join("")
-      : (Number(activeInvoice.medicineFee) > 0
-        ? `• Medicine Fee (${activeInvoice.medicineDuration || "1 Month"}): ₹${Number(activeInvoice.medicineFee).toFixed(2)}\n`
-        : "");
-
-    const effectivePaymentType = activeInvoice.paymentType || (isPackageMode ? "package" : paymentType);
-    let feeBreakdownStr = "";
-    if (activeInvoice.hasPackage || isPackageMode || effectivePaymentType === "package") {
-      feeBreakdownStr = `• Package Treatment Installment: ₹${totalPaidNum}\n`;
-    } else if (effectivePaymentType === "consult_and_med") {
-      const combinedAmount = Number(activeInvoice.consultationFee || activeInvoice.totalPaid || activeInvoice.totalAmountDue || grandTotalDue).toFixed(2);
-      feeBreakdownStr = `• Consultation & Medicine: ₹${combinedAmount}\n`;
-    } else if (effectivePaymentType === "split") {
-      if (Number(activeInvoice.consultationFee) > 0) {
-        feeBreakdownStr += `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`;
-      }
-      feeBreakdownStr += medsBreakdown;
-    } else {
-      if (Number(activeInvoice.consultationFee) > 0) {
-        feeBreakdownStr += `• Consultation Fee: ₹${Number(activeInvoice.consultationFee).toFixed(2)}\n`;
-      }
-      if (effectivePaymentType !== "consultation") {
-        feeBreakdownStr += medsBreakdown;
-      }
+  // --- SHARE OFFICIAL INVOICE RECEIPT PDF ATTACHMENT (NO PLAIN TEXT) ---
+  const handleShareWhatsApp = async () => {
+    setSharingPdf(true);
+    try {
+      await shareInvoicePDF({
+        invoiceId: activeInvoice.invoiceId || "INV-RECEIPT",
+        patientName: activeInvoice.patientName || appointment.patientName || "Patient",
+        phone: cleanPhone,
+        doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya",
+        branch: activeInvoice.branch || appointment.branch || "KPHB Branch",
+        appointmentDate: activeInvoice.appointmentDate || appointment.appointmentDate,
+        timeSlot: activeInvoice.timeSlot || appointment.timeSlot,
+        totalPaid: activeInvoice.totalPaid ?? activeInvoice.totalAmountDue ?? grandTotalDue,
+        totalAmountDue: activeInvoice.totalAmountDue ?? grandTotalDue,
+        payLaterAmount: activeInvoice.payLaterAmount,
+        paymentMode: activeInvoice.paymentMode || paymentMode,
+        paymentMethod: activeInvoice.paymentMethod,
+        consultationFee: activeInvoice.consultationFee,
+        medicineFee: activeInvoice.medicineFee,
+        medicineDuration: activeInvoice.medicineDuration || medicineDuration,
+        medicines: activeInvoice.medicines || activeInvoice.medicinesList || medicineItems,
+        medicinesList: activeInvoice.medicines || activeInvoice.medicinesList || medicineItems,
+        dietFee: activeInvoice.dietFee || activeInvoice.dietPlanFee || dietFee,
+        dietPlanFee: activeInvoice.dietFee || activeInvoice.dietPlanFee || dietFee,
+        otherCharges: activeInvoice.otherCharges || otherCharges,
+        previousDuePaid: activeInvoice.previousDuePaid || (includePreviousDue ? previousPendingBalance : 0),
+        discount: activeInvoice.discount || discount,
+        discountReason: activeInvoice.discountReason || discountReason,
+        packageName: activeInvoice.packageName,
+        hasPackage: activeInvoice.hasPackage || isPackageMode,
+        packageInstallmentPaid: activeInvoice.packageInstallmentPaid,
+        paidAt: activeInvoice.paidAt,
+      });
+    } catch (err) {
+      console.error("Failed to share invoice PDF:", err);
+      handleDownloadInvoicePDF();
+    } finally {
+      setSharingPdf(false);
     }
+  };
 
-    const message = encodeURIComponent(
-      `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
-      `--------------------------------\n` +
-      `Receipt No: ${invoiceNum}\n` +
-      `Patient Name: ${activeInvoice.patientName}\n` +
-      `Phone: +91 ${phone}\n` +
-      `Doctor: ${activeInvoice.doctorName || "Dr. Prashanth K Vaidya"}\n` +
-      `Branch: ${targetBranch}\n` +
-      `Schedule: ${dateStr}${timeStr}\n` +
-      `Specialty: Homeopathy\n` +
-      `--------------------------------\n` +
-      `*TOTAL AMOUNT PAID: ₹${totalPaidNum}*\n` +
-      `Payment Mode: VIA ${formatPaymentModeForInvoice(activeInvoice.paymentMode || paymentMode)}\n` +
-      `Payment Status: ${Number(activeInvoice.payLaterAmount) > 0 ? "PARTIAL PAID" : "PAID ✓"}\n` +
-      (Number(activeInvoice.payLaterAmount) > 0
-        ? `*Remaining Need to Pay (Pay Later): ₹${Number(activeInvoice.payLaterAmount).toFixed(2)}*\n`
-        : "") +
-      `--------------------------------\n` +
-      `*Fee Breakdown:*\n` +
-      feeBreakdownStr +
-      (Number(activeInvoice.dietFee || activeInvoice.dietPlanFee) > 0
-        ? `• Diet Plan: ₹${Number(activeInvoice.dietFee || activeInvoice.dietPlanFee).toFixed(2)}\n`
-        : "") +
-      (Number(activeInvoice.otherCharges) > 0
-        ? `• Other Charges: ₹${Number(activeInvoice.otherCharges).toFixed(2)}\n`
-        : "") +
-      (Number(activeInvoice.previousDuePaid) > 0
-        ? `• Previous Pending Balance Cleared: ₹${Number(activeInvoice.previousDuePaid).toFixed(2)}\n`
-        : "") +
-      (Number(activeInvoice.discount) > 0
-        ? `• Discount Applied: -₹${Number(activeInvoice.discount).toFixed(2)}\n`
-        : "") +
-      `--------------------------------\n` +
-      `Branch Helpline: ${branchPhone} | spiritualhomeo.com\n` +
-      `This is a computer-generated bill. No signature is required.`
-    );
-
-    window.open(`https://wa.me/91${phone}?text=${message}`, "_blank");
+  const handleDownloadInvoicePDF = () => {
+    downloadInvoicePDF({
+      invoiceId: activeInvoice.invoiceId || "INV-RECEIPT",
+      patientName: activeInvoice.patientName || appointment.patientName || "Patient",
+      phone: cleanPhone,
+      doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya",
+      branch: activeInvoice.branch || appointment.branch || "KPHB Branch",
+      appointmentDate: activeInvoice.appointmentDate || appointment.appointmentDate,
+      timeSlot: activeInvoice.timeSlot || appointment.timeSlot,
+      totalPaid: activeInvoice.totalPaid ?? activeInvoice.totalAmountDue ?? grandTotalDue,
+      totalAmountDue: activeInvoice.totalAmountDue ?? grandTotalDue,
+      payLaterAmount: activeInvoice.payLaterAmount,
+      paymentMode: activeInvoice.paymentMode || paymentMode,
+      paymentMethod: activeInvoice.paymentMethod,
+      consultationFee: activeInvoice.consultationFee,
+      medicineFee: activeInvoice.medicineFee,
+      medicineDuration: activeInvoice.medicineDuration || medicineDuration,
+      medicines: activeInvoice.medicines || activeInvoice.medicinesList || medicineItems,
+      medicinesList: activeInvoice.medicines || activeInvoice.medicinesList || medicineItems,
+      dietFee: activeInvoice.dietFee || activeInvoice.dietPlanFee || dietFee,
+      dietPlanFee: activeInvoice.dietFee || activeInvoice.dietPlanFee || dietFee,
+      otherCharges: activeInvoice.otherCharges || otherCharges,
+      previousDuePaid: activeInvoice.previousDuePaid || (includePreviousDue ? previousPendingBalance : 0),
+      discount: activeInvoice.discount || discount,
+      discountReason: activeInvoice.discountReason || discountReason,
+      packageName: activeInvoice.packageName,
+      hasPackage: activeInvoice.hasPackage || isPackageMode,
+      packageInstallmentPaid: activeInvoice.packageInstallmentPaid,
+      paidAt: activeInvoice.paidAt,
+    });
   };
 
   const formatPaymentModeForInvoice = (mode: string = "") => {
@@ -1013,15 +1006,30 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             <div className="flex items-center gap-2">
               {currentStep === "invoice_receipt" && (
                 <>
+                  {/* Share PDF Attachment (strictly no plain text wall) */}
                   <button
                     type="button"
                     onClick={handleShareWhatsApp}
-                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
-                    title="Share bill on WhatsApp"
+                    disabled={sharingPdf}
+                    className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer disabled:opacity-50"
+                    title="Share official payment receipt PDF attachment (no plain text)"
                   >
                     <Share2 size={13} />
-                    <span>WhatsApp</span>
+                    <span>{sharingPdf ? "Sharing..." : "Share PDF"}</span>
                   </button>
+
+                  {/* Direct Download PDF */}
+                  <button
+                    type="button"
+                    onClick={handleDownloadInvoicePDF}
+                    className="flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-bold text-sky-700 hover:bg-sky-100 transition cursor-pointer"
+                    title="Download Payment Receipt PDF"
+                  >
+                    <Download size={13} />
+                    <span>Download PDF</span>
+                  </button>
+
+                  {/* Print / Save PDF */}
                   <button
                     type="button"
                     onClick={handlePrintReceipt}
@@ -3175,8 +3183,38 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
               </div>
 
-              {/* CLOSE BUTTON AT BOTTOM OF MODAL */}
-              <div className="mt-5 flex justify-end no-print">
+              {/* ACTION BUTTONS AT BOTTOM OF MODAL */}
+              <div className="mt-5 flex items-center justify-between flex-wrap gap-2 no-print border-t border-slate-100 pt-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleShareWhatsApp}
+                    disabled={sharingPdf}
+                    className="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Share2 size={14} />
+                    <span>{sharingPdf ? "Sharing PDF..." : "Share PDF"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadInvoicePDF}
+                    className="flex items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black text-sky-700 hover:bg-sky-100 transition cursor-pointer"
+                  >
+                    <Download size={14} />
+                    <span>Download PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintReceipt}
+                    className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <Printer size={14} />
+                    <span>Print Receipt</span>
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={onClose}
