@@ -32,9 +32,11 @@ export interface CreateShipmentPayload {
   paymentMethod: "Prepaid" | "COD";
   subTotal: number;
   weightKg: number;
-  lengthCm: number;
-  breadthCm: number;
-  heightCm: number;
+  lengthCm?: number;
+  breadthCm?: number;
+  heightCm?: number;
+  courierId?: number;
+  courierName?: string;
   comment?: string;
 }
 
@@ -276,12 +278,40 @@ export async function createShiprocketShipment(payload: CreateShipmentPayload) {
     throw new Error(data.message || data.error || JSON.stringify(data) || "Shiprocket order creation failed");
   }
 
+  let awbCode = data.awb_code || "";
+  let courierName = payload.courierName || data.courier_name || "";
+
+  if (payload.courierId && data.shipment_id) {
+    try {
+      const assignRes = await fetch(`${SHIPROCKET_BASE_URL}/courier/assign/awb`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          shipment_id: data.shipment_id,
+          courier_id: payload.courierId,
+        }),
+      });
+      const assignData = await assignRes.json();
+      if (assignData?.response?.data?.awb_code) {
+        awbCode = assignData.response.data.awb_code;
+      }
+      if (assignData?.response?.data?.courier_name) {
+        courierName = assignData.response.data.courier_name;
+      }
+    } catch (assignErr) {
+      console.warn("Auto AWB assignment warning:", assignErr);
+    }
+  }
+
   return {
     success: true,
     orderId: data.order_id,
     shipmentId: data.shipment_id,
-    awbCode: data.awb_code || "",
-    courierName: data.courier_name || "",
+    awbCode,
+    courierName,
     status: data.status || "NEW",
     raw: data,
   };
@@ -367,5 +397,67 @@ export async function getShiprocketPickupLocations() {
         pincode: "500060",
       },
     ];
+  }
+}
+
+export interface CourierOption {
+  courierCompanyId: number;
+  courierName: string;
+  rate: number;
+  etd: string;
+  estimatedDeliveryDays: string;
+  rating: number;
+  mode: string;
+}
+
+/**
+ * Fetch Live Available Couriers and Exact Pricing from Shiprocket
+ */
+export async function checkShiprocketServiceability(
+  pickupPostcode: string,
+  deliveryPostcode: string,
+  weightKg: number = 0.5,
+  cod: boolean = false
+): Promise<CourierOption[]> {
+  try {
+    const token = await getShiprocketAuthToken();
+    const query = new URLSearchParams({
+      pickup_postcode: pickupPostcode || "500060",
+      delivery_postcode: deliveryPostcode,
+      weight: String(weightKg || 0.5),
+      cod: cod ? "1" : "0",
+    });
+
+    const res = await fetch(`${SHIPROCKET_BASE_URL}/courier/serviceability/?${query.toString()}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data?.data?.available_courier_companies) {
+      console.warn("Shiprocket serviceability response:", data);
+      return [];
+    }
+
+    const couriers: any[] = data.data.available_courier_companies;
+    return couriers
+      .map((c: any) => ({
+        courierCompanyId: c.courier_company_id,
+        courierName: c.courier_name,
+        rate: parseFloat(c.rate) || 0,
+        etd: c.etd || "2-4 Days",
+        estimatedDeliveryDays: c.estimated_delivery_days
+          ? `${c.estimated_delivery_days} Days`
+          : c.etd || "2-4 Days",
+        rating: parseFloat(c.rating) || 4.5,
+        mode: c.courier_type || (c.is_surface ? "Surface" : "Air"),
+      }))
+      .sort((a, b) => a.rate - b.rate);
+  } catch (err: any) {
+    console.error("Error checking serviceability:", err.message);
+    return [];
   }
 }

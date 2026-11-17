@@ -34,6 +34,14 @@ interface ShipmentItem {
   paymentMethod?: string;
 }
 
+interface CourierOption {
+  courierCompanyId: number;
+  courierName: string;
+  rate: number;
+  estimatedDeliveryDays: string;
+  mode: string;
+}
+
 interface MobileShiprocketViewProps {
   role: "RECEPTION" | "ADMIN" | "HR";
 }
@@ -55,16 +63,24 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   const [trackingData, setTrackingData] = useState<any>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState<boolean>(false);
 
-  // Create Parcel Form State
+  // Create Parcel Form State - NO PRE-FILLED TEXT (clean blank fields)
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-  const [city, setCity] = useState("Hyderabad");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"Prepaid" | "COD">("Prepaid");
-  const [weightKg, setWeightKg] = useState("0.5");
-  const [itemName, setItemName] = useState("Homeopathy Remedy Kit");
-  const [itemPrice, setItemPrice] = useState("950");
+  const [weightKg, setWeightKg] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [itemUnits, setItemUnits] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+
+  // Live Couriers & Pricing from API
+  const [availableCouriers, setAvailableCouriers] = useState<CourierOption[]>([]);
+  const [isLoadingCouriers, setIsLoadingCouriers] = useState<boolean>(false);
+  const [selectedCourier, setSelectedCourier] = useState<CourierOption | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load Real-Time Orders
@@ -85,6 +101,45 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  // Fetch Couriers & Rates live from Shiprocket API when 6-digit Pincode is typed
+  const fetchLiveRates = useCallback(async (pin: string, wt: string, cod: string) => {
+    if (pin.trim().length !== 6) {
+      setAvailableCouriers([]);
+      setSelectedCourier(null);
+      return;
+    }
+    setIsLoadingCouriers(true);
+    try {
+      const query = new URLSearchParams({
+        deliveryPincode: pin.trim(),
+        weight: wt.trim() || "0.5",
+        cod: cod === "COD" ? "1" : "0",
+      });
+      const res = await apiFetch<any>(`/shiprocket/serviceability?${query.toString()}`);
+      if (res?.success && Array.isArray(res?.couriers)) {
+        setAvailableCouriers(res.couriers);
+        if (res.couriers.length > 0) {
+          setSelectedCourier(res.couriers[0]);
+        }
+      } else {
+        setAvailableCouriers([]);
+        setSelectedCourier(null);
+      }
+    } catch (err: any) {
+      console.warn("Live courier fetch warning:", err.message);
+      setAvailableCouriers([]);
+    } finally {
+      setIsLoadingCouriers(false);
+    }
+  }, []);
+
+  // Auto trigger rate check on pincode change
+  useEffect(() => {
+    if (pincode.length === 6) {
+      fetchLiveRates(pincode, weightKg, paymentMethod);
+    }
+  }, [pincode, weightKg, paymentMethod, fetchLiveRates]);
 
   // Track AWB
   const handleOpenTracking = async (awb: string) => {
@@ -127,34 +182,37 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       Alert.alert("Missing Phone", "Please enter valid 10-digit mobile number.");
       return;
     }
-    if (!address.trim() || !pincode.trim()) {
-      Alert.alert("Missing Address", "Please enter delivery address and pincode.");
+    if (!address.trim() || !pincode.trim() || !city.trim()) {
+      Alert.alert("Missing Address", "Please enter complete delivery address, city and pincode.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const priceVal = parseFloat(itemPrice) || 500;
+      const priceVal = parseFloat(itemPrice) || 0;
+      const unitsVal = parseInt(itemUnits, 10) || 1;
       const payload = {
         patientName: patientName.trim(),
         phone: phone.trim(),
         address: address.trim(),
-        city: city.trim() || "Hyderabad",
-        state: "Telangana",
+        city: city.trim(),
+        state: state.trim() || "Telangana",
         pincode: pincode.trim(),
         pickupLocation: "Primary",
         paymentMethod,
-        subTotal: priceVal,
+        subTotal: priceVal * unitsVal || 500,
         weightKg: parseFloat(weightKg) || 0.5,
-        lengthCm: 12,
+        lengthCm: 10,
         breadthCm: 10,
-        heightCm: 8,
+        heightCm: 10,
+        courierId: selectedCourier?.courierCompanyId,
+        courierName: selectedCourier?.courierName,
         items: [
           {
             name: itemName.trim() || "Homeopathy Remedy Kit",
             sku: `SPH-MED-${Date.now().toString().slice(-4)}`,
-            units: 1,
-            selling_price: priceVal,
+            units: unitsVal,
+            selling_price: priceVal || 500,
           },
         ],
       };
@@ -170,14 +228,22 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
 
       Alert.alert(
         "Shipment Created! ✓",
-        `Order ID: ${res.orderId}\nShipment ID: ${res.shipmentId}\nAWB: ${res.awbCode || "Assigned on Pickup"}`
+        `Order ID: ${res.orderId}\nShipment ID: ${res.shipmentId}\nAWB: ${res.awbCode || "Assigned on Pickup"}\nCourier: ${res.courierName || selectedCourier?.courierName || "Shiprocket"}`
       );
 
-      // Reset form & reload
+      // Reset form fields to blank & reload
       setPatientName("");
       setPhone("");
       setAddress("");
+      setCity("");
+      setState("");
       setPincode("");
+      setWeightKg("");
+      setItemName("");
+      setItemUnits("");
+      setItemPrice("");
+      setSelectedCourier(null);
+      setAvailableCouriers([]);
       setActiveTab("all_parcels");
       loadOrders();
     } catch (err: any) {
@@ -417,7 +483,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                     <View style={styles.infoRow}>
                       <Ionicons name="location-outline" size={13} color="#64748b" />
                       <Text style={styles.addressText} numberOfLines={1}>
-                        {item.destination || item.address || "Hyderabad, Telangana"}
+                        {item.destination || item.address || "Destination"}
                       </Text>
                     </View>
 
@@ -455,10 +521,10 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
           <View style={styles.formCard}>
             <Text style={styles.sectionHeader}>Patient / Consignee</Text>
 
-            <Text style={styles.inputLabel}>Patient Name *</Text>
+            <Text style={styles.inputLabel}>Patient Full Name *</Text>
             <TextInput
               style={styles.formInput}
-              placeholder="e.g. Ramesh Kumar"
+              placeholder="Enter patient full name"
               placeholderTextColor="#94a3b8"
               value={patientName}
               onChangeText={setPatientName}
@@ -466,15 +532,15 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
 
             <Text style={styles.inputLabel}>Mobile Phone (10 digits) *</Text>
             <TextInput
-              style={styles.formInput}
-              placeholder="e.g. 9876543210"
+              style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+              placeholder="10-digit mobile number"
               placeholderTextColor="#94a3b8"
               keyboardType="phone-pad"
               value={phone}
               onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
             />
 
-            <Text style={styles.inputLabel}>Street Address *</Text>
+            <Text style={styles.inputLabel}>Complete Street Address *</Text>
             <TextInput
               style={[styles.formInput, { height: 60, textAlignVertical: "top" }]}
               placeholder="Flat / House No, Street, Landmark"
@@ -486,23 +552,24 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
 
             <View style={{ flexDirection: "row", gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>City *</Text>
+                <Text style={styles.inputLabel}>Pincode (6 digits) *</Text>
                 <TextInput
-                  style={styles.formInput}
-                  value={city}
-                  onChangeText={setCity}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Pincode *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="500081"
+                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+                  placeholder="e.g. 500081"
                   placeholderTextColor="#94a3b8"
                   keyboardType="numeric"
                   value={pincode}
                   onChangeText={(t) => setPincode(t.replace(/\D/g, "").slice(0, 6))}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>City *</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="City"
+                  value={city}
+                  onChangeText={setCity}
+                  placeholderTextColor="#94a3b8"
                 />
               </View>
             </View>
@@ -515,16 +582,20 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputLabel}>Weight (kg) *</Text>
                 <TextInput
-                  style={styles.formInput}
+                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+                  placeholder="e.g. 0.5"
+                  placeholderTextColor="#94a3b8"
                   keyboardType="decimal-pad"
                   value={weightKg}
                   onChangeText={setWeightKg}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Invoice Amount (₹) *</Text>
+                <Text style={styles.inputLabel}>Invoice Amount (₹)</Text>
                 <TextInput
-                  style={styles.formInput}
+                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+                  placeholder="e.g. 950"
+                  placeholderTextColor="#94a3b8"
                   keyboardType="numeric"
                   value={itemPrice}
                   onChangeText={setItemPrice}
@@ -535,6 +606,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
             <Text style={styles.inputLabel}>Medicine / Item Description</Text>
             <TextInput
               style={styles.formInput}
+              placeholder="e.g. Homeopathy Medicines"
               value={itemName}
               onChangeText={setItemName}
               placeholderTextColor="#94a3b8"
@@ -576,10 +648,70 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                     paymentMethod === "COD" && styles.payOptionTextActive,
                   ]}
                 >
-                  Cash on Delivery (COD)
+                  COD (Cash on Delivery)
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* LIVE COURIERS & PRICES FETCHED FROM SHIPROCKET API */}
+            <View style={styles.cardDivider} />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={styles.sectionHeader}>Couriers & Live Rates</Text>
+              {pincode.length === 6 && (
+                <TouchableOpacity
+                  onPress={() => fetchLiveRates(pincode, weightKg, paymentMethod)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <Ionicons name="refresh" size={13} color="#4f46e5" />
+                  <Text style={{ fontSize: 11, color: "#4f46e5", fontWeight: "700" }}>Check Rates</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isLoadingCouriers ? (
+              <View style={styles.courierLoadingBox}>
+                <ActivityIndicator size="small" color="#4f46e5" />
+                <Text style={styles.courierLoadingText}>Fetching live couriers & pricing from Shiprocket...</Text>
+              </View>
+            ) : availableCouriers.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                {availableCouriers.map((courier) => {
+                  const isSelected = selectedCourier?.courierCompanyId === courier.courierCompanyId;
+                  return (
+                    <TouchableOpacity
+                      key={courier.courierCompanyId}
+                      style={[styles.courierCard, isSelected && styles.courierCardSelected]}
+                      onPress={() => setSelectedCourier(courier)}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.courierCardName, isSelected && { color: "#312e81" }]}>
+                          {courier.courierName}
+                        </Text>
+                        <Text style={styles.courierCardSub}>
+                          {courier.mode} • Est. {courier.estimatedDeliveryDays}
+                        </Text>
+                      </View>
+                      <View style={styles.courierPriceBox}>
+                        <Text style={styles.courierPriceText}>₹{courier.rate}</Text>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={16} color="#4f46e5" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.courierEmptyBox}>
+                <Ionicons name="bicycle-outline" size={20} color="#94a3b8" />
+                <Text style={styles.courierEmptyText}>
+                  {pincode.length === 6
+                    ? "Checking courier serviceability on Shiprocket..."
+                    : "Enter 6-digit delivery pincode to fetch live courier rates."}
+                </Text>
+              </View>
+            )}
 
             {/* Submit Button */}
             <TouchableOpacity
@@ -593,7 +725,11 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
               ) : (
                 <>
                   <Ionicons name="send" size={16} color="#ffffff" />
-                  <Text style={styles.submitBtnText}>Dispatch to Shiprocket & Generate AWB</Text>
+                  <Text style={styles.submitBtnText}>
+                    {selectedCourier
+                      ? `Dispatch via ${selectedCourier.courierName} (₹${selectedCourier.rate})`
+                      : "Dispatch to Shiprocket & Generate AWB"}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -607,7 +743,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Live Shiprocket Tracking</Text>
+                <Text style={styles.modalTitle}>Shiprocket Live Tracking</Text>
                 <Text style={styles.modalSub}>AWB: {trackingAwb}</Text>
               </View>
               <TouchableOpacity onPress={() => setTrackingAwb(null)}>
@@ -916,7 +1052,7 @@ const styles = StyleSheet.create({
   cardDivider: {
     height: 1,
     backgroundColor: "#f1f5f9",
-    marginVertical: 8,
+    marginVertical: 10,
   },
   infoRow: {
     flexDirection: "row",
@@ -1007,14 +1143,14 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#475569",
+    color: "#334155",
     marginTop: 8,
     marginBottom: 4,
   },
   formInput: {
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#cbd5e1",
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -1030,8 +1166,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
+    borderColor: "#cbd5e1",
+    backgroundColor: "#ffffff",
   },
   payOptionBtnActive: {
     borderColor: "#818cf8",
@@ -1040,11 +1176,77 @@ const styles = StyleSheet.create({
   payOptionText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#64748b",
+    color: "#475569",
   },
   payOptionTextActive: {
     color: "#4338ca",
     fontWeight: "800",
+  },
+  courierLoadingBox: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 6,
+  },
+  courierLoadingText: {
+    fontSize: 11,
+    color: "#64748b",
+    fontWeight: "600",
+  },
+  courierEmptyBox: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#cbd5e1",
+    gap: 4,
+  },
+  courierEmptyText: {
+    fontSize: 11,
+    color: "#64748b",
+    textAlign: "center",
+  },
+  courierCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    padding: 10,
+  },
+  courierCardSelected: {
+    borderColor: "#6366f1",
+    backgroundColor: "#f5f3ff",
+  },
+  courierCardName: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
+  courierCardSub: {
+    fontSize: 10.5,
+    color: "#64748b",
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  courierPriceBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  courierPriceText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#4338ca",
   },
   submitBtn: {
     backgroundColor: "#4f46e5",

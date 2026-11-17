@@ -23,8 +23,11 @@ import {
   MapPin,
   IndianRupee,
   ShieldCheck,
+  Zap,
+  Tag,
+  Star,
 } from "lucide-react";
-import { NormalizedShipment } from "@/utils/shiprocket";
+import { NormalizedShipment, CourierOption } from "@/utils/shiprocket";
 
 interface ShiprocketDashboardProps {
   role: "RECEPTION" | "ADMIN" | "HR";
@@ -46,26 +49,32 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
   const [trackingData, setTrackingData] = useState<any>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState<boolean>(false);
 
-  // Create Parcel Form State
+  // Create Parcel Form State - STRICTLY NO PRE-FILLED TEXT (all empty strings)
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [city, setCity] = useState("Hyderabad");
-  const [state, setState] = useState("Telangana");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [pickupLocation, setPickupLocation] = useState("Primary");
   const [pickupLocations, setPickupLocations] = useState<Array<{ pickupLocation: string; name: string }>>([
     { pickupLocation: "Primary", name: "Spiritual Homeopathy Primary Clinic" },
   ]);
   const [paymentMethod, setPaymentMethod] = useState<"Prepaid" | "COD">("Prepaid");
-  const [packageWeight, setPackageWeight] = useState("0.5");
-  const [lengthCm, setLengthCm] = useState("12");
-  const [breadthCm, setBreadthCm] = useState("10");
-  const [heightCm, setHeightCm] = useState("8");
-  const [itemName, setItemName] = useState("Homeopathy Remedy Kit & Diet Plan");
-  const [itemUnits, setItemUnits] = useState("1");
-  const [itemPrice, setItemPrice] = useState("950");
+  const [packageWeight, setPackageWeight] = useState("");
+  const [lengthCm, setLengthCm] = useState("");
+  const [breadthCm, setBreadthCm] = useState("");
+  const [heightCm, setHeightCm] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [itemUnits, setItemUnits] = useState("");
+  const [itemPrice, setItemPrice] = useState("");
+
+  // Live Couriers & Pricing State fetched directly from Shiprocket API
+  const [availableCouriers, setAvailableCouriers] = useState<CourierOption[]>([]);
+  const [isLoadingCouriers, setIsLoadingCouriers] = useState<boolean>(false);
+  const [selectedCourier, setSelectedCourier] = useState<CourierOption | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createSuccessData, setCreateSuccessData] = useState<any>(null);
 
@@ -88,7 +97,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
     }
   }, []);
 
-  // Fetch Pickup Locations
+  // Fetch Pickup Locations on mount
   useEffect(() => {
     loadOrders();
     fetch("/api/shiprocket/pickup-locations")
@@ -101,6 +110,46 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       })
       .catch((_) => {});
   }, [loadOrders]);
+
+  // Live Fetch Couriers & Rates when 6-digit Pincode is entered
+  const fetchLiveRates = useCallback(async (pin: string, wt: string, cod: string) => {
+    if (pin.trim().length !== 6) {
+      setAvailableCouriers([]);
+      setSelectedCourier(null);
+      return;
+    }
+    setIsLoadingCouriers(true);
+    try {
+      const query = new URLSearchParams({
+        deliveryPincode: pin.trim(),
+        weight: wt.trim() || "0.5",
+        cod: cod === "COD" ? "1" : "0",
+      });
+      const res = await fetch(`/api/shiprocket/serviceability?${query.toString()}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.couriers)) {
+        setAvailableCouriers(data.couriers);
+        if (data.couriers.length > 0) {
+          setSelectedCourier(data.couriers[0]); // Default to lowest rate / recommended
+        }
+      } else {
+        setAvailableCouriers([]);
+        setSelectedCourier(null);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch live courier rates:", err);
+      setAvailableCouriers([]);
+    } finally {
+      setIsLoadingCouriers(false);
+    }
+  }, []);
+
+  // Auto-trigger courier check when pincode changes
+  useEffect(() => {
+    if (pincode.length === 6) {
+      fetchLiveRates(pincode, packageWeight, paymentMethod);
+    }
+  }, [pincode, packageWeight, paymentMethod, fetchLiveRates]);
 
   // Track AWB handler
   const handleOpenTracking = async (awb: string) => {
@@ -118,11 +167,11 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
           awb,
           shipmentStatus: "In Transit",
           currentLocation: "Hub Dispatch Facility",
-          courierName: "Shiprocket Courier Partner",
+          courierName: "Shiprocket Partner",
           activities: [],
         });
       }
-    } catch (err) {
+    } catch (_) {
       setTrackingData({
         awb,
         shipmentStatus: "Tracking Live",
@@ -146,14 +195,14 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       return;
     }
     if (!address.trim() || !city.trim() || !pincode.trim()) {
-      alert("Please enter complete delivery address and pincode.");
+      alert("Please enter complete delivery address, city, and pincode.");
       return;
     }
 
     setIsSubmitting(true);
     setCreateSuccessData(null);
     try {
-      const priceVal = parseFloat(itemPrice) || 500;
+      const priceVal = parseFloat(itemPrice) || 0;
       const unitsVal = parseInt(itemUnits, 10) || 1;
       const payload = {
         patientName: patientName.trim(),
@@ -161,21 +210,23 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
         email: email.trim() || "patient@spiritualhomeo.com",
         address: address.trim(),
         city: city.trim(),
-        state: state.trim(),
+        state: state.trim() || "Telangana",
         pincode: pincode.trim(),
         pickupLocation: pickupLocation || "Primary",
         paymentMethod,
-        subTotal: priceVal * unitsVal,
+        subTotal: priceVal * unitsVal || 500,
         weightKg: parseFloat(packageWeight) || 0.5,
-        lengthCm: parseFloat(lengthCm) || 12,
+        lengthCm: parseFloat(lengthCm) || 10,
         breadthCm: parseFloat(breadthCm) || 10,
-        heightCm: parseFloat(heightCm) || 8,
+        heightCm: parseFloat(heightCm) || 10,
+        courierId: selectedCourier?.courierCompanyId,
+        courierName: selectedCourier?.courierName,
         items: [
           {
             name: itemName.trim() || "Homeopathy Remedy Kit",
             sku: `SPH-MED-${Date.now().toString().slice(-4)}`,
             units: unitsVal,
-            selling_price: priceVal,
+            selling_price: priceVal || 500,
           },
         ],
       };
@@ -194,12 +245,23 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       setCreateSuccessData(data);
       loadOrders(); // Refresh parcel list
 
-      // Reset Form fields
+      // Reset Form fields to blank
       setPatientName("");
       setPhone("");
       setEmail("");
       setAddress("");
+      setCity("");
+      setState("");
       setPincode("");
+      setPackageWeight("");
+      setLengthCm("");
+      setBreadthCm("");
+      setHeightCm("");
+      setItemName("");
+      setItemUnits("");
+      setItemPrice("");
+      setSelectedCourier(null);
+      setAvailableCouriers([]);
     } catch (err: any) {
       alert("Shiprocket Dispatch Failed: " + err.message);
     } finally {
@@ -235,7 +297,6 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
     }
   };
 
-  // Metric counts
   const totalCount = shipments.length;
   const inTransitCount = shipments.filter(
     (s) => s.statusLabel === "In Transit" || s.statusLabel === "Dispatched"
@@ -262,7 +323,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                   <ShieldCheck size={11} />
-                  <span>Real-Time Live</span>
+                  <span>Live API Connected</span>
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
@@ -362,7 +423,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
             </div>
             <p className="text-2xl font-black text-emerald-600 mt-2">{deliveredCount}</p>
             <span className="text-[11px] text-emerald-600 font-bold mt-1 inline-block">
-              Successful orders
+              Successful deliveries
             </span>
           </div>
 
@@ -377,7 +438,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
             </div>
             <p className="text-2xl font-black text-amber-600 mt-2">{pickupCount}</p>
             <span className="text-[11px] text-amber-600 font-bold mt-1 inline-block">
-              Awaiting courier rider
+              Awaiting courier pickup
             </span>
           </div>
         </div>
@@ -397,7 +458,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                   placeholder="Search by Patient Name, Phone, AWB #, or Order ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                  className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400"
                 />
               </div>
 
@@ -419,7 +480,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                       statusFilter === st
                         ? "bg-violet-600 text-white shadow-2xs"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                     }`}
                   >
                     {st}
@@ -504,31 +565,31 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                             )}
                           </td>
                           <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-800">{item.patientName}</div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                            <div className="font-bold text-slate-900">{item.patientName}</div>
+                            <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1 mt-0.5">
                               <Phone size={10} />
                               <span>{item.phone}</span>
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <div className="font-semibold text-slate-800">{item.city}, {item.state}</div>
+                            <div className="font-semibold text-slate-900">{item.city}{item.state ? `, ${item.state}` : ""}</div>
                             <div className="text-[11px] text-slate-500 truncate max-w-xs mt-0.5">
-                              {item.address} - {item.pincode}
+                              {item.address} {item.pincode ? `- ${item.pincode}` : ""}
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 font-bold text-slate-700 text-[11px]">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 font-bold text-slate-800 text-[11px]">
                               <Truck size={11} className="text-slate-500" />
                               <span>{item.courier || "Shiprocket"}</span>
                             </span>
                           </td>
-                          <td className="py-3.5 px-4 font-bold text-slate-800">
+                          <td className="py-3.5 px-4 font-bold text-slate-900">
                             ₹{item.amount.toLocaleString()}
-                            <div className="text-[10px] text-slate-400 font-medium">
+                            <div className="text-[10px] text-slate-500 font-medium">
                               {item.paymentMethod}
                             </div>
                           </td>
-                          <td className="py-3.5 px-4 text-slate-600 font-medium whitespace-nowrap">
+                          <td className="py-3.5 px-4 text-slate-700 font-medium whitespace-nowrap">
                             {item.date}
                           </td>
                           <td className="py-3.5 px-4 whitespace-nowrap">
@@ -577,14 +638,14 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     Create New Parcel & Generate AWB
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Direct real-time dispatch through Shiprocket API
+                    Direct real-time dispatch with live Shiprocket courier selection and pricing
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setActiveTab("all_parcels")}
-                className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1"
+                className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
               >
                 <span>← Back to All Parcels</span>
               </button>
@@ -609,11 +670,11 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-white/70 p-3 rounded-xl border border-emerald-100">
                   <div>
                     <span className="text-slate-500 block text-[10px] font-bold uppercase">Order ID</span>
-                    <span className="font-extrabold text-slate-800">{createSuccessData.orderId}</span>
+                    <span className="font-extrabold text-slate-900">{createSuccessData.orderId}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] font-bold uppercase">Shipment ID</span>
-                    <span className="font-extrabold text-slate-800">{createSuccessData.shipmentId}</span>
+                    <span className="font-extrabold text-slate-900">{createSuccessData.shipmentId}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] font-bold uppercase">AWB Code</span>
@@ -622,15 +683,17 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-500 block text-[10px] font-bold uppercase">Status</span>
-                    <span className="font-extrabold text-emerald-700">Ready for Pickup</span>
+                    <span className="text-slate-500 block text-[10px] font-bold uppercase">Courier</span>
+                    <span className="font-extrabold text-slate-900">
+                      {createSuccessData.courierName || selectedCourier?.courierName || "Shiprocket"}
+                    </span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setActiveTab("all_parcels")}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition cursor-pointer"
                   >
                     View in All Parcels →
                   </button>
@@ -641,16 +704,16 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
             <form onSubmit={handleCreateParcel} className="space-y-6">
               {/* 1. Pickup Location */}
               <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-1.5">
                   Clinic Pickup Location *
                 </label>
                 <select
                   value={pickupLocation}
                   onChange={(e) => setPickupLocation(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50 font-bold text-slate-800"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white font-bold text-slate-900"
                 >
                   {pickupLocations.map((loc) => (
-                    <option key={loc.pickupLocation} value={loc.pickupLocation}>
+                    <option key={loc.pickupLocation} value={loc.pickupLocation} className="text-slate-900 bg-white">
                       {loc.name || loc.pickupLocation} ({loc.pickupLocation})
                     </option>
                   ))}
@@ -665,41 +728,41 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Patient Full Name *
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Ramesh Kumar"
+                      placeholder="Enter patient full name"
                       value={patientName}
                       onChange={(e) => setPatientName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Mobile Number (10 digits) *
                     </label>
                     <input
                       type="tel"
                       required
-                      placeholder="e.g. 9876543210"
+                      placeholder="10-digit mobile number"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Email Address (Optional)
                     </label>
                     <input
                       type="email"
-                      placeholder="patient@gmail.com"
+                      placeholder="patient email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400"
                     />
                   </div>
                 </div>
@@ -713,22 +776,22 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                 </h3>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Complete Street Address (House / Flat / Area) *
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Complete Street Address (Flat / House, Area, Landmark) *
                     </label>
                     <textarea
                       required
                       rows={2}
-                      placeholder="e.g. Flat 302, Sri Sai Nilayam, Street No 4, Madhapur"
+                      placeholder="Enter full destination address"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                        Pincode *
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Delivery Pincode (6 digits) *
                       </label>
                       <input
                         type="text"
@@ -736,29 +799,29 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                         placeholder="e.g. 500081"
                         value={pincode}
                         onChange={(e) => setPincode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">City *</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">City *</label>
                       <input
                         type="text"
                         required
-                        placeholder="Hyderabad"
+                        placeholder="Enter City"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">State *</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">State *</label>
                       <input
                         type="text"
                         required
-                        placeholder="Telangana"
+                        placeholder="Enter State"
                         value={state}
                         onChange={(e) => setState(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
                       />
                     </div>
                   </div>
@@ -769,80 +832,86 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
               <div>
                 <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <Boxes size={14} className="text-violet-600" />
-                  <span>Parcel Dimensions & Medicines</span>
+                  <span>Parcel Dimensions & Weight</span>
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Dead Weight (kg) *
                     </label>
                     <input
                       type="number"
-                      step="0.1"
-                      required
+                      step="0.05"
+                      placeholder="e.g. 0.5"
                       value={packageWeight}
                       onChange={(e) => setPackageWeight(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Length (cm)</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Length (cm)</label>
                     <input
                       type="number"
+                      placeholder="Length"
                       value={lengthCm}
                       onChange={(e) => setLengthCm(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Breadth (cm)</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Breadth (cm)</label>
                     <input
                       type="number"
+                      placeholder="Breadth"
                       value={breadthCm}
                       onChange={(e) => setBreadthCm(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Height (cm)</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Height (cm)</label>
                     <input
                       type="number"
+                      placeholder="Height"
                       value={heightCm}
                       onChange={(e) => setHeightCm(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Item Name</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Item Description</label>
                     <input
                       type="text"
+                      placeholder="e.g. Homeopathy Medicines"
                       value={itemName}
                       onChange={(e) => setItemName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Quantity</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Quantity</label>
                     <input
                       type="number"
                       min="1"
+                      placeholder="Units"
                       value={itemUnits}
                       onChange={(e) => setItemUnits(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Invoice Value (₹)
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Invoice Amount (₹)
                     </label>
                     <input
                       type="number"
+                      placeholder="Amount in ₹"
                       value={itemPrice}
                       onChange={(e) => setItemPrice(e.target.value)}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-black text-slate-900 placeholder:text-slate-400"
                     />
                   </div>
                 </div>
@@ -850,14 +919,14 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
 
               {/* 5. Payment Mode Selection */}
               <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider mb-2">
                   Payment Mode *
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <label
                     className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition ${
                       paymentMethod === "Prepaid"
-                        ? "bg-violet-50 border-violet-400 text-violet-900 font-black"
+                        ? "bg-violet-50 border-violet-400 text-violet-950 font-black"
                         : "bg-white border-slate-200 text-slate-700"
                     }`}
                   >
@@ -869,13 +938,13 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                       onChange={() => setPaymentMethod("Prepaid")}
                       className="text-violet-600"
                     />
-                    <span className="text-xs">Prepaid (Online / Paid in Clinic)</span>
+                    <span className="text-xs">Prepaid (Paid in Clinic / Online)</span>
                   </label>
 
                   <label
                     className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition ${
                       paymentMethod === "COD"
-                        ? "bg-violet-50 border-violet-400 text-violet-900 font-black"
+                        ? "bg-violet-50 border-violet-400 text-violet-950 font-black"
                         : "bg-white border-slate-200 text-slate-700"
                     }`}
                   >
@@ -890,6 +959,80 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     <span className="text-xs">Cash on Delivery (COD)</span>
                   </label>
                 </div>
+              </div>
+
+              {/* 6. LIVE COURIER METHODS & PRICES FETCHED FROM SHIPROCKET API */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap size={14} className="text-amber-500" />
+                    <span>Available Courier Methods & Live Prices (From Shiprocket API)</span>
+                  </h3>
+                  {pincode.length === 6 && (
+                    <button
+                      type="button"
+                      onClick={() => fetchLiveRates(pincode, packageWeight, paymentMethod)}
+                      disabled={isLoadingCouriers}
+                      className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1 cursor-pointer"
+                    >
+                      <RefreshCw size={12} className={isLoadingCouriers ? "animate-spin" : ""} />
+                      <span>Refresh Couriers</span>
+                    </button>
+                  )}
+                </div>
+
+                {isLoadingCouriers ? (
+                  <div className="p-5 rounded-xl border border-slate-200 bg-slate-50 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                    <RefreshCw size={15} className="animate-spin text-violet-600" />
+                    <span>Fetching live courier partners and rates from Shiprocket...</span>
+                  </div>
+                ) : availableCouriers.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {availableCouriers.map((courier) => {
+                      const isSelected = selectedCourier?.courierCompanyId === courier.courierCompanyId;
+                      return (
+                        <div
+                          key={courier.courierCompanyId}
+                          onClick={() => setSelectedCourier(courier)}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                            isSelected
+                              ? "bg-violet-50 border-violet-500 shadow-xs ring-1 ring-violet-500"
+                              : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-slate-900">
+                              {courier.courierName}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                              {courier.mode}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between mt-2.5">
+                            <div>
+                              <span className="text-sm font-black text-violet-700">₹{courier.rate}</span>
+                              <span className="text-[10px] text-slate-400 font-medium ml-1">estimated</span>
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-600 flex items-center gap-0.5">
+                              <Clock size={11} className="text-slate-400" />
+                              <span>{courier.estimatedDeliveryDays}</span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 text-center text-xs text-slate-500">
+                    <Truck size={20} className="mx-auto mb-1 text-slate-400" />
+                    <span>
+                      {pincode.length === 6
+                        ? "Checking courier serviceability on Shiprocket..."
+                        : "Enter 6-digit destination pincode to automatically fetch available couriers and live prices."}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Submit Button */}
@@ -907,7 +1050,11 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                   ) : (
                     <>
                       <Send size={15} />
-                      <span>Dispatch Order & Generate Shiprocket AWB</span>
+                      <span>
+                        {selectedCourier
+                          ? `Dispatch via ${selectedCourier.courierName} (₹${selectedCourier.rate}) & Generate AWB`
+                          : "Dispatch Order & Generate Shiprocket AWB"}
+                      </span>
                     </>
                   )}
                 </button>
@@ -1013,7 +1160,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
               <button
                 type="button"
                 onClick={() => setTrackingAwb(null)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
               >
                 Close
               </button>
