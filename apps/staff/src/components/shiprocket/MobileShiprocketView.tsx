@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -63,18 +63,59 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   const [trackingData, setTrackingData] = useState<any>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState<boolean>(false);
 
-  // Create Parcel Form State - NO PRE-FILLED TEXT (clean blank fields)
+  // Create Parcel Form State - STRICTLY NO PRE-FILLED TEXT (all clean blank fields)
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [landmark, setLandmark] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"Prepaid" | "COD">("Prepaid");
-  const [weightKg, setWeightKg] = useState("");
+
+  // Product & Pricing State
   const [itemName, setItemName] = useState("");
   const [itemUnits, setItemUnits] = useState("");
   const [itemPrice, setItemPrice] = useState("");
+  const [itemDiscount, setItemDiscount] = useState("");
+  const [taxRate, setTaxRate] = useState("");
+  const [otherCharges, setOtherCharges] = useState("");
+
+  // Package Dimensions State
+  const [weightKg, setWeightKg] = useState("");
+  const [lengthCm, setLengthCm] = useState("");
+  const [breadthCm, setBreadthCm] = useState("");
+  const [heightCm, setHeightCm] = useState("");
+
+  // Live Calculations for Amount and Weights
+  const subTotal = useMemo(() => {
+    const price = parseFloat(itemPrice) || 0;
+    const units = parseInt(itemUnits, 10) || 1;
+    const discount = parseFloat(itemDiscount) || 0;
+    return Math.max(0, price * units - discount);
+  }, [itemPrice, itemUnits, itemDiscount]);
+
+  const totalOrderValue = useMemo(() => {
+    const extra = parseFloat(otherCharges) || 0;
+    return Math.round((subTotal + extra) * 100) / 100;
+  }, [subTotal, otherCharges]);
+
+  const deadWeightNum = parseFloat(weightKg) || 0;
+  const lengthNum = parseFloat(lengthCm) || 0;
+  const breadthNum = parseFloat(breadthCm) || 0;
+  const heightNum = parseFloat(heightCm) || 0;
+
+  const volumetricWeight = useMemo(() => {
+    if (lengthNum > 0 && breadthNum > 0 && heightNum > 0) {
+      return Math.round(((lengthNum * breadthNum * heightNum) / 5000) * 100) / 100;
+    }
+    return 0;
+  }, [lengthNum, breadthNum, heightNum]);
+
+  const applicableWeight = useMemo(() => {
+    const higher = Math.max(deadWeightNum, volumetricWeight);
+    return Math.max(0.5, Math.round(higher * 100) / 100);
+  }, [deadWeightNum, volumetricWeight]);
 
   // Live Couriers & Pricing from API
   const [availableCouriers, setAvailableCouriers] = useState<CourierOption[]>([]);
@@ -103,7 +144,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   }, [loadOrders]);
 
   // Fetch Couriers & Rates live from Shiprocket API when 6-digit Pincode is typed
-  const fetchLiveRates = useCallback(async (pin: string, wt: string, cod: string) => {
+  const fetchLiveRates = useCallback(async (pin: string, wt: number, cod: string) => {
     if (pin.trim().length !== 6) {
       setAvailableCouriers([]);
       setSelectedCourier(null);
@@ -113,15 +154,13 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
     try {
       const query = new URLSearchParams({
         deliveryPincode: pin.trim(),
-        weight: wt.trim() || "0.5",
+        weight: String(wt || 0.5),
         cod: cod === "COD" ? "1" : "0",
       });
       const res = await apiFetch<any>(`/shiprocket/serviceability?${query.toString()}`);
-      if (res?.success && Array.isArray(res?.couriers)) {
+      if (res?.success && Array.isArray(res?.couriers) && res.couriers.length > 0) {
         setAvailableCouriers(res.couriers);
-        if (res.couriers.length > 0) {
-          setSelectedCourier(res.couriers[0]);
-        }
+        setSelectedCourier(res.couriers[0]);
       } else {
         setAvailableCouriers([]);
         setSelectedCourier(null);
@@ -134,12 +173,12 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
     }
   }, []);
 
-  // Auto trigger rate check on pincode change
+  // Auto trigger rate check on pincode or applicable weight change
   useEffect(() => {
     if (pincode.length === 6) {
-      fetchLiveRates(pincode, weightKg, paymentMethod);
+      fetchLiveRates(pincode, applicableWeight, paymentMethod);
     }
-  }, [pincode, weightKg, paymentMethod, fetchLiveRates]);
+  }, [pincode, applicableWeight, paymentMethod, fetchLiveRates]);
 
   // Track AWB
   const handleOpenTracking = async (awb: string) => {
@@ -175,7 +214,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   // Submit New Parcel
   const handleCreateParcel = async () => {
     if (!patientName.trim()) {
-      Alert.alert("Missing Name", "Please enter patient name.");
+      Alert.alert("Missing Name", "Please enter buyer/patient full name.");
       return;
     }
     if (!phone.trim() || phone.trim().length < 10) {
@@ -194,17 +233,17 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       const payload = {
         patientName: patientName.trim(),
         phone: phone.trim(),
-        address: address.trim(),
+        address: landmark.trim() ? `${address.trim()}, Near ${landmark.trim()}` : address.trim(),
         city: city.trim(),
         state: state.trim() || "Telangana",
         pincode: pincode.trim(),
-        pickupLocation: "Primary",
+        pickupLocation: "spiritual homeopathy dilsukhnagar",
         paymentMethod,
-        subTotal: priceVal * unitsVal || 500,
-        weightKg: parseFloat(weightKg) || 0.5,
-        lengthCm: 10,
-        breadthCm: 10,
-        heightCm: 10,
+        subTotal: totalOrderValue || 500,
+        weightKg: applicableWeight,
+        lengthCm: lengthNum || 10,
+        breadthCm: breadthNum || 10,
+        heightCm: heightNum || 10,
         courierId: selectedCourier?.courierCompanyId,
         courierName: selectedCourier?.courierName,
         items: [
@@ -213,6 +252,8 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
             sku: `SPH-MED-${Date.now().toString().slice(-4)}`,
             units: unitsVal,
             selling_price: priceVal || 500,
+            discount: parseFloat(itemDiscount) || 0,
+            tax: parseFloat(taxRate) || 0,
           },
         ],
       };
@@ -235,19 +276,26 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       setPatientName("");
       setPhone("");
       setAddress("");
+      setLandmark("");
       setCity("");
       setState("");
       setPincode("");
       setWeightKg("");
+      setLengthCm("");
+      setBreadthCm("");
+      setHeightCm("");
       setItemName("");
       setItemUnits("");
       setItemPrice("");
+      setItemDiscount("");
+      setTaxRate("");
+      setOtherCharges("");
       setSelectedCourier(null);
       setAvailableCouriers([]);
-      setActiveTab("all_parcels");
       loadOrders();
+      setActiveTab("all_parcels");
     } catch (err: any) {
-      Alert.alert("Dispatch Failed", err.message || "Failed to create shipment.");
+      Alert.alert("Dispatch Error", err.message || "Failed to dispatch on Shiprocket.");
     } finally {
       setIsSubmitting(false);
     }
@@ -519,43 +567,137 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       {activeTab === "create_parcel" && (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.formContainer}>
           <View style={styles.formCard}>
-            <Text style={styles.sectionHeader}>Patient / Consignee</Text>
+            {/* 1. Pickup Address (From Address) */}
+            <Text style={styles.sectionHeader}>Pickup Address (From Address)</Text>
+            <View
+              style={{
+                backgroundColor: "#f5f3ff",
+                borderWidth: 1,
+                borderColor: "#ddd6fe",
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 14,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <View
+                  style={{
+                    backgroundColor: "#6d28d9",
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 5,
+                  }}
+                >
+                  <Text style={{ color: "#ffffff", fontSize: 9.5, fontWeight: "900", textTransform: "uppercase" }}>
+                    work
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: "900", color: "#0f172a", flex: 1 }}>
+                  spiritual homeopathy dilsukhnagar
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 3,
+                    backgroundColor: "#dcfce7",
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#86efac",
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={11} color="#15803d" />
+                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#15803d" }}>Verified</Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 11, color: "#475569", lineHeight: 16 }}>
+                Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar,
+                Hyderabad, Telangana 500060 model bank road K.V.Rangareddy Telangana-500060
+              </Text>
+            </View>
 
-            <Text style={styles.inputLabel}>Patient Full Name *</Text>
+            {/* 2. Delivery Details */}
+            <Text style={styles.sectionHeader}>Delivery Details (Buyer)</Text>
+            <Text style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+              Enter the Delivery Details of your buyer for whom you are making this order
+            </Text>
+
+            <Text style={styles.inputLabel}>Mobile Number *</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                borderWidth: 1,
+                borderColor: "#cbd5e1",
+                borderRadius: 10,
+                overflow: "hidden",
+                backgroundColor: "#ffffff",
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: "#f1f5f9",
+                  paddingHorizontal: 10,
+                  justifyContent: "center",
+                  borderRightWidth: 1,
+                  borderRightColor: "#cbd5e1",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: "#64748b" }}>+91</Text>
+              </View>
+              <TextInput
+                style={[
+                  styles.formInput,
+                  {
+                    flex: 1,
+                    borderWidth: 0,
+                    fontFamily: "monospace",
+                    fontWeight: "700",
+                  },
+                ]}
+                placeholder="Enter mobile number"
+                placeholderTextColor="#94a3b8"
+                keyboardType="phone-pad"
+                value={phone}
+                onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+              />
+            </View>
+
+            <Text style={styles.inputLabel}>Full Name *</Text>
             <TextInput
               style={styles.formInput}
-              placeholder="Enter patient full name"
+              placeholder="Enter Full Name"
               placeholderTextColor="#94a3b8"
               value={patientName}
               onChangeText={setPatientName}
             />
 
-            <Text style={styles.inputLabel}>Mobile Phone (10 digits) *</Text>
-            <TextInput
-              style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
-              placeholder="10-digit mobile number"
-              placeholderTextColor="#94a3b8"
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
-            />
-
-            <Text style={styles.inputLabel}>Complete Street Address *</Text>
+            <Text style={styles.inputLabel}>Complete Address *</Text>
             <TextInput
               style={[styles.formInput, { height: 60, textAlignVertical: "top" }]}
-              placeholder="Flat / House No, Street, Landmark"
+              placeholder="Enter Buyer's full address"
               placeholderTextColor="#94a3b8"
               multiline
               value={address}
               onChangeText={setAddress}
             />
 
+            <Text style={styles.inputLabel}>Landmark (Optional)</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Enter any nearby landmark"
+              placeholderTextColor="#94a3b8"
+              value={landmark}
+              onChangeText={setLandmark}
+            />
+
             <View style={{ flexDirection: "row", gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Pincode (6 digits) *</Text>
+                <Text style={styles.inputLabel}>Pincode *</Text>
                 <TextInput
                   style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
-                  placeholder="e.g. 500081"
+                  placeholder="Enter pincode"
                   placeholderTextColor="#94a3b8"
                   keyboardType="numeric"
                   value={pincode}
@@ -574,46 +716,22 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
               </View>
             </View>
 
-            <View style={styles.cardDivider} />
-
-            <Text style={styles.sectionHeader}>Package & Medicine</Text>
-
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Weight (kg) *</Text>
-                <TextInput
-                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
-                  placeholder="e.g. 0.5"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="decimal-pad"
-                  value={weightKg}
-                  onChangeText={setWeightKg}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Invoice Amount (₹)</Text>
-                <TextInput
-                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
-                  placeholder="e.g. 950"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numeric"
-                  value={itemPrice}
-                  onChangeText={setItemPrice}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>Medicine / Item Description</Text>
+            <Text style={styles.inputLabel}>State *</Text>
             <TextInput
               style={styles.formInput}
-              placeholder="e.g. Homeopathy Medicines"
-              value={itemName}
-              onChangeText={setItemName}
+              placeholder="State"
+              value={state}
+              onChangeText={setState}
               placeholderTextColor="#94a3b8"
             />
 
-            <Text style={styles.inputLabel}>Payment Mode</Text>
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+            {/* 3. Payment Method */}
+            <View style={styles.cardDivider} />
+            <Text style={styles.sectionHeader}>Payment Method</Text>
+            <Text style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
+              Select the payment mode, chosen by the buyer for this order.
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity
                 style={[styles.payOptionBtn, paymentMethod === "Prepaid" && styles.payOptionBtnActive]}
                 onPress={() => setPaymentMethod("Prepaid")}
@@ -648,18 +766,229 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                     paymentMethod === "COD" && styles.payOptionTextActive,
                   ]}
                 >
-                  COD (Cash on Delivery)
+                  Cash on Delivery (COD)
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* LIVE COURIERS & PRICES FETCHED FROM SHIPROCKET API */}
+            {/* 4. Product Details & Live Amount Calculation */}
             <View style={styles.cardDivider} />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <Text style={styles.sectionHeader}>Product Details</Text>
+
+            <Text style={styles.inputLabel}>Product Name *</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Enter or search your product name"
+              value={itemName}
+              onChangeText={setItemName}
+              placeholderTextColor="#94a3b8"
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Unit Price (₹) *</Text>
+                <TextInput
+                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+                  placeholder="0.00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  value={itemPrice}
+                  onChangeText={setItemPrice}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Quantity</Text>
+                <TextInput
+                  style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+                  placeholder="1"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  value={itemUnits}
+                  onChangeText={setItemUnits}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Discount (Optional) (₹)</Text>
+                <TextInput
+                  style={[styles.formInput, { fontFamily: "monospace" }]}
+                  placeholder="0.00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  value={itemDiscount}
+                  onChangeText={setItemDiscount}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Tax Rate (%)</Text>
+                <TextInput
+                  style={[styles.formInput, { fontFamily: "monospace" }]}
+                  placeholder="0.00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  value={taxRate}
+                  onChangeText={setTaxRate}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.inputLabel}>Other Charges & Discount (Optional)</Text>
+            <TextInput
+              style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+              placeholder="0.00"
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={otherCharges}
+              onChangeText={setOtherCharges}
+            />
+
+            {/* Live Calculation Amount Box */}
+            <View
+              style={{
+                backgroundColor: "#f8fafc",
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: "#e2e8f0",
+                padding: 10,
+                marginTop: 10,
+                gap: 4,
+              }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 11, color: "#64748b" }}>Sub-total for Product</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#0f172a", fontFamily: "monospace" }}>
+                  ₹ {subTotal.toFixed(2)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 11, color: "#64748b" }}>Other Charges</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#0f172a", fontFamily: "monospace" }}>
+                  ₹ {(parseFloat(otherCharges) || 0).toFixed(2)}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingTop: 6,
+                  borderTopWidth: 1,
+                  borderTopColor: "#e2e8f0",
+                  alignItems: "baseline",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "900", color: "#0f172a" }}>Total Order Value</Text>
+                <Text style={{ fontSize: 14, fontWeight: "900", color: "#4f46e5", fontFamily: "monospace" }}>
+                  ₹ {totalOrderValue.toFixed(2)}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 9.5, color: "#94a3b8", fontStyle: "italic", marginTop: 2 }}>
+                Note: All the Prices/ Charges are inclusive of GST.
+              </Text>
+            </View>
+
+            {/* 5. Package Details & Dimensions */}
+            <View style={styles.cardDivider} />
+            <Text style={styles.sectionHeader}>Package Details</Text>
+            <View
+              style={{
+                backgroundColor: "#fffbeb",
+                padding: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: "#fef3c7",
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ fontSize: 10.5, color: "#92400e" }}>
+                💡 <strong>Tip:</strong> Add correct values to avoid weight discrepancy during transit.
+              </Text>
+            </View>
+
+            <Text style={styles.inputLabel}>Dead Weight (kg) *</Text>
+            <TextInput
+              style={[styles.formInput, { fontFamily: "monospace", fontWeight: "700" }]}
+              placeholder="0.00"
+              placeholderTextColor="#94a3b8"
+              keyboardType="decimal-pad"
+              value={weightKg}
+              onChangeText={setWeightKg}
+            />
+            <Text style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2 }}>
+              Note: Minimum chargeable wt is 0.5 kg
+            </Text>
+
+            <Text style={styles.inputLabel}>Package Dimensions (LxBxH in cm)</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TextInput
+                style={[styles.formInput, { flex: 1, fontFamily: "monospace" }]}
+                placeholder="Length"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                value={lengthCm}
+                onChangeText={setLengthCm}
+              />
+              <TextInput
+                style={[styles.formInput, { flex: 1, fontFamily: "monospace" }]}
+                placeholder="Breadth"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                value={breadthCm}
+                onChangeText={setBreadthCm}
+              />
+              <TextInput
+                style={[styles.formInput, { flex: 1, fontFamily: "monospace" }]}
+                placeholder="Height"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                value={heightCm}
+                onChangeText={setHeightCm}
+              />
+            </View>
+
+            {/* Applicable Weight Banner */}
+            <View
+              style={{
+                backgroundColor: "#f5f3ff",
+                borderRadius: 8,
+                padding: 10,
+                marginTop: 8,
+                borderWidth: 1,
+                borderColor: "#ddd6fe",
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View>
+                <Text style={{ fontSize: 10, color: "#64748b" }}>Volumetric Weight</Text>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#334155", fontFamily: "monospace" }}>
+                  {volumetricWeight} kg
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ fontSize: 10, color: "#64748b" }}>Applicable Weight</Text>
+                <Text style={{ fontSize: 13, fontWeight: "900", color: "#4f46e5", fontFamily: "monospace" }}>
+                  {applicableWeight} kg
+                </Text>
+              </View>
+            </View>
+
+            {/* 6. LIVE COURIERS & PRICES FETCHED FROM SHIPROCKET API */}
+            <View style={styles.cardDivider} />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
               <Text style={styles.sectionHeader}>Couriers & Live Rates</Text>
               {pincode.length === 6 && (
                 <TouchableOpacity
-                  onPress={() => fetchLiveRates(pincode, weightKg, paymentMethod)}
+                  onPress={() => fetchLiveRates(pincode, applicableWeight, paymentMethod)}
                   style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
                 >
                   <Ionicons name="refresh" size={13} color="#4f46e5" />
@@ -713,7 +1042,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
               </View>
             )}
 
-            {/* Submit Button */}
+            {/* 7. Submit Button */}
             <TouchableOpacity
               style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
               onPress={handleCreateParcel}
@@ -727,8 +1056,8 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                   <Ionicons name="send" size={16} color="#ffffff" />
                   <Text style={styles.submitBtnText}>
                     {selectedCourier
-                      ? `Dispatch via ${selectedCourier.courierName} (₹${selectedCourier.rate})`
-                      : "Dispatch to Shiprocket & Generate AWB"}
+                      ? `Ship Now: ${selectedCourier.courierName} (₹${selectedCourier.rate})`
+                      : "Ship Now / Add Order & Generate AWB"}
                   </Text>
                 </>
               )}
