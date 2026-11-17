@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { safeLaunchCamera } from "../../utils/cameraPermissions";
 import { clearAllAuthData, getActiveStaff } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 import { StaffBottomNav, StaffTabType } from "../../components/staff/StaffBottomNav";
@@ -563,16 +564,7 @@ export default function MobileStaffDashboard() {
   // Capture or Pick Selfie
   const handleTakeSelfie = async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Camera Permission", "Camera permission is required to capture selfie for attendance verification.");
-        // Fallback to instant verification stamp
-        const timestampStamp = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='400' height='400' fill='%230284c7'/><text x='200' y='200' font-size='24' font-weight='bold' fill='white' text-anchor='middle'>VERIFIED SELFIE STAMP</text></svg>`;
-        setSelfiePhoto(timestampStamp);
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
+      const result = await safeLaunchCamera({
         cameraType: ImagePicker.CameraType.front,
         allowsEditing: true,
         aspect: [1, 1],
@@ -580,13 +572,17 @@ export default function MobileStaffDashboard() {
         base64: true,
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
+      if (result && !result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.base64) {
           setSelfiePhoto(`data:image/jpeg;base64,${asset.base64}`);
         } else if (asset.uri) {
           setSelfiePhoto(asset.uri);
         }
+      } else if (!result) {
+        // Fallback stamp if permission was not granted or cancelled
+        const timestampStamp = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'><rect width='400' height='400' fill='%230284c7'/><text x='200' y='200' font-size='24' font-weight='bold' fill='white' text-anchor='middle'>VERIFIED SELFIE STAMP</text></svg>`;
+        setSelfiePhoto(timestampStamp);
       }
     } catch {
       // In case camera isn't supported on simulator, generate a valid verified selfie data URL

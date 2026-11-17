@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { safeLaunchCamera, safeLaunchImageLibrary } from "../../../utils/cameraPermissions";
 import { apiFetch, getActiveBranch } from "../../../services/auth";
 import { PrescriptionViewerModal } from "../../../components/patient-file/PrescriptionViewerModal";
 import { saveActiveRoute, clearActiveRoute, saveDraft, getDraft, clearDraft } from "../../../services/appSession";
@@ -301,36 +302,21 @@ export default function MobileOldPrescriptionEntryScreen() {
 
   const processImagePick = async (useCamera: boolean) => {
     try {
-      let result;
-      if (useCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Camera permission is needed to capture prescriptions.");
-          return;
-        }
-        // allowsEditing: false PREVENTS Android cropper freeze/white screen!
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: false,
-          quality: 0.65,
-          base64: true,
-        });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Gallery permission is needed to select prescriptions.");
-          return;
-        }
-        // allowsEditing: false PREVENTS Android cropper freeze/white screen!
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: false,
-          quality: 0.65,
-          base64: true,
-        });
-      }
+      const result = useCamera
+        ? await safeLaunchCamera({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.65,
+            base64: true,
+          })
+        : await safeLaunchImageLibrary({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.65,
+            base64: true,
+          });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (result && !result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         if (asset.base64) {
           base64CacheRef.current[asset.uri] = asset.base64;
@@ -342,7 +328,8 @@ export default function MobileOldPrescriptionEntryScreen() {
         }, 3000);
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to process photo.");
+      console.warn("Failed to process photo:", err);
+      Alert.alert("Notice", "Unable to open photo picker. Please try again or select from gallery.");
     } finally {
       setIsUploading(false);
     }

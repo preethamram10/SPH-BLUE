@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { safeLaunchCamera, safeLaunchImageLibrary } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { getBranchPhone } from "../../app/(reception)/medical-requests/pdf/generateMedicineRequestPDF";
 
@@ -358,34 +359,22 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const handlePickImage = async (useCamera: boolean) => {
     if (!appointment?.id) return;
     try {
-      if (useCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission needed", "Camera permission is required to capture prescription.");
-          return;
-        }
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission needed", "Photo library permission is required.");
-          return;
-        }
-      }
-
-      setIsUploadingRx(true);
       const result = useCamera
-        ? await ImagePicker.launchCameraAsync({
+        ? await safeLaunchCamera({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: false,
             quality: 0.7,
             base64: true,
           })
-        : await ImagePicker.launchImageLibraryAsync({
+        : await safeLaunchImageLibrary({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: false,
             quality: 0.7,
             base64: true,
           });
+
+      if (!result) return;
+      setIsUploadingRx(true);
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];

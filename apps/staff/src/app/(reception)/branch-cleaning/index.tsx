@@ -16,6 +16,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { safeLaunchCamera } from "../../../utils/cameraPermissions";
 import { getActiveBranch } from "../../../services/auth";
 import { API_BASE_URL } from "../../../config/api";
 
@@ -213,20 +214,14 @@ export default function ReceptionBranchCleaningScreen() {
 
   // Launch Camera: adds photo locally with instant green tick mark
   const handleTakePhoto = async (field: CleaningField) => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission Required", "Camera permission is required to capture cleaning photos.");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await safeLaunchCamera({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
       base64: true,
       allowsEditing: false,
     });
 
-    if (!result.canceled && result.assets[0]) {
+    if (result && !result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       const newPhoto: LocalMobilePhoto = {
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,

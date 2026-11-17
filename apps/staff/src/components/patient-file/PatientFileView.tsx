@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
+import { safeLaunchCamera } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { Image as ExpoImage } from "expo-image";
 import { DrawingCanvasModal } from "./DrawingCanvasModal";
@@ -525,18 +526,13 @@ export const PatientFileView: React.FC<PatientFileViewProps> = ({ role, bottomNa
   // Capture Photo with Camera with Smart Compression & Local Attachment (Uploads to S3 on Save)
   const handleCameraCapture = async () => {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission Required", "Camera permission is needed to take prescription photos.");
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
+      const result = await safeLaunchCamera({
         allowsEditing: false,
         quality: 0.7, // Smart compression
         base64: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (result && !result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const localUri = asset.uri;
 

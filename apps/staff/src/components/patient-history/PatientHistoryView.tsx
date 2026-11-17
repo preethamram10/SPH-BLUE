@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { safeLaunchCamera, safeLaunchImageLibrary } from "../../utils/cameraPermissions";
 import { apiFetch } from "../../services/auth";
 import { resolvePrescriptionImageUrl } from "../patient-file/PatientFileView";
 import { PrescriptionViewerModal } from "../patient-file/PrescriptionViewerModal";
@@ -219,34 +220,21 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
 
   const processImagePick = async (useCamera: boolean) => {
     try {
-      let result;
-      if (useCamera) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Camera access is needed to capture prescriptions.");
-          return;
-        }
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: false,
-          quality: 0.7,
-          base64: true,
-        });
-      } else {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") {
-          Alert.alert("Permission Required", "Gallery access is needed to upload prescriptions.");
-          return;
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: false,
-          quality: 0.7,
-          base64: true,
-        });
-      }
+      const result = useCamera
+        ? await safeLaunchCamera({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+            base64: true,
+          })
+        : await safeLaunchImageLibrary({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.7,
+            base64: true,
+          });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (result && !result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         setIsUploading(true);
 
