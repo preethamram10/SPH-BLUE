@@ -49,30 +49,53 @@ export const AppointmentCard = memo(function AppointmentCard({
 
   // Visit Badge Render (Single source of truth from backend visitBadge)
   const renderVisitBadge = () => {
-    const badge = appt.visitBadge;
-    if (badge === "In-Dur" || appt.isDuration || appt.visitType === "IN_DURATION") {
+    // 1. Direct visitBadge from backend is the single source of truth
+    if (appt.visitBadge === "In-Dur") {
       return (
         <View style={[styles.badgeBase, styles.badgeDuration]}>
           <Text style={styles.badgeDurationText}>In-Dur</Text>
         </View>
       );
     }
-    if (badge === "Revisit" || appt.visitType === "REVISIT" || appt.isReback) {
-      return (
-        <View style={[styles.badgeBase, styles.badgeRevisit]}>
-          <Text style={styles.badgeRevisitText}>Revisit</Text>
-        </View>
-      );
-    }
-    if (badge === "New" || appt.isNewPatient || appt.visitType === "NEW") {
+    if (appt.visitBadge === "New") {
       return (
         <View style={[styles.badgeBase, styles.badgeNew]}>
           <Text style={styles.badgeNewText}>New</Text>
         </View>
       );
     }
+    if (appt.visitBadge === "Revisit") {
+      return (
+        <View style={[styles.badgeBase, styles.badgeRevisit]}>
+          <Text style={styles.badgeRevisitText}>Revisit</Text>
+        </View>
+      );
+    }
 
-    // Safe fallback:
+    // 2. Secondary fallback flags
+    if (appt.isDuration || appt.visitType === "IN_DURATION") {
+      return (
+        <View style={[styles.badgeBase, styles.badgeDuration]}>
+          <Text style={styles.badgeDurationText}>In-Dur</Text>
+        </View>
+      );
+    }
+    if (appt.isNewPatient || appt.visitType === "NEW") {
+      return (
+        <View style={[styles.badgeBase, styles.badgeNew]}>
+          <Text style={styles.badgeNewText}>New</Text>
+        </View>
+      );
+    }
+    if (appt.visitType === "REVISIT" || appt.isReback) {
+      return (
+        <View style={[styles.badgeBase, styles.badgeRevisit]}>
+          <Text style={styles.badgeRevisitText}>Revisit</Text>
+        </View>
+      );
+    }
+
+    // 3. Final heuristic:
     const isNew = !appt.isReback && !appt.visitCount && !appt.totalVisits;
     if (isNew) {
       return (

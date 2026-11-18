@@ -1232,18 +1232,21 @@ function normalizeDateStr(dt) {
 function matchPatientProfile(appt, patient) {
     const apptReg = (appt.registrationId || appt.regId || appt.patientId || "").trim().toUpperCase();
     const patReg = (patient.regId || patient.registrationId || patient.patientId || "").trim().toUpperCase();
+    // 1. If both records have registration IDs, they MUST be identical:
     if (apptReg && patReg && apptReg.length >= 3 && patReg.length >= 3) {
-        if (apptReg === patReg)
-            return true;
+        return apptReg === patReg;
     }
+    // 2. Otherwise match by matching 10-digit phone AND matching name:
     const apptPhone = normalizePhone(appt.phone || appt.phoneNumber || "");
     const patPhone = normalizePhone(patient.phone || patient.phoneNumber || "");
+    if (!apptPhone || !patPhone || apptPhone.length < 10 || patPhone.length < 10)
+        return false;
+    if (apptPhone.slice(-10) !== patPhone.slice(-10))
+        return false;
     const apptName = (appt.patientName || appt.name || "").trim().toLowerCase();
     const patName = (patient.name || patient.patientName || "").trim().toLowerCase();
-    if (apptPhone && patPhone && apptPhone.length >= 10 && apptPhone.slice(-10) === patPhone.slice(-10)) {
-        if (!apptName || !patName || apptName === patName || apptName.includes(patName) || patName.includes(apptName)) {
-            return true;
-        }
+    if (apptName && patName) {
+        return apptName === patName || apptName.includes(patName) || patName.includes(apptName);
     }
     return false;
 }
@@ -2094,7 +2097,6 @@ function decorateAppointmentWithVisitInfo(a, allStore, patientsStore, pkgStore) 
     const aDigits = normalizePhone(a.phone || "");
     const aPhone = aDigits.length >= 10 ? aDigits.slice(-10) : "";
     const pat = (aReg && regIndex.get(aReg)) ||
-        (aPhone && phoneIndex.get(aPhone)?.[0]) ||
         patients.find((p) => matchPatientProfile(a, p));
     // HIGH-PERFORMANCE CANDIDATE LOOKUP:
     // Instead of scanning all 20,000 appointments twice (O(N)), look up sibling appointments in O(1)
@@ -2118,8 +2120,12 @@ function decorateAppointmentWithVisitInfo(a, allStore, patientsStore, pkgStore) 
         if (list) {
             for (const item of list) {
                 if (item.id !== a.id && !seenIds.has(item.id)) {
-                    seenIds.add(item.id);
-                    candidatePool.push(item);
+                    // STRICT PROFILE MATCH: Candidate must belong to THIS patient profile!
+                    // (matching registration ID or matching name on the same phone number)
+                    if (matchPatientProfile(a, item)) {
+                        seenIds.add(item.id);
+                        candidatePool.push(item);
+                    }
                 }
             }
         }
@@ -2169,14 +2175,16 @@ function decorateAppointmentWithVisitInfo(a, allStore, patientsStore, pkgStore) 
         : activePkg?.createdAt
             ? normalizeDateStr(activePkg.createdAt.slice(0, 10))
             : undefined;
+    const hasHistory = completedCount > 0 || anyPrior.length > 0 || ((pat?.completedVisitsCount || 0) > 0);
+    const isActualReback = Boolean(a.isReback && hasHistory);
     const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp, {
         hasActivePackage: !!activePkg,
         packageEndDate: activePkg?.endDate,
         packageStartDate,
         followUpStartDate,
         referenceDate: a.appointmentDate || a.createdAt,
-        isReback: Boolean(a.isReback || (a.marketingSource && a.marketingSource.toLowerCase().includes("old"))),
-        hasPriorVisits: completedCount > 0 || anyPrior.length > 0,
+        isReback: isActualReback,
+        hasPriorVisits: hasHistory,
     });
     const isDur = badgeInfo.badge === "In-Dur";
     const isNew = badgeInfo.badge === "New";
