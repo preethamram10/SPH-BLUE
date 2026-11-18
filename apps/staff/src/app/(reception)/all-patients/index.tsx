@@ -50,7 +50,11 @@ export default function ReceptionAllPatientsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeBranch, setActiveBranch] = useState<any>(null);
-  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number>>({ TODAY: 0, YESTERDAY: 0, ALL: 0 });
+  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number | null>>({
+    TODAY: null,
+    YESTERDAY: null,
+    ALL: null,
+  });
 
   // Load branch and saved filters on mount
   useEffect(() => {
@@ -93,6 +97,11 @@ export default function ReceptionAllPatientsScreen() {
           setTotalCount(data.totalCount || 0);
           setTotalPages(data.totalPages || 1);
           setCurrentPage(data.currentPage || 1);
+          // Auto sync session count for current tab
+          setSessionCounts((prev) => ({
+            ...prev,
+            [tab]: data.totalCount || 0,
+          }));
         }
       } catch (err) {
         console.error("Failed to fetch patients:", err);
@@ -104,31 +113,48 @@ export default function ReceptionAllPatientsScreen() {
     [activeBranch, search]
   );
 
-  // Fetch counts for each session tab
+  // Progressive count loader: Loads Today & Yesterday first, then All
   const fetchSessionCounts = useCallback(async () => {
     const branchName = activeBranch?.name || activeBranch?.branch || "";
-    const tabs: SessionTab[] = ["TODAY", "YESTERDAY", "ALL"];
-    const counts: Record<SessionTab, number> = { TODAY: 0, YESTERDAY: 0, ALL: 0 };
+    if (!branchName) return;
+
+    // Phase 1: Fast load for Today and Yesterday
+    const quickTabs: SessionTab[] = ["TODAY", "YESTERDAY"];
     await Promise.all(
-      tabs.map(async (tab) => {
+      quickTabs.map(async (tab) => {
         try {
-          const params = new URLSearchParams({ session: tab, page: "1", pageSize: "1" });
-          if (branchName) params.set("branch", branchName);
+          const params = new URLSearchParams({ session: tab, page: "1", pageSize: "1", branch: branchName });
           const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
-          if (data.success) counts[tab] = data.totalCount || 0;
+          if (data?.success && typeof data.totalCount === "number") {
+            setSessionCounts((prev) => ({ ...prev, [tab]: data.totalCount }));
+          }
         } catch {}
       })
     );
-    setSessionCounts(counts);
+
+    // Phase 2: Background count for ALL
+    try {
+      const params = new URLSearchParams({ session: "ALL", page: "1", pageSize: "1", branch: branchName });
+      const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
+      if (data?.success && typeof data.totalCount === "number") {
+        setSessionCounts((prev) => ({ ...prev, ALL: data.totalCount }));
+      }
+    } catch {}
   }, [activeBranch]);
 
-  // On branch load / tab change — reset to page 1
+  // On branch load / tab change
   useEffect(() => {
     if (activeBranch !== null) {
       fetchPatients(session, 1, false, search);
-      fetchSessionCounts();
     }
   }, [activeBranch, session]);
+
+  // Load session counts only on initial branch load (does not reset to 0 on every tab change)
+  useEffect(() => {
+    if (activeBranch !== null) {
+      fetchSessionCounts();
+    }
+  }, [activeBranch, fetchSessionCounts]);
 
   // Debounced server search across all 12,000 patients when user enters full phone, MRN or name
   useEffect(() => {
@@ -367,7 +393,12 @@ export default function ReceptionAllPatientsScreen() {
       {/* Session Tabs */}
       <View style={styles.tabsRow}>
         {(["TODAY", "YESTERDAY", "ALL"] as SessionTab[]).map((tab) => {
-          const label = tab === "ALL" ? `All Patients (${sessionCounts.ALL})` : `${tab === "TODAY" ? "Today" : "Yesterday"} (${sessionCounts[tab]})`;
+          const countVal = sessionCounts[tab];
+          const countDisplay = countVal !== null && countVal !== undefined ? countVal : "–";
+          const label =
+            tab === "ALL"
+              ? `All Patients (${countDisplay})`
+              : `${tab === "TODAY" ? "Today" : "Yesterday"} (${countDisplay})`;
           const isActive = session === tab;
           return (
             <TouchableOpacity

@@ -25,8 +25,13 @@ export async function GET(req: NextRequest) {
     }
 
     const branch = isExplicitAll ? undefined : cleanBranch;
+    const t0 = performance.now();
     const appointments = await appointmentService.getAppointments(branch, date, doctorId);
-    return NextResponse.json({ success: true, appointments });
+    const duration = (performance.now() - t0).toFixed(2);
+    console.log(
+      `[PERF API] GET /reception/appointments?branch=${branch}&date=${date} -> ${appointments.length} records in ${duration}ms`
+    );
+    return NextResponse.json({ success: true, appointments, executionMs: parseFloat(duration) });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch appointments" },

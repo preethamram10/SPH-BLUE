@@ -57,44 +57,65 @@ export async function GET(req: NextRequest) {
       all = all.filter((p) => regIdsWithAppt.has((p.regId || "").trim().toUpperCase()));
     }
 
-    // Fetch appointments to map visit counts & latest doctor/date
+    // Total count before pagination
+    const totalCount = all.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const start = (page - 1) * pageSize;
+    const pagedRaw = all.slice(start, start + pageSize);
+
+    // If only requesting count (pageSize === 1) or empty page, return fast without heavy enrichment
+    if (pageSize === 1 && page === 1 && pagedRaw.length === 0) {
+      return NextResponse.json({
+        success: true,
+        patients: [],
+        totalCount,
+        totalPages,
+        currentPage: page,
+        pageSize,
+      });
+    }
+
+    // High-performance targeted enrichment ONLY for the current page items
+    const pageRegIds = new Set(pagedRaw.map((p) => (p.regId || "").trim().toUpperCase()).filter(Boolean));
     const allAppts = await appointmentService.getAppointments();
     const apptsByRegId = new Map<string, any[]>();
+
     allAppts.forEach((a) => {
       if (a.isDeleted) return;
       const key = (a.registrationId || "").trim().toUpperCase();
-      if (!key) return;
+      if (!key || !pageRegIds.has(key)) return;
       if (!apptsByRegId.has(key)) apptsByRegId.set(key, []);
       apptsByRegId.get(key)!.push(a);
     });
 
-    let enriched = all.map((p) => {
+    const paged = pagedRaw.map((p) => {
       const pAppts = apptsByRegId.get((p.regId || "").trim().toUpperCase()) || [];
       const totalVisits = pAppts.length;
-      const sorted = [...pAppts].sort((a, b) => (b.appointmentDate || "").localeCompare(a.appointmentDate || ""));
+      const sorted = [...pAppts].sort((a, b) =>
+        (b.appointmentDate || "").localeCompare(a.appointmentDate || "")
+      );
       const latest = sorted[0];
       return {
         ...p,
         totalVisits,
         appointmentCount: totalVisits,
-        source: (p as any).source || (p as any).marketingSource || latest?.marketingSource || "Walk-in",
-        subject: (p as any).subject || (p as any).diseases || latest?.diseases || latest?.diagnosisNotes || "",
-        lastVisitDate: normalizeDateStr(latest?.appointmentDate || p.createdAt?.slice(0, 10) || ""),
+        source:
+          (p as any).source ||
+          (p as any).marketingSource ||
+          latest?.marketingSource ||
+          "Walk-in",
+        subject:
+          (p as any).subject ||
+          (p as any).diseases ||
+          latest?.diseases ||
+          latest?.diagnosisNotes ||
+          "",
+        lastVisitDate: normalizeDateStr(
+          latest?.appointmentDate || p.createdAt?.slice(0, 10) || ""
+        ),
         lastDoctorName: latest?.doctorName || "",
       };
     });
-
-    // Sort: newest first by createdAt
-    enriched = enriched.sort((a, b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta;
-    });
-
-    const totalCount = enriched.length;
-    const totalPages = Math.ceil(totalCount / pageSize);
-    const start = (page - 1) * pageSize;
-    const paged = enriched.slice(start, start + pageSize);
 
     return NextResponse.json({
       success: true,

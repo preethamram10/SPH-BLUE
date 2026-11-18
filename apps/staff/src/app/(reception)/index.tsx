@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   Image,
   Animated,
   Dimensions,
@@ -18,16 +19,23 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { removeAuthToken, getActiveBranch, removeActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { getActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
 import { getBranchPhone } from "../../utils/branchPhone";
 import { API_BASE_URL } from "../../config/api";
 import { useNetwork } from "../../context/NetworkContext";
 import { AppointmentPaymentModal } from "../../components/payment/AppointmentPaymentModal";
+import { AppointmentCard } from "../../components/reception/AppointmentCard";
+import {
+  useAppointmentsSummary,
+  useAppointmentsList,
+  prefetchDateAppointments,
+} from "../../hooks/useReceptionAppointments";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 320);
 
-// Brand Colors matching user reference screenshot
+// Brand Colors
 const COLORS = {
   blue: "#268ec8",
   themeBlue: "#0284c7",
@@ -48,10 +56,20 @@ const COLORS = {
 
 export default function ReceptionDashboard() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { isOnline, checkConnection } = useNetwork();
   const [activeBranch, setActiveBranch] = useState<any>(null);
 
   // Date Helpers (DD-MM-YYYY)
+  const getYesterdayStr = () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const d = String(yesterday.getDate()).padStart(2, "0");
+    const m = String(yesterday.getMonth() + 1).padStart(2, "0");
+    const y = yesterday.getFullYear();
+    return `${d}-${m}-${y}`;
+  };
+
   const getTodayStr = () => {
     const now = new Date();
     const d = String(now.getDate()).padStart(2, "0");
@@ -69,29 +87,31 @@ export default function ReceptionDashboard() {
     return `${d}-${m}-${y}`;
   };
 
+  const yesterdayStr = useMemo(() => getYesterdayStr(), []);
   const todayStr = useMemo(() => getTodayStr(), []);
   const tomorrowStr = useMemo(() => getTomorrowStr(), []);
 
   // Selected Date Filter for Appointments (Default: Today)
   const [selectedDate, setSelectedDate] = useState(() => getTodayStr());
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  // Active Status Filter
-  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COLLECT_FEE" | "COMPLETED">("ALL");
+  // Active Status Filter Tab (Default to Waiting / UPCOMING per user specification)
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COLLECT_FEE" | "COMPLETED">("UPCOMING");
 
-  // Calendar Modal State for picking any future or past date
+  // Completed Appointments pagination limit (initial 20 + Load More)
+  const [completedLimit, setCompletedLimit] = useState(20);
+
+  // Calendar Modal State
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
 
-  // 24-Hour Deleted Appointments State (Reception Window)
+  // 24-Hour Deleted Appointments State
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
   const [deletedAppointments, setDeletedAppointments] = useState<any[]>([]);
   const [isLoadingDeleted, setIsLoadingDeleted] = useState(false);
 
-  // Reschedule Modal State (Mobile)
+  // Reschedule Modal State
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
   const [rescheduleTargetAppt, setRescheduleTargetAppt] = useState<any>(null);
   const [rescheduleDate, setRescheduleDate] = useState(() => getTodayStr());
@@ -105,11 +125,22 @@ export default function ReceptionDashboard() {
   const [loadingRescheduleDoctors, setLoadingRescheduleDoctors] = useState(false);
   const [rescheduleNoShows, setRescheduleNoShows] = useState<any[]>([]);
 
-  // Appointment Payment Modal State (Orange COLLECT FEE)
+  // Appointment Payment Modal State
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
 
-  // Live Branch Target State
+  // Track screen focus to halt background polling when navigated away
+  const [isScreenFocused, setIsScreenFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setIsScreenFocused(true);
+      return () => {
+        setIsScreenFocused(false);
+      };
+    }, [])
+  );
+
+  // Live Branch Target State (Fetched once on mount, NOT in periodic polling)
   const [branchTarget, setBranchTarget] = useState<{
     targetGoal: number;
     targetReached: number;
@@ -146,7 +177,380 @@ export default function ReceptionDashboard() {
     }
   };
 
-  // Time conversion helpers
+  // Check mandatory cleaning audit lockout
+  const checkCleaningAuditLockout = async (branch: string) => {
+    try {
+      const data = await apiFetch<any>(`/cleaning/lockout?branchName=${encodeURIComponent(branch)}`);
+      if (data?.success && data.lockout && data.task) {
+        router.replace({
+          pathname: "/(reception)/branch-cleaning",
+          params: { isLockout: "true" },
+        } as any);
+      }
+    } catch {}
+  };
+
+  // Initial branch load
+  useEffect(() => {
+    getActiveBranch().then((b) => {
+      if (b && b.name) {
+        setActiveBranch(b);
+        checkCleaningAuditLockout(b.name);
+        fetchBranchTarget(b.name);
+      }
+    });
+  }, []);
+
+  // Pre-fetch Yesterday and Tomorrow in the background when activeBranch is available
+  useEffect(() => {
+    if (activeBranch?.name) {
+      prefetchDateAppointments(queryClient, activeBranch.name, yesterdayStr);
+      prefetchDateAppointments(queryClient, activeBranch.name, tomorrowStr);
+    }
+  }, [activeBranch?.name, queryClient, yesterdayStr, tomorrowStr]);
+
+  // Clean branch name
+  const cleanBranchName = useMemo(() => {
+    return (activeBranch?.name || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  }, [activeBranch?.name]);
+
+  // 1. Lightweight DB Summary Hook (< 5ms)
+  const {
+    data: summary,
+    isLoading: isLoadingSummary,
+    refetch: refetchSummary,
+  } = useAppointmentsSummary(activeBranch?.name, selectedDate);
+
+  // 2. Full Appointments List Hook with per-[branch, date] caching
+  // Polling ONLY runs when screen is focused AND selectedDate is TODAY (every 25 seconds)
+  const isPollingActive = isScreenFocused && selectedDate === todayStr;
+  const {
+    data: appointments = [],
+    isLoading: isLoadingAppointments,
+    refetch: refetchAppointments,
+  } = useAppointmentsList(activeBranch?.name, selectedDate, {
+    refetchInterval: isPollingActive ? 25000 : false,
+  });
+
+  // Categorized appointments from cached list
+  const upcomingAppointments = useMemo(
+    () => appointments.filter((a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING"),
+    [appointments]
+  );
+  const inConsultationAppointments = useMemo(
+    () => appointments.filter((a) => a.status === "IN_CONSULTATION"),
+    [appointments]
+  );
+  const collectFeeAppointments = useMemo(
+    () => appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return !a.isFeeCollected && st !== "COMPLETED" && (st === "COLLECT_FEE" || !!a.isSentToReception);
+    }),
+    [appointments]
+  );
+  const completedAppointments = useMemo(
+    () => appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return st === "COMPLETED" || !!a.isFeeCollected;
+    }),
+    [appointments]
+  );
+
+  // Summary counts: Display "-" while loading (NEVER show fake 0)
+  const totalCount = isLoadingSummary && !summary ? "–" : (summary?.total ?? appointments.length);
+  const waitingCount = isLoadingSummary && !summary ? "–" : (summary?.waiting ?? upcomingAppointments.length);
+  const inConsultationCount = isLoadingSummary && !summary ? "–" : (summary?.inConsultation ?? inConsultationAppointments.length);
+  const collectFeeCount = isLoadingSummary && !summary ? "–" : (summary?.collectFee ?? collectFeeAppointments.length);
+  const completedCount = isLoadingSummary && !summary ? "–" : (summary?.completed ?? completedAppointments.length);
+  const optedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.optedFollowUp ?? "–");
+  const notOptedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.notOptedFollowUp ?? "–");
+
+  // Displayed Appointments for Single Virtualized FlatList
+  const displayedAppointments = useMemo(() => {
+    switch (activeFilter) {
+      case "UPCOMING":
+        return upcomingAppointments.map((a, i) => ({
+          ...a,
+          __variant: "UPCOMING" as const,
+          __index: i,
+        }));
+      case "ACTIVE":
+        return inConsultationAppointments.map((a, i) => ({
+          ...a,
+          __variant: "ACTIVE" as const,
+          __index: i,
+        }));
+      case "COLLECT_FEE":
+        return collectFeeAppointments.map((a, i) => ({
+          ...a,
+          __variant: "COLLECT_FEE" as const,
+          __index: i,
+        }));
+      case "COMPLETED":
+        return completedAppointments.slice(0, completedLimit).map((a, i) => ({
+          ...a,
+          __variant: "COMPLETED" as const,
+          __index: i,
+        }));
+      case "ALL":
+      default:
+        return [
+          ...upcomingAppointments.map((a, i) => ({ ...a, __variant: "UPCOMING" as const, __index: i })),
+          ...inConsultationAppointments.map((a, i) => ({ ...a, __variant: "ACTIVE" as const, __index: i })),
+          ...collectFeeAppointments.map((a, i) => ({ ...a, __variant: "COLLECT_FEE" as const, __index: i })),
+          ...completedAppointments.slice(0, completedLimit).map((a, i) => ({ ...a, __variant: "COMPLETED" as const, __index: i })),
+        ];
+    }
+  }, [activeFilter, upcomingAppointments, inConsultationAppointments, collectFeeAppointments, completedAppointments, completedLimit]);
+
+  // Pull-to-refresh handler
+  const handlePullRefresh = async () => {
+    setIsPullRefreshing(true);
+    try {
+      await Promise.all([
+        refetchAppointments(),
+        refetchSummary(),
+        activeBranch?.name ? fetchBranchTarget(activeBranch.name) : Promise.resolve(),
+      ]);
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  };
+
+  // Reorder queue: Move appointment UP in Upcoming Queue
+  const handleMoveUp = async (index: number) => {
+    if (index <= 0) return;
+    const currentList = [...upcomingAppointments];
+    const temp = currentList[index];
+    currentList[index] = currentList[index - 1];
+    currentList[index - 1] = temp;
+
+    const otherList = appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return st === "IN_CONSULTATION" || st === "COLLECT_FEE" || st === "COMPLETED" || !!a.isFeeCollected;
+    });
+    const nextList = [...currentList, ...otherList];
+
+    // Optimistic cache update
+    queryClient.setQueryData(["appointments-list", cleanBranchName, selectedDate], nextList);
+
+    try {
+      const orderedIds = nextList.map((a) => a.id);
+      await apiFetch("/reception/appointments", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "REORDER", orderedIds }),
+      });
+    } catch (err) {
+      console.error("Failed to persist queue reorder:", err);
+      refetchAppointments();
+    }
+  };
+
+  // Reorder queue: Move appointment DOWN in Upcoming Queue
+  const handleMoveDown = async (index: number) => {
+    if (index >= upcomingAppointments.length - 1) return;
+    const currentList = [...upcomingAppointments];
+    const temp = currentList[index];
+    currentList[index] = currentList[index + 1];
+    currentList[index + 1] = temp;
+
+    const otherList = appointments.filter((a) => {
+      const st = (a.status || "").toUpperCase();
+      return st === "IN_CONSULTATION" || st === "COLLECT_FEE" || st === "COMPLETED" || !!a.isFeeCollected;
+    });
+    const nextList = [...currentList, ...otherList];
+
+    // Optimistic cache update
+    queryClient.setQueryData(["appointments-list", cleanBranchName, selectedDate], nextList);
+
+    try {
+      const orderedIds = nextList.map((a) => a.id);
+      await apiFetch("/reception/appointments", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "REORDER", orderedIds }),
+      });
+    } catch (err) {
+      console.error("Failed to persist queue reorder:", err);
+      refetchAppointments();
+    }
+  };
+
+  const openPatientFile = (appt: any) => {
+    router.push({
+      pathname: "/(reception)/patient-file",
+      params: {
+        id: appt.id,
+        name: appt.patientName || appt.name,
+        phone: appt.phoneNumber || appt.phone,
+        registrationId: appt.registrationId || appt.patientId || "SPH-GEN",
+        branch: activeBranch?.name || "KPHB",
+      },
+    } as any);
+  };
+
+  const openPatientHistory = (appt: any) => {
+    const regId = appt.registrationId || appt.patientId || "SPH-GEN";
+    const name = encodeURIComponent(appt.patientName || appt.name || "");
+    const phone = encodeURIComponent((appt.phoneNumber || appt.phone || "").replace(/\D/g, "").slice(-10));
+    const branch = encodeURIComponent(appt.branch || activeBranch?.name || "Clinic");
+    router.push(`/(reception)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
+  };
+
+  // Start Consultation
+  const handleStartConsultation = async (appt: any) => {
+    // 1. Optimistic cache update
+    queryClient.setQueryData<any[]>(["appointments-list", cleanBranchName, selectedDate], (old = []) =>
+      old.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
+    );
+
+    // 2. Persist to API
+    apiFetch("/reception/appointments", {
+      method: "PATCH",
+      body: JSON.stringify({
+        action: "UPDATE_STATUS",
+        id: appt.id,
+        status: "IN_CONSULTATION",
+      }),
+    })
+      .then(() => {
+        refetchSummary();
+      })
+      .catch((err) => {
+        console.error("Failed to update status:", err);
+        refetchAppointments();
+      });
+
+    // 3. Immediately open patient file
+    openPatientFile({ ...appt, status: "IN_CONSULTATION" });
+  };
+
+  // Deleted Appointments Handling (24h trash)
+  const fetchDeletedAppointments = async () => {
+    setIsLoadingDeleted(true);
+    try {
+      const data = await apiFetch(`/reception/deleted-appointments?branch=${encodeURIComponent(cleanBranchName)}`);
+      if (data.success && Array.isArray(data.appointments)) {
+        setDeletedAppointments(data.appointments);
+      } else {
+        setDeletedAppointments([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch deleted appointments:", err);
+      setDeletedAppointments([]);
+    } finally {
+      setIsLoadingDeleted(false);
+    }
+  };
+
+  const handleOpenRestoreModal = () => {
+    setIsRestoreModalOpen(true);
+    fetchDeletedAppointments();
+  };
+
+  const handleRestoreAppointment = async (id: string, token: string, patientName: string) => {
+    try {
+      const data = await apiFetch("/reception/deleted-appointments", {
+        method: "POST",
+        body: JSON.stringify({ action: "RESTORE", id }),
+      });
+      if (data.success) {
+        Alert.alert("Restored", `Appointment ${token} for ${patientName} has been restored!`);
+        fetchDeletedAppointments();
+        queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
+        queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
+      } else {
+        Alert.alert("Error", data.error || "Failed to restore appointment.");
+      }
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to restore appointment.");
+    }
+  };
+
+  const handleDeleteAppointment = (appt: any) => {
+    const id = appt.id;
+    const token = appt.token;
+    const patientName = appt.patientName;
+    Alert.alert(
+      "Cancel Appointment",
+      `Cancel appointment ${token} for ${patientName}? You can restore it from the 'Restore (24h)' button within 24 hours.`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel Appointment",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const data = await apiFetch("/reception/deleted-appointments", {
+                method: "POST",
+                body: JSON.stringify({
+                  action: "DELETE",
+                  id,
+                  deletedBy: "Reception",
+                  reason: "Cancelled by reception",
+                }),
+              });
+              if (data.success) {
+                Alert.alert("Appointment Cancelled", `Appointment ${token} moved to 24h trash.`);
+                queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
+                queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
+              } else {
+                Alert.alert("Error", data.error || "Failed to delete appointment.");
+              }
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to delete appointment.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Phone Call & WhatsApp Handlers
+  const handleCallPatient = (phone: string | undefined) => {
+    if (!phone) {
+      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
+      return;
+    }
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    if (!clean) {
+      Alert.alert("Invalid Phone Number", "Cannot dial this phone number.");
+      return;
+    }
+    Linking.openURL(`tel:${clean}`).catch((err) => {
+      Alert.alert("Call Error", "Could not open phone dialer: " + err.message);
+    });
+  };
+
+  const handleWhatsAppPatient = (phone: string | undefined, patientName?: string) => {
+    if (!phone) {
+      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
+      return;
+    }
+    const clean = phone.replace(/\D/g, "").slice(-10);
+    if (!clean) {
+      Alert.alert("Invalid Phone Number", "Cannot send WhatsApp to this phone number.");
+      return;
+    }
+    const msg = `Hello ${patientName || "Patient"}, your appointment is confirmed at Spiritual Homeopathy. Please reach 10 minutes prior.`;
+    const waUrl = `whatsapp://send?phone=91${clean}&text=${encodeURIComponent(msg)}`;
+    const webUrl = `https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`;
+
+    Linking.canOpenURL(waUrl)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(waUrl);
+        } else {
+          return Linking.openURL(webUrl);
+        }
+      })
+      .catch(() => {
+        Linking.openURL(webUrl).catch((err) => {
+          Alert.alert("WhatsApp Error", "Could not open WhatsApp: " + err.message);
+        });
+      });
+  };
+
+  // Reschedule Handlers
   const parseTimeToMinutes = (t: string): number => {
     if (!t) return 0;
     const clean = t.trim().toUpperCase();
@@ -374,8 +778,8 @@ export default function ReceptionDashboard() {
           `Appointment for ${rescheduleTargetAppt.patientName} moved to ${rescheduleDate} at ${rescheduleSlot}${docName ? ` with ${docName}` : ""}!`
         );
         setRescheduleModalOpen(false);
-        const bName = activeBranch?.name || "KPHB";
-        fetchAppointments(bName, selectedDate);
+        queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
+        queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
       } else {
         Alert.alert("Error", data.error || "Failed to reschedule appointment.");
       }
@@ -385,401 +789,6 @@ export default function ReceptionDashboard() {
       setIsRescheduling(false);
     }
   };
-
-  // Side Drawer Animation State
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  // Fetch live appointments for the active branch and selected date
-  const fetchAppointments = async (branch: string, dt: string, isSilent: boolean = false) => {
-    if (!branch || !dt) {
-      if (!isSilent) setIsLoadingAppointments(false);
-      return;
-    }
-    const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
-    if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
-      if (!isSilent) setIsLoadingAppointments(false);
-      return;
-    }
-    if (!isSilent) {
-      setIsLoadingAppointments(true);
-    }
-    try {
-      const data = await apiFetch(`/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
-      if (data.success && Array.isArray(data.appointments)) {
-        setAppointments(data.appointments);
-      } else if (!isSilent) {
-        setAppointments([]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch dashboard appointments:", err);
-      if (!isSilent) setAppointments([]);
-    } finally {
-      if (!isSilent) {
-        setIsLoadingAppointments(false);
-      }
-    }
-  };
-
-  // Check mandatory cleaning audit lockout
-  const checkCleaningAuditLockout = async (branch: string) => {
-    try {
-      const data = await apiFetch<any>(`/cleaning/lockout?branchName=${encodeURIComponent(branch)}`);
-      if (data?.success && data.lockout && data.task) {
-        router.replace({
-          pathname: "/(reception)/branch-cleaning",
-          params: { isLockout: "true" },
-        } as any);
-      }
-    } catch {}
-  };
-
-  // Initial branch load and fetch
-  useEffect(() => {
-    getActiveBranch().then((b) => {
-      if (b && b.name) {
-        setActiveBranch(b);
-        checkCleaningAuditLockout(b.name);
-        fetchAppointments(b.name, selectedDate, appointments.length > 0);
-        fetchBranchTarget(b.name);
-      }
-    });
-  }, [selectedDate]);
-
-  // Real-time synchronization interval (every 10 seconds silently in the background)
-  useEffect(() => {
-    let isMounted = true;
-    const interval = setInterval(() => {
-      if (isMounted && activeBranch?.name) {
-        fetchAppointments(activeBranch.name, selectedDate, true); // SILENT: updates in-place without triggering loading spinner
-        fetchBranchTarget(activeBranch.name);
-      }
-    }, 10000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [activeBranch, selectedDate]);
-
-  // When screen comes into focus (e.g. after booking an appointment), immediately reload appointments silently
-  useFocusEffect(
-    useCallback(() => {
-      if (activeBranch?.name) {
-        fetchAppointments(activeBranch.name, selectedDate, true);
-      }
-    }, [activeBranch, selectedDate])
-  );
-
-  // Phone Call Action Handler
-  const handleCallPatient = (phone: string | undefined) => {
-    if (!phone) {
-      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
-      return;
-    }
-    const clean = phone.replace(/\D/g, "").slice(-10);
-    if (!clean) {
-      Alert.alert("Invalid Phone Number", "Cannot dial this phone number.");
-      return;
-    }
-    Linking.openURL(`tel:${clean}`).catch((err) => {
-      Alert.alert("Call Error", "Could not open phone dialer: " + err.message);
-    });
-  };
-
-  // WhatsApp Action Handler
-  const handleWhatsAppPatient = (
-    phone: string | undefined,
-    patientName: string,
-    doctorName?: string,
-    timeSlot?: string
-  ) => {
-    if (!phone) {
-      Alert.alert("No Phone Number", "This appointment does not have a valid phone number.");
-      return;
-    }
-    const clean = phone.replace(/\D/g, "").slice(-10);
-    if (!clean) {
-      Alert.alert("Invalid Phone Number", "Cannot send WhatsApp to this phone number.");
-      return;
-    }
-    const msg = `Hello ${patientName || "Patient"}, your appointment with ${doctorName || "Doctor"} is confirmed at Spiritual Homeopathy (${timeSlot || "today"}). Please reach 10 minutes prior.`;
-    const waUrl = `whatsapp://send?phone=91${clean}&text=${encodeURIComponent(msg)}`;
-    const webUrl = `https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`;
-
-    Linking.canOpenURL(waUrl)
-      .then((supported) => {
-        if (supported) {
-          return Linking.openURL(waUrl);
-        } else {
-          return Linking.openURL(webUrl);
-        }
-      })
-      .catch(() => {
-        Linking.openURL(webUrl).catch((err) => {
-          Alert.alert("WhatsApp Error", "Could not open WhatsApp: " + err.message);
-        });
-      });
-  };
-
-  // Extract Patient Initials for Avatar (e.g. Harshini -> HA, N Lakshmi -> NL)
-  const getPatientInitials = (name: string) => {
-    if (!name) return "PT";
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
-  };
-
-  // Reorder queue: Move appointment UP in Upcoming Queue
-  const handleMoveUp = async (index: number) => {
-    if (index <= 0) return;
-    const currentList = [...upcomingAppointments];
-    const temp = currentList[index];
-    currentList[index] = currentList[index - 1];
-    currentList[index - 1] = temp;
-
-    // Preserve active & completed appointments
-    const otherList = appointments.filter(
-      (a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE" || a.status === "COMPLETED"
-    );
-    const nextList = [...currentList, ...otherList];
-
-    // Optimistic local update
-    setAppointments(nextList);
-
-    // Persist to server
-    try {
-      const orderedIds = nextList.map((a) => a.id);
-      await apiFetch("/reception/appointments", {
-        method: "PATCH",
-        body: JSON.stringify({ action: "REORDER", orderedIds }),
-      });
-    } catch (err) {
-      console.error("Failed to persist queue reorder:", err);
-    }
-  };
-
-  // Reorder queue: Move appointment DOWN in Upcoming Queue
-  const handleMoveDown = async (index: number) => {
-    if (index >= upcomingAppointments.length - 1) return;
-    const currentList = [...upcomingAppointments];
-    const temp = currentList[index];
-    currentList[index] = currentList[index + 1];
-    currentList[index + 1] = temp;
-
-    const otherList = appointments.filter(
-      (a) => a.status === "IN_CONSULTATION" || a.status === "COLLECT_FEE" || a.status === "COMPLETED"
-    );
-    const nextList = [...currentList, ...otherList];
-
-    // Optimistic local update
-    setAppointments(nextList);
-
-    // Persist to server
-    try {
-      const orderedIds = nextList.map((a) => a.id);
-      await apiFetch("/reception/appointments", {
-        method: "PATCH",
-        body: JSON.stringify({ action: "REORDER", orderedIds }),
-      });
-    } catch (err) {
-      console.error("Failed to persist queue reorder:", err);
-    }
-  };
-
-  const openPatientFile = (appt: any) => {
-    router.push({
-      pathname: "/(reception)/patient-file",
-      params: {
-        id: appt.id,
-        name: appt.patientName || appt.name,
-        phone: appt.phoneNumber || appt.phone,
-        registrationId: appt.registrationId || appt.patientId || "SPH-GEN",
-        branch: activeBranch?.name || "KPHB",
-      },
-    } as any);
-  };
-
-  const openPatientHistory = (appt: any) => {
-    const regId = appt.registrationId || appt.patientId || "SPH-GEN";
-    const name = encodeURIComponent(appt.patientName || appt.name || "");
-    const phone = encodeURIComponent((appt.phoneNumber || appt.phone || "").replace(/\D/g, "").slice(-10));
-    const branch = encodeURIComponent(appt.branch || activeBranch?.name || "Clinic");
-    router.push(`/(reception)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
-  };
-
-  // Start Consultation: Updates status to IN_CONSULTATION and immediately opens Patient File
-  const handleStartConsultation = async (appt: any) => {
-    // 1. Optimistic status update: patient leaves upcomingAppointments and appears in activeAppointments
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
-    );
-
-    // 2. Persist to API
-    apiFetch("/reception/appointments", {
-      method: "PATCH",
-      body: JSON.stringify({
-        action: "UPDATE_STATUS",
-        id: appt.id,
-        status: "IN_CONSULTATION",
-      }),
-    }).catch((err) => console.error("Failed to update status:", err));
-
-    // 3. Immediately open patient file for Reception
-    openPatientFile({ ...appt, status: "IN_CONSULTATION" });
-  };
-
-  const fetchDeletedAppointments = async () => {
-    setIsLoadingDeleted(true);
-    try {
-      const cleanBranch = (activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim();
-      const data = await apiFetch(`/reception/deleted-appointments?branch=${encodeURIComponent(cleanBranch)}`);
-      if (data.success && Array.isArray(data.appointments)) {
-        setDeletedAppointments(data.appointments);
-      } else {
-        setDeletedAppointments([]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch deleted appointments:", err);
-      setDeletedAppointments([]);
-    } finally {
-      setIsLoadingDeleted(false);
-    }
-  };
-
-  const handleOpenRestoreModal = () => {
-    setIsRestoreModalOpen(true);
-    fetchDeletedAppointments();
-  };
-
-  const handleRestoreAppointment = async (id: string, token: string, patientName: string) => {
-    try {
-      const data = await apiFetch("/reception/deleted-appointments", {
-        method: "POST",
-        body: JSON.stringify({ action: "RESTORE", id }),
-      });
-      if (data.success) {
-        Alert.alert("Restored", `Appointment ${token} for ${patientName} has been restored!`);
-        fetchDeletedAppointments();
-        const bName = activeBranch?.name || "KPHB";
-        fetchAppointments(bName, selectedDate);
-      } else {
-        Alert.alert("Error", data.error || "Failed to restore appointment.");
-      }
-    } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to restore appointment.");
-    }
-  };
-
-  const handleDeleteAppointment = (id: string, token: string, patientName: string) => {
-    Alert.alert(
-      "Cancel Appointment",
-      `Cancel appointment ${token} for ${patientName}? You can restore it from the 'Restore (24h)' button within 24 hours.`,
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Cancel Appointment",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const data = await apiFetch("/reception/deleted-appointments", {
-                method: "POST",
-                body: JSON.stringify({
-                  action: "DELETE",
-                  id,
-                  deletedBy: "Reception",
-                  reason: "Cancelled by reception",
-                }),
-              });
-              if (data.success) {
-                Alert.alert("Appointment Cancelled", `Appointment ${token} moved to 24h trash.`);
-                const bName = activeBranch?.name || "KPHB";
-                fetchAppointments(bName, selectedDate);
-              } else {
-                Alert.alert("Error", data.error || "Failed to delete appointment.");
-              }
-            } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to delete appointment.");
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleRestoreRefresh = () => {
-    handleOpenRestoreModal();
-  };
-
-  // Categorized Appointments (Stacked vertically on dashboard)
-  const upcomingAppointments = useMemo(
-    () => appointments.filter((a) => !a.status || a.status === "SCHEDULED" || a.status === "WAITING"),
-    [appointments]
-  );
-  const inConsultationAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "IN_CONSULTATION"),
-    [appointments]
-  );
-  const collectFeeAppointments = useMemo(
-    () => appointments.filter((a) => {
-      const st = (a.status || "").toUpperCase();
-      return !a.isFeeCollected && st !== "COMPLETED" && (st === "COLLECT_FEE" || !!a.isSentToReception);
-    }),
-    [appointments]
-  );
-  const completedAppointments = useMemo(
-    () => appointments.filter((a) => {
-      const st = (a.status || "").toUpperCase();
-      return st === "COMPLETED" || !!a.isFeeCollected;
-    }),
-    [appointments]
-  );
-
-  // Backward compatibility alias for in-consultation
-  const activeAppointments = inConsultationAppointments;
-
-  const renderVisitBadge = (appt: any) => {
-    const badge = appt.visitBadge || (appt.hasPackage ? "In-Dur" : appt.isReback ? "Revisit" : "New");
-    return (
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-        {badge === "New" && (
-          <View style={styles.badgeNew}>
-            <Ionicons name="sparkles" size={9.5} color="#16a34a" />
-            <Text style={styles.badgeNewText}>NEW</Text>
-          </View>
-        )}
-        {badge === "In-Dur" && (
-          <View style={styles.badgeInDur}>
-            <Ionicons name="time" size={9.5} color="#0284c7" />
-            <Text style={styles.badgeInDurText}>IN-DUR</Text>
-          </View>
-        )}
-        {badge === "Revisit" && (
-          <View style={styles.badgeRevisit}>
-            <Ionicons name="repeat" size={9.5} color="#d97706" />
-            <Text style={styles.badgeRevisitText}>REVISIT</Text>
-          </View>
-        )}
-        {!!appt.hasPackage && (
-          <View style={styles.badgePkg}>
-            <Ionicons name="cube" size={9.5} color="#ffffff" />
-            <Text style={styles.badgePkgText}>PKG</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // Status Counts
-  const totalCount = appointments.length;
-  const waitingCount = upcomingAppointments.length;
-  const inConsultationCount = inConsultationAppointments.length;
-  const collectFeeCount = collectFeeAppointments.length;
-  const activeCount = inConsultationCount;
-  const completedCount = completedAppointments.length;
-
-  const filteredAppointments = appointments;
 
   // Calendar Helpers
   const daysInMonth = useMemo(() => {
@@ -801,6 +810,11 @@ export default function ReceptionDashboard() {
     setSelectedDate(`${d}-${m}-${calYear}`);
     setCalendarModalOpen(false);
   };
+
+  // Side Drawer Animation State
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const openDrawer = () => {
     setIsDrawerOpen(true);
@@ -846,151 +860,26 @@ export default function ReceptionDashboard() {
     router.replace("/(auth)/login");
   };
 
-  // Branch Name helper (e.g., "KPHB" or short name)
-  const getBranchShortName = () => {
-    if (!activeBranch?.name) return "KPHB";
-    const clean = activeBranch.name.replace(/Spiritual Homeopathy/gi, "").replace(/Branch/gi, "").trim();
-    return clean.replace(/^-+\s*/, "").trim() || "KPHB";
-  };
-
-  const branchShortName = getBranchShortName();
+  const branchShortName = cleanBranchName || "KPHB";
 
   const navMenuItems = [
-    {
-      id: "dashboard",
-      title: "Dashboard",
-      icon: "grid-outline",
-      route: "/(reception)",
-    },
-    {
-      id: "appointments",
-      title: "Appointments",
-      icon: "calendar-outline",
-      route: "/(reception)/appointments",
-    },
-    {
-      id: "all-patients",
-      title: "All Patients List",
-      icon: "people-outline",
-      route: "/(reception)/all-patients",
-    },
-    {
-      id: "old-entry",
-      title: "Old Entry (Rx)",
-      icon: "folder-open-outline",
-      route: "/(reception)/old-entry",
-    },
-    {
-      id: "follow-ups",
-      title: "Follow-ups",
-      icon: "call-outline",
-      route: "/(reception)/follow-ups",
-    },
-    {
-      id: "medical-requests",
-      title: "Medical Requests",
-      icon: "document-text-outline",
-      route: "/(reception)/medical-requests",
-    },
-    {
-      id: "shared-media",
-      title: "Shared Media",
-      icon: "folder-open-outline",
-      route: "/(reception)/shared-media",
-    },
-    {
-      id: "shiprocket",
-      title: "Shiprocket",
-      icon: "cube-outline",
-      route: "/(reception)/shiprocket",
-    },
-    {
-      id: "doctor-no-show",
-      title: "Doctor No-Show",
-      icon: "person-remove-outline",
-      route: "/(reception)/doctor-no-show",
-    },
-    {
-      id: "branch-cleaning",
-      title: "Branch Cleaning",
-      icon: "sparkles-outline",
-      route: "/(reception)/branch-cleaning",
-    },
+    { id: "dashboard", title: "Dashboard", icon: "grid-outline", route: "/(reception)" },
+    { id: "appointments", title: "Appointments", icon: "calendar-outline", route: "/(reception)/appointments" },
+    { id: "all-patients", title: "All Patients List", icon: "people-outline", route: "/(reception)/all-patients" },
+    { id: "old-entry", title: "Old Entry (Rx)", icon: "folder-open-outline", route: "/(reception)/old-entry" },
+    { id: "follow-ups", title: "Follow-ups", icon: "call-outline", route: "/(reception)/follow-ups" },
+    { id: "medical-requests", title: "Medical Requests", icon: "document-text-outline", route: "/(reception)/medical-requests" },
+    { id: "shared-media", title: "Shared Media", icon: "folder-open-outline", route: "/(reception)/shared-media" },
+    { id: "shiprocket", title: "Shiprocket", icon: "cube-outline", route: "/(reception)/shiprocket" },
+    { id: "doctor-no-show", title: "Doctor No-Show", icon: "person-remove-outline", route: "/(reception)/doctor-no-show" },
+    { id: "branch-cleaning", title: "Branch Cleaning", icon: "sparkles-outline", route: "/(reception)/branch-cleaning" },
   ];
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
-      {/* 1. TOP NAVBAR (Matching Reference Screenshot) */}
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <TouchableOpacity
-            style={styles.hamburgerButton}
-            onPress={openDrawer}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="menu" size={26} color="#0f172a" />
-          </TouchableOpacity>
-
-          {/* User Profile Avatar */}
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={22} color={COLORS.themeBlue} />
-          </View>
-
-          {/* User & Branch Info */}
-          <View style={styles.headerTitleBox}>
-            <Text style={styles.headerMainTitle}>{branchShortName} Reception</Text>
-            <Text style={styles.headerPhoneText}>
-              {getBranchPhone(activeBranch?.name, activeBranch?.phone)}
-            </Text>
-            <View style={styles.badgeRow}>
-              <View style={styles.receptionBadge}>
-                <Text style={styles.receptionBadgeText}>RECEPTION</Text>
-              </View>
-              <View style={styles.branchLocationPill}>
-                <Ionicons name="location-outline" size={11} color={COLORS.textMuted} />
-                <Text style={styles.branchLocationText}>{branchShortName} Branch</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Right Action Icons: Notification Bell & Logout */}
-        <View style={styles.topBarRight}>
-          <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={20} color="#0f172a" />
-            <View style={styles.bellDot} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerLogoutBtn}
-            onPress={handleLogout}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={20} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* MAIN SCROLLABLE CONTENT */}
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isPullRefreshing}
-            onRefresh={async () => {
-              setIsPullRefreshing(true);
-              const bName = activeBranch?.name || "KPHB";
-              await fetchAppointments(bName, selectedDate, true);
-              setIsPullRefreshing(false);
-            }}
-            colors={[COLORS.themeBlue]}
-            tintColor={COLORS.themeBlue}
-          />
-        }
-      >
-        {/* 2. BRANCH TARGET CARD (Live Revenue & Monthly Goal) */}
+  // List Header Component for FlatList
+  const renderListHeader = () => {
+    return (
+      <View style={{ paddingTop: 12 }}>
+        {/* 2. BRANCH TARGET CARD */}
         <View style={styles.targetCard}>
           <View style={styles.targetCardHeader}>
             <View style={styles.targetTitleRow}>
@@ -1081,7 +970,7 @@ export default function ReceptionDashboard() {
             </View>
           </View>
 
-          {/* Top 4 Stats Cards (Clickable Filter Boxes) */}
+          {/* Top 4 Stats Cards (Switchable Tabs) */}
           <View style={styles.overviewGrid}>
             <TouchableOpacity
               style={[styles.overviewStatCard, activeFilter === "ALL" && styles.overviewStatCardActiveBlue]}
@@ -1106,7 +995,7 @@ export default function ReceptionDashboard() {
               onPress={() => setActiveFilter("ACTIVE")}
               activeOpacity={0.7}
             >
-              <Text style={styles.statBigOrange}>{activeCount}</Text>
+              <Text style={styles.statBigOrange}>{inConsultationCount}</Text>
               <Text style={styles.statCardSubtitle}>Active Consult</Text>
             </TouchableOpacity>
 
@@ -1136,7 +1025,7 @@ export default function ReceptionDashboard() {
               onPress={() => router.push("/(reception)/follow-ups" as any)}
               activeOpacity={0.8}
             >
-              <Text style={styles.subStatBlue}>0</Text>
+              <Text style={styles.subStatBlue}>{optedFollowUpCount}</Text>
               <Text style={styles.subStatTextBlue}>Follow-up Opted →</Text>
             </TouchableOpacity>
 
@@ -1145,7 +1034,7 @@ export default function ReceptionDashboard() {
               onPress={() => router.push("/(reception)/follow-ups" as any)}
               activeOpacity={0.8}
             >
-              <Text style={styles.subStatSlate}>0</Text>
+              <Text style={styles.subStatSlate}>{notOptedFollowUpCount}</Text>
               <Text style={styles.subStatTextSlate}>Not Opted →</Text>
             </TouchableOpacity>
           </View>
@@ -1157,22 +1046,38 @@ export default function ReceptionDashboard() {
             <View style={styles.upcomingTitleBadgeRow}>
               <Text style={styles.upcomingTitle}>Appointments Schedule</Text>
               <View style={styles.upcomingCountBadge}>
-                <Text style={styles.upcomingCountText}>{appointments.length}</Text>
+                <Text style={styles.upcomingCountText}>{totalCount}</Text>
               </View>
             </View>
 
-            <TouchableOpacity style={styles.restoreBtn} onPress={handleRestoreRefresh} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.restoreBtn} onPress={handleOpenRestoreModal} activeOpacity={0.8}>
               <Ionicons name="refresh-outline" size={13} color={COLORS.themeBlue} />
               <Text style={styles.restoreBtnText}>Restore (24h)</Text>
             </TouchableOpacity>
           </View>
 
-          {/* DATE FILTER BELOW RESTORE OPTION */}
+          {/* QUICK DATE PILLS: Yesterday, Today, Tomorrow & Calendar */}
           <View style={styles.dateFilterContainer}>
             <View style={styles.datePillsRow}>
               <TouchableOpacity
+                style={[styles.datePill, selectedDate === yesterdayStr && styles.datePillActive]}
+                onPress={() => {
+                  setSelectedDate(yesterdayStr);
+                  setCompletedLimit(20);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.datePillText, selectedDate === yesterdayStr && styles.datePillTextActive]}>
+                  Yesterday
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.datePill, selectedDate === todayStr && styles.datePillActive]}
-                onPress={() => setSelectedDate(todayStr)}
+                onPress={() => {
+                  setSelectedDate(todayStr);
+                  setCompletedLimit(20);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.datePillText, selectedDate === todayStr && styles.datePillTextActive]}>
@@ -1182,7 +1087,10 @@ export default function ReceptionDashboard() {
 
               <TouchableOpacity
                 style={[styles.datePill, selectedDate === tomorrowStr && styles.datePillActive]}
-                onPress={() => setSelectedDate(tomorrowStr)}
+                onPress={() => {
+                  setSelectedDate(tomorrowStr);
+                  setCompletedLimit(20);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.datePillText, selectedDate === tomorrowStr && styles.datePillTextActive]}>
@@ -1193,7 +1101,7 @@ export default function ReceptionDashboard() {
               <TouchableOpacity
                 style={[
                   styles.datePillCalendar,
-                  selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillActive,
+                  selectedDate !== yesterdayStr && selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillActive,
                 ]}
                 onPress={() => {
                   setCalYear(new Date().getFullYear());
@@ -1205,44 +1113,34 @@ export default function ReceptionDashboard() {
                 <Ionicons
                   name="calendar-outline"
                   size={13}
-                  color={selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.themeBlue}
+                  color={selectedDate !== yesterdayStr && selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.themeBlue}
                 />
                 <Text
                   style={[
                     styles.datePillText,
-                    selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillTextActive,
+                    selectedDate !== yesterdayStr && selectedDate !== todayStr && selectedDate !== tomorrowStr && styles.datePillTextActive,
                   ]}
                 >
-                  {selectedDate}
+                  {selectedDate !== yesterdayStr && selectedDate !== todayStr && selectedDate !== tomorrowStr ? selectedDate : "Calendar"}
                 </Text>
                 <Ionicons
                   name="chevron-down"
                   size={12}
-                  color={selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.textMuted}
+                  color={selectedDate !== yesterdayStr && selectedDate !== todayStr && selectedDate !== tomorrowStr ? COLORS.white : COLORS.textMuted}
                 />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* SEGMENTED FILTER PILLS / BOXES */}
+          {/* SEGMENTED FILTER TABS */}
           <View style={styles.filterPillsRow}>
-            <TouchableOpacity
-              style={[styles.filterPill, activeFilter === "ALL" && styles.filterPillActive]}
-              onPress={() => setActiveFilter("ALL")}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.filterPillText, activeFilter === "ALL" && styles.filterPillTextActive]}>
-                All ({appointments.length})
-              </Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.filterPill, activeFilter === "UPCOMING" && styles.filterPillActiveUpcoming]}
               onPress={() => setActiveFilter("UPCOMING")}
               activeOpacity={0.8}
             >
               <Text style={[styles.filterPillText, activeFilter === "UPCOMING" && styles.filterPillTextActive]}>
-                Upcoming ({upcomingAppointments.length})
+                Waiting ({waitingCount})
               </Text>
             </TouchableOpacity>
 
@@ -1252,7 +1150,7 @@ export default function ReceptionDashboard() {
               activeOpacity={0.8}
             >
               <Text style={[styles.filterPillText, activeFilter === "ACTIVE" && styles.filterPillTextActive]}>
-                In Consult ({inConsultationAppointments.length})
+                In Consult ({inConsultationCount})
               </Text>
             </TouchableOpacity>
 
@@ -1262,7 +1160,7 @@ export default function ReceptionDashboard() {
               activeOpacity={0.8}
             >
               <Text style={[styles.filterPillText, activeFilter === "COLLECT_FEE" && styles.filterPillTextActive]}>
-                Collect Fee ({collectFeeAppointments.length})
+                Collect Fee ({collectFeeCount})
               </Text>
             </TouchableOpacity>
 
@@ -1272,691 +1170,207 @@ export default function ReceptionDashboard() {
               activeOpacity={0.8}
             >
               <Text style={[styles.filterPillText, activeFilter === "COMPLETED" && styles.filterPillTextActive]}>
-                Completed ({completedAppointments.length})
+                Completed ({completedCount})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.filterPill, activeFilter === "ALL" && styles.filterPillActive]}
+              onPress={() => setActiveFilter("ALL")}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.filterPillText, activeFilter === "ALL" && styles.filterPillTextActive]}>
+                All ({totalCount})
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Appointments List / Empty State */}
-          {isLoadingAppointments && appointments.length === 0 ? (
-            <View style={{ padding: 24, alignItems: "center", gap: 8 }}>
-              <ActivityIndicator size="small" color={COLORS.themeBlue} />
-              <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Loading appointments for {selectedDate}...</Text>
-            </View>
-          ) : appointments.length === 0 ? (
-            !isOnline ? (
-              <View style={[styles.emptyAppointmentsCard, { borderColor: "#fecdd3", backgroundColor: "#fff1f2" }]}>
-                <View style={[styles.calendarIconBox, { backgroundColor: "#ffe4e6" }]}>
-                  <Ionicons name="cloud-offline-outline" size={32} color="#e11d48" />
-                </View>
-
-                <Text style={[styles.emptyCardMessage, { color: "#9f1239", fontWeight: "800" }]}>
-                  No Internet Connection
-                </Text>
-
-                <Text style={{ fontSize: 11.5, color: "#be123c", textAlign: "center", paddingHorizontal: 12 }}>
-                  You are currently offline. Switching between Wi-Fi and Mobile Data will automatically reconnect.
-                </Text>
-
-                <TouchableOpacity
-                  style={[styles.bookAppointmentBtn, { backgroundColor: "#e11d48", marginTop: 6 }]}
-                  onPress={() => checkConnection()}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="reload" size={18} color={COLORS.white} />
-                  <Text style={styles.bookAppointmentBtnText}>Retry Connection</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.emptyAppointmentsCard}>
-                <View style={styles.calendarIconBox}>
-                  <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
-                </View>
-
-                <Text style={styles.emptyCardMessage}>
-                  No appointments found for {selectedDate}.
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.bookAppointmentBtn}
-                  onPress={() => router.push("/(reception)/appointments" as any)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-                  <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
-                </TouchableOpacity>
-              </View>
-            )
-          ) : (
-            <View style={{ gap: 14 }}>
-              {/* 5A. UPCOMING APPOINTMENTS SECTION */}
-              {(activeFilter === "ALL" || activeFilter === "UPCOMING") && (
-                <View style={styles.sectionContainer}>
-                  <View style={styles.stackHeaderRow}>
-                    <View style={styles.sectionTitleBadgeRow}>
-                      <View style={styles.sectionIconBadge}>
-                        <Ionicons name="time-outline" size={15} color="#0284c7" />
-                      </View>
-                      <Text style={styles.sectionHeaderTitle}>Upcoming Appointments</Text>
-                      <View style={styles.upcomingCountBadge}>
-                        <Text style={styles.upcomingCountText}>{upcomingAppointments.length}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {upcomingAppointments.length === 0 ? (
-                    <View style={styles.compactEmptyCard}>
-                      <Text style={styles.compactEmptyText}>No upcoming appointments scheduled</Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {upcomingAppointments.map((appt, index) => {
-                        const phoneNum = appt.phoneNumber || appt.phone || "";
-                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                        const displayPhone = cleanPhone || "No Mobile";
-                        const isFirst = index === 0;
-                        const isLast = index === upcomingAppointments.length - 1;
-                        const isRevisit = !!appt.isReback;
-
-                        return (
-                          <View key={appt.id || appt.token || `upcoming-${index}`} style={styles.appointmentCard}>
-                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and START CONSULTATION */}
-                            <View style={styles.cardTopRow}>
-                              <View style={styles.queueBox}>
-                                <Text style={styles.queueBoxLabel}>Q</Text>
-                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                              </View>
-
-                              <TouchableOpacity
-                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
-                                onPress={() => openPatientFile(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                  {renderVisitBadge(appt)}
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                  <View style={styles.patientIdBadge}>
-                                    <Text style={styles.patientIdBadgeText}>
-                                      {appt.registrationId || appt.patientId || "ID: N/A"}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </TouchableOpacity>
-
-                              {/* START PRESCRIPTION Button */}
-                              <TouchableOpacity
-                                style={styles.startConsultBtn}
-                                onPress={() => handleStartConsultation(appt)}
-                                activeOpacity={0.8}
-                              >
-                                <Ionicons name="play" size={10} color="#ffffff" style={{ marginRight: 3 }} />
-                                <Text style={styles.startConsultBtnText}>START PRESCRIPTION</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Middle Row: Doctor • Time • Branch */}
-                            <View style={styles.cardInfoRow}>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="time-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText}>
-                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="location-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {/* Bottom Action Row: [ ↑ ] [ ↓ ]  [ 📄 ]  [ 📞 ]  [ 💬 ]  [ 📅 ]  [ 🗑️ ] */}
-                            <View style={styles.cardActionRow}>
-                              <View style={styles.arrowButtonGroup}>
-                                <TouchableOpacity
-                                  style={[styles.arrowButton, isFirst && styles.arrowButtonDisabled]}
-                                  onPress={() => handleMoveUp(index)}
-                                  disabled={isFirst}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="arrow-up" size={14} color={isFirst ? "#93c5fd" : "#ffffff"} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[styles.arrowButton, isLast && styles.arrowButtonDisabled]}
-                                  onPress={() => handleMoveDown(index)}
-                                  disabled={isLast}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="arrow-down" size={14} color={isLast ? "#93c5fd" : "#ffffff"} />
-                                </TouchableOpacity>
-                              </View>
-
-                              <View style={styles.iconActionsGroup}>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openPatientFile(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleCallPatient(cleanPhone)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() =>
-                                    handleWhatsAppPatient(
-                                      cleanPhone,
-                                      appt.patientName,
-                                      appt.doctorName,
-                                      appt.timeSlot || appt.selectedTimeSlot
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openRescheduleModal(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* 5B. ACTIVE CONSULTATIONS SECTION */}
-              {(activeFilter === "ALL" || activeFilter === "ACTIVE") && (
-                <View style={styles.sectionContainer}>
-                  <View style={styles.stackHeaderRow}>
-                    <View style={styles.sectionTitleBadgeRow}>
-                      <View style={styles.sectionIconBadge}>
-                        <Ionicons name="pulse" size={15} color="#0284c7" />
-                      </View>
-                      <Text style={styles.sectionHeaderTitle}>Active Consultations</Text>
-                      <View style={styles.upcomingCountBadge}>
-                        <Text style={styles.upcomingCountText}>{inConsultationAppointments.length}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {inConsultationAppointments.length === 0 ? (
-                    <View style={styles.compactEmptyCard}>
-                      <Text style={styles.compactEmptyText}>No active consultations in progress</Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {inConsultationAppointments.map((appt, index) => {
-                        const phoneNum = appt.phoneNumber || appt.phone || "";
-                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                        const displayPhone = cleanPhone || "No Mobile";
-                        const isRevisit = !!appt.isReback;
-
-                        return (
-                          <View
-                            key={appt.id || appt.token || `active-${index}`}
-                            style={styles.appointmentCard}
-                          >
-                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and IN CONSULTATION */}
-                            <View style={styles.cardTopRow}>
-                              <View style={styles.queueBox}>
-                                <Text style={styles.queueBoxLabel}>Q</Text>
-                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                              </View>
-
-                              <TouchableOpacity
-                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
-                                onPress={() => openPatientFile(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                  {renderVisitBadge(appt)}
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                  <View style={styles.patientIdBadge}>
-                                    <Text style={styles.patientIdBadgeText}>
-                                      {appt.registrationId || appt.patientId || "ID: N/A"}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </TouchableOpacity>
-
-                              {/* IN CONSULTATION Button */}
-                              <TouchableOpacity
-                                style={[styles.startConsultBtn, { backgroundColor: "#0284c7" }]}
-                                onPress={() => openPatientFile(appt)}
-                                activeOpacity={0.8}
-                              >
-                                <Ionicons name="pulse" size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                                <Text style={styles.startConsultBtnText}>IN CONSULTATION</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Middle Row: Doctor • Time • Branch */}
-                            <View style={styles.cardInfoRow}>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="time-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText}>
-                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="location-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {/* Bottom Action Row */}
-                            <View style={styles.cardActionRow}>
-                              <View style={{ flex: 1 }} />
-
-                              <View style={styles.iconActionsGroup}>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openPatientFile(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleCallPatient(cleanPhone)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() =>
-                                    handleWhatsAppPatient(
-                                      cleanPhone,
-                                      appt.patientName,
-                                      appt.doctorName,
-                                      appt.timeSlot || appt.selectedTimeSlot
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openRescheduleModal(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* 5C. COLLECT FEE SECTION */}
-              {(activeFilter === "ALL" || activeFilter === "COLLECT_FEE") && (
-                <View style={styles.sectionContainer}>
-                  <View style={styles.stackHeaderRow}>
-                    <View style={styles.sectionTitleBadgeRow}>
-                      <View style={styles.sectionIconBadge}>
-                        <Ionicons name="wallet-outline" size={15} color="#ea580c" />
-                      </View>
-                      <Text style={styles.sectionHeaderTitle}>Collect Fee</Text>
-                      <View style={[styles.upcomingCountBadge, { backgroundColor: "#ffedd5" }]}>
-                        <Text style={[styles.upcomingCountText, { color: "#ea580c" }]}>{collectFeeAppointments.length}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {collectFeeAppointments.length === 0 ? (
-                    <View style={styles.compactEmptyCard}>
-                      <Text style={styles.compactEmptyText}>No pending fee collections</Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {collectFeeAppointments.map((appt, index) => {
-                        const phoneNum = appt.phoneNumber || appt.phone || "";
-                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                        const displayPhone = cleanPhone || "No Mobile";
-                        const isRevisit = !!appt.isReback;
-
-                        return (
-                          <View
-                            key={appt.id || appt.token || `fee-${index}`}
-                            style={styles.appointmentCard}
-                          >
-                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and COLLECT FEE Button */}
-                            <View style={styles.cardTopRow}>
-                              <View style={[styles.queueBox, { backgroundColor: "#fff7ed", borderColor: "#fdba74" }]}>
-                                <Text style={[styles.queueBoxLabel, { color: "#c2410c" }]}>Q</Text>
-                                <Text style={[styles.queueBoxNum, { color: "#ea580c" }]}>{index + 1}</Text>
-                              </View>
-
-                              <TouchableOpacity
-                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
-                                onPress={() => openPatientFile(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                  {renderVisitBadge(appt)}
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                  <View style={styles.patientIdBadge}>
-                                    <Text style={styles.patientIdBadgeText}>
-                                      {appt.registrationId || appt.patientId || "ID: N/A"}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </TouchableOpacity>
-
-                              {/* COLLECT FEE Button */}
-                              <TouchableOpacity
-                                style={[styles.startConsultBtn, { backgroundColor: "#f59e0b" }]}
-                                onPress={() => {
-                                  setSelectedPaymentAppt(appt);
-                                  setPaymentModalVisible(true);
-                                }}
-                                activeOpacity={0.8}
-                              >
-                                <Ionicons name="card" size={11} color="#ffffff" style={{ marginRight: 3 }} />
-                                <Text style={styles.startConsultBtnText}>COLLECT FEE</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Middle Row: Doctor • Time • Branch */}
-                            <View style={styles.cardInfoRow}>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="time-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText}>
-                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="location-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {/* Bottom Action Row */}
-                            <View style={styles.cardActionRow}>
-                              <View style={{ flex: 1 }} />
-
-                              <View style={styles.iconActionsGroup}>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openPatientFile(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="document-text-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleCallPatient(cleanPhone)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() =>
-                                    handleWhatsAppPatient(
-                                      cleanPhone,
-                                      appt.patientName,
-                                      appt.doctorName,
-                                      appt.timeSlot || appt.selectedTimeSlot
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openRescheduleModal(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="calendar-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="trash-outline" size={14.5} color="#ef4444" />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* 5D. COMPLETED CONSULTATIONS SECTION */}
-              {(activeFilter === "ALL" || activeFilter === "COMPLETED") && (
-                <View style={styles.sectionContainer}>
-                  <View style={styles.stackHeaderRow}>
-                    <View style={styles.sectionTitleBadgeRow}>
-                      <View style={styles.sectionIconBadge}>
-                        <Ionicons name="checkmark-done-circle-outline" size={15} color="#0284c7" />
-                      </View>
-                      <Text style={styles.sectionHeaderTitle}>Completed Consultations</Text>
-                      <View style={styles.upcomingCountBadge}>
-                        <Text style={styles.upcomingCountText}>
-                          {completedAppointments.length}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {completedAppointments.length === 0 ? (
-                    <View style={styles.compactEmptyCard}>
-                      <Text style={styles.compactEmptyText}>No completed consultations yet for {selectedDate}</Text>
-                    </View>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {completedAppointments.map((appt, index) => {
-                        const phoneNum = appt.phoneNumber || appt.phone || "";
-                        const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
-                        const displayPhone = cleanPhone || "No Mobile";
-                        const isRevisit = !!appt.isReback;
-
-                        return (
-                          <View
-                            key={appt.id || appt.token || `completed-${index}`}
-                            style={styles.appointmentCard}
-                          >
-                            {/* Top Row: Q#, Name, ID, Revisit, Phone, and COMPLETED */}
-                            <View style={styles.cardTopRow}>
-                              <View style={styles.queueBox}>
-                                <Text style={styles.queueBoxLabel}>Q</Text>
-                                <Text style={styles.queueBoxNum}>{index + 1}</Text>
-                              </View>
-
-                              <TouchableOpacity
-                                style={{ flex: 1, marginLeft: 7, justifyContent: "center" }}
-                                onPress={() => openPatientHistory(appt)}
-                                activeOpacity={0.7}
-                              >
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                                  <Text style={styles.apptPatientName}>{appt.patientName}</Text>
-                                  {renderVisitBadge(appt)}
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 1.5 }}>
-                                  <Text style={styles.apptPhoneText}>{displayPhone}</Text>
-                                  <View style={styles.patientIdBadge}>
-                                    <Text style={styles.patientIdBadgeText}>
-                                      {appt.registrationId || appt.patientId || "ID: N/A"}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </TouchableOpacity>
-
-                              {/* COMPLETED Badge -> Opens Payment Receipt */}
-                              <TouchableOpacity
-                                style={[styles.startConsultBtn, { backgroundColor: "#15803d", flexDirection: "row", alignItems: "center", gap: 3 }]}
-                                onPress={() => {
-                                  setSelectedPaymentAppt(appt);
-                                  setPaymentModalVisible(true);
-                                }}
-                                activeOpacity={0.8}
-                              >
-                                <Ionicons name="receipt-outline" size={11} color="#ffffff" />
-                                <Text style={styles.startConsultBtnText}>COMPLETED</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Middle Row */}
-                            <View style={styles.cardInfoRow}>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="fitness-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {appt.doctorName?.startsWith("Dr.") ? appt.doctorName : `Dr. ${appt.doctorName || "Doctor"}`}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="time-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText}>
-                                  {appt.timeSlot || appt.selectedTimeSlot || "Slot N/A"}
-                                </Text>
-                              </View>
-                              <View style={styles.infoItem}>
-                                <Ionicons name="location-outline" size={13} color="#64748b" />
-                                <Text style={styles.infoItemText} numberOfLines={1}>
-                                  {(appt.branch || activeBranch?.name || "KPHB").replace(/Spiritual Homeopathy/gi, "").trim()}
-                                </Text>
-                              </View>
-                            </View>
-
-                            {/* Bottom Action Row */}
-                            <View style={styles.cardActionRow}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                <Ionicons name="checkmark-circle" size={12} color="#16a34a" />
-                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#16a34a" }}>Consultation Done</Text>
-                              </View>
-
-                              <View style={styles.iconActionsGroup}>
-                                <TouchableOpacity
-                                  style={[styles.outlineIconBtn, { backgroundColor: "#f0fdf4", borderColor: "#86efac" }]}
-                                  onPress={() => {
-                                    setSelectedPaymentAppt(appt);
-                                    setPaymentModalVisible(true);
-                                  }}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="receipt-outline" size={14.5} color="#15803d" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => openPatientHistory(appt)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="time-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() => handleCallPatient(cleanPhone)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="call-outline" size={14.5} color="#0284c7" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.outlineIconBtn}
-                                  onPress={() =>
-                                    handleWhatsAppPatient(
-                                      cleanPhone,
-                                      appt.patientName,
-                                      appt.doctorName,
-                                      appt.timeSlot || appt.selectedTimeSlot
-                                    )
-                                  }
-                                  activeOpacity={0.7}
-                                >
-                                  <Ionicons name="logo-whatsapp" size={15.5} color="#25D366" />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
         </View>
-      </ScrollView>
+      </View>
+    );
+  };
 
-      {/* 6. FIXED BOTTOM NAVIGATION BAR (Matching Reference Screenshot) */}
+  // List Footer Component (Load More Completed button)
+  const renderListFooter = () => {
+    if (activeFilter === "COMPLETED" && completedAppointments.length > completedLimit) {
+      return (
+        <TouchableOpacity
+          style={styles.loadMoreBtn}
+          onPress={() => setCompletedLimit((prev) => prev + 20)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.loadMoreBtnText}>
+            Load More Completed ({completedAppointments.length - completedLimit} remaining)
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+    return <View style={{ height: 20 }} />;
+  };
+
+  // Empty List Component
+  const renderListEmpty = () => {
+    if (isLoadingAppointments && appointments.length === 0) {
+      return (
+        <View style={{ padding: 32, alignItems: "center", gap: 10 }}>
+          <ActivityIndicator size="small" color={COLORS.themeBlue} />
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>
+            Loading appointments for {selectedDate}...
+          </Text>
+        </View>
+      );
+    }
+
+    if (!isOnline) {
+      return (
+        <View style={[styles.emptyAppointmentsCard, { borderColor: "#fecdd3", backgroundColor: "#fff1f2" }]}>
+          <View style={[styles.calendarIconBox, { backgroundColor: "#ffe4e6" }]}>
+            <Ionicons name="cloud-offline-outline" size={32} color="#e11d48" />
+          </View>
+
+          <Text style={[styles.emptyCardMessage, { color: "#9f1239", fontWeight: "800" }]}>
+            No Internet Connection
+          </Text>
+
+          <Text style={{ fontSize: 11.5, color: "#be123c", textAlign: "center", paddingHorizontal: 12 }}>
+            You are currently offline. Switching between Wi-Fi and Mobile Data will automatically reconnect.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.bookAppointmentBtn, { backgroundColor: "#e11d48", marginTop: 6 }]}
+            onPress={() => checkConnection()}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="reload" size={18} color={COLORS.white} />
+            <Text style={styles.bookAppointmentBtnText}>Retry Connection</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyAppointmentsCard}>
+        <View style={styles.calendarIconBox}>
+          <Ionicons name="calendar-outline" size={32} color={COLORS.textLight} />
+        </View>
+
+        <Text style={styles.emptyCardMessage}>
+          No appointments found in this section for {selectedDate}.
+        </Text>
+
+        <TouchableOpacity
+          style={styles.bookAppointmentBtn}
+          onPress={() => router.push("/(reception)/appointments" as any)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
+          <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+      {/* 1. TOP NAVBAR */}
+      <View style={styles.topBar}>
+        <View style={styles.topBarLeft}>
+          <TouchableOpacity
+            style={styles.hamburgerButton}
+            onPress={openDrawer}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="menu" size={26} color="#0f172a" />
+          </TouchableOpacity>
+
+          {/* User Profile Avatar */}
+          <View style={styles.avatarCircle}>
+            <Ionicons name="person" size={22} color={COLORS.themeBlue} />
+          </View>
+
+          {/* User & Branch Info */}
+          <View style={styles.headerTitleBox}>
+            <Text style={styles.headerMainTitle}>{branchShortName} Reception</Text>
+            <Text style={styles.headerPhoneText}>
+              {getBranchPhone(activeBranch?.name, activeBranch?.phone)}
+            </Text>
+            <View style={styles.badgeRow}>
+              <View style={styles.receptionBadge}>
+                <Text style={styles.receptionBadgeText}>RECEPTION</Text>
+              </View>
+              <View style={styles.branchLocationPill}>
+                <Ionicons name="location-outline" size={11} color={COLORS.textMuted} />
+                <Text style={styles.branchLocationText}>{branchShortName} Branch</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Right Action Icons: Notification Bell & Logout */}
+        <View style={styles.topBarRight}>
+          <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={20} color="#0f172a" />
+            <View style={styles.bellDot} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerLogoutBtn}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* SINGLE VIRTUALIZED FLATLIST: Renders one group at a time, ultra-fast memory & scrolling */}
+      <FlatList
+        data={displayedAppointments}
+        keyExtractor={(item, index) => item.id || item.token || `appt-${item.__variant}-${index}`}
+        renderItem={({ item, index }) => (
+          <AppointmentCard
+            appt={item}
+            index={item.__index ?? index}
+            variant={item.__variant}
+            isFirst={index === 0}
+            isLast={index === displayedAppointments.length - 1}
+            branchName={branchShortName}
+            onOpenPatientFile={openPatientFile}
+            onOpenPatientHistory={openPatientHistory}
+            onStartConsultation={handleStartConsultation}
+            onOpenPaymentModal={(appt) => {
+              setSelectedPaymentAppt(appt);
+              setPaymentModalVisible(true);
+            }}
+            onCallPatient={handleCallPatient}
+            onWhatsAppPatient={(phone, name) => handleWhatsAppPatient(phone, name)}
+            onOpenRescheduleModal={openRescheduleModal}
+            onDeleteAppointment={handleDeleteAppointment}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
+          />
+        )}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
+        ListEmptyComponent={renderListEmpty}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isPullRefreshing}
+            onRefresh={handlePullRefresh}
+            colors={[COLORS.themeBlue]}
+            tintColor={COLORS.themeBlue}
+          />
+        }
+      />
+
+      {/* FIXED BOTTOM NAVIGATION BAR */}
       <View style={styles.bottomTabBar}>
-        {/* Dashboard Tab */}
         <TouchableOpacity style={styles.tabItem} activeOpacity={0.8}>
           <Ionicons name="grid" size={22} color={COLORS.themeBlue} />
           <Text style={[styles.tabLabel, { color: COLORS.themeBlue }]}>Dashboard</Text>
         </TouchableOpacity>
 
-        {/* Book Appt Tab */}
         <TouchableOpacity
           style={styles.tabItem}
           onPress={() => router.push("/(reception)/appointments" as any)}
@@ -1966,7 +1380,6 @@ export default function ReceptionDashboard() {
           <Text style={styles.tabLabel}>Book Appt</Text>
         </TouchableOpacity>
 
-        {/* Patient List Tab */}
         <TouchableOpacity
           style={styles.tabItem}
           onPress={() => router.push("/(reception)/all-patients" as any)}
@@ -1976,7 +1389,6 @@ export default function ReceptionDashboard() {
           <Text style={styles.tabLabel}>Patient List</Text>
         </TouchableOpacity>
 
-        {/* Med Req Tab */}
         <TouchableOpacity
           style={styles.tabItem}
           onPress={() => router.push("/(reception)/medical-requests" as any)}
@@ -1986,7 +1398,6 @@ export default function ReceptionDashboard() {
           <Text style={styles.tabLabel}>Med Req</Text>
         </TouchableOpacity>
 
-        {/* Logout Tab */}
         <TouchableOpacity
           style={styles.tabItem}
           onPress={handleLogout}
@@ -1997,7 +1408,7 @@ export default function ReceptionDashboard() {
         </TouchableOpacity>
       </View>
 
-      {/* 7. ANIMATED SIDE NAVIGATION DRAWER (Sidebar with all reception folders) */}
+      {/* ANIMATED SIDE NAVIGATION DRAWER */}
       {isDrawerOpen && (
         <View style={styles.drawerOverlayContainer}>
           <TouchableWithoutFeedback onPress={closeDrawer}>
@@ -2010,7 +1421,7 @@ export default function ReceptionDashboard() {
               { transform: [{ translateX: slideAnim }] },
             ]}
           >
-            {/* Drawer Header with Logo & Branch info */}
+            {/* Drawer Header */}
             <View style={styles.drawerHeader}>
               <View style={styles.drawerLogoRow}>
                 <Image
@@ -2026,7 +1437,6 @@ export default function ReceptionDashboard() {
                 </View>
               </View>
 
-              {/* Active Branch Info */}
               <View style={styles.drawerBranchBox}>
                 <View style={styles.drawerBranchTop}>
                   <View style={styles.pulseDot} />
@@ -2059,7 +1469,6 @@ export default function ReceptionDashboard() {
                 </TouchableOpacity>
               ))}
 
-              {/* Sign Out (Inside side navigation, not fixed) */}
               <TouchableOpacity
                 style={[styles.drawerMenuItem, { marginTop: 14, marginBottom: 28 }]}
                 onPress={handleLogout}
@@ -2077,7 +1486,8 @@ export default function ReceptionDashboard() {
           </Animated.View>
         </View>
       )}
-      {/* RESCHEDULE APPOINTMENT MODAL (MOBILE) */}
+
+      {/* RESCHEDULE APPOINTMENT MODAL */}
       <Modal visible={rescheduleModalOpen} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setRescheduleModalOpen(false)}>
           <View style={styles.modalOverlay}>
@@ -2520,7 +1930,7 @@ export default function ReceptionDashboard() {
                       No deleted appointments
                     </Text>
                     <Text style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
-                      No bookings have been deleted in the past 24 hours for {activeBranch?.name || "this branch"}.
+                      No bookings have been deleted in the past 24 hours for {branchShortName}.
                     </Text>
                   </View>
                 ) : (
@@ -2635,6 +2045,7 @@ export default function ReceptionDashboard() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
       {/* Appointment Payment Modal (Collect Fee) */}
       <AppointmentPaymentModal
         visible={paymentModalVisible}
@@ -2644,9 +2055,11 @@ export default function ReceptionDashboard() {
           setSelectedPaymentAppt(null);
         }}
         onPaymentSuccess={() => {
-          const b = activeBranch?.name || "KPHB";
-          fetchAppointments(b, selectedDate);
-          fetchBranchTarget(b);
+          queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
+          queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
+          if (activeBranch?.name) {
+            fetchBranchTarget(activeBranch.name);
+          }
         }}
         onOpenPatientFile={() => {
           setPaymentModalVisible(false);
@@ -2778,8 +2191,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   content: {
-    paddingHorizontal: 8,
-    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 90,
   },
 
@@ -2941,22 +2354,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#16a34a",
   },
-  todayDropdown: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  todayDropdownText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
 
   // Top 4 Stat Cards
   overviewGrid: {
@@ -2992,7 +2389,7 @@ const styles = StyleSheet.create({
   overviewStatCardActiveGreen: {
     borderColor: "#16a34a",
     borderWidth: 1.5,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#f0f9ff",
   },
   statBigBlue: {
     fontSize: 16,
@@ -3116,104 +2513,8 @@ const styles = StyleSheet.create({
   },
 
   // 5. APPOINTMENTS STACK SECTIONS & BOXES
-  sectionCardBox: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 12,
-    marginBottom: 16,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    width: "100%",
-  },
-  sectionIconBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 7,
-    backgroundColor: "#e0f2fe",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sectionSubBadgeBlue: {
-    backgroundColor: "#f0f9ff",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  sectionSubBadgeTextBlue: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#0284c7",
-  },
-  sectionSubBadgeOrange: {
-    backgroundColor: "#fff7ed",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  sectionSubBadgeTextOrange: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#ea580c",
-  },
-  sectionSubBadgeGreen: {
-    backgroundColor: "#f0fdf4",
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  sectionSubBadgeTextGreen: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#16a34a",
-  },
-  sectionContainer: {
-    marginBottom: 16,
-    width: "100%",
-  },
-  stackHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  sectionTitleBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  sectionHeaderTitle: {
-    fontSize: 14.5,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  compactEmptyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: "#e8edf2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  compactEmptyText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#94a3b8",
-  },
   upcomingSection: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   upcomingHeaderRow: {
     flexDirection: "row",
@@ -3233,8 +2534,9 @@ const styles = StyleSheet.create({
   },
   upcomingCountBadge: {
     backgroundColor: "#e0f2fe",
-    width: 20,
+    minWidth: 22,
     height: 20,
+    paddingHorizontal: 5,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
@@ -3259,6 +2561,64 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#0284c7",
+  },
+
+  // Date Filter below Restore (24h)
+  dateFilterContainer: {
+    marginBottom: 14,
+  },
+  datePillsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  datePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  datePillCalendar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  datePillActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  datePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  datePillTextActive: {
+    color: "#ffffff",
+  },
+
+  // Load More Button
+  loadMoreBtn: {
+    marginTop: 12,
+    marginBottom: 8,
+    paddingVertical: 10,
+    backgroundColor: "#f0fdf4",
+    borderWidth: 1,
+    borderColor: "#86efac",
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  loadMoreBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#15803d",
   },
 
   // Empty Appointments Card
@@ -3468,289 +2828,6 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "600",
     color: "#1e293b",
-  },
-  drawerFooter: {
-    padding: 16,
-    borderTopWidth: 0,
-  },
-  logoutDrawerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#fef2f2",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#fecaca",
-  },
-  logoutDrawerText: {
-    color: COLORS.errorRed,
-    fontSize: 14,
-    fontWeight: "800",
-  },
-
-  // Date Filter below Restore (24h)
-  dateFilterContainer: {
-    marginBottom: 14,
-  },
-  datePillsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  datePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  datePillCalendar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  datePillActive: {
-    backgroundColor: "#0284c7",
-    borderColor: "#0284c7",
-  },
-  datePillText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  datePillTextActive: {
-    color: "#ffffff",
-  },
-
-  // Appointment Cards Matching UI/UX Reference Design (Compact, Sleek Height & Reduced Text)
-  appointmentCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#e8edf2",
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
-    elevation: 2,
-    marginBottom: 8,
-    width: "100%",
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  queueBox: {
-    width: 25,
-    height: 25,
-    borderRadius: 6,
-    backgroundColor: "#e0f2fe",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  queueBoxLabel: {
-    fontSize: 6,
-    fontWeight: "900",
-    color: "#0369a1",
-    lineHeight: 6.5,
-  },
-  queueBoxNum: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#0284c7",
-    lineHeight: 11,
-  },
-  patientIdBadge: {
-    backgroundColor: "#f0f9ff",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  patientIdBadgeText: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#0284c7",
-    letterSpacing: 0.2,
-  },
-  apptPatientName: {
-    fontSize: 13.5,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  revisitBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2.5,
-    backgroundColor: "#fffbeb",
-    borderWidth: 1,
-    borderColor: "#fde68a",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  revisitBadgeText: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#d97706",
-    letterSpacing: 0.3,
-  },
-  badgeNew: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2.5,
-    backgroundColor: "#dcfce7",
-    borderWidth: 1,
-    borderColor: "#86efac",
-    paddingHorizontal: 5.5,
-    paddingVertical: 1.5,
-    borderRadius: 6,
-  },
-  badgeNewText: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#16a34a",
-    letterSpacing: 0.3,
-  },
-  badgeInDur: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2.5,
-    backgroundColor: "#e0f2fe",
-    borderWidth: 1,
-    borderColor: "#7dd3fc",
-    paddingHorizontal: 5.5,
-    paddingVertical: 1.5,
-    borderRadius: 6,
-  },
-  badgeInDurText: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#0284c7",
-    letterSpacing: 0.3,
-  },
-  badgeRevisit: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2.5,
-    backgroundColor: "#fffbeb",
-    borderWidth: 1,
-    borderColor: "#fde68a",
-    paddingHorizontal: 5.5,
-    paddingVertical: 1.5,
-    borderRadius: 6,
-  },
-  badgeRevisitText: {
-    fontSize: 8.5,
-    fontWeight: "800",
-    color: "#d97706",
-    letterSpacing: 0.3,
-  },
-  badgePkg: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f59e0b",
-    paddingHorizontal: 5.5,
-    paddingVertical: 1.5,
-    borderRadius: 6,
-  },
-  badgePkgText: {
-    fontSize: 8.5,
-    fontWeight: "900",
-    color: "#ffffff",
-    letterSpacing: 0.3,
-  },
-  apptPhoneText: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#64748b",
-    marginTop: 1,
-  },
-  startConsultBtn: {
-    backgroundColor: "#0284c7",
-    paddingHorizontal: 10,
-    paddingVertical: 5.5,
-    borderRadius: 7,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  startConsultBtnText: {
-    fontSize: 9.5,
-    fontWeight: "800",
-    color: "#ffffff",
-    letterSpacing: 0.2,
-  },
-  cardInfoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 8,
-    paddingTop: 7,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-  },
-  infoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 1,
-  },
-  infoItemText: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#475569",
-  },
-  cardActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  arrowButtonGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  arrowButton: {
-    width: 32,
-    height: 27,
-    borderRadius: 7,
-    backgroundColor: "#0284c7",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  arrowButtonDisabled: {
-    backgroundColor: "#dbeafe",
-  },
-  iconActionsGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  outlineIconBtn: {
-    width: 29,
-    height: 29,
-    borderRadius: 14.5,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
   },
 
   // Calendar Modal
