@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../services/auth";
 
 export interface AppointmentsSummaryData {
@@ -9,6 +9,12 @@ export interface AppointmentsSummaryData {
   completed: number;
   optedFollowUp: number;
   notOptedFollowUp: number;
+}
+
+export interface ChangesData {
+  maxUpdatedAt: string;
+  count: number;
+  version: string;
 }
 
 /**
@@ -48,8 +54,9 @@ export function useAppointmentsSummary(branch: string | undefined, date: string 
       };
     },
     enabled: !!cleanBranch && !!date,
-    staleTime: 1000 * 25, // 25 seconds
-    gcTime: 1000 * 60 * 15,
+    staleTime: 1000 * 60 * 10, // 10 minutes fresh
+    gcTime: 1000 * 60 * 25,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -76,10 +83,38 @@ export function useAppointmentsList(
       return [];
     },
     enabled: options?.enabled !== false && !!cleanBranch && !!date,
-    staleTime: 1000 * 60 * 2, // 2 minutes fresh
-    gcTime: 1000 * 60 * 20, // 20 minutes garbage collection
+    staleTime: 1000 * 60 * 10, // 10 minutes fresh (no unnecessary re-fetches on navigation)
+    gcTime: 1000 * 60 * 25,
+    refetchOnWindowFocus: false,
     refetchInterval: options?.refetchInterval ?? false,
   });
+}
+
+/**
+ * Lightweight change-check fetcher (< 5ms)
+ * Returns { maxUpdatedAt, count, version }
+ */
+export async function checkAppointmentsChanges(
+  branch: string | undefined,
+  date: string | undefined
+): Promise<ChangesData | null> {
+  const cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  if (!cleanBranch || !date) return null;
+  try {
+    const data = await apiFetch<any>(
+      `/reception/changes?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(date)}`
+    );
+    if (data?.success) {
+      return {
+        maxUpdatedAt: data.maxUpdatedAt || "",
+        count: data.count || 0,
+        version: data.version || `${data.maxUpdatedAt}:${data.count}`,
+      };
+    }
+  } catch (err) {
+    console.warn("Failed to check appointments changes:", err);
+  }
+  return null;
 }
 
 /**
@@ -98,7 +133,7 @@ export async function prefetchDateAppointments(queryClient: any, branch: string,
         );
         return data?.summary;
       },
-      staleTime: 1000 * 60 * 2,
+      staleTime: 1000 * 60 * 10,
     }),
     queryClient.prefetchQuery({
       queryKey: ["appointments-list", cleanBranch, date],
@@ -108,7 +143,7 @@ export async function prefetchDateAppointments(queryClient: any, branch: string,
         );
         return data?.appointments || [];
       },
-      staleTime: 1000 * 60 * 2,
+      staleTime: 1000 * 60 * 10,
     }),
   ]);
 }

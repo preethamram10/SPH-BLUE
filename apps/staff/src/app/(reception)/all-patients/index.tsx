@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   TextInput,
-  Linking,
-  Alert,
   BackHandler,
   ActivityIndicator,
   RefreshControl,
@@ -15,10 +13,15 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { apiFetch, getActiveBranch } from "../../../services/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { getActiveBranch } from "../../../services/auth";
 import { ReceptionBottomNav } from "../../../components/reception/ReceptionBottomNav";
-import { normalizeDateStr } from "../../../utils/dateUtils";
-import { saveActiveRoute, clearActiveRoute, saveFilters, getFilters } from "../../../services/appSession";
+import { saveActiveRoute, saveFilters, getFilters } from "../../../services/appSession";
+import { PatientCard } from "../../../components/reception/PatientCard";
+import {
+  useReceptionPatients,
+  usePatientSessionCounts,
+} from "../../../hooks/useReceptionPatients";
 
 const PAGE_SIZE = 25;
 
@@ -39,29 +42,33 @@ const COLORS = {
 
 export default function ReceptionAllPatientsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  // State
+  // Search & Session Tab State
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [session, setSession] = useState<SessionTab>("TODAY");
-  const [patients, setPatients] = useState<any[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeBranch, setActiveBranch] = useState<any>(null);
-  const [sessionCounts, setSessionCounts] = useState<Record<SessionTab, number | null>>({
-    TODAY: null,
-    YESTERDAY: null,
-    ALL: null,
-  });
 
-  // Load branch and saved filters on mount
+  // Debounce search input by 300ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Load branch & saved filters on mount
   useEffect(() => {
     saveActiveRoute("/(reception)/all-patients");
     getFilters<any>("all_patients").then((f) => {
       if (f) {
-        if (f.search !== undefined) setSearch(f.search);
+        if (f.search !== undefined) {
+          setSearch(f.search);
+          setDebouncedSearch(f.search);
+        }
         if (f.session) setSession(f.session);
       }
     });
@@ -75,120 +82,56 @@ export default function ReceptionAllPatientsScreen() {
     saveFilters("all_patients", { search, session });
   }, [search, session]);
 
-  // Fetch patients for the current tab/page
-  const fetchPatients = useCallback(
-    async (tab: SessionTab, page: number, isRefresh = false, searchQuery?: string) => {
-      if (isRefresh) setIsRefreshing(true);
-      else setIsLoading(true);
-      try {
-        const branchName = activeBranch?.name || activeBranch?.branch || "";
-        const queryText = searchQuery !== undefined ? searchQuery.trim() : search.trim();
-        const params = new URLSearchParams({
-          session: tab,
-          page: String(page),
-          pageSize: String(PAGE_SIZE),
-        });
-        if (queryText) params.set("search", queryText);
-        if (branchName) params.set("branch", branchName);
+  const branchName = activeBranch?.name || activeBranch?.branch || "";
 
-        const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
-        if (data.success) {
-          setPatients(data.patients || []);
-          setTotalCount(data.totalCount || 0);
-          setTotalPages(data.totalPages || 1);
-          setCurrentPage(data.currentPage || 1);
-          // Auto sync session count for current tab
-          setSessionCounts((prev) => ({
-            ...prev,
-            [tab]: data.totalCount || 0,
-          }));
-        }
-      } catch (err) {
-        console.error("Failed to fetch patients:", err);
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }
-    },
-    [activeBranch, search]
-  );
+  // 1. Ultra-fast session counts summary (< 5ms on backend)
+  const {
+    data: sessionCounts,
+    isLoading: isLoadingCounts,
+    refetch: refetchCounts,
+  } = usePatientSessionCounts(branchName);
 
-  // Progressive count loader: Loads Today & Yesterday first, then All
-  const fetchSessionCounts = useCallback(async () => {
-    const branchName = activeBranch?.name || activeBranch?.branch || "";
-    if (!branchName) return;
+  // 2. High-performance cached patients query (per [branch, session, page, search])
+  const {
+    data: patientsData,
+    isLoading: isLoadingPatients,
+    isFetching: isFetchingPatients,
+    refetch: refetchPatients,
+  } = useReceptionPatients({
+    branch: branchName,
+    session,
+    page: currentPage,
+    pageSize: PAGE_SIZE,
+    search: debouncedSearch,
+  });
 
-    // Phase 1: Fast load for Today and Yesterday
-    const quickTabs: SessionTab[] = ["TODAY", "YESTERDAY"];
-    await Promise.all(
-      quickTabs.map(async (tab) => {
-        try {
-          const params = new URLSearchParams({ session: tab, page: "1", pageSize: "1", branch: branchName });
-          const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
-          if (data?.success && typeof data.totalCount === "number") {
-            setSessionCounts((prev) => ({ ...prev, [tab]: data.totalCount }));
-          }
-        } catch {}
-      })
-    );
+  const patients = patientsData?.patients || [];
+  const totalCount = patientsData?.totalCount || 0;
+  const totalPages = patientsData?.totalPages || 1;
 
-    // Phase 2: Background count for ALL
-    try {
-      const params = new URLSearchParams({ session: "ALL", page: "1", pageSize: "1", branch: branchName });
-      const data = await apiFetch<any>(`/reception/patients?${params.toString()}`);
-      if (data?.success && typeof data.totalCount === "number") {
-        setSessionCounts((prev) => ({ ...prev, ALL: data.totalCount }));
-      }
-    } catch {}
-  }, [activeBranch]);
+  // Refresh handler
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refetchPatients(), refetchCounts()]);
+  }, [refetchPatients, refetchCounts]);
 
-  // On branch load / tab change
-  useEffect(() => {
-    if (activeBranch !== null) {
-      fetchPatients(session, 1, false, search);
-    }
-  }, [activeBranch, session]);
-
-  // Load session counts only on initial branch load (does not reset to 0 on every tab change)
-  useEffect(() => {
-    if (activeBranch !== null) {
-      fetchSessionCounts();
-    }
-  }, [activeBranch, fetchSessionCounts]);
-
-  // Debounced server search across all 12,000 patients when user enters full phone, MRN or name
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (activeBranch !== null) {
-        fetchPatients(session, 1, false, search);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const handleTabChange = (tab: SessionTab) => {
+  // Tab change
+  const handleTabChange = useCallback((tab: SessionTab) => {
     setSession(tab);
     setCurrentPage(1);
-  };
+  }, []);
 
-  const handlePrevPage = () => {
-    if (currentPage > 1) fetchPatients(session, currentPage - 1, false, search);
-  };
+  const handlePrevPage = useCallback(() => {
+    setCurrentPage((p) => Math.max(1, p - 1));
+  }, []);
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages) fetchPatients(session, currentPage + 1, false, search);
-  };
+  const handleNextPage = useCallback(() => {
+    setCurrentPage((p) => Math.min(totalPages, p + 1));
+  }, [totalPages]);
 
-  const handleRefresh = () => fetchPatients(session, currentPage, true, search);
-
-  // Results returned from server search
-  const filteredPatients = patients;
-
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace("/(reception)" as any);
-  };
+    else router.navigate("/(reception)" as any);
+  }, [router]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -196,166 +139,86 @@ export default function ReceptionAllPatientsScreen() {
       return true;
     });
     return () => sub.remove();
-  }, [router]);
+  }, [handleBack]);
 
-  const handleCall = (phone: string) => {
-    const clean = phone.replace(/\D/g, "").slice(-10);
-    if (!clean) return Alert.alert("No Phone", "No valid phone number.");
-    Linking.openURL(`tel:${clean}`);
-  };
-
-  const handleWhatsApp = (phone: string, name: string) => {
-    const clean = phone.replace(/\D/g, "").slice(-10);
-    if (!clean) return Alert.alert("No Phone", "No valid phone number.");
-    const msg = `Hello ${name}, greetings from Spiritual Homeopathy Clinic!`;
-    Linking.openURL(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`);
-  };
-
-  const handleHistoryRx = (patient: any) => {
-    const regId = patient.regId || patient.registrationId || "";
-    const name = encodeURIComponent(patient.name || patient.patientName || "");
-    const phone = encodeURIComponent((patient.phone || "").replace(/\D/g, "").slice(-10));
-    const branch = encodeURIComponent(patient.branch || activeBranch?.name || "");
-    router.push(`/(reception)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
-  };
-
-  const renderPatientCard = ({ item }: { item: any }) => {
-    const name = item.name || item.patientName || "Unknown";
-    const regId = item.regId || item.registrationId || "ID: N/A";
-    const phone = item.phone || item.phoneNumber || "";
-    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
-    const displayPhone = cleanPhone ? `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}` : "No Mobile";
-    const totalVisits = item.totalVisits || item.appointmentCount || 0;
-    const lastVisit = item.lastVisitDate || item.lastVisit || "";
-    const doctor = item.doctorName || item.lastDoctorName || "";
-    const branch = item.branch || (activeBranch?.name ?? "");
-    const diseases = item.diseases || item.primarySymptoms || "";
-    const source = item.source || item.marketingSource || "Walk-in";
-    const subject = item.subject || diseases || "";
-    const status = (item.status || "").toUpperCase();
-    const isInDuration = status === "IN_CONSULTATION" || status === "COLLECT_FEE" || status === "WAITING" || status === "SCHEDULED";
-
-    // Format last visit date
-    let lastVisitLabel = "";
-    if (lastVisit) {
-      try {
-        const clean = normalizeDateStr(lastVisit);
-        const parts = clean.split("-");
-        if (parts.length === 3) {
-          const y = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10) - 1;
-          const d = parseInt(parts[2], 10);
-          const dateObj = new Date(y, m, d);
-          if (!isNaN(dateObj.getTime())) {
-            const today = new Date();
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-            if (dateObj.toDateString() === today.toDateString()) lastVisitLabel = "Today";
-            else if (dateObj.toDateString() === yesterday.toDateString()) lastVisitLabel = "Yesterday";
-            else {
-              lastVisitLabel = dateObj.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-            }
-          } else {
-            lastVisitLabel = lastVisit;
-          }
-        } else {
-          lastVisitLabel = lastVisit;
-        }
-      } catch {
-        lastVisitLabel = lastVisit;
-      }
-    }
-
-    return (
-      <View style={styles.card}>
-        {/* Top Row: Name + Status badge */}
-        <View style={styles.cardTopRow}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <Text style={styles.patientName} numberOfLines={1}>{name}</Text>
-              {isInDuration && (
-                <View style={styles.inDurBadge}>
-                  <Ionicons name="pulse" size={9} color="#b45309" />
-                  <Text style={styles.inDurBadgeText}>IN-DUR</Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
-              <Text style={styles.regIdText}>ID: {regId}</Text>
-              <View style={styles.sourceBadge}>
-                <Text style={styles.sourceBadgeText}>{source}</Text>
-              </View>
-            </View>
-            {subject ? (
-              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }} numberOfLines={1}>
-                Subject: {subject}
-              </Text>
-            ) : null}
-          </View>
-          {/* Visits badge - removed 0 visited */}
-          {totalVisits > 0 && (
-            <View style={styles.visitsBadge}>
-              <Ionicons name="repeat" size={11} color="#0284c7" />
-              <Text style={styles.visitsText}>{totalVisits} {totalVisits === 1 ? "Visit" : "Visits"}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Branch & Date */}
-        <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
-          <Text style={styles.infoText}>{branch}</Text>
-          {lastVisitLabel ? (
-            <>
-              <Ionicons name="calendar-outline" size={12} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
-              <Text style={styles.infoText}>{lastVisitLabel}</Text>
-            </>
-          ) : null}
-        </View>
-
-        {/* Doctor */}
-        {doctor ? (
-          <View style={styles.infoRow}>
-            <Ionicons name="fitness-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.infoText}>{doctor.startsWith("Dr.") ? doctor : `Dr. ${doctor}`}</Text>
-          </View>
-        ) : null}
-
-        {/* Phone + Action Buttons */}
-        <View style={styles.cardBottomRow}>
-          <View style={styles.phoneRow}>
-            <Ionicons name="call-outline" size={13} color={COLORS.primary} />
-            <Text style={styles.phoneText}>{displayPhone}</Text>
-          </View>
-          <View style={styles.actionBtns}>
-            {/* History & Rx */}
-            <TouchableOpacity style={styles.historyBtn} onPress={() => handleHistoryRx(item)} activeOpacity={0.7}>
-              <Text style={styles.historyBtnText}>History & Rx</Text>
-              <Ionicons name="chevron-forward" size={12} color={COLORS.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="people-outline" size={44} color="#cbd5e1" />
-      <Text style={styles.emptyTitle}>No Patients Found</Text>
-      <Text style={styles.emptySubtext}>
-        {search.trim()
-          ? `No patients match "${search}".`
-          : session === "TODAY"
-          ? "No patients registered today."
-          : session === "YESTERDAY"
-          ? "No patients registered yesterday."
-          : "No patients registered for this branch yet."}
-      </Text>
-    </View>
+  const handleHistoryRx = useCallback(
+    (patient: any) => {
+      const regId = patient.regId || patient.registrationId || "";
+      const name = encodeURIComponent(patient.name || patient.patientName || "");
+      const phone = encodeURIComponent((patient.phone || "").replace(/\D/g, "").slice(-10));
+      const branch = encodeURIComponent(patient.branch || branchName || "");
+      router.push(`/(reception)/patient-history?id=${regId}&name=${name}&phone=${phone}&branch=${branch}` as any);
+    },
+    [branchName, router]
   );
 
-  const branchName = activeBranch?.name || activeBranch?.branch || "Branch";
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => (
+      <PatientCard
+        item={item}
+        branchName={branchName}
+        onHistoryRx={handleHistoryRx}
+      />
+    ),
+    [branchName, handleHistoryRx]
+  );
+
+  const keyExtractor = useCallback(
+    (item: any, idx: number) => item.regId || item.registrationId || String(idx),
+    []
+  );
+
+  const renderEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Ionicons name="people-outline" size={44} color="#cbd5e1" />
+        <Text style={styles.emptyTitle}>No Patients Found</Text>
+        <Text style={styles.emptySubtext}>
+          {debouncedSearch.trim()
+            ? `No patients match "${debouncedSearch}".`
+            : session === "TODAY"
+              ? "No patients registered today."
+              : session === "YESTERDAY"
+                ? "No patients registered yesterday."
+                : "No patients registered for this branch yet."}
+        </Text>
+      </View>
+    ),
+    [debouncedSearch, session]
+  );
+
+  const renderFooter = useCallback(() => {
+    if (totalPages <= 1) return null;
+    return (
+      <View style={styles.pagination}>
+        <TouchableOpacity
+          style={[styles.pageBtn, currentPage <= 1 && styles.pageBtnDisabled]}
+          onPress={handlePrevPage}
+          disabled={currentPage <= 1}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={16} color={currentPage <= 1 ? "#94a3b8" : COLORS.primary} />
+          <Text style={[styles.pageBtnText, currentPage <= 1 && { color: "#94a3b8" }]}>Prev</Text>
+        </TouchableOpacity>
+        <Text style={styles.pageInfo}>
+          Page {currentPage} of {totalPages}{"  "}
+          <Text style={{ color: COLORS.textMuted, fontSize: 11 }}>({totalCount} total)</Text>
+        </Text>
+        <TouchableOpacity
+          style={[styles.pageBtn, currentPage >= totalPages && styles.pageBtnDisabled]}
+          onPress={handleNextPage}
+          disabled={currentPage >= totalPages}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.pageBtnText, currentPage >= totalPages && { color: "#94a3b8" }]}>Next</Text>
+          <Ionicons name="chevron-forward" size={16} color={currentPage >= totalPages ? "#94a3b8" : COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+    );
+  }, [totalPages, currentPage, totalCount, handlePrevPage, handleNextPage]);
+
+  // Loading state (only shown on the first uncached load, never when cached)
+  const isInitialLoading = isLoadingPatients && patients.length === 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -366,7 +229,7 @@ export default function ReceptionAllPatientsScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>All Patients Directory</Text>
-          <Text style={styles.headerSub} numberOfLines={1}>{branchName}</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>{branchName || "Branch"}</Text>
         </View>
         <TouchableOpacity onPress={handleRefresh} activeOpacity={0.7} style={styles.refreshBtn}>
           <Ionicons name="refresh" size={20} color={COLORS.primary} />
@@ -390,11 +253,17 @@ export default function ReceptionAllPatientsScreen() {
         )}
       </View>
 
-      {/* Session Tabs */}
+      {/* Session Tabs with fast counts */}
       <View style={styles.tabsRow}>
         {(["TODAY", "YESTERDAY", "ALL"] as SessionTab[]).map((tab) => {
-          const countVal = sessionCounts[tab];
-          const countDisplay = countVal !== null && countVal !== undefined ? countVal : "–";
+          let countVal: number | undefined = undefined;
+          if (sessionCounts && typeof sessionCounts[tab] === "number") {
+            countVal = sessionCounts[tab];
+          } else if (session === tab && typeof patientsData?.totalCount === "number") {
+            countVal = patientsData.totalCount;
+          }
+
+          const countDisplay = countVal !== undefined ? countVal : "–";
           const label =
             tab === "ALL"
               ? `All Patients (${countDisplay})`
@@ -414,16 +283,16 @@ export default function ReceptionAllPatientsScreen() {
       </View>
 
       {/* Patient List */}
-      {isLoading && patients.length === 0 ? (
+      {isInitialLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading patients...</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredPatients}
-          keyExtractor={(item, idx) => item.regId || item.registrationId || String(idx)}
-          renderItem={renderPatientCard}
+          data={patients}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
           ListEmptyComponent={renderEmptyState}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
@@ -434,39 +303,12 @@ export default function ReceptionAllPatientsScreen() {
           removeClippedSubviews={true}
           refreshControl={
             <RefreshControl
-              refreshing={isRefreshing}
+              refreshing={isFetchingPatients && !isInitialLoading}
               onRefresh={handleRefresh}
               colors={[COLORS.primary]}
             />
           }
-          ListFooterComponent={
-            totalPages > 1 ? (
-              <View style={styles.pagination}>
-                <TouchableOpacity
-                  style={[styles.pageBtn, currentPage <= 1 && styles.pageBtnDisabled]}
-                  onPress={handlePrevPage}
-                  disabled={currentPage <= 1}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="chevron-back" size={16} color={currentPage <= 1 ? "#94a3b8" : COLORS.primary} />
-                  <Text style={[styles.pageBtnText, currentPage <= 1 && { color: "#94a3b8" }]}>Prev</Text>
-                </TouchableOpacity>
-                <Text style={styles.pageInfo}>
-                  Page {currentPage} of {totalPages}{"  "}
-                  <Text style={{ color: COLORS.textMuted, fontSize: 11 }}>({totalCount} total)</Text>
-                </Text>
-                <TouchableOpacity
-                  style={[styles.pageBtn, currentPage >= totalPages && styles.pageBtnDisabled]}
-                  onPress={handleNextPage}
-                  disabled={currentPage >= totalPages}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pageBtnText, currentPage >= totalPages && { color: "#94a3b8" }]}>Next</Text>
-                  <Ionicons name="chevron-forward" size={16} color={currentPage >= totalPages ? "#94a3b8" : COLORS.primary} />
-                </TouchableOpacity>
-              </View>
-            ) : undefined
-          }
+          ListFooterComponent={renderFooter}
         />
       )}
 
@@ -553,106 +395,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 15, fontWeight: "700", color: "#334155", marginTop: 12 },
   emptySubtext: { fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 4, maxWidth: 240 },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    padding: 13,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  cardTopRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  patientName: { fontSize: 15, fontWeight: "800", color: COLORS.textDark, flex: 1 },
-  regIdText: { fontSize: 11, fontWeight: "700", color: COLORS.primary, marginTop: 1 },
-  sourceBadge: {
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  sourceBadgeText: {
-    fontSize: 9.5,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  inDurBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#fef3c7",
-    borderWidth: 1,
-    borderColor: "#fde68a",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  inDurBadgeText: { fontSize: 9, fontWeight: "800", color: "#b45309" },
-  visitsBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#f0f9ff",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-    marginLeft: 8,
-  },
-  visitsText: { fontSize: 10.5, fontWeight: "700", color: COLORS.primary },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 3,
-  },
-  infoText: { fontSize: 11, color: COLORS.textMuted },
-  cardBottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
-  },
-  phoneRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  phoneText: { fontSize: 12, fontWeight: "600", color: COLORS.textDark },
-  actionBtns: { flexDirection: "row", alignItems: "center", gap: 7 },
-  historyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "#f0f9ff",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  historyBtnText: { fontSize: 11, fontWeight: "700", color: COLORS.primary },
-  iconBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#f0f9ff",
-    borderWidth: 1,
-    borderColor: "#bae6fd",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   pagination: {
     flexDirection: "row",
     alignItems: "center",

@@ -3,7 +3,10 @@ import { patientService, appointmentService, normalizeDateStr } from "@spiritual
 
 /** Returns YYYY-MM-DD for a given Date (local zone of the server) */
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -29,6 +32,46 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, suggestions });
     }
 
+    // Fast session counts summary for the tabs (TODAY, YESTERDAY, ALL) in a single ultra-fast call
+    if (searchParams.get("summary") === "true") {
+      const allPatients = await patientService.getAllPatients(branch);
+      const now = new Date();
+      const todayStr = toDateStr(now);
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = toDateStr(yesterday);
+
+      const [todayAppts, yesterdayAppts] = await Promise.all([
+        appointmentService.getAppointments(branch, todayStr, undefined, false, false),
+        appointmentService.getAppointments(branch, yesterdayStr, undefined, false, false),
+      ]);
+
+      const todayRegs = new Set(todayAppts.map((a) => (a.registrationId || "").trim().toUpperCase()).filter(Boolean));
+      const yesterdayRegs = new Set(yesterdayAppts.map((a) => (a.registrationId || "").trim().toUpperCase()).filter(Boolean));
+
+      const isTodayPatient = (p: any) => {
+        const pCreated = p.createdAt ? normalizeDateStr(p.createdAt.slice(0, 10)) : "";
+        return pCreated === todayStr || todayRegs.has((p.regId || "").trim().toUpperCase());
+      };
+      const isYesterdayPatient = (p: any) => {
+        const pCreated = p.createdAt ? normalizeDateStr(p.createdAt.slice(0, 10)) : "";
+        return pCreated === yesterdayStr || yesterdayRegs.has((p.regId || "").trim().toUpperCase());
+      };
+
+      const todayCount = allPatients.filter(isTodayPatient).length;
+      const yesterdayCount = allPatients.filter(isYesterdayPatient).length;
+      const allCount = allPatients.length;
+
+      return NextResponse.json({
+        success: true,
+        counts: {
+          TODAY: todayCount,
+          YESTERDAY: yesterdayCount,
+          ALL: allCount,
+        },
+      });
+    }
+
     // List patients: if search query is provided, search across all records using hash maps
     let all: any[] = [];
     if (search) {
@@ -49,12 +92,15 @@ export async function GET(req: NextRequest) {
       }
       const targetDateStr = toDateStr(targetDate);
 
-      // Get all appointments for this branch on the target date
-      const appts = await appointmentService.getAppointments(branch, targetDateStr);
-      const regIdsWithAppt = new Set(appts.map((a) => (a.registrationId || "").trim().toUpperCase()));
+      // Get all appointments for this branch on the target date (undecorated, fast)
+      const appts = await appointmentService.getAppointments(branch, targetDateStr, undefined, false, false);
+      const regIdsWithAppt = new Set(appts.map((a) => (a.registrationId || "").trim().toUpperCase()).filter(Boolean));
 
-      // Keep only patients who had an appointment on that day
-      all = all.filter((p) => regIdsWithAppt.has((p.regId || "").trim().toUpperCase()));
+      // Keep patients who had an appointment on that day OR were created on that day
+      all = all.filter((p) => {
+        const pCreated = p.createdAt ? normalizeDateStr(p.createdAt.slice(0, 10)) : "";
+        return pCreated === targetDateStr || regIdsWithAppt.has((p.regId || "").trim().toUpperCase());
+      });
     }
 
     // Total count before pagination
@@ -64,7 +110,7 @@ export async function GET(req: NextRequest) {
     const pagedRaw = all.slice(start, start + pageSize);
 
     // If only requesting count (pageSize === 1) or empty page, return fast without heavy enrichment
-    if (pageSize === 1 && page === 1 && pagedRaw.length === 0) {
+    if (pageSize === 1 || pagedRaw.length === 0) {
       return NextResponse.json({
         success: true,
         patients: [],
@@ -76,8 +122,9 @@ export async function GET(req: NextRequest) {
     }
 
     // High-performance targeted enrichment ONLY for the current page items
+    // Use decorate = false so appointmentService does NOT decorate all 15,000 database appointments
     const pageRegIds = new Set(pagedRaw.map((p) => (p.regId || "").trim().toUpperCase()).filter(Boolean));
-    const allAppts = await appointmentService.getAppointments();
+    const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
     const apptsByRegId = new Map<string, any[]>();
 
     allAppts.forEach((a) => {

@@ -13,6 +13,8 @@ export interface AppointmentCardProps {
   onOpenPatientHistory?: (appt: any) => void;
   onStartConsultation?: (appt: any) => void;
   onOpenPaymentModal?: (appt: any) => void;
+  onOpenInvoice?: (appt: any) => void;
+  onShareInvoice?: (appt: any) => void;
   onCallPatient: (phone: string | undefined) => void;
   onWhatsAppPatient: (phone: string | undefined, name: string | undefined) => void;
   onOpenRescheduleModal: (appt: any) => void;
@@ -32,6 +34,8 @@ export const AppointmentCard = memo(function AppointmentCard({
   onOpenPatientHistory,
   onStartConsultation,
   onOpenPaymentModal,
+  onOpenInvoice,
+  onShareInvoice,
   onCallPatient,
   onWhatsAppPatient,
   onOpenRescheduleModal,
@@ -43,25 +47,37 @@ export const AppointmentCard = memo(function AppointmentCard({
   const cleanPhone = phoneNum.replace(/\D/g, "").slice(-10);
   const displayPhone = cleanPhone || "No Mobile";
 
-  // Visit Badge Render
+  // Visit Badge Render (Single source of truth from backend visitBadge)
   const renderVisitBadge = () => {
-    const isNew =
-      appt.isNewPatient ||
-      appt.visitType === "NEW" ||
-      (!appt.isReback && !appt.visitCount && !appt.totalVisits);
-    const isInDur = appt.isDuration || appt.visitType === "IN_DURATION";
-
-    if (isNew) {
+    const badge = appt.visitBadge;
+    if (badge === "In-Dur" || appt.isDuration || appt.visitType === "IN_DURATION") {
+      return (
+        <View style={[styles.badgeBase, styles.badgeDuration]}>
+          <Text style={styles.badgeDurationText}>In-Dur</Text>
+        </View>
+      );
+    }
+    if (badge === "Revisit" || appt.visitType === "REVISIT" || appt.isReback) {
+      return (
+        <View style={[styles.badgeBase, styles.badgeRevisit]}>
+          <Text style={styles.badgeRevisitText}>Revisit</Text>
+        </View>
+      );
+    }
+    if (badge === "New" || appt.isNewPatient || appt.visitType === "NEW") {
       return (
         <View style={[styles.badgeBase, styles.badgeNew]}>
           <Text style={styles.badgeNewText}>New</Text>
         </View>
       );
     }
-    if (isInDur) {
+
+    // Safe fallback:
+    const isNew = !appt.isReback && !appt.visitCount && !appt.totalVisits;
+    if (isNew) {
       return (
-        <View style={[styles.badgeBase, styles.badgeDuration]}>
-          <Text style={styles.badgeDurationText}>In-Dur</Text>
+        <View style={[styles.badgeBase, styles.badgeNew]}>
+          <Text style={styles.badgeNewText}>New</Text>
         </View>
       );
     }
@@ -80,8 +96,9 @@ export const AppointmentCard = memo(function AppointmentCard({
   const patientIdDisplay = appt.registrationId || appt.patientId || "ID: N/A";
 
   const handleCardPress = () => {
-    if (variant === "COMPLETED" && onOpenPatientHistory) {
-      onOpenPatientHistory(appt);
+    if (variant === "COMPLETED") {
+      if (onOpenInvoice) onOpenInvoice(appt);
+      else if (onOpenPaymentModal) onOpenPaymentModal(appt);
     } else {
       onOpenPatientFile(appt);
     }
@@ -171,10 +188,15 @@ export const AppointmentCard = memo(function AppointmentCard({
         )}
 
         {variant === "COMPLETED" && (
-          <View style={styles.completedPill}>
-            <Ionicons name="checkmark-circle" size={12} color="#16a34a" style={{ marginRight: 3 }} />
-            <Text style={styles.completedPillText}>COMPLETED</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.completedPill}
+            onPress={() => (onOpenInvoice ? onOpenInvoice(appt) : onOpenPaymentModal?.(appt))}
+            activeOpacity={0.8}
+            accessibilityLabel="View Invoice"
+          >
+            <Ionicons name="receipt-outline" size={12} color="#16a34a" style={{ marginRight: 3 }} />
+            <Text style={styles.completedPillText}>INVOICE</Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -228,14 +250,17 @@ export const AppointmentCard = memo(function AppointmentCard({
 
         {/* Action Icon Buttons */}
         <View style={styles.iconGroup}>
-          <TouchableOpacity
-            style={styles.outlineIconBtn}
-            onPress={() => onOpenPatientFile(appt)}
-            activeOpacity={0.7}
-            accessibilityLabel="Patient File"
-          >
-            <Ionicons name="document-text-outline" size={14} color="#0284c7" />
-          </TouchableOpacity>
+          {/* Patient File Button - ONLY for UPCOMING, ACTIVE, COLLECT_FEE (Hidden for COMPLETED per user request) */}
+          {variant !== "COMPLETED" && (
+            <TouchableOpacity
+              style={styles.outlineIconBtn}
+              onPress={() => onOpenPatientFile(appt)}
+              activeOpacity={0.7}
+              accessibilityLabel="Patient File"
+            >
+              <Ionicons name="document-text-outline" size={14} color="#0284c7" />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.outlineIconBtn}
@@ -255,23 +280,48 @@ export const AppointmentCard = memo(function AppointmentCard({
             <Ionicons name="logo-whatsapp" size={14} color="#25d366" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.outlineIconBtn}
-            onPress={() => onOpenRescheduleModal(appt)}
-            activeOpacity={0.7}
-            accessibilityLabel="Reschedule"
-          >
-            <Ionicons name="calendar-outline" size={14} color="#d97706" />
-          </TouchableOpacity>
+          {/* Completed Variant: Show Invoice Open and Invoice Share; NO Reschedule and NO Delete */}
+          {variant === "COMPLETED" ? (
+            <>
+              <TouchableOpacity
+                style={[styles.outlineIconBtn, styles.invoiceBtn]}
+                onPress={() => (onOpenInvoice ? onOpenInvoice(appt) : onOpenPaymentModal?.(appt))}
+                activeOpacity={0.7}
+                accessibilityLabel="Open Invoice"
+              >
+                <Ionicons name="receipt-outline" size={14} color="#0284c7" />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.outlineIconBtn, styles.deleteIconBtn]}
-            onPress={() => onDeleteAppointment(appt)}
-            activeOpacity={0.7}
-            accessibilityLabel="Delete"
-          >
-            <Ionicons name="trash-outline" size={14} color="#ef4444" />
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.outlineIconBtn, styles.shareBtn]}
+                onPress={() => (onShareInvoice ? onShareInvoice(appt) : onWhatsAppPatient(cleanPhone, appt.patientName))}
+                activeOpacity={0.7}
+                accessibilityLabel="Share Invoice"
+              >
+                <Ionicons name="share-social-outline" size={14} color="#16a34a" />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.outlineIconBtn}
+                onPress={() => onOpenRescheduleModal(appt)}
+                activeOpacity={0.7}
+                accessibilityLabel="Reschedule"
+              >
+                <Ionicons name="calendar-outline" size={14} color="#d97706" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.outlineIconBtn, styles.deleteIconBtn]}
+                onPress={() => onDeleteAppointment(appt)}
+                activeOpacity={0.7}
+                accessibilityLabel="Delete"
+              >
+                <Ionicons name="trash-outline" size={14} color="#ef4444" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     </View>
@@ -548,5 +598,13 @@ const styles = StyleSheet.create({
   deleteIconBtn: {
     borderColor: "#fee2e2",
     backgroundColor: "#fff5f5",
+  },
+  invoiceBtn: {
+    borderColor: "#bae6fd",
+    backgroundColor: "#f0f9ff",
+  },
+  shareBtn: {
+    borderColor: "#bbf7d0",
+    backgroundColor: "#f0fdf4",
   },
 });

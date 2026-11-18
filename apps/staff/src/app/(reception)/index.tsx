@@ -15,6 +15,8 @@ import {
   Alert,
   RefreshControl,
   Linking,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -29,6 +31,7 @@ import { AppointmentCard } from "../../components/reception/AppointmentCard";
 import {
   useAppointmentsSummary,
   useAppointmentsList,
+  checkAppointmentsChanges,
   prefetchDateAppointments,
 } from "../../hooks/useReceptionAppointments";
 
@@ -129,16 +132,19 @@ export default function ReceptionDashboard() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
 
-  // Track screen focus to halt background polling when navigated away
+  // Track screen focus & AppState to halt background polling when navigated away or minimized
   const [isScreenFocused, setIsScreenFocused] = useState(true);
-  useFocusEffect(
-    useCallback(() => {
-      setIsScreenFocused(true);
-      return () => {
-        setIsScreenFocused(false);
-      };
-    }, [])
-  );
+  const [appState, setAppState] = useState<AppStateStatus>("active");
+  const lastVerifiedAtRef = useRef<number>(Date.now());
+  const lastSeenVersionRef = useRef<string>("");
+
+  // Pause polling and network when app is backgrounded or minimized
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      setAppState(nextState);
+    });
+    return () => sub.remove();
+  }, []);
 
   // Live Branch Target State (Fetched once on mount, NOT in periodic polling)
   const [branchTarget, setBranchTarget] = useState<{
@@ -222,15 +228,74 @@ export default function ReceptionDashboard() {
   } = useAppointmentsSummary(activeBranch?.name, selectedDate);
 
   // 2. Full Appointments List Hook with per-[branch, date] caching
-  // Polling ONLY runs when screen is focused AND selectedDate is TODAY (every 25 seconds)
-  const isPollingActive = isScreenFocused && selectedDate === todayStr;
+  // Kept in memory (staleTime 10 mins). NO blind full refetch on interval!
   const {
     data: appointments = [],
     isLoading: isLoadingAppointments,
     refetch: refetchAppointments,
   } = useAppointmentsList(activeBranch?.name, selectedDate, {
-    refetchInterval: isPollingActive ? 25000 : false,
+    refetchInterval: false,
   });
+
+  // Keep track of the version of appointments currently in memory
+  useEffect(() => {
+    if (appointments && appointments.length > 0 && !lastSeenVersionRef.current) {
+      let maxUp = "";
+      for (let i = 0; i < appointments.length; i++) {
+        const up = appointments[i].updatedAt || appointments[i].createdAt || "";
+        if (up > maxUp) maxUp = up;
+      }
+      lastSeenVersionRef.current = `${maxUp}:${appointments.length}`;
+    }
+  }, [appointments]);
+
+  // 3. Lightweight Change-Check (every 25 seconds: ONLY for Today, focused, and active)
+  useEffect(() => {
+    const shouldCheck =
+      isScreenFocused && appState === "active" && selectedDate === todayStr && !!cleanBranchName;
+    if (!shouldCheck) return;
+
+    const interval = setInterval(async () => {
+      const changes = await checkAppointmentsChanges(cleanBranchName, selectedDate);
+      if (changes && changes.version) {
+        lastVerifiedAtRef.current = Date.now();
+        if (lastSeenVersionRef.current && changes.version !== lastSeenVersionRef.current) {
+          lastSeenVersionRef.current = changes.version;
+          // Refetch quietly in the background without clearing screen or showing loading spinner
+          refetchAppointments();
+          refetchSummary();
+        } else if (!lastSeenVersionRef.current) {
+          lastSeenVersionRef.current = changes.version;
+        }
+      }
+    }, 25000);
+
+    return () => clearInterval(interval);
+  }, [isScreenFocused, appState, selectedDate, todayStr, cleanBranchName, refetchAppointments, refetchSummary]);
+
+  // 4. On returning to Dashboard from other screens:
+  // ZERO calls made unless > 60 seconds have elapsed AND the change-check says data changed!
+  useFocusEffect(
+    useCallback(() => {
+      setIsScreenFocused(true);
+      const elapsed = Date.now() - lastVerifiedAtRef.current;
+      if (elapsed > 60000 && cleanBranchName) {
+        checkAppointmentsChanges(cleanBranchName, selectedDate).then((changes) => {
+          if (changes && changes.version) {
+            lastVerifiedAtRef.current = Date.now();
+            if (lastSeenVersionRef.current && changes.version !== lastSeenVersionRef.current) {
+              lastSeenVersionRef.current = changes.version;
+              refetchAppointments();
+              refetchSummary();
+            }
+          }
+        });
+      }
+      return () => {
+        setIsScreenFocused(false);
+      };
+    }, [cleanBranchName, selectedDate, refetchAppointments, refetchSummary])
+  );
 
   // Categorized appointments from cached list
   const upcomingAppointments = useMemo(
@@ -398,6 +463,7 @@ export default function ReceptionDashboard() {
 
   // Start Consultation
   const handleStartConsultation = async (appt: any) => {
+    lastVerifiedAtRef.current = Date.now();
     // 1. Optimistic cache update
     queryClient.setQueryData<any[]>(["appointments-list", cleanBranchName, selectedDate], (old = []) =>
       old.map((a) => (a.id === appt.id ? { ...a, status: "IN_CONSULTATION" } : a))
@@ -455,6 +521,7 @@ export default function ReceptionDashboard() {
       });
       if (data.success) {
         Alert.alert("Restored", `Appointment ${token} for ${patientName} has been restored!`);
+        lastVerifiedAtRef.current = Date.now();
         fetchDeletedAppointments();
         queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
         queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
@@ -491,6 +558,7 @@ export default function ReceptionDashboard() {
               });
               if (data.success) {
                 Alert.alert("Appointment Cancelled", `Appointment ${token} moved to 24h trash.`);
+                lastVerifiedAtRef.current = Date.now();
                 queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
                 queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
               } else {
@@ -546,6 +614,56 @@ export default function ReceptionDashboard() {
       .catch(() => {
         Linking.openURL(webUrl).catch((err) => {
           Alert.alert("WhatsApp Error", "Could not open WhatsApp: " + err.message);
+        });
+      });
+  };
+
+  const handleOpenInvoice = (appt: any) => {
+    setSelectedPaymentAppt(appt);
+    setPaymentModalVisible(true);
+  };
+
+  const handleShareInvoice = (appt: any) => {
+    const rawPhone = appt.phoneNumber || appt.phone || "";
+    const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
+    if (!cleanPhone) {
+      Alert.alert("No Phone Number", "This appointment does not have a valid mobile number to share the invoice.");
+      return;
+    }
+
+    const invoiceNum = appt.invoiceId || "INV-RECEIPT";
+    const totalPaidNum = Number(appt.totalPaid ?? appt.totalAmountDue ?? appt.consultationFee ?? 0).toFixed(2);
+    const dateStr = appt.appointmentDate || selectedDate || new Date().toISOString().slice(0, 10);
+    const timeStr = appt.timeSlot ? ` at ${appt.timeSlot}` : "";
+    const targetBranch = appt.branch || activeBranch?.name || "KPHB Branch";
+
+    const msg =
+      `*SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT*\n` +
+      `--------------------------------\n` +
+      `Receipt No: ${invoiceNum}\n` +
+      `Patient Name: ${appt.patientName || "Patient"}\n` +
+      `Phone: +91 ${cleanPhone}\n` +
+      `Doctor: ${appt.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Branch: ${targetBranch}\n` +
+      `Schedule: ${dateStr}${timeStr}\n` +
+      `Specialty: Homeopathy\n` +
+      `--------------------------------\n` +
+      `*TOTAL AMOUNT PAID: ₹${totalPaidNum}*\n` +
+      `Payment Status: PAID ✓\n` +
+      `--------------------------------\n` +
+      `Thank you for choosing Spiritual Homeopathy!`;
+
+    const waUrl = `whatsapp://send?phone=91${cleanPhone}&text=${encodeURIComponent(msg)}`;
+    const webUrl = `https://wa.me/91${cleanPhone}?text=${encodeURIComponent(msg)}`;
+
+    Linking.canOpenURL(waUrl)
+      .then((supported) => {
+        if (supported) return Linking.openURL(waUrl);
+        return Linking.openURL(webUrl);
+      })
+      .catch(() => {
+        Linking.openURL(webUrl).catch((err) => {
+          Alert.alert("Share Error", "Could not open WhatsApp: " + err.message);
         });
       });
   };
@@ -777,6 +895,7 @@ export default function ReceptionDashboard() {
           "Rescheduled Successfully",
           `Appointment for ${rescheduleTargetAppt.patientName} moved to ${rescheduleDate} at ${rescheduleSlot}${docName ? ` with ${docName}` : ""}!`
         );
+        lastVerifiedAtRef.current = Date.now();
         setRescheduleModalOpen(false);
         queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
         queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
@@ -1341,6 +1460,8 @@ export default function ReceptionDashboard() {
               setSelectedPaymentAppt(appt);
               setPaymentModalVisible(true);
             }}
+            onOpenInvoice={handleOpenInvoice}
+            onShareInvoice={handleShareInvoice}
             onCallPatient={handleCallPatient}
             onWhatsAppPatient={(phone, name) => handleWhatsAppPatient(phone, name)}
             onOpenRescheduleModal={openRescheduleModal}
@@ -1382,7 +1503,7 @@ export default function ReceptionDashboard() {
 
         <TouchableOpacity
           style={styles.tabItem}
-          onPress={() => router.push("/(reception)/all-patients" as any)}
+          onPress={() => router.navigate("/(reception)/all-patients" as any)}
           activeOpacity={0.8}
         >
           <Ionicons name="people-outline" size={22} color={COLORS.textMuted} />
@@ -2055,6 +2176,7 @@ export default function ReceptionDashboard() {
           setSelectedPaymentAppt(null);
         }}
         onPaymentSuccess={() => {
+          lastVerifiedAtRef.current = Date.now();
           queryClient.invalidateQueries({ queryKey: ["appointments-list", cleanBranchName] });
           queryClient.invalidateQueries({ queryKey: ["appointments-summary", cleanBranchName] });
           if (activeBranch?.name) {

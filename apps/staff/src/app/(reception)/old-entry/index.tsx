@@ -38,13 +38,6 @@ const COLORS = {
   cardBg: "#ffffff",
 };
 
-const DEFAULT_DOCTORS = [
-  { id: "doc-1", name: "Dr. Prashanth K Vaidya" },
-  { id: "doc-2", name: "Dr. S. Radhika" },
-  { id: "doc-3", name: "Dr. B. K. Sharma" },
-  { id: "doc-4", name: "Dr. Ananya Rao" },
-];
-
 const SOURCES_LIST = [
   "Old Patient",
   "Walk-in",
@@ -77,8 +70,8 @@ export default function MobileOldPrescriptionEntryScreen() {
   const [subject, setSubject] = useState("");
 
   // Doctor state
-  const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>(DEFAULT_DOCTORS);
-  const [selectedDoctor, setSelectedDoctor] = useState<{ id: string; name: string }>(DEFAULT_DOCTORS[0]);
+  const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<{ id: string; name: string } | null>(null);
   const [isDoctorModalOpen, setIsDoctorModalOpen] = useState(false);
 
   // Visit Date state & Interactive Calendar
@@ -120,7 +113,7 @@ export default function MobileOldPrescriptionEntryScreen() {
         }
       })
       .catch(() => {
-        // Fallback to DEFAULT_DOCTORS
+        // Failed to fetch doctors
       });
 
     saveActiveRoute("/(reception)/old-entry");
@@ -427,6 +420,10 @@ export default function MobileOldPrescriptionEntryScreen() {
       Alert.alert("Invalid Phone", "Please enter a valid 10-digit mobile number.");
       return;
     }
+    if (!selectedDoctor || !selectedDoctor.name) {
+      Alert.alert("Missing Doctor", "Please select an attending doctor.");
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -513,7 +510,7 @@ export default function MobileOldPrescriptionEntryScreen() {
 
         Alert.alert(
           "Success",
-          `Old record for ${savedName} (${savedId}) assigned to ${selectedDoctor.name} saved successfully!`,
+          `Old record for ${savedName} (${savedId}) assigned to ${selectedDoctor?.name || "Doctor"} saved successfully!`,
           [
             {
               text: "View Patient History",
@@ -702,7 +699,9 @@ export default function MobileOldPrescriptionEntryScreen() {
                   <Ionicons name="medkit" size={16} color={COLORS.primary} />
                 </View>
                 <View>
-                  <Text style={styles.selectedDoctorName}>{selectedDoctor.name}</Text>
+                  <Text style={styles.selectedDoctorName}>
+                    {selectedDoctor?.name || (doctors.length === 0 ? "Loading Doctors..." : "Select Doctor")}
+                  </Text>
                   <Text style={styles.selectedDoctorSub}>SPH Clinic Homeopathic Consultant</Text>
                 </View>
               </View>
@@ -978,8 +977,13 @@ export default function MobileOldPrescriptionEntryScreen() {
             </View>
 
             <ScrollView style={{ maxHeight: 350 }}>
-              {doctors.map((doc) => {
-                const isSelected = doc.id === selectedDoctor.id || doc.name === selectedDoctor.name;
+              {doctors.length === 0 ? (
+                <View style={{ padding: 20, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: COLORS.textMuted }}>No doctors found.</Text>
+                </View>
+              ) : (
+                doctors.map((doc) => {
+                  const isSelected = selectedDoctor ? (doc.id === selectedDoctor.id || doc.name === selectedDoctor.name) : false;
                 return (
                   <TouchableOpacity
                     key={doc.id}
@@ -998,7 +1002,7 @@ export default function MobileOldPrescriptionEntryScreen() {
                     {isSelected && <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />}
                   </TouchableOpacity>
                 );
-              })}
+              }))}
             </ScrollView>
           </View>
         </View>

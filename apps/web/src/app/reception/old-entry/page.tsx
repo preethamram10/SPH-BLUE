@@ -33,13 +33,6 @@ import {
   Stethoscope,
 } from "lucide-react";
 
-const DEFAULT_DOCTORS = [
-  { id: "doc-1", name: "Dr. Prashanth K Vaidya" },
-  { id: "doc-2", name: "Dr. S. Radhika" },
-  { id: "doc-3", name: "Dr. B. K. Sharma" },
-  { id: "doc-4", name: "Dr. Ananya Rao" },
-];
-
 // Client-side image compression
 async function compressImageFile(file: File, maxWidth = 1600, quality = 0.75): Promise<File> {
   return new Promise((resolve) => {
@@ -120,9 +113,9 @@ function OldPrescriptionEntryContent() {
   const [subject, setSubject] = useState("");
 
   // Doctor state
-  const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>(DEFAULT_DOCTORS);
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(DEFAULT_DOCTORS[0].id);
-  const [selectedDoctorName, setSelectedDoctorName] = useState<string>(DEFAULT_DOCTORS[0].name);
+  const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
+  const [selectedDoctorName, setSelectedDoctorName] = useState<string>("");
 
   // Prescription Scans (S3)
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -167,7 +160,7 @@ function OldPrescriptionEntryContent() {
         }
       })
       .catch(() => {
-        // Fallback to DEFAULT_DOCTORS
+        // Failed to fetch doctors
       });
   }, []);
 

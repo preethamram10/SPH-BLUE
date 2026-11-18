@@ -1425,12 +1425,22 @@ export function matchPatientProfile(
   const patPhone = normalizePhone(patient.phone || (patient as any).phoneNumber || "");
   const apptName = (appt.patientName || (appt as any).name || "").trim().toLowerCase();
   const patName = (patient.name || patient.patientName || "").trim().toLowerCase();
-  if (apptPhone && patPhone && apptPhone.length >= 10 && apptPhone === patPhone) {
+  if (apptPhone && patPhone && apptPhone.length >= 10 && apptPhone.slice(-10) === patPhone.slice(-10)) {
     if (!apptName || !patName || apptName === patName || apptName.includes(patName) || patName.includes(apptName)) {
       return true;
     }
   }
   return false;
+}
+
+export function matchBranch(targetBranch?: string | null, branchFilter?: string | null): boolean {
+  if (!branchFilter || branchFilter === "All Branches" || branchFilter.toLowerCase() === "all") return true;
+  const cleanFilter = branchFilter.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/branch/gi, "").trim();
+  const cleanTarget = (targetBranch || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/branch/gi, "").trim();
+  if (!cleanFilter || !cleanTarget) return true;
+  if (cleanTarget === "all" || cleanFilter === "all") return true;
+  const isKpbMatch = (cleanFilter === "kpb" || cleanFilter === "kphb") && (cleanTarget === "kpb" || cleanTarget === "kphb");
+  return cleanTarget === cleanFilter || cleanTarget.includes(cleanFilter) || cleanFilter.includes(cleanTarget) || isKpbMatch;
 }
 
 export const doctorNoShowService = {
@@ -1575,6 +1585,8 @@ export interface PatientRecord {
   mergedInto?: string;
   mergedAt?: string;
   activeFollowUpDate?: string;
+  activeFollowUpStartDate?: string;
+  followUpStartDate?: string;
   completedVisitsCount?: number;
   pendingBalance?: number;
   hasPackage?: boolean;
@@ -1680,6 +1692,8 @@ export function computePatientVisitBadge(
   options?: {
     hasActivePackage?: boolean;
     packageEndDate?: string | null;
+    packageStartDate?: string | null;
+    followUpStartDate?: string | null;
     referenceDate?: string | null;
     isReback?: boolean;
     hasPriorVisits?: boolean;
@@ -1696,11 +1710,30 @@ export function computePatientVisitBadge(
   const targetDate = refDate || todayYmd;
 
   // 1. Check if Patient is in Duration (IN-DUR)
+  // RULE: Duration begins strictly from the NEXT DAY after prescription/package start date!
+  // On the prescription/consultation day itself, the appointment retains "New" or "Revisit".
+
   // A. Active Package Duration
   if (options?.hasActivePackage) {
-    if (options.packageEndDate) {
-      const normPkgEnd = resolveFollowUpToDate(options.packageEndDate, options?.referenceDate);
-      if (!normPkgEnd || targetDate <= normPkgEnd) {
+    const pkgStart = options.packageStartDate ? normalizeDateStr(options.packageStartDate) : "";
+    // STRICT NEXT-DAY RULE: Only in-duration if targetDate is strictly greater than package start date
+    // If targetDate <= pkgStart (i.e. Package added today), duration has NOT started yet!
+    const isAfterPkgStart = pkgStart ? targetDate > pkgStart : false;
+
+    if (isAfterPkgStart) {
+      if (options.packageEndDate) {
+        const normPkgEnd = resolveFollowUpToDate(options.packageEndDate, options?.referenceDate);
+        if (!normPkgEnd || targetDate <= normPkgEnd) {
+          return {
+            badge: "In-Dur",
+            label: "In-Dur",
+            color: "#0284c7",
+            bgColor: "#e0f2fe",
+            borderColor: "#7dd3fc",
+            allowZeroFee: true,
+          };
+        }
+      } else {
         return {
           badge: "In-Dur",
           label: "In-Dur",
@@ -1710,32 +1743,29 @@ export function computePatientVisitBadge(
           allowZeroFee: true,
         };
       }
-    } else {
-      // Active package without explicit end date defaults to in-duration
-      return {
-        badge: "In-Dur",
-        label: "In-Dur",
-        color: "#0284c7",
-        bgColor: "#e0f2fe",
-        borderColor: "#7dd3fc",
-        allowZeroFee: true,
-      };
     }
   }
 
   // B. Follow-up Duration window (e.g. within 1 month, 2 weeks, or specific follow-up date)
   if (activeFollowUpDate && typeof activeFollowUpDate === "string" && activeFollowUpDate.trim().length > 0) {
-    const normFollowUp = resolveFollowUpToDate(activeFollowUpDate, options?.referenceDate);
-    if (normFollowUp && /^\d{4}-\d{2}-\d{2}$/.test(normFollowUp)) {
-      if (targetDate <= normFollowUp) {
-        return {
-          badge: "In-Dur",
-          label: "In-Dur",
-          color: "#0284c7",
-          bgColor: "#e0f2fe",
-          borderColor: "#7dd3fc",
-          allowZeroFee: true, // ₹0 consultation fee permitted
-        };
+    const fUpStart = options?.followUpStartDate ? normalizeDateStr(options.followUpStartDate) : "";
+    // STRICT NEXT-DAY RULE: Duration begins strictly from tomorrow!
+    // If targetDate <= fUpStart (consultation day), today remains "New" or "Revisit".
+    const isAfterFUpStart = fUpStart ? targetDate > fUpStart : false;
+
+    if (isAfterFUpStart) {
+      const normFollowUp = resolveFollowUpToDate(activeFollowUpDate, options?.referenceDate);
+      if (normFollowUp && /^\d{4}-\d{2}-\d{2}$/.test(normFollowUp)) {
+        if (targetDate <= normFollowUp) {
+          return {
+            badge: "In-Dur",
+            label: "In-Dur",
+            color: "#0284c7",
+            bgColor: "#e0f2fe",
+            borderColor: "#7dd3fc",
+            allowZeroFee: true, // ₹0 consultation fee permitted
+          };
+        }
       }
     }
   }
@@ -1782,6 +1812,7 @@ export interface AppointmentRecord {
   status: "SCHEDULED" | "WAITING" | "IN_CONSULTATION" | "COLLECT_FEE" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
@@ -1843,7 +1874,12 @@ export interface AppointmentRecord {
   previousDuePaid?: number;
   invoiceId?: string;
   visitBadge?: PatientVisitBadge;
+  visitType?: "NEW" | "REVISIT" | "IN_DURATION";
+  isDuration?: boolean;
+  isNewPatient?: boolean;
   activeFollowUpDate?: string;
+  activeFollowUpStartDate?: string;
+  followUpStartDate?: string;
   hasPackage?: boolean;
   packageId?: string;
   packageName?: string;
@@ -1968,12 +2004,8 @@ export const patientService = {
   async getAllPatients(branch?: string): Promise<PatientRecord[]> {
     const store = getPatientsStore();
     const active = store.filter((p) => !p.isDeleted);
-    if (!branch) return active;
-    const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
-    return active.filter((p) => {
-      const pb = p.branch.toLowerCase().replace(/branch/gi, "").trim();
-      return pb === cleanB || cleanB.includes(pb) || pb.includes(cleanB);
-    });
+    if (!branch || branch === "All Branches" || branch.toLowerCase() === "all") return active;
+    return active.filter((p) => matchBranch(p.branch, branch));
   },
 
   async getByRegId(regId: string): Promise<PatientRecord | null> {
@@ -2000,11 +2032,7 @@ export const patientService = {
       if (exactMatches && exactMatches.length > 0) {
         const activeMatches = exactMatches.filter((p) => !p.isDeleted);
         if (!branch || branch === "All Branches" || branch.toLowerCase() === "all") return activeMatches;
-        const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
-        return activeMatches.filter((p) => {
-          const pb = p.branch.toLowerCase().replace(/branch/gi, "").trim();
-          return pb === cleanB || cleanB.includes(pb) || pb.includes(cleanB);
-        });
+        return activeMatches.filter((p) => matchBranch(p.branch, branch));
       }
     }
 
@@ -2438,6 +2466,10 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
             a.paidAt = a.paidAt.replace(/^00(\d\d)/, "20$1");
             modified = true;
           }
+          if (!a.updatedAt) {
+            a.updatedAt = a.createdAt || new Date().toISOString();
+            modified = true;
+          }
         });
         if (modified) {
           safeAtomicWrite(file, parsed);
@@ -2588,35 +2620,62 @@ export function decorateAppointmentWithVisitInfo(
   // Check any prior appointments (even if not yet marked completed, e.g. historical records)
   const anyPrior = candidatePool.filter((past) => !past.isDeleted);
 
-  // Active follow-up date resolution
-  let activeFollowUp = pat?.activeFollowUpDate;
+  const aDate = normalizeDateStr(a.appointmentDate || a.createdAt?.slice(0, 10)) || undefined;
+
+  // Active follow-up date and start date resolution:
+  let activeFollowUp = a.followUpDate;
+  let followUpStartDate = a.followUpStartDate;
+
+  const pastWithFollowUp = [...priorCompleted]
+    .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
+    .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
+
   if (!activeFollowUp || activeFollowUp.trim().length === 0) {
-    if (a.followUpDate && a.followUpDate.trim().length > 0) {
-      activeFollowUp = a.followUpDate;
-    } else {
-      const pastWithFollowUp = [...priorCompleted]
-        .filter((p) => p.followUpDate && p.followUpDate.trim().length > 0)
-        .sort((x, y) => (y.createdAt || y.appointmentDate || "").localeCompare(x.createdAt || x.appointmentDate || ""));
-      if (pastWithFollowUp.length > 0) {
-        activeFollowUp = pastWithFollowUp[0].followUpDate;
-      }
+    if (pat?.activeFollowUpDate && pat.activeFollowUpDate.trim().length > 0) {
+      activeFollowUp = pat.activeFollowUpDate;
+      followUpStartDate = pat.activeFollowUpStartDate;
+    } else if (pastWithFollowUp.length > 0) {
+      activeFollowUp = pastWithFollowUp[0].followUpDate;
+      followUpStartDate = pastWithFollowUp[0].followUpStartDate || normalizeDateStr(pastWithFollowUp[0].appointmentDate || pastWithFollowUp[0].createdAt?.slice(0, 10)) || undefined;
+    }
+  } else {
+    // If appointment itself has followUpDate (e.g. prescribed in this consultation),
+    // its start date is this appointment's date (so today is consultation day, duration starts tomorrow)
+    if (!followUpStartDate) {
+      followUpStartDate = aDate;
     }
   }
 
   const activePkg = packages.find((p) => p.status === "ACTIVE" && matchPatientProfile(a, p));
+  const packageStartDate = activePkg?.startDate
+    ? normalizeDateStr(activePkg.startDate)
+    : activePkg?.createdAt
+    ? normalizeDateStr(activePkg.createdAt.slice(0, 10))
+    : undefined;
 
   const badgeInfo = computePatientVisitBadge(completedCount, activeFollowUp, {
     hasActivePackage: !!activePkg,
     packageEndDate: activePkg?.endDate,
+    packageStartDate,
+    followUpStartDate,
     referenceDate: a.appointmentDate || a.createdAt,
     isReback: Boolean(a.isReback || (a.marketingSource && a.marketingSource.toLowerCase().includes("old"))),
     hasPriorVisits: completedCount > 0 || anyPrior.length > 0,
   });
 
+  const isDur = badgeInfo.badge === "In-Dur";
+  const isNew = badgeInfo.badge === "New";
+  const isRev = badgeInfo.badge === "Revisit";
+
   return {
     ...a,
     visitBadge: badgeInfo.badge,
+    visitType: isDur ? "IN_DURATION" : isRev ? "REVISIT" : "NEW",
+    isDuration: isDur,
+    isNewPatient: isNew,
+    isReback: isRev,
     activeFollowUpDate: activeFollowUp,
+    followUpStartDate: followUpStartDate || a.followUpStartDate,
     hasPackage: !!activePkg,
     packageId: activePkg?.id || a.packageId,
     packageName: activePkg?.packageName || a.packageName,
@@ -2635,12 +2694,7 @@ export const appointmentService = {
       list = list.filter((a) => !a.isDeleted);
     }
     if (branch && branch !== "All Branches" && branch.toLowerCase() !== "all") {
-      const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
-      list = list.filter((a) => {
-        const ab = a.branch.toLowerCase().replace(/branch/gi, "").trim();
-        const isKpbMatch = (cleanB === "kpb" || cleanB === "kphb") && (ab === "kpb" || ab === "kphb");
-        return ab === cleanB || cleanB.includes(ab) || ab.includes(cleanB) || isKpbMatch;
-      });
+      list = list.filter((a) => matchBranch(a.branch, branch));
     }
     if (date) {
       const normQuery = normalizeDateStr(date);
@@ -2739,6 +2793,7 @@ export const appointmentService = {
       token: data.token || `SPH-${tokenNum}`,
       status: data.status || "WAITING",
       createdAt: data.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       patientName: cleanPatientName,
       phone: cleanPhone,
       registrationId: cleanRegId,
@@ -2855,6 +2910,7 @@ export const appointmentService = {
 
     store[idx].isDeleted = true;
     store[idx].deletedAt = new Date().toISOString();
+    store[idx].updatedAt = new Date().toISOString();
     store[idx].deletedBy = deletedBy;
     store[idx].deletedRole = role;
     store[idx].deletedReason = reason;
@@ -2875,6 +2931,7 @@ export const appointmentService = {
 
     store[idx].isDeleted = false;
     store[idx].deletedAt = undefined;
+    store[idx].updatedAt = new Date().toISOString();
     store[idx].deletedBy = undefined;
     store[idx].deletedRole = undefined;
     store[idx].deletedReason = undefined;
@@ -2903,6 +2960,7 @@ export const appointmentService = {
     const appt = store.find((a) => a.id === id || a.token === id);
     if (!appt) return null;
     appt.status = status;
+    appt.updatedAt = new Date().toISOString();
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
 
@@ -3022,6 +3080,7 @@ export const appointmentService = {
     appt.isFeeCollected = true;
     appt.isSentToReception = false;
     appt.paidAt = new Date().toISOString();
+    appt.updatedAt = new Date().toISOString();
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
@@ -3282,14 +3341,20 @@ export const appointmentService = {
 
     if (data.followUpDate !== undefined && data.followUpDate.trim().length > 0) {
       appt.followUpDate = data.followUpDate.trim();
+      const consultDate = normalizeDateStr(appt.appointmentDate || appt.createdAt?.slice(0, 10)) || new Date().toISOString().slice(0, 10);
+      appt.followUpStartDate = consultDate;
       if (patIdx !== -1) {
         patients[patIdx].activeFollowUpDate = data.followUpDate.trim();
+        patients[patIdx].activeFollowUpStartDate = consultDate;
         global.__sphPatientsStore = patients;
         savePatientsToDisk(patients);
       }
     } else if (!appt.followUpDate && patIdx !== -1 && patients[patIdx].activeFollowUpDate) {
       // Retain existing active follow-up date
       appt.followUpDate = patients[patIdx].activeFollowUpDate;
+      if (patients[patIdx].activeFollowUpStartDate) {
+        appt.followUpStartDate = patients[patIdx].activeFollowUpStartDate;
+      }
     }
 
     // Ensure followUpInterval is never left as "Custom Date" or "No Follow-up" if followUpDate exists
@@ -3339,6 +3404,11 @@ export const appointmentService = {
       const idxB = idIndexMap.has(b.id) ? idIndexMap.get(b.id)! : 999999;
       return idxA - idxB;
     });
+    const nowIso = new Date().toISOString();
+    orderedIds.forEach((id) => {
+      const a = store.find((item) => item.id === id);
+      if (a) a.updatedAt = nowIso;
+    });
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
     return true;
@@ -3359,6 +3429,7 @@ export const appointmentService = {
     if (!appt) return null;
     appt.appointmentDate = newDate;
     appt.timeSlot = newTimeSlot;
+    appt.updatedAt = new Date().toISOString();
     if (doctorId) appt.doctorId = doctorId;
     if (doctorName) appt.doctorName = doctorName;
     global.__sphAppointmentsStore = store;
@@ -3483,6 +3554,22 @@ export const appointmentService = {
       total,
       branchWise,
     };
+  },
+
+  /**
+   * Fast change-check for a given branch and date (< 2ms)
+   * Returns latest updatedAt timestamp, row count, and a combined version checksum.
+   */
+  async getChanges(branch?: string, date?: string): Promise<{ maxUpdatedAt: string; count: number; version: string }> {
+    const list = await this.getAppointments(branch, date, undefined, false, false);
+    let maxUpdated = "";
+    for (let i = 0; i < list.length; i++) {
+      const up = list[i].updatedAt || list[i].createdAt || "";
+      if (up > maxUpdated) maxUpdated = up;
+    }
+    const count = list.length;
+    const version = `${maxUpdated}:${count}`;
+    return { maxUpdatedAt: maxUpdated, count, version };
   },
 };
 

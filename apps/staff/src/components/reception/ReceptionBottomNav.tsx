@@ -36,10 +36,14 @@ export const ReceptionBottomNav: React.FC<ReceptionBottomNavProps> = ({ activeTa
     }
     if (activeTab === tab) return;
     if (tab === "dashboard") {
-      router.replace("/(reception)" as any);
+      router.navigate("/(reception)" as any);
       return;
     }
-    router.push(route as any);
+    if (tab === "patient-list") {
+      router.navigate("/(reception)/all-patients" as any);
+      return;
+    }
+    router.navigate(route as any);
   };
 
   return (
