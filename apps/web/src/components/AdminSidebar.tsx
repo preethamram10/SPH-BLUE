@@ -26,6 +26,7 @@ import {
   LogOut,
   LayoutDashboard,
   Target,
+  TrendingUp,
   Truck,
   ChevronLeft,
   ChevronRight,
@@ -84,6 +85,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
       title: "FINANCE & REVENUE",
       items: [
         { label: "Total Revenue", href: "/admin/total-revenue", icon: DollarSign },
+        { label: "Average Revenue", href: "/admin/average-revenue", icon: TrendingUp },
         { label: "Pay Later Dues", href: "/admin/pay-later", icon: Clock },
         { label: "Reports & Visual Analytics", href: "/admin/reports-analytics", icon: BarChart3 },
         { label: "Target Management", href: "/admin/target-management", icon: Target },

@@ -41,6 +41,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
+import BranchRevenueQualityPanel from "@/components/BranchRevenueQualityPanel";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -986,6 +987,15 @@ export default function ReceptionDashboardPage() {
               </button>
             </div>
           )}
+
+          {/* Branch Revenue Quality Panel (6 Metrics for this branch) */}
+          <BranchRevenueQualityPanel
+            initialBranch={branchName}
+            allowBranchChange={false}
+            embedded={true}
+            title={`${branchName.replace(/Spiritual Homeopathy/gi, "").trim() || "Branch"} Revenue Quality`}
+            subtitle="Treated patients, average duration, ARPU & monthly quality rate"
+          />
 
           {/* UPCOMING APPOINTMENTS SECTION */}
           <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs space-y-3">

@@ -16,6 +16,7 @@ import {
   Briefcase,
   LayoutDashboard,
   Target,
+  TrendingUp,
   UserX,
   ChevronLeft,
   ChevronRight,
@@ -86,6 +87,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
       title: "FINANCE & REVENUE",
       items: [
         { label: "Total Revenue", href: "/hr/total-revenue", icon: DollarSign },
+        { label: "Average Revenue", href: "/hr/average-revenue", icon: TrendingUp },
         { label: "Pay Later Dues", href: "/hr/pay-later", icon: Clock },
         { label: "Reports & Visual Analytics", href: "/hr/reports-analytics", icon: BarChart3 },
         { label: "Target Management", href: "/hr/target-management", icon: Target },
