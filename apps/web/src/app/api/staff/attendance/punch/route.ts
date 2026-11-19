@@ -5,7 +5,7 @@ import { uploadAttendancePhotoToS3 } from "@/utils/s3Upload";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { staffId, staffName, branch, type, photo, location, coords } = body;
+    const { staffId, staffName, branch, type, photo, location, coords, shift } = body;
 
     if (!staffId || !type || !photo) {
       return NextResponse.json(
@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       photo: finalPhotoUrl,
       location: location || "Clinic Location",
       coords,
+      shift,
     });
 
     return NextResponse.json(record);

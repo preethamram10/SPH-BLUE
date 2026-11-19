@@ -4862,6 +4862,16 @@ export const medicineRequestService = {
 // 1. STAFF ATTENDANCE SERVICE (Punch In/Out, Selfie, GPS, Late Tracking)
 // ============================================================================
 
+export interface StaffPunchItem {
+  id?: string;
+  type: "in" | "out";
+  time: string; // IST 12-hour format
+  location?: string;
+  photo?: string;
+  coords?: { lat: number; lng: number };
+  shift?: "shift1" | "shift2" | "general" | string;
+}
+
 export interface StaffAttendanceRecord {
   id?: string;
   staffId: string;
@@ -4870,6 +4880,31 @@ export interface StaffAttendanceRecord {
   date: string; // YYYY-MM-DD
   reportTime?: string; // Scheduled IST 12-hour report time, e.g. "09:00 AM"
   shiftStartTime?: string; // Alias for reportTime
+  shiftType?: "SINGLE_STRICT" | "MULTI_STRICT" | string;
+  shiftHours?: string;
+  dailyHours?: string;
+
+  // Shift 1 Details
+  shift1Start?: string;
+  shift1End?: string;
+  shift1PunchInTime?: string;
+  shift1PunchInLocation?: string;
+  shift1PunchInPhoto?: string;
+  shift1PunchOutTime?: string;
+  shift1PunchOutLocation?: string;
+  shift1PunchOutPhoto?: string;
+
+  // Shift 2 Details (Multi-shift / Split Shift)
+  shift2Start?: string;
+  shift2End?: string;
+  shift2PunchInTime?: string;
+  shift2PunchInLocation?: string;
+  shift2PunchInPhoto?: string;
+  shift2PunchOutTime?: string;
+  shift2PunchOutLocation?: string;
+  shift2PunchOutPhoto?: string;
+
+  // Primary Punches (Consolidated)
   punchInTime?: string; // IST 12-hour format
   punchInLocation?: string;
   punchInPhoto?: string;
@@ -4878,12 +4913,95 @@ export interface StaffAttendanceRecord {
   punchOutLocation?: string;
   punchOutPhoto?: string;
   punchOutCoords?: { lat: number; lng: number };
+
+  punches?: StaffPunchItem[];
+
   workingHours?: string;
   status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
   lateMinutes?: number;
   role?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface StaffFullAttendanceDay {
+  date: string; // YYYY-MM-DD
+  dayNum: string; // 01..31
+  dayName: string; // Mon..Sun
+  monthShort: string; // Nov
+  isSunday: boolean;
+  isToday: boolean;
+  isFuture: boolean;
+
+  shiftType: "SINGLE_STRICT" | "MULTI_STRICT";
+  shiftHours?: string;
+  dailyHours?: string;
+
+  // Shift 1
+  shift1Start: string;
+  shift1End?: string;
+  shift1PunchInTime?: string;
+  shift1PunchInLocation?: string;
+  shift1PunchInPhoto?: string;
+  shift1PunchOutTime?: string;
+  shift1PunchOutLocation?: string;
+  shift1PunchOutPhoto?: string;
+
+  // Shift 2
+  shift2Start?: string;
+  shift2End?: string;
+  shift2PunchInTime?: string;
+  shift2PunchInLocation?: string;
+  shift2PunchInPhoto?: string;
+  shift2PunchOutTime?: string;
+  shift2PunchOutLocation?: string;
+  shift2PunchOutPhoto?: string;
+
+  // Primary Punches
+  punchInTime?: string;
+  punchInLocation?: string;
+  punchInPhoto?: string;
+  punchOutTime?: string;
+  punchOutLocation?: string;
+  punchOutPhoto?: string;
+
+  punches: StaffPunchItem[];
+
+  workingHours: string;
+  status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "Weekly Off" | "Pending" | "Scheduled";
+  lateMinutes?: number;
+  leaveType?: string;
+  leaveReason?: string;
+}
+
+export interface StaffFullAttendanceResponse {
+  employee: {
+    id: string;
+    name: string;
+    category: string;
+    role: string;
+    branch: string;
+    phone?: string;
+    shiftType: "SINGLE_STRICT" | "MULTI_STRICT";
+    shiftHours?: string;
+    dailyHours?: string;
+    shift1Start?: string;
+    shift1End?: string;
+    shift2Start?: string;
+    shift2End?: string;
+    graceMinutes?: number;
+  };
+  summary: {
+    totalDays: number;
+    presentDays: number;
+    lateDays: number;
+    halfDays: number;
+    leaveDays: number;
+    absentDays: number;
+    weeklyOffs: number;
+    totalWorkingHours: string;
+  };
+  logs: StaffFullAttendanceDay[];
 }
 
 declare global {
@@ -5014,6 +5132,51 @@ function getStaffAttendanceStore(): StaffAttendanceRecord[] {
   return global.__sphStaffAttendanceStore;
 }
 
+export function parseTimeToMinutes(timeStr?: string): number | null {
+  if (!timeStr) return null;
+  const trimmed = timeStr.trim();
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (match12) {
+    let h = parseInt(match12[1], 10);
+    const m = parseInt(match12[2], 10);
+    const ampm = match12[4].toUpperCase();
+    if (ampm === "PM" && h < 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  const match24 = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (match24) {
+    const h = parseInt(match24[1], 10);
+    const m = parseInt(match24[2], 10);
+    return h * 60 + m;
+  }
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    const istTimeStr = d.toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false });
+    const parts = istTimeStr.split(":");
+    return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+  }
+  return null;
+}
+
+export function calculateMinutesDiff(inTime?: string, outTime?: string): number {
+  const inM = parseTimeToMinutes(inTime);
+  const outM = parseTimeToMinutes(outTime);
+  if (inM === null || outM === null) return 0;
+  let diff = outM - inM;
+  if (diff < 0) diff += 1440;
+  return diff;
+}
+
+export function formatMinutesToHours(minutes: number): string {
+  if (minutes <= 0) return "-";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0 && m > 0) return `${h} hrs ${m} mins`;
+  if (h > 0) return `${h} hrs`;
+  return `${m} mins`;
+}
+
 export const staffAttendanceService = {
   async getAllRecords(branch?: string, date?: string): Promise<StaffAttendanceRecord[]> {
     const store = getStaffAttendanceStore();
@@ -5024,13 +5187,20 @@ export const staffAttendanceService = {
         : "";
 
     // Map employees to reporting times & details
-    const empMap = new Map<string, { shiftStartTime: string; branch: string; role: string; name: string }>();
+    const empMap = new Map<string, any>();
     employees.forEach((e) => {
       const info = {
         shiftStartTime: formatToIST12Hour(e.shiftStartTime || "09:00 AM"),
-        branch: e.branchName || e.branch || "KPHB Branch",
+        branch: e.branchName || (e as any).branch || "KPHB Branch",
         role: e.category === "DOCTOR" ? "Doctor" : e.category === "HR" ? "HR Staff" : e.category || "Staff Member",
         name: e.name,
+        shiftType: e.shiftType || "SINGLE_STRICT",
+        shiftHours: e.shiftHours || "09:00 AM - 06:00 PM",
+        dailyHours: e.dailyHours || "9 hrs/day",
+        shift1Start: e.shift1Start ? formatToIST12Hour(e.shift1Start) : "09:00 AM",
+        shift1End: e.shift1End ? formatToIST12Hour(e.shift1End) : undefined,
+        shift2Start: e.shift2Start ? formatToIST12Hour(e.shift2Start) : undefined,
+        shift2End: e.shift2End ? formatToIST12Hour(e.shift2End) : undefined,
       };
       empMap.set(e.id, info);
       if (e.name) empMap.set(e.name.toLowerCase().trim(), info);
@@ -5046,12 +5216,33 @@ export const staffAttendanceService = {
     return filtered.map((r) => {
       const empInfo = empMap.get(r.staffId) || empMap.get((r.staffName || "").toLowerCase().trim());
       const repTime = formatToIST12Hour(r.reportTime || r.shiftStartTime || empInfo?.shiftStartTime || "09:00 AM");
+      // Resolve true Indian Standard Time from ISO timestamps if available, avoiding UTC server drift
+      const resolvedPunchIn = (r.createdAt && !isNaN(new Date(r.createdAt).getTime()))
+        ? formatToIST12Hour(new Date(r.createdAt))
+        : (r.punchInTime ? formatToIST12Hour(r.punchInTime) : undefined);
+
+      const resolvedPunchOut = (r.updatedAt && r.punchOutTime && !isNaN(new Date(r.updatedAt).getTime()))
+        ? formatToIST12Hour(new Date(r.updatedAt))
+        : (r.punchOutTime ? formatToIST12Hour(r.punchOutTime) : undefined);
+
       return {
         ...r,
         reportTime: repTime,
         shiftStartTime: repTime,
-        punchInTime: r.punchInTime ? formatToIST12Hour(r.punchInTime) : undefined,
-        punchOutTime: r.punchOutTime ? formatToIST12Hour(r.punchOutTime) : undefined,
+        shiftType: r.shiftType || empInfo?.shiftType || "SINGLE_STRICT",
+        shiftHours: r.shiftHours || empInfo?.shiftHours,
+        dailyHours: r.dailyHours || empInfo?.dailyHours,
+        shift1Start: r.shift1Start || empInfo?.shift1Start,
+        shift1End: r.shift1End || empInfo?.shift1End,
+        shift1PunchInTime: r.shift1PunchInTime ? formatToIST12Hour(r.shift1PunchInTime) : resolvedPunchIn,
+        shift1PunchOutTime: r.shift1PunchOutTime ? formatToIST12Hour(r.shift1PunchOutTime) : resolvedPunchOut,
+        shift2Start: r.shift2Start || empInfo?.shift2Start,
+        shift2End: r.shift2End || empInfo?.shift2End,
+        shift2PunchInTime: r.shift2PunchInTime ? formatToIST12Hour(r.shift2PunchInTime) : undefined,
+        shift2PunchOutTime: r.shift2PunchOutTime ? formatToIST12Hour(r.shift2PunchOutTime) : undefined,
+        punchInTime: resolvedPunchIn,
+        punchOutTime: resolvedPunchOut,
+        punches: r.punches || [],
         role: r.role || empInfo?.role || "Staff Member",
         branch: r.branch || empInfo?.branch || "KPHB Branch",
       };
@@ -5078,6 +5269,7 @@ export const staffAttendanceService = {
     location: string;
     coords?: { lat: number; lng: number } | null;
     timestamp?: string;
+    shift?: "shift1" | "shift2";
   }): Promise<StaffAttendanceRecord> {
     const store = getStaffAttendanceStore();
     const today = new Intl.DateTimeFormat("en-CA", {
@@ -5096,17 +5288,76 @@ export const staffAttendanceService = {
       hour12: true,
     });
 
-    // Lookup staff scheduled report time
+    // Lookup staff scheduled report time & shift configuration
     const employees = await employeeService.getAllEmployees();
     const emp = employees.find(
       (e) => e.id === payload.staffId || e.name.toLowerCase().trim() === payload.staffName.toLowerCase().trim()
     );
-    const reportTime = formatToIST12Hour(emp?.shiftStartTime || "09:00 AM");
+    const reportTime = formatToIST12Hour(emp?.shiftStartTime || emp?.shift1Start || "09:00 AM");
+    const isMultiShift = emp?.shiftType === "MULTI_STRICT";
 
     let existing = store.find((r) => r.staffId === payload.staffId && r.date === today);
 
-    // Calculate late status on Punch In (Dynamic shift & grace period configured by HR/Admin)
+    // Determine target shift (Shift 1 vs Shift 2)
+    let targetShift: "shift1" | "shift2" = payload.shift || "shift1";
+    if (isMultiShift && !payload.shift) {
+      if (payload.type === "in") {
+        if (existing?.shift1PunchInTime && existing?.shift1PunchOutTime) {
+          targetShift = "shift2";
+        } else {
+          const istHour = parseInt(
+            new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false }).split(":")[0],
+            10
+          );
+          if (istHour >= 14 && existing?.shift1PunchInTime) {
+            targetShift = "shift2";
+          }
+        }
+      } else {
+        if (existing?.shift2PunchInTime) {
+          targetShift = "shift2";
+        } else {
+          targetShift = "shift1";
+        }
+      }
+    }
+
+    if (!existing) {
+      existing = {
+        id: `ATT-${Date.now()}`,
+        staffId: payload.staffId,
+        staffName: payload.staffName,
+        branch: payload.branch,
+        date: today,
+        reportTime,
+        shiftStartTime: reportTime,
+        shiftType: isMultiShift ? "MULTI_STRICT" : "SINGLE_STRICT",
+        shiftHours: emp?.shiftHours,
+        dailyHours: emp?.dailyHours,
+        shift1Start: emp?.shift1Start ? formatToIST12Hour(emp.shift1Start) : reportTime,
+        shift1End: emp?.shift1End ? formatToIST12Hour(emp.shift1End) : undefined,
+        shift2Start: emp?.shift2Start ? formatToIST12Hour(emp.shift2Start) : undefined,
+        shift2End: emp?.shift2End ? formatToIST12Hour(emp.shift2End) : undefined,
+        punches: [],
+        status: "Present",
+        createdAt: new Date().toISOString(),
+      };
+      store.unshift(existing);
+    }
+
+    existing.reportTime = reportTime;
+    existing.shiftStartTime = reportTime;
+    existing.shiftType = isMultiShift ? "MULTI_STRICT" : "SINGLE_STRICT";
+    existing.shiftHours = emp?.shiftHours || existing.shiftHours;
+    existing.dailyHours = emp?.dailyHours || existing.dailyHours;
+    if (emp?.shift1Start) existing.shift1Start = formatToIST12Hour(emp.shift1Start);
+    if (emp?.shift1End) existing.shift1End = formatToIST12Hour(emp.shift1End);
+    if (emp?.shift2Start) existing.shift2Start = formatToIST12Hour(emp.shift2Start);
+    if (emp?.shift2End) existing.shift2End = formatToIST12Hour(emp.shift2End);
+    existing.updatedAt = new Date().toISOString();
+
     if (payload.type === "in") {
+      // Calculate late status
       const now = new Date();
       let shiftHour = 9;
       let shiftMin = 0;
@@ -5115,7 +5366,10 @@ export const staffAttendanceService = {
         const lateConfig = await payrollSettingsService.getLatePenaltyConfig();
         if (lateConfig) {
           grace = Number(lateConfig.graceMinutes) || 15;
-          const shiftSource = emp?.shiftStartTime || lateConfig.shiftStartTime;
+          const shiftSource =
+            targetShift === "shift2" && emp?.shift2Start
+              ? emp.shift2Start
+              : emp?.shiftStartTime || lateConfig.shiftStartTime;
           if (shiftSource) {
             const timeParts = shiftSource.trim().split(" ");
             const hm = timeParts[0].split(":");
@@ -5129,88 +5383,319 @@ export const staffAttendanceService = {
         }
       } catch {}
 
-      // Compare using current IST time
       const shiftStart = new Date();
       shiftStart.setHours(shiftHour, shiftMin, 0, 0);
       const diffMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / (1000 * 60)));
       const isLate = diffMinutes > grace;
 
-      if (!existing) {
-        existing = {
-          id: `ATT-${Date.now()}`,
-          staffId: payload.staffId,
-          staffName: payload.staffName,
-          branch: payload.branch,
-          date: today,
-          reportTime,
-          shiftStartTime: reportTime,
-          punchInTime: nowTime,
-          punchInLocation: payload.location,
-          punchInPhoto: payload.photo,
-          punchInCoords: payload.coords || undefined,
-          status: isLate ? "Late" : "Present",
-          lateMinutes: diffMinutes,
-          createdAt: new Date().toISOString(),
-        };
-        store.unshift(existing);
+      if (targetShift === "shift2") {
+        existing.shift2PunchInTime = nowTime;
+        existing.shift2PunchInLocation = payload.location;
+        existing.shift2PunchInPhoto = payload.photo;
       } else {
-        existing.reportTime = reportTime;
-        existing.shiftStartTime = reportTime;
+        existing.shift1PunchInTime = nowTime;
+        existing.shift1PunchInLocation = payload.location;
+        existing.shift1PunchInPhoto = payload.photo;
+      }
+
+      if (!existing.punchInTime) {
         existing.punchInTime = nowTime;
         existing.punchInLocation = payload.location;
         existing.punchInPhoto = payload.photo;
         existing.punchInCoords = payload.coords || undefined;
-        existing.status = isLate ? "Late" : "Present";
-        existing.lateMinutes = diffMinutes;
-        existing.updatedAt = new Date().toISOString();
       }
+
+      existing.status = isLate ? "Late" : "Present";
+      existing.lateMinutes = diffMinutes;
     } else {
       // Punch Out
-      if (!existing) {
-        existing = {
-          id: `ATT-${Date.now()}`,
-          staffId: payload.staffId,
-          staffName: payload.staffName,
-          branch: payload.branch,
-          date: today,
-          reportTime,
-          shiftStartTime: reportTime,
-          punchOutTime: nowTime,
-          punchOutLocation: payload.location,
-          punchOutPhoto: payload.photo,
-          punchOutCoords: payload.coords || undefined,
-          status: "Present",
-          createdAt: new Date().toISOString(),
-        };
-        store.unshift(existing);
+      if (targetShift === "shift2") {
+        existing.shift2PunchOutTime = nowTime;
+        existing.shift2PunchOutLocation = payload.location;
+        existing.shift2PunchOutPhoto = payload.photo;
       } else {
-        existing.reportTime = reportTime;
-        existing.shiftStartTime = reportTime;
-        existing.punchOutTime = nowTime;
-        existing.punchOutLocation = payload.location;
-        existing.punchOutPhoto = payload.photo;
-        existing.punchOutCoords = payload.coords || undefined;
-        existing.updatedAt = new Date().toISOString();
-
-        // Calculate working hours if punch-in exists
-        if (existing.punchInTime) {
-          try {
-            const inDate = new Date(`${today} ${existing.punchInTime}`);
-            const outDate = new Date(`${today} ${nowTime}`);
-            const diffMs = Math.max(0, outDate.getTime() - inDate.getTime());
-            const hours = Math.floor(diffMs / (1000 * 60 * 60));
-            const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            existing.workingHours = `${hours} hrs ${mins} mins`;
-          } catch {
-            existing.workingHours = "8 hrs";
-          }
-        }
+        existing.shift1PunchOutTime = nowTime;
+        existing.shift1PunchOutLocation = payload.location;
+        existing.shift1PunchOutPhoto = payload.photo;
       }
+
+      existing.punchOutTime = nowTime;
+      existing.punchOutLocation = payload.location;
+      existing.punchOutPhoto = payload.photo;
+      existing.punchOutCoords = payload.coords || undefined;
+    }
+
+    // Append to punch log
+    existing.punches = existing.punches || [];
+    existing.punches.push({
+      id: `PUNCH-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      type: payload.type,
+      time: nowTime,
+      location: payload.location,
+      photo: payload.photo,
+      coords: payload.coords || undefined,
+      shift: targetShift,
+    });
+
+    // Compute working hours
+    if (isMultiShift) {
+      const s1M = calculateMinutesDiff(existing.shift1PunchInTime, existing.shift1PunchOutTime);
+      const s2M = calculateMinutesDiff(existing.shift2PunchInTime, existing.shift2PunchOutTime);
+      const totalM = s1M + s2M;
+      existing.workingHours = formatMinutesToHours(totalM);
+    } else {
+      const diffM = calculateMinutesDiff(existing.punchInTime, existing.punchOutTime);
+      existing.workingHours = formatMinutesToHours(diffM);
     }
 
     global.__sphStaffAttendanceStore = store;
     saveStaffAttendanceToDisk(store);
     return existing;
+  },
+
+  async getStaffFullAttendanceHistory(
+    staffId: string,
+    monthOrFromDate?: string,
+    toDate?: string
+  ): Promise<StaffFullAttendanceResponse> {
+    const store = getStaffAttendanceStore();
+    const employees = await employeeService.getAllEmployees();
+    const allLeaves = await staffLeaveService.getAllLeaves();
+
+    const emp = employees.find(
+      (e) => e.id === staffId || (e.name && e.name.toLowerCase().trim() === staffId.toLowerCase().trim())
+    );
+
+    const empName = emp?.name || staffId;
+    const branch = emp?.branchName || (emp as any)?.branch || "KPHB Branch";
+    const role = emp?.category === "DOCTOR" ? "Doctor" : emp?.category === "HR" ? "HR Staff" : emp?.category || "Staff Member";
+    const shiftType = (emp?.shiftType === "MULTI_STRICT" ? "MULTI_STRICT" : "SINGLE_STRICT") as "SINGLE_STRICT" | "MULTI_STRICT";
+    const shift1Start = formatToIST12Hour(emp?.shift1Start || emp?.shiftStartTime || "09:00 AM");
+    const shift1End = emp?.shift1End ? formatToIST12Hour(emp.shift1End) : (shiftType === "MULTI_STRICT" ? "01:00 PM" : "06:00 PM");
+    const shift2Start = emp?.shift2Start ? formatToIST12Hour(emp.shift2Start) : "04:30 PM";
+    const shift2End = emp?.shift2End ? formatToIST12Hour(emp.shift2End) : "08:30 PM";
+    const shiftHours = emp?.shiftHours || (shiftType === "MULTI_STRICT" ? "09:00 AM - 01:00 PM & 04:30 PM - 08:30 PM" : "09:00 AM - 06:00 PM");
+    const dailyHours = emp?.dailyHours || (shiftType === "MULTI_STRICT" ? "8 hrs/day" : "9 hrs/day");
+    const graceMinutes = emp?.graceMinutes || 15;
+
+    // Determine Date Range (Default to current IST month)
+    const todayIso = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    let startIso: string;
+    let endIso: string;
+
+    if (monthOrFromDate && monthOrFromDate.length === 7 && monthOrFromDate.includes("-")) {
+      const [yStr, mStr] = monthOrFromDate.split("-");
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const daysInM = new Date(y, m, 0).getDate();
+      startIso = `${monthOrFromDate}-01`;
+      endIso = `${monthOrFromDate}-${String(daysInM).padStart(2, "0")}`;
+    } else if (monthOrFromDate && toDate) {
+      startIso = monthOrFromDate;
+      endIso = toDate;
+    } else {
+      const curYearMonth = todayIso.slice(0, 7);
+      const [yStr, mStr] = curYearMonth.split("-");
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const daysInM = new Date(y, m, 0).getDate();
+      startIso = `${curYearMonth}-01`;
+      endIso = `${curYearMonth}-${String(daysInM).padStart(2, "0")}`;
+    }
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const startDate = new Date(`${startIso}T00:00:00`);
+    const endDate = new Date(`${endIso}T00:00:00`);
+
+    const dateList: string[] = [];
+    const cur = new Date(endDate);
+    while (cur >= startDate) {
+      const iso = cur.toISOString().split("T")[0];
+      dateList.push(iso);
+      cur.setDate(cur.getDate() - 1);
+    }
+
+    // Match employee leaves
+    const staffLeaves = allLeaves.filter(
+      (l) => (l.staffId === staffId || (l.staffName && l.staffName.toLowerCase() === empName.toLowerCase())) && l.status !== "Rejected"
+    );
+
+    // Filter attendance records for this staff
+    const staffAttendance = store.filter(
+      (r) => r.staffId === staffId || (r.staffName && r.staffName.toLowerCase().trim() === empName.toLowerCase().trim())
+    );
+
+    const attMap = new Map<string, StaffAttendanceRecord>();
+    staffAttendance.forEach((r) => {
+      if (r.date) attMap.set(r.date, r);
+    });
+
+    let totalMinutesWorked = 0;
+    let presentDays = 0;
+    let lateDays = 0;
+    let halfDays = 0;
+    let leaveDays = 0;
+    let absentDays = 0;
+    let weeklyOffs = 0;
+
+    const logs: StaffFullAttendanceDay[] = dateList.map((dateIso) => {
+      const dObj = new Date(`${dateIso}T00:00:00`);
+      const dayOfWeek = dObj.getDay();
+      const isSunday = dayOfWeek === 0;
+      const isToday = dateIso === todayIso;
+      const isFuture = dateIso > todayIso;
+      const dayNum = dateIso.split("-")[2];
+      const monthShort = monthNames[parseInt(dateIso.split("-")[1], 10) - 1] || "Nov";
+      const dayName = dayNames[dayOfWeek];
+
+      const att = attMap.get(dateIso);
+      const leave = staffLeaves.find((l) => l.fromDate <= dateIso && (!l.toDate || l.toDate >= dateIso));
+
+      let status: StaffFullAttendanceDay["status"] = "Pending";
+      let workingHoursStr = "-";
+      let dayMinutes = 0;
+
+      if (att) {
+        if (att.status === "Late") {
+          status = "Late";
+          lateDays++;
+          presentDays++;
+        } else if (att.status === "Half Day") {
+          status = "Half Day";
+          halfDays++;
+          presentDays++;
+        } else {
+          status = "Present";
+          presentDays++;
+        }
+
+        if (shiftType === "MULTI_STRICT") {
+          const s1M = calculateMinutesDiff(att.shift1PunchInTime || att.punchInTime, att.shift1PunchOutTime);
+          const s2M = calculateMinutesDiff(att.shift2PunchInTime, att.shift2PunchOutTime || att.punchOutTime);
+          dayMinutes = s1M + s2M;
+          if (dayMinutes > 0) {
+            workingHoursStr = formatMinutesToHours(dayMinutes);
+          } else if (att.workingHours && att.workingHours !== "-") {
+            workingHoursStr = att.workingHours;
+          }
+        } else {
+          dayMinutes = calculateMinutesDiff(att.punchInTime, att.punchOutTime);
+          if (dayMinutes > 0) {
+            workingHoursStr = formatMinutesToHours(dayMinutes);
+          } else if (att.workingHours && att.workingHours !== "-") {
+            workingHoursStr = att.workingHours;
+          }
+        }
+        totalMinutesWorked += dayMinutes;
+      } else if (leave) {
+        status = "On Leave";
+        leaveDays++;
+      } else if (isSunday) {
+        status = "Weekly Off";
+        weeklyOffs++;
+      } else if (isFuture) {
+        status = "Scheduled";
+      } else if (isToday) {
+        status = "Pending";
+      } else {
+        status = "Absent";
+        absentDays++;
+      }
+
+      const resolvedPunchIn = (att?.createdAt && !isNaN(new Date(att.createdAt).getTime()))
+        ? formatToIST12Hour(new Date(att.createdAt))
+        : (att?.punchInTime ? formatToIST12Hour(att.punchInTime) : undefined);
+
+      const resolvedPunchOut = (att?.updatedAt && att.punchOutTime && !isNaN(new Date(att.updatedAt).getTime()))
+        ? formatToIST12Hour(new Date(att.updatedAt))
+        : (att?.punchOutTime ? formatToIST12Hour(att.punchOutTime) : undefined);
+
+      const s1In = att?.shift1PunchInTime ? formatToIST12Hour(att.shift1PunchInTime) : resolvedPunchIn;
+      const s1Out = att?.shift1PunchOutTime ? formatToIST12Hour(att.shift1PunchOutTime) : (shiftType === "SINGLE_STRICT" ? resolvedPunchOut : undefined);
+      const s2In = att?.shift2PunchInTime ? formatToIST12Hour(att.shift2PunchInTime) : undefined;
+      const s2Out = att?.shift2PunchOutTime ? formatToIST12Hour(att.shift2PunchOutTime) : (shiftType === "MULTI_STRICT" && resolvedPunchOut !== s1Out ? resolvedPunchOut : undefined);
+
+      return {
+        date: dateIso,
+        dayNum,
+        dayName,
+        monthShort,
+        isSunday,
+        isToday,
+        isFuture,
+        shiftType,
+        shiftHours,
+        dailyHours,
+        shift1Start,
+        shift1End,
+        shift1PunchInTime: s1In,
+        shift1PunchInLocation: att?.shift1PunchInLocation || (shiftType === "SINGLE_STRICT" ? att?.punchInLocation : undefined),
+        shift1PunchInPhoto: att?.shift1PunchInPhoto || (shiftType === "SINGLE_STRICT" ? att?.punchInPhoto : undefined),
+        shift1PunchOutTime: s1Out,
+        shift1PunchOutLocation: att?.shift1PunchOutLocation || (shiftType === "SINGLE_STRICT" ? att?.punchOutLocation : undefined),
+        shift1PunchOutPhoto: att?.shift1PunchOutPhoto || (shiftType === "SINGLE_STRICT" ? att?.punchOutPhoto : undefined),
+        shift2Start: shiftType === "MULTI_STRICT" ? shift2Start : undefined,
+        shift2End: shiftType === "MULTI_STRICT" ? shift2End : undefined,
+        shift2PunchInTime: s2In,
+        shift2PunchInLocation: att?.shift2PunchInLocation,
+        shift2PunchInPhoto: att?.shift2PunchInPhoto,
+        shift2PunchOutTime: s2Out,
+        shift2PunchOutLocation: att?.shift2PunchOutLocation,
+        shift2PunchOutPhoto: att?.shift2PunchOutPhoto,
+        punchInTime: resolvedPunchIn,
+        punchInLocation: att?.punchInLocation,
+        punchInPhoto: att?.punchInPhoto,
+        punchOutTime: resolvedPunchOut,
+        punchOutLocation: att?.punchOutLocation,
+        punchOutPhoto: att?.punchOutPhoto,
+        punches: att?.punches || [],
+        workingHours: workingHoursStr,
+        status,
+        lateMinutes: att?.lateMinutes,
+        leaveType: leave?.leaveType,
+        leaveReason: leave?.reason,
+      };
+    });
+
+    const totalHoursStr = formatMinutesToHours(totalMinutesWorked);
+
+    return {
+      employee: {
+        id: emp?.id || staffId,
+        name: empName,
+        category: emp?.category || "STAFF",
+        role,
+        branch,
+        phone: emp?.phone,
+        shiftType,
+        shiftHours,
+        dailyHours,
+        shift1Start,
+        shift1End,
+        shift2Start,
+        shift2End,
+        graceMinutes,
+      },
+      summary: {
+        totalDays: dateList.length,
+        presentDays,
+        lateDays,
+        halfDays,
+        leaveDays,
+        absentDays,
+        weeklyOffs,
+        totalWorkingHours: totalHoursStr === "-" ? "0 hrs" : totalHoursStr,
+      },
+      logs,
+    };
   },
 };
 

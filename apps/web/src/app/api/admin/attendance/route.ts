@@ -11,8 +11,27 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const view = searchParams.get("view") || undefined;
+    const staffId = searchParams.get("staffId") || undefined;
+    const month = searchParams.get("month") || undefined;
+    const fromDate = searchParams.get("fromDate") || undefined;
+    const toDate = searchParams.get("toDate") || undefined;
     const rawBranch = searchParams.get("branch") || undefined;
     const date = searchParams.get("date") || undefined;
+
+    // FULL ATTENDANCE VIEW FOR A SPECIFIC EMPLOYEE
+    if ((view === "full" || staffId) && staffId) {
+      const fullHistory = await staffAttendanceService.getStaffFullAttendanceHistory(
+        staffId,
+        month || fromDate,
+        toDate
+      );
+      return NextResponse.json({
+        success: true,
+        view: "full",
+        ...fullHistory,
+      });
+    }
 
     const isAll = !rawBranch || rawBranch === "All Branches" || rawBranch.toLowerCase() === "all";
     const branch = isAll ? undefined : rawBranch;
@@ -49,15 +68,36 @@ export async function GET(req: Request) {
       if (emp.name) processedKeys.add(emp.name.toLowerCase().trim());
 
       const punch = punchMap.get(emp.id) || punchMap.get((emp.name || "").toLowerCase().trim());
-      const reportTime = formatToIST12Hour(emp.shiftStartTime || "09:00 AM");
+      const reportTime = formatToIST12Hour(emp.shiftStartTime || emp.shift1Start || "09:00 AM");
+      const isMultiShift = emp.shiftType === "MULTI_STRICT";
 
       if (punch) {
+        const resolvedPunchIn = (punch.createdAt && !isNaN(new Date(punch.createdAt).getTime()))
+          ? formatToIST12Hour(new Date(punch.createdAt))
+          : (punch.punchInTime ? formatToIST12Hour(punch.punchInTime) : null);
+
+        const resolvedPunchOut = (punch.updatedAt && punch.punchOutTime && !isNaN(new Date(punch.updatedAt).getTime()))
+          ? formatToIST12Hour(new Date(punch.updatedAt))
+          : (punch.punchOutTime ? formatToIST12Hour(punch.punchOutTime) : null);
+
         results.push({
           ...punch,
           reportTime,
           shiftStartTime: reportTime,
-          punchInTime: punch.punchInTime ? formatToIST12Hour(punch.punchInTime) : null,
-          punchOutTime: punch.punchOutTime ? formatToIST12Hour(punch.punchOutTime) : null,
+          shiftType: punch.shiftType || emp.shiftType || "SINGLE_STRICT",
+          shiftHours: punch.shiftHours || emp.shiftHours,
+          dailyHours: punch.dailyHours || emp.dailyHours,
+          shift1Start: punch.shift1Start || emp.shift1Start ? formatToIST12Hour(punch.shift1Start || emp.shift1Start) : reportTime,
+          shift1End: punch.shift1End || emp.shift1End ? formatToIST12Hour(punch.shift1End || emp.shift1End) : undefined,
+          shift1PunchInTime: punch.shift1PunchInTime ? formatToIST12Hour(punch.shift1PunchInTime) : (isMultiShift ? null : resolvedPunchIn),
+          shift1PunchOutTime: punch.shift1PunchOutTime ? formatToIST12Hour(punch.shift1PunchOutTime) : (isMultiShift ? null : resolvedPunchOut),
+          shift2Start: punch.shift2Start || emp.shift2Start ? formatToIST12Hour(punch.shift2Start || emp.shift2Start) : (isMultiShift ? "04:30 PM" : undefined),
+          shift2End: punch.shift2End || emp.shift2End ? formatToIST12Hour(punch.shift2End || emp.shift2End) : undefined,
+          shift2PunchInTime: punch.shift2PunchInTime ? formatToIST12Hour(punch.shift2PunchInTime) : null,
+          shift2PunchOutTime: punch.shift2PunchOutTime ? formatToIST12Hour(punch.shift2PunchOutTime) : null,
+          punchInTime: resolvedPunchIn,
+          punchOutTime: resolvedPunchOut,
+          punches: punch.punches || [],
           role: emp.category === "DOCTOR" ? "Doctor" : emp.category === "HR" ? "HR Staff" : emp.category || "Staff Member",
           branch: punch.branch || emp.branchName || "KPHB Branch",
         });
@@ -80,8 +120,20 @@ export async function GET(req: Request) {
           branch: emp.branchName || emp.branch || "KPHB Branch",
           reportTime,
           shiftStartTime: reportTime,
+          shiftType: emp.shiftType || "SINGLE_STRICT",
+          shiftHours: emp.shiftHours,
+          dailyHours: emp.dailyHours,
+          shift1Start: emp.shift1Start ? formatToIST12Hour(emp.shift1Start) : reportTime,
+          shift1End: emp.shift1End ? formatToIST12Hour(emp.shift1End) : undefined,
+          shift1PunchInTime: null,
+          shift1PunchOutTime: null,
+          shift2Start: emp.shift2Start ? formatToIST12Hour(emp.shift2Start) : (isMultiShift ? "04:30 PM" : undefined),
+          shift2End: emp.shift2End ? formatToIST12Hour(emp.shift2End) : undefined,
+          shift2PunchInTime: null,
+          shift2PunchOutTime: null,
           punchInTime: null,
           punchOutTime: null,
+          punches: [],
           workingHours: "-",
           status: isOnLeave ? "On Leave" : "Absent",
           punchInLocation: isOnLeave ? "Approved Leave" : undefined,
@@ -102,11 +154,36 @@ export async function GET(req: Request) {
           shiftStartTime: repTime,
           punchInTime: att.punchInTime ? formatToIST12Hour(att.punchInTime) : null,
           punchOutTime: att.punchOutTime ? formatToIST12Hour(att.punchOutTime) : null,
+          shift1PunchInTime: att.shift1PunchInTime ? formatToIST12Hour(att.shift1PunchInTime) : null,
+          shift1PunchOutTime: att.shift1PunchOutTime ? formatToIST12Hour(att.shift1PunchOutTime) : null,
+          shift2PunchInTime: att.shift2PunchInTime ? formatToIST12Hour(att.shift2PunchInTime) : null,
+          shift2PunchOutTime: att.shift2PunchOutTime ? formatToIST12Hour(att.shift2PunchOutTime) : null,
+          punches: att.punches || [],
         });
       }
     });
 
-    return NextResponse.json({ success: true, records: results });
+    // Active staff directory for client employee selector
+    const employeesList = employees
+      .filter((e) => !(e.category === "DOCTOR" && (e as any).doctorCategory === "HEAD"))
+      .map((e) => ({
+        id: e.id,
+        name: e.name,
+        category: e.category,
+        role: e.category === "DOCTOR" ? "Doctor" : e.category === "HR" ? "HR Staff" : e.category || "Staff Member",
+        branch: e.branchName || e.branch || "KPHB Branch",
+        shiftType: e.shiftType || "SINGLE_STRICT",
+        shiftHours: e.shiftHours || (e.shiftType === "MULTI_STRICT" ? "09:00 AM - 01:00 PM & 04:30 PM - 08:30 PM" : "09:00 AM - 06:00 PM"),
+        dailyHours: e.dailyHours || (e.shiftType === "MULTI_STRICT" ? "8 hrs/day" : "9 hrs/day"),
+        shift1Start: e.shift1Start ? formatToIST12Hour(e.shift1Start) : "09:00 AM",
+        shift2Start: e.shift2Start ? formatToIST12Hour(e.shift2Start) : "04:30 PM",
+      }));
+
+    return NextResponse.json({
+      success: true,
+      records: results,
+      employeesList,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to fetch attendance records" }, { status: 500 });
   }
