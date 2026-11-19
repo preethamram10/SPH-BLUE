@@ -23,6 +23,7 @@ interface AttendanceItem {
   staffName: string;
   role: string;
   branch: string;
+  reportTime?: string;
   punchInTime: string | null;
   punchOutTime: string | null;
   workingHours: string;
@@ -105,6 +106,7 @@ export default function HRAttendanceScreen() {
           staffName: a.staffName || a.name || "",
           role: a.role || a.category || "Staff",
           branch: a.branch || a.branchName || "",
+          reportTime: a.reportTime || a.shiftStartTime || "09:00 AM",
           punchInTime: a.punchInTime || null,
           punchOutTime: a.punchOutTime || null,
           workingHours: a.workingHours || "-",
@@ -119,6 +121,7 @@ export default function HRAttendanceScreen() {
           staffName: r.staffName || r.name || "",
           role: r.role || r.category || "Staff",
           branch: r.branch || r.branchName || "",
+          reportTime: r.reportTime || r.shiftStartTime || "09:00 AM",
           punchInTime: r.punchInTime || null,
           punchOutTime: r.punchOutTime || null,
           workingHours: r.workingHours || "-",
@@ -425,6 +428,11 @@ export default function HRAttendanceScreen() {
 
                 {/* Timings Strip */}
                 <View style={styles.timingsStrip}>
+                  <View style={styles.timingCol}>
+                    <Text style={styles.timingLabel}>Report</Text>
+                    <Text style={styles.timingValue}>{item.reportTime || "09:00 AM"}</Text>
+                  </View>
+                  <View style={styles.timingDivider} />
                   <View style={styles.timingCol}>
                     <Text style={styles.timingLabel}>Punch In</Text>
                     <Text style={styles.timingValue}>{item.punchInTime || "—"}</Text>

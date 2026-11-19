@@ -5,6 +5,7 @@ import {
   staffAttendanceService,
   staffLeaveService,
   employeeService,
+  formatToIST12Hour,
 } from "@spiritualhomeo/database";
 
 export interface BranchStat {
@@ -28,6 +29,7 @@ export interface TodayAttendanceItem {
   staffName: string;
   role: string;
   branch: string;
+  reportTime?: string;
   punchInTime: string | null;
   punchOutTime: string | null;
   workingHours: string;
@@ -219,14 +221,16 @@ export async function GET(req: Request) {
         statusDisplay = "In Clinic";
       }
 
+      const repTime = formatToIST12Hour(att.reportTime || att.shiftStartTime || emp?.shiftStartTime || "09:00 AM");
       attendanceItems.push({
         id: att.id || `ATT-${att.staffId}`,
         staffId: att.staffId,
         staffName: att.staffName,
         role,
         branch: att.branch || emp?.branchName || "KPHB Branch",
-        punchInTime: att.punchInTime || null,
-        punchOutTime: att.punchOutTime || null,
+        reportTime: repTime,
+        punchInTime: att.punchInTime ? formatToIST12Hour(att.punchInTime) : null,
+        punchOutTime: att.punchOutTime ? formatToIST12Hour(att.punchOutTime) : null,
         workingHours: att.workingHours || (att.punchInTime && !att.punchOutTime ? "In Clinic" : "-"),
         status: statusDisplay,
         punchInLocation: att.punchInLocation || "Clinic Biometric",
@@ -241,12 +245,14 @@ export async function GET(req: Request) {
         const alreadyListed = attendanceItems.some((item) => item.staffId === l.staffId);
         if (!alreadyListed) {
           const emp = employees.find((e) => e.id === l.staffId || e.name === l.staffName);
+          const repTime = formatToIST12Hour(emp?.shiftStartTime || "09:00 AM");
           attendanceItems.push({
             id: `LEAVE-${l.id || l.staffId}`,
             staffId: l.staffId,
             staffName: l.staffName,
             role: emp?.category || "Staff Member",
             branch: l.branch || emp?.branchName || "KPHB Branch",
+            reportTime: repTime,
             punchInTime: null,
             punchOutTime: null,
             workingHours: "-",
@@ -264,12 +270,14 @@ export async function GET(req: Request) {
         (item) => item.staffId === emp.id || item.staffName === emp.name
       );
       if (!alreadyListed) {
+        const repTime = formatToIST12Hour(emp.shiftStartTime || "09:00 AM");
         attendanceItems.push({
           id: `PENDING-${emp.id}`,
           staffId: emp.id,
           staffName: emp.name,
           role: emp.category === "DOCTOR" ? "Doctor" : emp.category === "HR" ? "HR Staff" : "Staff Member",
           branch: emp.branchName || "KPHB Branch",
+          reportTime: repTime,
           punchInTime: null,
           punchOutTime: null,
           workingHours: "-",

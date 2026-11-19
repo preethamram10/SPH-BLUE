@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { formatToIST12Hour } from "@/utils/timeFormat";
 import {
   UserCheck,
   Calendar,
@@ -171,6 +172,7 @@ export default function EmployeeAttendancePage() {
                   <tr className="border-b border-slate-100 bg-slate-50/70 text-[10.5px] font-extrabold text-slate-400 uppercase tracking-wider">
                     <th className="py-3 px-4">Staff Member</th>
                     <th className="py-3 px-4">Branch</th>
+                    <th className="py-3 px-4">Report Time</th>
                     <th className="py-3 px-4">Punch In (Selfie &amp; GPS)</th>
                     <th className="py-3 px-4">Punch Out (Selfie &amp; GPS)</th>
                     <th className="py-3 px-4">Working Hours</th>
@@ -180,22 +182,34 @@ export default function EmployeeAttendancePage() {
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-10 text-slate-400">Loading attendance data...</td>
+                      <td colSpan={7} className="text-center py-10 text-slate-400">Loading attendance data...</td>
                     </tr>
                   ) : filteredLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-slate-400">
+                      <td colSpan={7} className="text-center py-12 text-slate-400">
                         <UserCheck className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p className="font-semibold text-slate-600">No attendance punch logs for {selectedDate}.</p>
-                        <p className="text-[11px] text-slate-400">Staff punches via their Selfie &amp; GPS portal will display here.</p>
+                        <p className="font-semibold text-slate-600">No attendance records for {selectedDate}.</p>
+                        <p className="text-[11px] text-slate-400">Staff punches and reporting schedules will display here.</p>
                       </td>
                     </tr>
                   ) : (
                     filteredLogs.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-4 font-bold text-slate-900">{item.staffName}</td>
+                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                          <div>{item.staffName}</div>
+                          {item.role && <div className="text-[10px] text-slate-400 font-normal">{item.role}</div>}
+                        </td>
                         <td className="py-3.5 px-4">
                           <span className="font-semibold text-slate-800">{item.branch}</span>
+                        </td>
+
+                        {/* Report Time */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                            <Clock className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                            <span>{formatToIST12Hour(item.reportTime || item.shiftStartTime || "09:00 AM")}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400">Scheduled IST</span>
                         </td>
 
                         {/* Punch In */}
@@ -224,7 +238,7 @@ export default function EmployeeAttendancePage() {
                                 </button>
                               )}
                               <div>
-                                <span className="font-bold text-slate-800">{item.punchInTime}</span>
+                                <span className="font-bold text-slate-800">{formatToIST12Hour(item.punchInTime)}</span>
                                 {item.punchInLocation && (
                                   <p className="text-[10px] text-slate-400 max-w-[140px] truncate" title={item.punchInLocation}>
                                     📍 {item.punchInLocation}
@@ -263,7 +277,7 @@ export default function EmployeeAttendancePage() {
                                 </button>
                               )}
                               <div>
-                                <span className="font-bold text-slate-800">{item.punchOutTime}</span>
+                                <span className="font-bold text-slate-800">{formatToIST12Hour(item.punchOutTime)}</span>
                                 {item.punchOutLocation && (
                                   <p className="text-[10px] text-slate-400 max-w-[140px] truncate" title={item.punchOutLocation}>
                                     📍 {item.punchOutLocation}
@@ -271,8 +285,12 @@ export default function EmployeeAttendancePage() {
                                 )}
                               </div>
                             </div>
+                          ) : item.punchInTime ? (
+                            <span className="text-amber-600 font-semibold text-[11px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              Active Shift
+                            </span>
                           ) : (
-                            <span className="text-slate-400 italic">Active Shift</span>
+                            <span className="text-slate-400 italic">—</span>
                           )}
                         </td>
 

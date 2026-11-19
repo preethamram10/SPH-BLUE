@@ -714,6 +714,7 @@ export interface EmployeeRecord {
   phone: string;
   branchName: string;
   branchId?: string;
+  branch?: string;
   salary: number;
   shiftType: "SINGLE_STRICT" | "MULTI_STRICT";
   shiftHours: string;
@@ -4867,31 +4868,104 @@ export interface StaffAttendanceRecord {
   staffName: string;
   branch: string;
   date: string; // YYYY-MM-DD
-  punchInTime?: string;
+  reportTime?: string; // Scheduled IST 12-hour report time, e.g. "09:00 AM"
+  shiftStartTime?: string; // Alias for reportTime
+  punchInTime?: string; // IST 12-hour format
   punchInLocation?: string;
   punchInPhoto?: string;
   punchInCoords?: { lat: number; lng: number };
-  punchOutTime?: string;
+  punchOutTime?: string; // IST 12-hour format
   punchOutLocation?: string;
   punchOutPhoto?: string;
   punchOutCoords?: { lat: number; lng: number };
   workingHours?: string;
-  status: "Present" | "Late" | "Half Day" | "Absent";
+  status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
   lateMinutes?: number;
+  role?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
 declare global {
   var __sphStaffAttendanceStore: StaffAttendanceRecord[] | undefined;
+  var __sphStaffAttendanceLastMtime: number | undefined;
   var __sphStaffLeavesStore: StaffLeaveRecord[] | undefined;
   var __sphStaffDailyWorksStore: StaffDailyWorkRecord[] | undefined;
   var __sphPayCutsStore: MiscellaneousPayCutRecord[] | undefined;
   var __sphLatePenaltyConfig: LatePenaltyRuleConfig | undefined;
 }
 
+/**
+ * Robust formatter to ensure any time string, Date object, or ISO timestamp
+ * is displayed in Indian Standard Time (IST) 12-hour format (e.g. "09:00 AM", "01:45 PM").
+ */
+export function formatToIST12Hour(input?: string | Date | null): string {
+  if (!input) return "";
+  if (input instanceof Date) {
+    if (isNaN(input.getTime())) return "";
+    return input.toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+  const trimmed = String(input).trim();
+  if (!trimmed || trimmed === "-" || trimmed.toLowerCase() === "null" || trimmed.toLowerCase() === "undefined") {
+    return "";
+  }
+
+  // 12-hour format like '09:30 AM' or '1:45:12 PM'
+  const match12 = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (match12) {
+    const h = parseInt(match12[1], 10);
+    const m = match12[2];
+    const s = match12[3];
+    const ampm = match12[4].toUpperCase();
+    const hStr = String(h).padStart(2, "0");
+    return s ? `${hStr}:${m}:${s} ${ampm}` : `${hStr}:${m} ${ampm}`;
+  }
+
+  // 24-hour format like '14:30' or '09:15:20'
+  const match24 = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (match24) {
+    let h = parseInt(match24[1], 10);
+    const m = match24[2];
+    const s = match24[3];
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    const hStr = String(h).padStart(2, "0");
+    return s ? `${hStr}:${m}:${s} ${ampm}` : `${hStr}:${m} ${ampm}`;
+  }
+
+  // ISO string or parseable date string (convert UTC to IST)
+  const d = new Date(trimmed);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+
+  return trimmed;
+}
+
 function getStaffAttendanceCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "staff_attendance_store.json"))) {
+    return path.join(webCache, "staff_attendance_store.json");
+  }
   const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "staff_attendance_store.json"))) {
+    return path.join(rootCache, "staff_attendance_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "staff_attendance_store.json");
+  }
   return path.join(rootCache, "staff_attendance_store.json");
 }
 
@@ -4911,16 +4985,31 @@ function loadStaffAttendanceFromDisk(): StaffAttendanceRecord[] {
 function saveStaffAttendanceToDisk(data: StaffAttendanceRecord[]): void {
   try {
     const file = getStaffAttendanceCachePath();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+    safeAtomicWrite(file, data);
+    if (fs.existsSync(file)) {
+      global.__sphStaffAttendanceLastMtime = fs.statSync(file).mtimeMs;
+    }
   } catch (e) {
     console.warn("Failed writing staff attendance cache:", e);
   }
 }
 
 function getStaffAttendanceStore(): StaffAttendanceRecord[] {
-  if (!global.__sphStaffAttendanceStore) {
+  const file = getStaffAttendanceCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphStaffAttendanceStore ||
+    !global.__sphStaffAttendanceLastMtime ||
+    (mtime > 0 && mtime > global.__sphStaffAttendanceLastMtime)
+  ) {
     global.__sphStaffAttendanceStore = loadStaffAttendanceFromDisk();
+    global.__sphStaffAttendanceLastMtime = mtime;
   }
   return global.__sphStaffAttendanceStore;
 }
@@ -4928,15 +5017,54 @@ function getStaffAttendanceStore(): StaffAttendanceRecord[] {
 export const staffAttendanceService = {
   async getAllRecords(branch?: string, date?: string): Promise<StaffAttendanceRecord[]> {
     const store = getStaffAttendanceStore();
-    return store.filter((r) => {
-      const matchBranch = !branch || branch === "All Branches" || r.branch.toLowerCase().includes(branch.toLowerCase());
+    const employees = await employeeService.getAllEmployees();
+    const cleanBranch =
+      branch && branch !== "All Branches" && branch.toLowerCase() !== "all"
+        ? branch.toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\s*branch$/i, "").trim()
+        : "";
+
+    // Map employees to reporting times & details
+    const empMap = new Map<string, { shiftStartTime: string; branch: string; role: string; name: string }>();
+    employees.forEach((e) => {
+      const info = {
+        shiftStartTime: formatToIST12Hour(e.shiftStartTime || "09:00 AM"),
+        branch: e.branchName || e.branch || "KPHB Branch",
+        role: e.category === "DOCTOR" ? "Doctor" : e.category === "HR" ? "HR Staff" : e.category || "Staff Member",
+        name: e.name,
+      };
+      empMap.set(e.id, info);
+      if (e.name) empMap.set(e.name.toLowerCase().trim(), info);
+    });
+
+    const filtered = store.filter((r) => {
+      const rBranch = (r.branch || "").toLowerCase().replace(/spiritual\s*homeopathy/gi, "").replace(/\s*branch$/i, "").trim();
+      const matchBranch = !cleanBranch || rBranch === cleanBranch || rBranch.includes(cleanBranch) || cleanBranch.includes(rBranch);
       const matchDate = !date || r.date === date;
       return matchBranch && matchDate;
+    });
+
+    return filtered.map((r) => {
+      const empInfo = empMap.get(r.staffId) || empMap.get((r.staffName || "").toLowerCase().trim());
+      const repTime = formatToIST12Hour(r.reportTime || r.shiftStartTime || empInfo?.shiftStartTime || "09:00 AM");
+      return {
+        ...r,
+        reportTime: repTime,
+        shiftStartTime: repTime,
+        punchInTime: r.punchInTime ? formatToIST12Hour(r.punchInTime) : undefined,
+        punchOutTime: r.punchOutTime ? formatToIST12Hour(r.punchOutTime) : undefined,
+        role: r.role || empInfo?.role || "Staff Member",
+        branch: r.branch || empInfo?.branch || "KPHB Branch",
+      };
     });
   },
 
   async getTodayRecord(staffId: string, dateStr?: string): Promise<StaffAttendanceRecord | null> {
-    const today = dateStr || new Date().toISOString().split("T")[0];
+    const today = dateStr || new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
     const store = getStaffAttendanceStore();
     return store.find((r) => r.staffId === staffId && r.date === today) || null;
   },
@@ -4952,13 +5080,28 @@ export const staffAttendanceService = {
     timestamp?: string;
   }): Promise<StaffAttendanceRecord> {
     const store = getStaffAttendanceStore();
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    // IST 12-hour punch time (e.g. "09:30:15 AM")
     const nowTime = new Date().toLocaleTimeString("en-US", {
+      timeZone: "Asia/Kolkata",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: true,
     });
+
+    // Lookup staff scheduled report time
+    const employees = await employeeService.getAllEmployees();
+    const emp = employees.find(
+      (e) => e.id === payload.staffId || e.name.toLowerCase().trim() === payload.staffName.toLowerCase().trim()
+    );
+    const reportTime = formatToIST12Hour(emp?.shiftStartTime || "09:00 AM");
 
     let existing = store.find((r) => r.staffId === payload.staffId && r.date === today);
 
@@ -4972,8 +5115,9 @@ export const staffAttendanceService = {
         const lateConfig = await payrollSettingsService.getLatePenaltyConfig();
         if (lateConfig) {
           grace = Number(lateConfig.graceMinutes) || 15;
-          if (lateConfig.shiftStartTime) {
-            const timeParts = lateConfig.shiftStartTime.trim().split(" ");
+          const shiftSource = emp?.shiftStartTime || lateConfig.shiftStartTime;
+          if (shiftSource) {
+            const timeParts = shiftSource.trim().split(" ");
             const hm = timeParts[0].split(":");
             let h = parseInt(hm[0], 10) || 9;
             const m = parseInt(hm[1], 10) || 0;
@@ -4985,6 +5129,7 @@ export const staffAttendanceService = {
         }
       } catch {}
 
+      // Compare using current IST time
       const shiftStart = new Date();
       shiftStart.setHours(shiftHour, shiftMin, 0, 0);
       const diffMinutes = Math.max(0, Math.floor((now.getTime() - shiftStart.getTime()) / (1000 * 60)));
@@ -4997,6 +5142,8 @@ export const staffAttendanceService = {
           staffName: payload.staffName,
           branch: payload.branch,
           date: today,
+          reportTime,
+          shiftStartTime: reportTime,
           punchInTime: nowTime,
           punchInLocation: payload.location,
           punchInPhoto: payload.photo,
@@ -5007,6 +5154,8 @@ export const staffAttendanceService = {
         };
         store.unshift(existing);
       } else {
+        existing.reportTime = reportTime;
+        existing.shiftStartTime = reportTime;
         existing.punchInTime = nowTime;
         existing.punchInLocation = payload.location;
         existing.punchInPhoto = payload.photo;
@@ -5024,6 +5173,8 @@ export const staffAttendanceService = {
           staffName: payload.staffName,
           branch: payload.branch,
           date: today,
+          reportTime,
+          shiftStartTime: reportTime,
           punchOutTime: nowTime,
           punchOutLocation: payload.location,
           punchOutPhoto: payload.photo,
@@ -5033,6 +5184,8 @@ export const staffAttendanceService = {
         };
         store.unshift(existing);
       } else {
+        existing.reportTime = reportTime;
+        existing.shiftStartTime = reportTime;
         existing.punchOutTime = nowTime;
         existing.punchOutLocation = payload.location;
         existing.punchOutPhoto = payload.photo;
