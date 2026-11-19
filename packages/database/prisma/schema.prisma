@@ -223,3 +223,34 @@ model BranchMonthPatients {
   @@unique([branchId, month, patientId], name: "branch_month_patient_unique")
   @@map("branch_month_patients")
 }
+
+model PlanSchedule {
+  id          String   @id @default(uuid())
+  planId      String   @unique @map("plan_id")
+  branchId    String   @map("branch_id")
+  patientId   String   @map("patient_id")
+  startDate   DateTime @default(now()) @map("start_date")
+  cohortMonth String   @map("cohort_month")
+  months      Int      @default(1)
+  totalFee    Float    @default(0) @map("total_fee")
+  shares      Json?
+  isRefunded  Boolean  @default(false) @map("is_refunded")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("plan_schedule")
+}
+
+model BranchPlanMonth {
+  id                 String   @id @default(uuid())
+  branchId           String   @map("branch_id")
+  cohortMonth        String   @map("cohort_month")
+  monthIndex         Int      @map("month_index")
+  amount             Float    @default(0)
+  plansCount         Int      @default(0) @map("plans_count")
+  patientMonthsTotal Float    @default(0) @map("patient_months_total")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@unique([branchId, cohortMonth, monthIndex], name: "branch_cohort_month_index_unique")
+  @@map("branch_plan_month")
+}
+

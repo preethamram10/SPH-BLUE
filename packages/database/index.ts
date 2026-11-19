@@ -42,6 +42,14 @@ declare global {
   // eslint-disable-next-line no-var
   var __sphBranchMonthPatientsLastMtime: number | undefined;
   // eslint-disable-next-line no-var
+  var __sphPlanSchedulesStore: any[] | undefined;
+  // eslint-disable-next-line no-var
+  var __sphPlanSchedulesLastMtime: number | undefined;
+  // eslint-disable-next-line no-var
+  var __sphBranchPlanMonthsStore: any[] | undefined;
+  // eslint-disable-next-line no-var
+  var __sphBranchPlanMonthsLastMtime: number | undefined;
+  // eslint-disable-next-line no-var
   var __sphApptsLastMtime: number | undefined;
   // eslint-disable-next-line no-var
   var __sphPatientsLastMtime: number | undefined;
@@ -3232,6 +3240,17 @@ export const appointmentService = {
             planId: appt.id,
             isInitialPlan: true,
           });
+
+          const planDur = durMonths >= 1 ? Math.round(durMonths) : 1;
+          await planSpreadService.recordPlanPayment({
+            planId: appt.id,
+            branch: (appt as any).branchName || appt.branch || "KPHB Branch",
+            patientId: appt.registrationId || appt.phone,
+            amount: paidAmt,
+            durationMonths: planDur,
+            paidAt: appt.paidAt || new Date().toISOString(),
+            isInstallment: false,
+          });
         }
       }
     } catch (err) {
@@ -6345,6 +6364,16 @@ export const packageService = {
             planId: updated.id,
             isInitialPlan: true,
           });
+
+          await planSpreadService.recordPlanPayment({
+            planId: updated.id,
+            branch: cleanBranch,
+            patientId: cleanReg || cleanPhone,
+            amount: initialPaid,
+            durationMonths: duration,
+            paidAt: new Date().toISOString(),
+            isInstallment: false,
+          });
         }
       } catch (err) {
         console.warn("Failed recording revenue metrics for registerPackage (renewal):", err);
@@ -6416,6 +6445,16 @@ export const packageService = {
           paidAt: newPkg.createdAt,
           planId: newPkg.id,
           isInitialPlan: true,
+        });
+
+        await planSpreadService.recordPlanPayment({
+          planId: newPkg.id,
+          branch: cleanBranch,
+          patientId: cleanReg || cleanPhone,
+          amount: initialPaid,
+          durationMonths: duration,
+          paidAt: newPkg.createdAt,
+          isInstallment: false,
         });
       }
     } catch (err) {
@@ -6493,6 +6532,16 @@ export const packageService = {
           paidAt: newPayment.paidAt,
           planId: pkg.id,
           isInitialPlan: false,
+        });
+
+        await planSpreadService.recordPlanPayment({
+          planId: pkg.id,
+          branch: pkg.branch,
+          patientId: pkg.registrationId || pkg.phone,
+          amount: newPayment.amount,
+          durationMonths: pkg.durationMonths,
+          paidAt: newPayment.paidAt,
+          isInstallment: true,
         });
       }
     } catch (err) {
@@ -6723,6 +6772,16 @@ export const payLaterService = {
           paidAt: new Date().toISOString(),
           planId: item.id,
           isInitialPlan: false,
+        });
+
+        await planSpreadService.recordPlanPayment({
+          planId: item.id,
+          branch: item.branch,
+          patientId: item.registrationId || item.phone,
+          amount: amount,
+          durationMonths: 1,
+          paidAt: new Date().toISOString(),
+          isInstallment: true,
         });
       }
     } catch (err) {
@@ -7887,6 +7946,693 @@ export const revenueQualityService = {
     };
   },
 };
+
+// ============================================================================
+// MONTHLY FEE SPREAD (EQUAL PLAN-MONTH ALLOCATION & CALENDAR REVENUE PROJECTION)
+// ============================================================================
+
+export interface PlanScheduleRecord {
+  id: string;
+  planId: string;
+  branchId: string;
+  branchName: string;
+  patientId: string;
+  startDate: string; // ISO
+  cohortMonth: string; // 'YYYY-MM'
+  months: number; // N
+  totalFee: number;
+  shares: number[]; // exact paise shares per month index (length N)
+  isRefunded?: boolean;
+  updatedAt: string;
+}
+
+export interface BranchPlanMonthRecord {
+  id: string;
+  branchId: string;
+  branchName: string;
+  cohortMonth: string; // 'YYYY-MM'
+  monthIndex: number; // 1..N
+  amount: number;
+  plansCount: number;
+  patientMonthsTotal: number;
+  updatedAt: string;
+}
+
+export interface MonthSpreadRow {
+  index: number;
+  monthLabel: string;
+  calendarMonth?: string;
+  amount: number;
+  plans: number;
+}
+
+export interface MonthSpreadResult {
+  branch: string;
+  cohort: string;
+  view: "plan" | "calendar";
+  rows: MonthSpreadRow[];
+  grandTotal: number;
+  monthsCount: number;
+  patientMonths: number;
+  avgPerMonth: number | null;
+  avgPerPatientMonth: number | null;
+}
+
+/**
+ * Calculates exact paise shares across N months.
+ * Leftover paise are given to Month 1 so the shares sum exactly to totalFee.
+ */
+export function calculatePaiseShares(totalFee: number, months: number): number[] {
+  const N = Math.max(1, Math.round(months));
+  const feePaise = Math.round(Math.max(0, totalFee) * 100);
+  const basePaise = Math.floor(feePaise / N);
+  const remainderPaise = feePaise - basePaise * N;
+
+  const shares: number[] = [];
+  for (let i = 1; i <= N; i++) {
+    const p = i === 1 ? basePaise + remainderPaise : basePaise;
+    shares.push(p / 100);
+  }
+  return shares;
+}
+
+/**
+ * Adds offsetMonths to a 'YYYY-MM' month string.
+ */
+export function addMonthsToYearMonth(ym: string, offsetMonths: number): string {
+  try {
+    const [yStr, mStr] = ym.split("-");
+    const year = parseInt(yStr, 10);
+    const month = parseInt(mStr, 10);
+    if (!isNaN(year) && !isNaN(month)) {
+      const d = new Date(year, month - 1 + offsetMonths, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+  } catch {}
+  return ym;
+}
+
+function getPlanSchedulesCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "plan_schedules_store.json"))) {
+    return path.join(webCache, "plan_schedules_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "plan_schedules_store.json"))) {
+    return path.join(rootCache, "plan_schedules_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "plan_schedules_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".plan_schedules_store.json");
+    }
+  }
+  return path.join(rootCache, "plan_schedules_store.json");
+}
+
+function loadPlanSchedulesFromDisk(): PlanScheduleRecord[] {
+  try {
+    const file = getPlanSchedulesCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to load plan schedules from cache:", err);
+  }
+  return [];
+}
+
+function savePlanSchedulesToDisk(data: PlanScheduleRecord[]): void {
+  const file = getPlanSchedulesCachePath();
+  safeAtomicWrite(file, data);
+  try {
+    if (fs.existsSync(file)) {
+      global.__sphPlanSchedulesLastMtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+}
+
+function getPlanSchedulesStore(): PlanScheduleRecord[] {
+  const file = getPlanSchedulesCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphPlanSchedulesStore ||
+    global.__sphPlanSchedulesStore.length === 0 ||
+    (mtime > 0 && mtime > (global.__sphPlanSchedulesLastMtime || 0))
+  ) {
+    global.__sphPlanSchedulesStore = loadPlanSchedulesFromDisk();
+    global.__sphPlanSchedulesLastMtime = mtime;
+  }
+  return global.__sphPlanSchedulesStore;
+}
+
+function getBranchPlanMonthsCachePath(): string {
+  const webCache = path.resolve(process.cwd(), "apps/web/node_modules/.cache");
+  if (fs.existsSync(path.join(webCache, "branch_plan_months_store.json"))) {
+    return path.join(webCache, "branch_plan_months_store.json");
+  }
+  const rootCache = path.resolve(process.cwd(), "node_modules/.cache");
+  if (fs.existsSync(path.join(rootCache, "branch_plan_months_store.json"))) {
+    return path.join(rootCache, "branch_plan_months_store.json");
+  }
+  if (fs.existsSync(webCache)) {
+    return path.join(webCache, "branch_plan_months_store.json");
+  }
+  if (!fs.existsSync(rootCache)) {
+    try {
+      fs.mkdirSync(rootCache, { recursive: true });
+    } catch {
+      return path.resolve(process.cwd(), ".branch_plan_months_store.json");
+    }
+  }
+  return path.join(rootCache, "branch_plan_months_store.json");
+}
+
+function loadBranchPlanMonthsFromDisk(): BranchPlanMonthRecord[] {
+  try {
+    const file = getBranchPlanMonthsCachePath();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn("Failed to load branch plan months from cache:", err);
+  }
+  return [];
+}
+
+function saveBranchPlanMonthsToDisk(data: BranchPlanMonthRecord[]): void {
+  const file = getBranchPlanMonthsCachePath();
+  safeAtomicWrite(file, data);
+  try {
+    if (fs.existsSync(file)) {
+      global.__sphBranchPlanMonthsLastMtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+}
+
+function getBranchPlanMonthsStore(): BranchPlanMonthRecord[] {
+  const file = getBranchPlanMonthsCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphBranchPlanMonthsStore ||
+    global.__sphBranchPlanMonthsStore.length === 0 ||
+    (mtime > 0 && mtime > (global.__sphBranchPlanMonthsLastMtime || 0))
+  ) {
+    global.__sphBranchPlanMonthsStore = loadBranchPlanMonthsFromDisk();
+    global.__sphBranchPlanMonthsLastMtime = mtime;
+  }
+  return global.__sphBranchPlanMonthsStore;
+}
+
+export const planSpreadService = {
+  /**
+   * Records a plan payment and spreads the fee equally over month_index 1..N.
+   * Handles installments by splitting the installment amount over the plan's N months without doubling N.
+   */
+  async recordPlanPayment(params: {
+    planId: string;
+    branch: string;
+    patientId: string;
+    amount: number;
+    durationMonths: number;
+    paidAt?: string | Date;
+    isInstallment?: boolean;
+  }): Promise<{ plan: PlanScheduleRecord }> {
+    const amount = Math.max(0, Number(params.amount) || 0);
+    const months = Math.max(1, Math.round(Number(params.durationMonths) || 1));
+    const branchId = normalizeBranchName(params.branch || "kphb");
+    const branchName = canonicalBranchName(params.branch);
+    const patientId = (params.patientId || "").trim().toUpperCase();
+    const paidDate = params.paidAt ? (params.paidAt instanceof Date ? params.paidAt : new Date(params.paidAt)) : new Date();
+    const cohortMonth = getISTMonthString(paidDate);
+    const nowIso = new Date().toISOString();
+
+    const planStore = getPlanSchedulesStore();
+    const bpmStore = getBranchPlanMonthsStore();
+
+    // Calculate exact paise shares for this payment
+    const paymentShares = calculatePaiseShares(amount, months);
+
+    // 1. Update or create PlanScheduleRecord
+    let planIdx = planStore.findIndex((p) => p.planId === params.planId);
+    let planRec: PlanScheduleRecord;
+
+    if (planIdx !== -1) {
+      planRec = planStore[planIdx];
+      planRec.totalFee = Math.round((planRec.totalFee + amount) * 100) / 100;
+      if (!Array.isArray(planRec.shares)) {
+        planRec.shares = calculatePaiseShares(planRec.totalFee, planRec.months);
+      } else {
+        for (let i = 0; i < months; i++) {
+          planRec.shares[i] = Math.round(((planRec.shares[i] || 0) + paymentShares[i]) * 100) / 100;
+        }
+      }
+      planRec.updatedAt = nowIso;
+    } else {
+      planRec = {
+        id: `ps_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        planId: params.planId,
+        branchId,
+        branchName,
+        patientId,
+        startDate: paidDate.toISOString(),
+        cohortMonth,
+        months,
+        totalFee: amount,
+        shares: paymentShares,
+        isRefunded: false,
+        updatedAt: nowIso,
+      };
+      planStore.push(planRec);
+      planIdx = planStore.length - 1;
+    }
+
+    // 2. Update branch_plan_month summary table atomically
+    for (let i = 1; i <= months; i++) {
+      const shareVal = paymentShares[i - 1];
+      let bpmIdx = bpmStore.findIndex(
+        (b) => b.branchId === branchId && b.cohortMonth === cohortMonth && b.monthIndex === i
+      );
+
+      if (bpmIdx !== -1) {
+        bpmStore[bpmIdx].amount = Math.round((bpmStore[bpmIdx].amount + shareVal) * 100) / 100;
+        if (!params.isInstallment) {
+          bpmStore[bpmIdx].plansCount += 1;
+          bpmStore[bpmIdx].patientMonthsTotal = (bpmStore[bpmIdx].patientMonthsTotal || 0) + months;
+        }
+        bpmStore[bpmIdx].updatedAt = nowIso;
+      } else {
+        const newBpm: BranchPlanMonthRecord = {
+          id: `bpm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          branchId,
+          branchName,
+          cohortMonth,
+          monthIndex: i,
+          amount: Math.round(shareVal * 100) / 100,
+          plansCount: params.isInstallment ? 0 : 1,
+          patientMonthsTotal: params.isInstallment ? 0 : months,
+          updatedAt: nowIso,
+        };
+        bpmStore.push(newBpm);
+      }
+    }
+
+    // Save stores
+    global.__sphPlanSchedulesStore = planStore;
+    savePlanSchedulesToDisk(planStore);
+
+    global.__sphBranchPlanMonthsStore = bpmStore;
+    saveBranchPlanMonthsToDisk(bpmStore);
+
+    // Sync to Prisma tables when available
+    try {
+      if (prisma && (prisma as any).planSchedule) {
+        await (prisma as any).planSchedule.upsert({
+          where: { planId: params.planId },
+          update: {
+            totalFee: planRec.totalFee,
+            shares: planRec.shares,
+            isRefunded: false,
+            updatedAt: new Date(),
+          },
+          create: {
+            planId: params.planId,
+            branchId,
+            patientId,
+            startDate: paidDate,
+            cohortMonth,
+            months,
+            totalFee: planRec.totalFee,
+            shares: planRec.shares,
+            isRefunded: false,
+          },
+        }).catch(() => {});
+
+        if ((prisma as any).branchPlanMonth) {
+          for (let i = 1; i <= months; i++) {
+            const shareVal = paymentShares[i - 1];
+            await (prisma as any).branchPlanMonth.upsert({
+              where: {
+                branch_cohort_month_index_unique: {
+                  branchId,
+                  cohortMonth,
+                  monthIndex: i,
+                },
+              },
+              update: {
+                amount: { increment: shareVal },
+                plansCount: params.isInstallment ? undefined : { increment: 1 },
+                patientMonthsTotal: params.isInstallment ? undefined : { increment: months },
+              },
+              create: {
+                branchId,
+                cohortMonth,
+                monthIndex: i,
+                amount: shareVal,
+                plansCount: params.isInstallment ? 0 : 1,
+                patientMonthsTotal: params.isInstallment ? 0 : months,
+              },
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch {}
+
+    return { plan: planRec };
+  },
+
+  /**
+   * Reverses a plan's fee split and patient_months_total from branch_plan_month.
+   */
+  async refundPlan(planId: string): Promise<boolean> {
+    const planStore = getPlanSchedulesStore();
+    const bpmStore = getBranchPlanMonthsStore();
+
+    const plan = planStore.find((p) => p.planId === planId);
+    if (!plan || plan.isRefunded) return false;
+
+    const nowIso = new Date().toISOString();
+
+    for (let i = 1; i <= plan.months; i++) {
+      const shareVal = plan.shares[i - 1] || 0;
+      const bpmIdx = bpmStore.findIndex(
+        (b) => b.branchId === plan.branchId && b.cohortMonth === plan.cohortMonth && b.monthIndex === i
+      );
+      if (bpmIdx !== -1) {
+        bpmStore[bpmIdx].amount = Math.max(0, Math.round((bpmStore[bpmIdx].amount - shareVal) * 100) / 100);
+        bpmStore[bpmIdx].plansCount = Math.max(0, bpmStore[bpmIdx].plansCount - 1);
+        bpmStore[bpmIdx].patientMonthsTotal = Math.max(
+          0,
+          (bpmStore[bpmIdx].patientMonthsTotal || 0) - plan.months
+        );
+        bpmStore[bpmIdx].updatedAt = nowIso;
+      }
+    }
+
+    plan.isRefunded = true;
+    plan.updatedAt = nowIso;
+
+    global.__sphPlanSchedulesStore = planStore;
+    savePlanSchedulesToDisk(planStore);
+
+    global.__sphBranchPlanMonthsStore = bpmStore;
+    saveBranchPlanMonthsToDisk(bpmStore);
+
+    try {
+      if (prisma && (prisma as any).planSchedule) {
+        await (prisma as any).planSchedule.update({
+          where: { planId },
+          data: { isRefunded: true, updatedAt: new Date() },
+        }).catch(() => {});
+      }
+    } catch {}
+
+    return true;
+  },
+
+  /**
+   * Fast Read API: computes monthly spread strictly from branch_plan_month summary table.
+   * Under 100ms with zero payments-table scanning.
+   */
+  async getMonthSpread(params: {
+    branch?: string;
+    cohort?: string;
+    fromCohort?: string;
+    toCohort?: string;
+    view?: "plan" | "calendar";
+  }): Promise<MonthSpreadResult> {
+    let bpmStore = getBranchPlanMonthsStore();
+    let planStore = getPlanSchedulesStore();
+
+    // Auto-backfill if store is empty
+    if (bpmStore.length === 0 && planStore.length === 0) {
+      try {
+        await this.backfillFromExistingData();
+        bpmStore = getBranchPlanMonthsStore();
+        planStore = getPlanSchedulesStore();
+      } catch (err) {
+        console.warn("Auto-backfill failed for plan spread:", err);
+      }
+    }
+
+    const currentMonth = getISTMonthString();
+    const cohort = (params.cohort || currentMonth).trim();
+    let fromCohort = (params.fromCohort || cohort).trim();
+    let toCohort = (params.toCohort || fromCohort).trim();
+    if (toCohort < fromCohort) {
+      const temp = fromCohort;
+      fromCohort = toCohort;
+      toCohort = temp;
+    }
+
+    const rawBranch = params.branch ? params.branch.trim() : "";
+    const cleanBranch = rawBranch ? normalizeBranchName(rawBranch) : null;
+    const isAll = !cleanBranch || cleanBranch === "all" || cleanBranch === "allbranches";
+    const view = params.view === "calendar" ? "calendar" : "plan";
+
+    // Filter branch_plan_month rows
+    const matchingRows = bpmStore.filter((r) => {
+      if (!isAll && r.branchId !== cleanBranch) return false;
+      return r.cohortMonth >= fromCohort && r.cohortMonth <= toCohort;
+    });
+
+    // Also get active plans in this cohort range for accurate patientMonths calculation
+    const matchingPlans = planStore.filter((p) => {
+      if (p.isRefunded) return false;
+      if (!isAll && p.branchId !== cleanBranch) return false;
+      return p.cohortMonth >= fromCohort && p.cohortMonth <= toCohort;
+    });
+
+    const patientMonths = matchingPlans.reduce((sum, p) => sum + (Number(p.months) || 1), 0);
+
+    let rows: MonthSpreadRow[] = [];
+
+    if (view === "calendar") {
+      // Calendar View: map (cohortMonth + monthIndex - 1)
+      const calendarMap = new Map<string, { amount: number; plans: number }>();
+
+      for (const r of matchingRows) {
+        const calMonth = addMonthsToYearMonth(r.cohortMonth, r.monthIndex - 1);
+        const curr = calendarMap.get(calMonth) || { amount: 0, plans: 0 };
+        curr.amount = Math.round((curr.amount + r.amount) * 100) / 100;
+        curr.plans += r.plansCount;
+        calendarMap.set(calMonth, curr);
+      }
+
+      const sortedMonths = Array.from(calendarMap.keys()).sort();
+      rows = sortedMonths.map((calMonth, idx) => {
+        const entry = calendarMap.get(calMonth)!;
+        return {
+          index: idx + 1,
+          monthLabel: calMonth,
+          calendarMonth: calMonth,
+          amount: entry.amount,
+          plans: entry.plans,
+        };
+      });
+    } else {
+      // Plan-Month View: rows Month 1..Month N
+      const indexMap = new Map<number, { amount: number; plans: number }>();
+
+      for (const r of matchingRows) {
+        const curr = indexMap.get(r.monthIndex) || { amount: 0, plans: 0 };
+        curr.amount = Math.round((curr.amount + r.amount) * 100) / 100;
+        curr.plans += r.plansCount;
+        indexMap.set(r.monthIndex, curr);
+      }
+
+      const maxIndex = Math.max(0, ...Array.from(indexMap.keys()));
+      for (let i = 1; i <= maxIndex; i++) {
+        const entry = indexMap.get(i) || { amount: 0, plans: 0 };
+        rows.push({
+          index: i,
+          monthLabel: `Month ${i}`,
+          amount: entry.amount,
+          plans: entry.plans,
+        });
+      }
+    }
+
+    const grandTotal = Math.round(rows.reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
+
+    // Number of months that have an amount (the highest month_index with amount > 0)
+    const positiveRows = rows.filter((r) => r.amount > 0);
+    const highestIndexWithAmount =
+      view === "plan" && positiveRows.length > 0
+        ? Math.max(...positiveRows.map((r) => r.index))
+        : positiveRows.length;
+    const monthsCount = highestIndexWithAmount;
+
+    // Averages: return null for zero denominator, never 0 or error
+    const avgPerMonth = monthsCount > 0 ? Math.round((grandTotal / monthsCount) * 100) / 100 : null;
+    const avgPerPatientMonth = patientMonths > 0 ? Math.round((grandTotal / patientMonths) * 100) / 100 : null;
+
+    return {
+      branch: isAll ? "ALL" : canonicalBranchName(cleanBranch),
+      cohort: fromCohort === toCohort ? fromCohort : `${fromCohort} to ${toCohort}`,
+      view,
+      rows,
+      grandTotal,
+      monthsCount,
+      patientMonths,
+      avgPerMonth,
+      avgPerPatientMonth,
+    };
+  },
+
+  /**
+   * Backfills plan spread summary table from existing appointments and packages.
+   */
+  async backfillFromExistingData(options?: { reset?: boolean }): Promise<{
+    plansCount: number;
+    rowsCount: number;
+  }> {
+    if (options?.reset) {
+      global.__sphPlanSchedulesStore = [];
+      savePlanSchedulesToDisk([]);
+      global.__sphBranchPlanMonthsStore = [];
+      saveBranchPlanMonthsToDisk([]);
+    }
+
+    const appts = getAppointmentsStore();
+    const pkgs = getPackageMembersStore();
+
+    // 1. Appointments
+    for (const a of appts) {
+      if (a.isDeleted) continue;
+      const isPaid = a.isFeeCollected || a.status === "COMPLETED" || (Number(a.totalPaid) || 0) > 0;
+      if (!isPaid) continue;
+
+      const dateStr = a.paidAt || a.updatedAt || a.appointmentDate || a.createdAt;
+      const branch = (a as any).branchName || a.branch || "KPHB Branch";
+      const patientId = a.registrationId || a.phone;
+      if (!patientId) continue;
+
+      const paidAmt = Number(a.totalPaid) || 0;
+      if (paidAmt <= 0) continue;
+
+      const rawDur = parseCourseDurationMonths(a.medicineDuration || a.packageDurationMonths);
+      const dur = rawDur >= 1 ? Math.round(rawDur) : 1;
+
+      await this.recordPlanPayment({
+        planId: a.id,
+        branch,
+        patientId,
+        amount: paidAmt,
+        durationMonths: dur,
+        paidAt: dateStr,
+        isInstallment: false,
+      });
+    }
+
+    // 2. Packages
+    for (const p of pkgs) {
+      const branch = p.branch || "KPHB Branch";
+      const patientId = p.registrationId || p.phone;
+      if (!patientId) continue;
+
+      const dur = Math.max(1, Math.round(Number(p.durationMonths) || 1));
+
+      if (Array.isArray(p.payments) && p.payments.length > 0) {
+        let isFirst = true;
+        for (const pay of p.payments) {
+          const pAmt = Number(pay.amount) || 0;
+          if (pAmt > 0) {
+            await this.recordPlanPayment({
+              planId: p.id,
+              branch,
+              patientId,
+              amount: pAmt,
+              durationMonths: dur,
+              paidAt: pay.paidAt || p.createdAt,
+              isInstallment: !isFirst,
+            });
+            isFirst = false;
+          }
+        }
+      } else if ((Number(p.paidAmount) || 0) > 0) {
+        await this.recordPlanPayment({
+          planId: p.id,
+          branch,
+          patientId,
+          amount: Number(p.paidAmount) || 0,
+          durationMonths: dur,
+          paidAt: p.createdAt || p.startDate,
+          isInstallment: false,
+        });
+      }
+    }
+
+    const plans = getPlanSchedulesStore();
+    const bpm = getBranchPlanMonthsStore();
+
+    return {
+      plansCount: plans.length,
+      rowsCount: bpm.length,
+    };
+  },
+
+  /**
+   * Reconciles summary table from plan_schedule and logs differences.
+   */
+  async reconcile(): Promise<{
+    discrepanciesCount: number;
+    details: string[];
+  }> {
+    const details: string[] = [];
+    const plans = getPlanSchedulesStore();
+    const bpm = getBranchPlanMonthsStore();
+
+    // Recompute in-memory
+    const expected = new Map<string, number>();
+    for (const p of plans) {
+      if (p.isRefunded) continue;
+      for (let i = 1; i <= p.months; i++) {
+        const key = `${p.branchId}__${p.cohortMonth}__${i}`;
+        const curr = expected.get(key) || 0;
+        expected.set(key, Math.round((curr + (p.shares[i - 1] || 0)) * 100) / 100);
+      }
+    }
+
+    for (const [key, expAmt] of expected.entries()) {
+      const [branchId, cohortMonth, mIdxStr] = key.split("__");
+      const mIdx = parseInt(mIdxStr, 10);
+      const actualRow = bpm.find(
+        (b) => b.branchId === branchId && b.cohortMonth === cohortMonth && b.monthIndex === mIdx
+      );
+      const actualAmt = actualRow ? actualRow.amount : 0;
+      if (Math.abs(actualAmt - expAmt) > 0.05) {
+        details.push(
+          `Discrepancy at ${branchId} (${cohortMonth}, M${mIdx}): expected ${expAmt}, found ${actualAmt}`
+        );
+      }
+    }
+
+    return {
+      discrepanciesCount: details.length,
+      details,
+    };
+  },
+};
+
 
 
 

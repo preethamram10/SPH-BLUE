@@ -42,6 +42,7 @@ import { useRouter } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
 import BranchRevenueQualityPanel from "@/components/BranchRevenueQualityPanel";
+import MonthlyFeeSpreadPanel from "@/components/MonthlyFeeSpreadPanel";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -995,6 +996,15 @@ export default function ReceptionDashboardPage() {
             embedded={true}
             title={`${branchName.replace(/Spiritual Homeopathy/gi, "").trim() || "Branch"} Revenue Quality`}
             subtitle="Treated patients, average duration, ARPU & monthly quality rate"
+          />
+
+          {/* ADD-ON: Monthly Fee Spread & Averages (Month 1..N, Avg / Month, Avg / Patient-Month) */}
+          <MonthlyFeeSpreadPanel
+            initialBranch={branchName}
+            allowBranchChange={false}
+            embedded={true}
+            title={`${branchName.replace(/Spiritual Homeopathy/gi, "").trim() || "Branch"} Monthly Fee Spread`}
+            subtitle="Equal N-month fee distribution, Avg/Month and Avg/Patient-Month metrics"
           />
 
           {/* UPCOMING APPOINTMENTS SECTION */}
