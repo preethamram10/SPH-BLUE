@@ -12,16 +12,9 @@ export async function GET(req: NextRequest) {
     const rawBranch = searchParams.get("branch");
     const date = searchParams.get("date") || undefined;
 
-    const cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+    let cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
     if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
-      return NextResponse.json({
-        success: true,
-        branch: cleanBranch,
-        date,
-        maxUpdatedAt: "",
-        count: 0,
-        version: "empty:0",
-      });
+      cleanBranch = "Kphb Branch";
     }
 
     const cacheKey = `${cleanBranch.toLowerCase()}:${date || "all"}`;

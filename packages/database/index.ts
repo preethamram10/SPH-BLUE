@@ -33,6 +33,12 @@ declare global {
   var __sphCleaningTasksStore: any[] | undefined;
   // eslint-disable-next-line no-var
   var __sphPackageMembersStore: any[] | undefined;
+  // eslint-disable-next-line no-var
+  var __sphApptsLastMtime: number | undefined;
+  // eslint-disable-next-line no-var
+  var __sphPatientsLastMtime: number | undefined;
+  // eslint-disable-next-line no-var
+  var __sphPackageMembersLastMtime: number | undefined;
 }
 
 export const prisma =
@@ -1992,14 +1998,32 @@ function getPatientsRegIdIndex(): Map<string, PatientRecord> {
 function savePatientsToDisk(data: PatientRecord[]): void {
   const file = getPatientsCachePath();
   safeAtomicWrite(file, data);
+  try {
+    if (fs.existsSync(file)) {
+      global.__sphPatientsLastMtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
   rebuildPatientIndices(data);
 }
 
 function getPatientsStore(): PatientRecord[] {
-  if (!global.__sphPatientsStore) {
+  const file = getPatientsCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphPatientsStore ||
+    !global.__sphPatientsLastMtime ||
+    (mtime > 0 && mtime > global.__sphPatientsLastMtime)
+  ) {
     global.__sphPatientsStore = loadPatientsFromDisk();
-  }
-  if (!global.__sphPatientsPhoneIndex || !global.__sphPatientsRegIdIndex) {
+    global.__sphPatientsLastMtime = mtime;
+    rebuildPatientIndices(global.__sphPatientsStore);
+  } else if (!global.__sphPatientsPhoneIndex || !global.__sphPatientsRegIdIndex) {
     rebuildPatientIndices(global.__sphPatientsStore);
   }
   return global.__sphPatientsStore;
@@ -2539,12 +2563,30 @@ function getAppointmentsRegIdIndex(): Map<string, AppointmentRecord[]> {
 function saveAppointmentsToDisk(data: AppointmentRecord[]): void {
   const file = getAppointmentsCachePath();
   safeAtomicWrite(file, data);
+  try {
+    if (fs.existsSync(file)) {
+      global.__sphApptsLastMtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
   rebuildAppointmentIndices();
 }
 
 function getAppointmentsStore(): AppointmentRecord[] {
-  if (!global.__sphAppointmentsStore) {
+  const file = getAppointmentsCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphAppointmentsStore ||
+    !global.__sphApptsLastMtime ||
+    (mtime > 0 && mtime > global.__sphApptsLastMtime)
+  ) {
     global.__sphAppointmentsStore = loadAppointmentsFromDisk();
+    global.__sphApptsLastMtime = mtime;
     rebuildAppointmentIndices();
   }
   return global.__sphAppointmentsStore;
@@ -5449,11 +5491,29 @@ function loadPackageMembersFromDisk(): PackageMemberRecord[] {
 function savePackageMembersToDisk(data: PackageMemberRecord[]): void {
   const file = getPackageMembersCachePath();
   safeAtomicWrite(file, data);
+  try {
+    if (fs.existsSync(file)) {
+      global.__sphPackageMembersLastMtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
 }
 
 function getPackageMembersStore(): PackageMemberRecord[] {
-  if (!global.__sphPackageMembersStore) {
+  const file = getPackageMembersCachePath();
+  let mtime = 0;
+  try {
+    if (fs.existsSync(file)) {
+      mtime = fs.statSync(file).mtimeMs;
+    }
+  } catch {}
+
+  if (
+    !global.__sphPackageMembersStore ||
+    !global.__sphPackageMembersLastMtime ||
+    (mtime > 0 && mtime > global.__sphPackageMembersLastMtime)
+  ) {
     global.__sphPackageMembersStore = loadPackageMembersFromDisk();
+    global.__sphPackageMembersLastMtime = mtime;
   }
   return global.__sphPackageMembersStore;
 }

@@ -22,7 +22,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
-import { getActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
+import { getActiveBranch, getAssignedBranch, saveActiveBranch, apiFetch, clearAllAuthData } from "../../services/auth";
 import { getBranchPhone } from "../../utils/branchPhone";
 import { API_BASE_URL } from "../../config/api";
 import { useNetwork } from "../../context/NetworkContext";
@@ -61,7 +61,7 @@ export default function ReceptionDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isOnline, checkConnection } = useNetwork();
-  const [activeBranch, setActiveBranch] = useState<any>(null);
+  const [activeBranch, setActiveBranch] = useState<any>({ name: "Kphb Branch" });
 
   // Date Helpers (DD-MM-YYYY)
   const getYesterdayStr = () => {
@@ -196,13 +196,40 @@ export default function ReceptionDashboard() {
     } catch {}
   };
 
-  // Initial branch load
+  // Initial branch load: Ensure valid branch is loaded and persisted immediately
   useEffect(() => {
-    getActiveBranch().then((b) => {
+    getActiveBranch().then(async (b) => {
       if (b && b.name) {
         setActiveBranch(b);
         checkCleaningAuditLockout(b.name);
         fetchBranchTarget(b.name);
+      } else {
+        const assigned = await getAssignedBranch();
+        if (assigned && assigned.name) {
+          await saveActiveBranch(assigned);
+          setActiveBranch(assigned);
+          checkCleaningAuditLockout(assigned.name);
+          fetchBranchTarget(assigned.name);
+        } else {
+          try {
+            const data = await apiFetch<any>("/branches");
+            if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+              const defaultBranch = data.data[0];
+              await saveActiveBranch(defaultBranch);
+              setActiveBranch(defaultBranch);
+              checkCleaningAuditLockout(defaultBranch.name);
+              fetchBranchTarget(defaultBranch.name);
+            } else {
+              const fallback = { name: "Kphb Branch" };
+              await saveActiveBranch(fallback);
+              setActiveBranch(fallback);
+            }
+          } catch {
+            const fallback = { name: "Kphb Branch" };
+            await saveActiveBranch(fallback);
+            setActiveBranch(fallback);
+          }
+        }
       }
     });
   }, []);
@@ -274,27 +301,16 @@ export default function ReceptionDashboard() {
   }, [isScreenFocused, appState, selectedDate, todayStr, cleanBranchName, refetchAppointments, refetchSummary]);
 
   // 4. On returning to Dashboard from other screens:
-  // ZERO calls made unless > 60 seconds have elapsed AND the change-check says data changed!
+  // Immediately refetch appointments & summary so newly created/updated appointments show instantly
   useFocusEffect(
     useCallback(() => {
       setIsScreenFocused(true);
-      const elapsed = Date.now() - lastVerifiedAtRef.current;
-      if (elapsed > 60000 && cleanBranchName) {
-        checkAppointmentsChanges(cleanBranchName, selectedDate).then((changes) => {
-          if (changes && changes.version) {
-            lastVerifiedAtRef.current = Date.now();
-            if (lastSeenVersionRef.current && changes.version !== lastSeenVersionRef.current) {
-              lastSeenVersionRef.current = changes.version;
-              refetchAppointments();
-              refetchSummary();
-            }
-          }
-        });
-      }
+      refetchAppointments();
+      refetchSummary();
       return () => {
         setIsScreenFocused(false);
       };
-    }, [cleanBranchName, selectedDate, refetchAppointments, refetchSummary])
+    }, [refetchAppointments, refetchSummary])
   );
 
   // Categorized appointments from cached list

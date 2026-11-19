@@ -82,8 +82,6 @@ const renderVisitBadge = (appt: any) => {
 
 export default function ReceptionDashboardPage() {
   const router = useRouter();
-  const [branchName, setBranchName] = useState("");
-  const [currentDate, setCurrentDate] = useState("");
 
   // Date Helpers (DD-MM-YYYY)
   const getTodayStr = () => {
@@ -102,6 +100,10 @@ export default function ReceptionDashboardPage() {
     const y = tomorrow.getFullYear();
     return `${d}-${m}-${y}`;
   };
+
+  const [isMounted, setIsMounted] = useState(false);
+  const [branchName, setBranchName] = useState("Kphb Branch");
+  const [currentDate, setCurrentDate] = useState("");
 
   const toISODate = (ddmmyyyy: string) => {
     if (!ddmmyyyy) return "";
@@ -122,11 +124,11 @@ export default function ReceptionDashboardPage() {
     return yyyymmdd;
   };
 
-  const [todayStr, setTodayStr] = useState("");
-  const [tomorrowStr, setTomorrowStr] = useState("");
+  const [todayStr, setTodayStr] = useState(getTodayStr);
+  const [tomorrowStr, setTomorrowStr] = useState(getTomorrowStr);
 
-  // Selected Date Filter for Appointments (Default: Today, initialized in useEffect)
-  const [selectedDate, setSelectedDate] = useState("");
+  // Selected Date Filter for Appointments (Default: Today)
+  const [selectedDate, setSelectedDate] = useState(getTodayStr);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"ALL" | "UPCOMING" | "ACTIVE" | "COLLECT_FEE" | "COMPLETED">("ALL");
@@ -499,6 +501,7 @@ export default function ReceptionDashboardPage() {
   };
 
   useEffect(() => {
+    setIsMounted(true);
     const today = getTodayStr();
     const tomorrow = getTomorrowStr();
     setTodayStr(today);
@@ -506,6 +509,7 @@ export default function ReceptionDashboardPage() {
     setSelectedDate(today);
 
     const saved = localStorage.getItem("branch_name") || "Kphb Branch";
+    setBranchName(saved);
     fetch("/api/branches")
       .then((res) => res.json())
       .then((data) => {
@@ -550,14 +554,16 @@ export default function ReceptionDashboardPage() {
 
   // Fetch appointments live from API
   const fetchAppointments = async (branch: string, dt: string, isSilent: boolean = false) => {
-    if (!dt || !branch) return;
-    const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
-    if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") return;
+    const safeBranch = branch && branch.toLowerCase() !== "clinic" && branch !== "Spiritual Homeopathy Clinic"
+      ? branch
+      : "Kphb Branch";
+    const safeDt = dt || getTodayStr();
+    const cleanBranch = safeBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "Kphb Branch";
     if (!isSilent) {
       setIsLoadingAppointments(true);
     }
     try {
-      const res = await fetch(`/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dt)}`);
+      const res = await fetch(`/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(safeDt)}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.appointments)) {
@@ -607,24 +613,24 @@ export default function ReceptionDashboardPage() {
   };
 
   useEffect(() => {
-    if (!selectedDate || !branchName || branchName.toLowerCase() === "clinic" || branchName === "Spiritual Homeopathy Clinic") return;
+    const activeBranchToUse = branchName && branchName.toLowerCase() !== "clinic" && branchName !== "Spiritual Homeopathy Clinic"
+      ? branchName
+      : "Kphb Branch";
+    const dateToUse = selectedDate || getTodayStr();
+
     // Initial fetch for the selected date & branch target
-    fetchAppointments(branchName, selectedDate, appointments.length > 0);
-    fetchBranchTarget(branchName);
+    fetchAppointments(activeBranchToUse, dateToUse, appointments.length > 0);
+    fetchBranchTarget(activeBranchToUse);
 
     // Auto-sync silently in the background every 10 seconds without showing loading spinner or flashing the table
     const interval = setInterval(() => {
-      if (branchName && selectedDate) {
-        fetchAppointments(branchName, selectedDate, true);
-        fetchBranchTarget(branchName);
-      }
+      fetchAppointments(activeBranchToUse, dateToUse, true);
+      fetchBranchTarget(activeBranchToUse);
     }, 10000);
 
     const handleFocus = () => {
-      if (branchName && selectedDate) {
-        fetchAppointments(branchName, selectedDate, true);
-        fetchBranchTarget(branchName);
-      }
+      fetchAppointments(activeBranchToUse, dateToUse, true);
+      fetchBranchTarget(activeBranchToUse);
     };
     window.addEventListener("focus", handleFocus);
 
@@ -768,8 +774,8 @@ export default function ReceptionDashboardPage() {
                   Front Desk Active
                 </span>
               </div>
-              <p className="text-[10.5px] text-slate-400 mt-0.5">
-                {branchName} • {currentDate}
+              <p suppressHydrationWarning className="text-[10.5px] text-slate-400 mt-0.5">
+                {isMounted ? branchName : "Kphb Branch"} • {currentDate}
               </p>
             </div>
 
@@ -1197,7 +1203,7 @@ export default function ReceptionDashboardPage() {
                           </td>
                           <td className="py-2 px-3">
                             <div className="font-bold text-slate-800 text-[11px]">{appt.doctorName}</div>
-                            <div className="text-[10px] text-slate-400">{branchName}</div>
+                            <div suppressHydrationWarning className="text-[10px] text-slate-400">{branchName}</div>
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1 font-bold text-slate-800 text-[11px]">
@@ -1425,7 +1431,7 @@ export default function ReceptionDashboardPage() {
                     <div className="p-8 text-center space-y-1.5">
                       <Calendar className="w-6 h-6 text-slate-300 mx-auto" />
                       <p className="text-xs font-bold text-slate-700">No deleted appointments</p>
-                      <p className="text-[10.5px] text-slate-400">
+                      <p suppressHydrationWarning className="text-[10.5px] text-slate-400">
                         There are no appointments deleted within the last 24 hours for {branchName}.
                       </p>
                     </div>

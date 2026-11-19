@@ -11,20 +11,9 @@ export async function GET(req: NextRequest) {
 
     const isExplicitAll =
       rawBranch === "ALL" || rawBranch === "All Branches" || rawBranch?.toLowerCase() === "all";
-    const cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+    let cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
     if (!isExplicitAll && (!cleanBranch || cleanBranch.toLowerCase() === "clinic")) {
-      return NextResponse.json({
-        success: true,
-        summary: {
-          total: 0,
-          waiting: 0,
-          inConsultation: 0,
-          collectFee: 0,
-          completed: 0,
-          optedFollowUp: 0,
-          notOptedFollowUp: 0,
-        },
-      });
+      cleanBranch = "Kphb Branch";
     }
 
     const branch = isExplicitAll ? undefined : cleanBranch;

@@ -21,7 +21,10 @@ export interface ChangesData {
  * Lightweight summary count hook: computes fast in DB (< 5ms)
  */
 export function useAppointmentsSummary(branch: string | undefined, date: string | undefined) {
-  const cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  let cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
+    cleanBranch = "Kphb Branch";
+  }
 
   return useQuery<AppointmentsSummaryData>({
     queryKey: ["appointments-summary", cleanBranch, date],
@@ -54,9 +57,9 @@ export function useAppointmentsSummary(branch: string | undefined, date: string 
       };
     },
     enabled: !!cleanBranch && !!date,
-    staleTime: 1000 * 60 * 10, // 10 minutes fresh
-    gcTime: 1000 * 60 * 25,
-    refetchOnWindowFocus: false,
+    staleTime: 5000, // 5 seconds fresh
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -68,7 +71,10 @@ export function useAppointmentsList(
   date: string | undefined,
   options?: { enabled?: boolean; refetchInterval?: number | false }
 ) {
-  const cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  let cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
+    cleanBranch = "Kphb Branch";
+  }
 
   return useQuery<any[]>({
     queryKey: ["appointments-list", cleanBranch, date],
@@ -83,9 +89,9 @@ export function useAppointmentsList(
       return [];
     },
     enabled: options?.enabled !== false && !!cleanBranch && !!date,
-    staleTime: 1000 * 60 * 10, // 10 minutes fresh (no unnecessary re-fetches on navigation)
-    gcTime: 1000 * 60 * 25,
-    refetchOnWindowFocus: false,
+    staleTime: 5000, // 5 seconds fresh
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: true,
     refetchInterval: options?.refetchInterval ?? false,
   });
 }
@@ -98,7 +104,10 @@ export async function checkAppointmentsChanges(
   branch: string | undefined,
   date: string | undefined
 ): Promise<ChangesData | null> {
-  const cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  let cleanBranch = (branch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+  if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
+    cleanBranch = "Kphb Branch";
+  }
   if (!cleanBranch || !date) return null;
   try {
     const data = await apiFetch<any>(
@@ -121,7 +130,10 @@ export async function checkAppointmentsChanges(
  * Pre-fetch helper to pre-warm cache for Yesterday / Tomorrow in the background
  */
 export async function prefetchDateAppointments(queryClient: any, branch: string, date: string) {
-  const cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
+  let cleanBranch = branch.replace(/Spiritual Homeopathy/gi, "").trim();
+  if (!cleanBranch || cleanBranch.toLowerCase() === "clinic") {
+    cleanBranch = "Kphb Branch";
+  }
   if (!cleanBranch || !date) return;
 
   await Promise.all([
@@ -133,7 +145,7 @@ export async function prefetchDateAppointments(queryClient: any, branch: string,
         );
         return data?.summary;
       },
-      staleTime: 1000 * 60 * 10,
+      staleTime: 5000,
     }),
     queryClient.prefetchQuery({
       queryKey: ["appointments-list", cleanBranch, date],
@@ -143,7 +155,7 @@ export async function prefetchDateAppointments(queryClient: any, branch: string,
         );
         return data?.appointments || [];
       },
-      staleTime: 1000 * 60 * 10,
+      staleTime: 5000,
     }),
   ]);
 }

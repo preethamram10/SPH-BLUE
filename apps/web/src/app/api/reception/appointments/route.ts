@@ -15,13 +15,14 @@ export async function GET(req: NextRequest) {
     const date = searchParams.get("date") || undefined;
     const doctorId = searchParams.get("doctorId") || undefined;
 
-    // Strict branch guard:
+    // Robust branch resolution:
+    // If branch is explicitly "ALL" or "All Branches", return all branches.
     // If no branch provided or it's a generic placeholder like "Spiritual Homeopathy Clinic",
-    // do NOT return appointments from all branches. Return empty array unless branch is explicitly "ALL" or "All Branches".
+    // fallback cleanly to primary "Kphb Branch" so valid clinic appointments always load on initial mount.
     const isExplicitAll = rawBranch === "ALL" || rawBranch === "All Branches" || rawBranch?.toLowerCase() === "all";
-    const cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
+    let cleanBranch = (rawBranch || "").replace(/Spiritual Homeopathy/gi, "").trim();
     if (!isExplicitAll && (!cleanBranch || cleanBranch.toLowerCase() === "clinic")) {
-      return NextResponse.json({ success: true, appointments: [] });
+      cleanBranch = "Kphb Branch";
     }
 
     const branch = isExplicitAll ? undefined : cleanBranch;
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
       doctorName: doctorName || "Consultant Doctor",
       appointmentDate,
       timeSlot: selectedTimeSlot,
-      branch: branch || "Clinic Branch",
+      branch: branch && branch.toLowerCase() !== "clinic" ? branch : "Kphb Branch",
       isReback: finalIsReback,
       notes,
     });

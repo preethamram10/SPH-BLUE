@@ -490,11 +490,10 @@ function OldPrescriptionEntryContent() {
         {feedback && (
           <div className="px-6 pt-4">
             <div
-              className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-2xs ${
-                feedback.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : "bg-rose-50 border-rose-200 text-rose-800"
-              }`}
+              className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-between shadow-2xs ${feedback.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-rose-50 border-rose-200 text-rose-800"
+                }`}
             >
               <div className="flex items-center gap-2">
                 {feedback.type === "success" ? (
@@ -553,11 +552,10 @@ function OldPrescriptionEntryContent() {
                       type="button"
                       onClick={handleGenerateId}
                       disabled={isCheckingId}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-2xs cursor-pointer transition-colors ${
-                        hasGeneratedId
-                          ? "bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                          : "bg-sky-50 border border-sky-200 text-[#0284c7] hover:bg-sky-100"
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-2xs cursor-pointer transition-colors ${hasGeneratedId
+                        ? "bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                        : "bg-sky-50 border border-sky-200 text-[#0284c7] hover:bg-sky-100"
+                        }`}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>{hasGeneratedId ? "ID Reserved" : "Generate New ID"}</span>
@@ -1143,9 +1141,8 @@ function OldPrescriptionEntryContent() {
                   setViewerRotation(0);
                   setViewerZoom(1);
                 }}
-                className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
-                  i === viewerIndex ? "border-sky-400 scale-105 shadow-md" : "border-white/20 opacity-60 hover:opacity-100"
-                }`}
+                className={`relative w-12 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${i === viewerIndex ? "border-sky-400 scale-105 shadow-md" : "border-white/20 opacity-60 hover:opacity-100"
+                  }`}
               >
                 <img src={imgUrl} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover" />
                 <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] font-bold text-center text-white">
