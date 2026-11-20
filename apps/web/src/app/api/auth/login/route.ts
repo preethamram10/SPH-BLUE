@@ -162,6 +162,7 @@ export async function POST(request: Request) {
         (matchedSchedule as any)?.doctorCategory === "HEAD" ||
         dbUser?.role === "HEAD_DOCTOR" ||
         dbUser?.doctorCategory === "HEAD" ||
+        docName.toLowerCase().includes("prashant") ||
         docName.toLowerCase().includes("prashanth") ||
         docName.toLowerCase().includes("head") ||
         docName.toLowerCase().includes("vaidya") ||

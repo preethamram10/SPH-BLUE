@@ -60,6 +60,7 @@ export default function DoctorTotalRevenuePage() {
     const isHead =
       savedIsHead === "true" ||
       savedCategory === "HEAD" ||
+      docLower.includes("prashant") ||
       docLower.includes("prashanth") ||
       docLower.includes("head") ||
       docLower.includes("vaidya") ||

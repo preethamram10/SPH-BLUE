@@ -77,6 +77,7 @@ const MARKETING_SOURCES = [
   "Practo",
   "Facebook",
   "Instagram",
+  "Other",
 ];
 const CONSULTATION_MODES = [
   { id: "In-Clinic", label: "In-Clinic" },

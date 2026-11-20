@@ -16,7 +16,7 @@ export default function MobileGlobalPatientsScreen() {
   const [search, setSearch] = useState("");
 
   const patients = [
-    { mrn: "SPH-00214", name: "S. Swathi Rao", phone: "+91 9848011111", age: "34 / F", branch: "KPHB Branch", doctor: "Dr. Prashanth", visits: 12 },
+    { mrn: "SPH-00214", name: "S. Swathi Rao", phone: "+91 9848011111", age: "34 / F", branch: "KPHB Branch", doctor: "Dr. Prashant K Vaidya", visits: 12 },
     { mrn: "SPH-00215", name: "M. Rajesh Kumar", phone: "+91 9849222222", age: "45 / M", branch: "Chandanagar", doctor: "Dr. Padma priya", visits: 8 },
     { mrn: "SPH-00216", name: "B. Venkatesh", phone: "+91 9700333333", age: "29 / M", branch: "Nallagandla", doctor: "Dr. Jobeadh", visits: 4 },
   ];

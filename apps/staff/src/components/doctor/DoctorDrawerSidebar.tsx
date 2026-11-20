@@ -57,6 +57,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
           role === "ADMIN" ||
           specialty.includes("head") ||
           specialty.includes("chief") ||
+          name.includes("prashant") ||
           name.includes("prashanth") ||
           name.includes("head") ||
           name.includes("vaidya") ||

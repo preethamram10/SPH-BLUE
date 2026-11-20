@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
         (matchedSchedule as any)?.doctorCategory === "HEAD" ||
         dbUser?.role === "HEAD_DOCTOR" ||
         dbUser?.doctorCategory === "HEAD" ||
+        docName.toLowerCase().includes("prashant") ||
         docName.toLowerCase().includes("prashanth") ||
         docName.toLowerCase().includes("head") ||
         docName.toLowerCase().includes("vaidya") ||
@@ -367,7 +368,8 @@ export async function POST(req: NextRequest) {
           (matchedSchedule as any)?.doctorCategory === "HEAD" ||
           dbUser?.role === "HEAD_DOCTOR" ||
           dbUser?.doctorCategory === "HEAD" ||
-          docName.toLowerCase().includes("prashanth") ||
+          docName.toLowerCase().includes("prashant") ||
+        docName.toLowerCase().includes("prashanth") ||
           docName.toLowerCase().includes("head") ||
           docName.toLowerCase().includes("vaidya") ||
           docName.toLowerCase().includes("chief");

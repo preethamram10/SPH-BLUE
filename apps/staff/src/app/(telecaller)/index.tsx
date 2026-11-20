@@ -603,7 +603,7 @@ export default function TelecallerPortalScreen() {
                       </Text>
                     </View>
                     <Text style={styles.doctorText}>
-                      {item.doctorName?.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName || "Prashanth K Vaidya"}`}
+                      {item.doctorName?.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName || "Prashant K Vaidya"}`}
                     </Text>
                   </View>
 

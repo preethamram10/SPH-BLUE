@@ -982,7 +982,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                               <td className="py-3 px-4 font-bold text-slate-900">
                                 {a.appointmentDate || "Date N/A"}
                               </td>
-                              <td className="py-3 px-4 text-slate-700">{a.doctorName || "Dr. Prashanth"}</td>
+                              <td className="py-3 px-4 text-slate-700">{a.doctorName || "Dr. Prashant K Vaidya"}</td>
                               <td className="py-3 px-4 text-slate-500">{a.branch || patient.branch}</td>
                               <td className="py-3 px-4">
                                 <span

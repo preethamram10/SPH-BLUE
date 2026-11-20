@@ -95,6 +95,7 @@ export async function getActiveDoctor(): Promise<any | null> {
         doc.role === "HEAD_DOCTOR" ||
         specialty.includes("head") ||
         specialty.includes("chief") ||
+        name.includes("prashant") ||
         name.includes("prashanth") ||
         name.includes("head") ||
         name.includes("vaidya") ||

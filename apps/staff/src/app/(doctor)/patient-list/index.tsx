@@ -67,7 +67,9 @@ export default function DoctorPatientListScreen() {
         const branchName = activeBranch?.name || activeBranch?.branch || "";
         const isHead =
           activeDoctor?.isHeadDoctor === true ||
-          (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
+          (activeDoctor?.name || "").toLowerCase().includes("prashant") ||
+          (activeDoctor?.name || "").toLowerCase().includes("prashant") ||
+      (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
           (activeDoctor?.name || "").toLowerCase().includes("head");
         const doctorName = isHead ? "ALL" : (activeDoctor?.name || "");
 
@@ -105,6 +107,7 @@ export default function DoctorPatientListScreen() {
     const branchName = activeBranch?.name || activeBranch?.branch || "";
     const isHead =
       activeDoctor?.isHeadDoctor === true ||
+      (activeDoctor?.name || "").toLowerCase().includes("prashant") ||
       (activeDoctor?.name || "").toLowerCase().includes("prashanth") ||
       (activeDoctor?.name || "").toLowerCase().includes("head");
     const doctorName = isHead ? "ALL" : (activeDoctor?.name || "");
