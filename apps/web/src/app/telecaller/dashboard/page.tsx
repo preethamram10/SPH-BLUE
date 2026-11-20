@@ -25,6 +25,9 @@ import {
   Stethoscope,
   ChevronDown,
   PhoneOutgoing,
+  Users,
+  CalendarCheck,
+  History,
 } from "lucide-react";
 
 type TelecallerTab = "followups" | "book_appointment" | "log_call";
@@ -458,92 +461,155 @@ function TelecallerDashboardContent() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
-      {/* Sleek Telecaller Sidebar */}
+      {/* Sleek Telecaller Sidebar (Reception Portal Styled) */}
       <TelecallerSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Main Work Area */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
-        <div className="w-full max-w-[1500px] mx-auto p-4 sm:p-6 space-y-4">
-          {/* Top Telecaller Header Banner */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center shadow-2xs border border-sky-100">
-                <Headset className="w-6 h-6 text-sky-600" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                    Telecaller Calling Portal
-                  </h1>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
-                    {telecallerProfile.telecallerId}
-                  </span>
+        {/* Sticky Header Bar - Matching Reception Portal */}
+        <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-6 py-3.5 shadow-2xs">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
+                  <Headset className="w-4 h-4" />
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Logged in as <span className="font-bold text-slate-700">{telecallerProfile.name}</span> • Branch:{" "}
-                  <span className="font-semibold text-slate-700">{telecallerProfile.assignedBranch}</span>
-                </p>
+                <h1 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Telecaller Calling &amp; Follow-up Portal
+                </h1>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  Live Queue
+                </span>
               </div>
+              <p className="text-[11.5px] text-slate-500 mt-0.5">
+                Logged in as <span className="font-bold text-slate-700">{telecallerProfile.name}</span> ({telecallerProfile.telecallerId}) • Branch:{" "}
+                <span className="font-semibold text-slate-700">{telecallerProfile.assignedBranch}</span>
+              </p>
             </div>
 
-            {/* Quick Metrics Bar */}
-            <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-              <div className="px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200/70 text-center">
-                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  Follow-ups
-                </span>
-                <span className="text-sm font-black text-slate-800">{followUps.length}</span>
-              </div>
-              <div className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200/70 text-center">
-                <span className="block text-[10px] uppercase font-bold text-emerald-600 tracking-wider">
-                  Booked by Me
-                </span>
-                <span className="text-sm font-black text-emerald-700">{telecallerProfile.bookedCount}</span>
-              </div>
-              <div className="px-3.5 py-2 rounded-xl bg-purple-50 border border-purple-200/70 text-center">
-                <span className="block text-[10px] uppercase font-bold text-purple-600 tracking-wider">
-                  Call Logs
-                </span>
-                <span className="text-sm font-black text-purple-700">{callLogs.length}</span>
+            {/* Actions: Branch Selector, Refresh, Stat Badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Branch Selector */}
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+              >
+                <option value="All Branches">All Clinic Branches</option>
+                {branches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+
+              {/* Refresh Button */}
+              <button
+                onClick={() => {
+                  fetchFollowUps();
+                  fetchCallLogs();
+                }}
+                disabled={loadingFollowUps || loadingLogs}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                title="Refresh Live Data"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingFollowUps || loadingLogs ? "animate-spin text-sky-600" : ""}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+
+              {/* Follow-up Queue Count Badge */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-bold text-sky-800 select-none">
+                <Users className="w-3.5 h-3.5 text-sky-600" />
+                <span>{followUps.length} Pending</span>
               </div>
             </div>
           </div>
+        </header>
 
-          {/* Navigation Pill Tabs */}
-          <div className="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl w-fit border border-slate-300/60 shadow-2xs">
-            <button
-              onClick={() => setActiveTab("followups")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                activeTab === "followups"
-                  ? "bg-white text-sky-700 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <PhoneCall className="w-3.5 h-3.5" />
-              Follow-ups Calling Queue ({followUps.length})
+        {/* Action / Success Banner */}
+        {bookingSuccessMsg && (
+          <div className="mx-6 mt-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-2xs animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{bookingSuccessMsg}</span>
+            </div>
+            <button onClick={() => setBookingSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => setActiveTab("book_appointment")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                activeTab === "book_appointment"
-                  ? "bg-white text-sky-700 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <CalendarPlus className="w-3.5 h-3.5" />
-              Book Appointment {bookFollowUpId ? "(Pre-filled)" : ""}
-            </button>
-            <button
-              onClick={() => setActiveTab("log_call")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                activeTab === "log_call"
-                  ? "bg-white text-sky-700 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              Call Logs & Outcomes ({callLogs.length})
-            </button>
+          </div>
+        )}
+
+        {/* Content Body */}
+        <div className="p-6 space-y-4">
+          {/* Sub-Tabs Bar (Styled like Reception Portal) */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-2xs flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setActiveTab("followups")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === "followups"
+                    ? "bg-[#0284c7] text-white shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+                }`}
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>Follow-ups Calling Queue</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    activeTab === "followups" ? "bg-white/25 text-white" : "bg-sky-100 text-sky-800"
+                  }`}
+                >
+                  {followUps.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("book_appointment")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === "book_appointment"
+                    ? "bg-[#0284c7] text-white shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+                }`}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>Book Appointment</span>
+                {bookFollowUpId && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] font-black bg-amber-200 text-amber-900">
+                    Pre-filled
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("log_call")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === "log_call"
+                    ? "bg-[#0284c7] text-white shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Call Logs &amp; History</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    activeTab === "log_call" ? "bg-white/25 text-white" : "bg-purple-100 text-purple-800"
+                  }`}
+                >
+                  {callLogs.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              <span className="hidden md:inline text-slate-400 font-semibold text-[11px]">Today&apos;s Performance:</span>
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
+                ✅ {telecallerProfile.bookedCount} Booked
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-800 text-[11px]">
+                📞 {callLogs.length} Calls Logged
+              </span>
+            </div>
           </div>
 
           {/* ========================================================================= */}
@@ -551,104 +617,136 @@ function TelecallerDashboardContent() {
           {/* ========================================================================= */}
           {activeTab === "followups" && (
             <div className="space-y-4">
-              {/* Filter Controls Bar */}
-              <div className="bg-white p-3.5 px-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-                {/* Search */}
-                <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              {/* Period Filter Bar (Matching Reception Follow-Ups Page) */}
+              <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider mr-1">
+                    Period Filter:
+                  </span>
+
+                  {/* 1. Today */}
+                  <button
+                    onClick={() => setPeriodFilter("today")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "today"
+                        ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
+                        : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Today</span>
+                  </button>
+
+                  {/* 2. Tomorrow */}
+                  <button
+                    onClick={() => setPeriodFilter("tomorrow")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "tomorrow"
+                        ? "bg-emerald-600 text-white shadow-2xs shadow-emerald-200"
+                        : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Tomorrow</span>
+                  </button>
+
+                  {/* 3. This Month */}
+                  <button
+                    onClick={() => setPeriodFilter("this_month")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "this_month"
+                        ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
+                        : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>This Month</span>
+                  </button>
+
+                  {/* 4. Next Month */}
+                  <button
+                    onClick={() => setPeriodFilter("next_month")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "next_month"
+                        ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
+                        : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Next Month</span>
+                  </button>
+
+                  {/* 5. Overdue */}
+                  <button
+                    onClick={() => setPeriodFilter("overdue")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "overdue"
+                        ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
+                        : "bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200"
+                    }`}
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Overdue</span>
+                  </button>
+
+                  {/* 6. All Records */}
+                  <button
+                    onClick={() => setPeriodFilter("all")}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      periodFilter === "all"
+                        ? "bg-slate-700 text-white shadow-2xs"
+                        : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+                    }`}
+                  >
+                    <span>All Records</span>
+                  </button>
+                </div>
+
+                {/* Search Box */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search patient name, phone, Reg ID, condition..."
+                    placeholder="Search patient, phone, MRN..."
                     value={followUpSearch}
                     onChange={(e) => setFollowUpSearch(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-800 font-medium"
+                    className="pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 w-52 sm:w-64"
                   />
                   {followUpSearch && (
                     <button
                       onClick={() => setFollowUpSearch("")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3 h-3" />
                     </button>
                   )}
                 </div>
-
-                {/* Filters */}
-                <div className="flex items-center flex-wrap gap-2 text-xs">
-                  {/* Branch selector */}
-                  <select
-                    value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
-                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none"
-                  >
-                    <option value="All Branches">All Clinic Branches</option>
-                    {branches.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Period Pills */}
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-                    {[
-                      { id: "all", label: "All" },
-                      { id: "overdue", label: "Overdue" },
-                      { id: "today", label: "Today" },
-                      { id: "tomorrow", label: "Tomorrow" },
-                      { id: "this_month", label: "This Month" },
-                      { id: "next_month", label: "Next Month" },
-                    ].map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => setPeriodFilter(p.id)}
-                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition ${
-                          periodFilter === p.id
-                            ? "bg-white text-sky-700 shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Refresh Button */}
-                  <button
-                    onClick={fetchFollowUps}
-                    disabled={loadingFollowUps}
-                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
-                    title="Refresh List"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingFollowUps ? "animate-spin" : ""}`} />
-                  </button>
-                </div>
               </div>
 
-              {/* Follow-Ups Table / Cards */}
-              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
-                <div className="p-3.5 px-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+              {/* Table Container - Reception Style */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="p-3.5 px-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-800 text-xs uppercase tracking-wider">
-                      Patient Follow-Up Queue
+                    <span className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+                      Patient Follow-Up Calling Roster
                     </span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">
-                      {filteredFollowUps.length} patients
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-50 text-[#0284c7] border border-sky-200">
+                      {filteredFollowUps.length} Patients
                     </span>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100/70 text-slate-500 text-[10.5px] uppercase font-black border-b border-slate-200">
+                    <thead className="bg-slate-50/80 text-slate-600 text-[10.5px] uppercase font-bold border-b border-slate-200">
                       <tr>
-                        <th className="py-3 px-4">#</th>
-                        <th className="py-3 px-4">Patient / Reg ID</th>
-                        <th className="py-3 px-4">Phone Number</th>
-                        <th className="py-3 px-4">Branch & Doctor</th>
-                        <th className="py-3 px-4">Due Date</th>
-                        <th className="py-3 px-4">Disease / Notes</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
+                        <th className="py-3 px-4 font-bold">#</th>
+                        <th className="py-3 px-4 font-bold">Patient / Reg ID</th>
+                        <th className="py-3 px-4 font-bold">Phone Number</th>
+                        <th className="py-3 px-4 font-bold">Branch &amp; Doctor</th>
+                        <th className="py-3 px-4 font-bold">Follow-Up Date</th>
+                        <th className="py-3 px-4 font-bold">Disease / Notes</th>
+                        <th className="py-3 px-4 font-bold text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[11.5px] text-slate-700">
@@ -662,7 +760,7 @@ function TelecallerDashboardContent() {
                       ) : filteredFollowUps.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
-                            No follow-up patients found for the selected branch & period.
+                            No follow-up patients found for the selected branch &amp; period filter.
                           </td>
                         </tr>
                       ) : (
@@ -673,8 +771,8 @@ function TelecallerDashboardContent() {
                             <tr key={p.id || idx} className="hover:bg-slate-50/80 transition">
                               <td className="py-3 px-4 text-slate-400 font-semibold">{idx + 1}</td>
                               <td className="py-3 px-4">
-                                <div className="font-black text-slate-900 text-xs">{p.patientName}</div>
-                                <div className="text-[10px] font-mono font-bold text-sky-700">
+                                <div className="font-extrabold text-slate-900 text-xs">{p.patientName}</div>
+                                <div className="text-[10px] font-mono font-bold text-[#0284c7]">
                                   {p.registrationId || p.regId || "SPH-PAT"}
                                 </div>
                               </td>
@@ -695,7 +793,7 @@ function TelecallerDashboardContent() {
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">
                                 <span
-                                  className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                                  className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
                                     isOverdue
                                       ? "bg-rose-50 text-rose-700 border-rose-200"
                                       : "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -713,7 +811,7 @@ function TelecallerDashboardContent() {
                                   {/* 1. Book Appointment */}
                                   <button
                                     onClick={() => handleStartBookingForPatient(p)}
-                                    className="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px] shadow-xs transition flex items-center gap-1 cursor-pointer"
+                                    className="px-2.5 py-1.5 rounded-lg bg-[#0284c7] hover:bg-sky-700 text-white font-bold text-[11px] shadow-2xs transition flex items-center gap-1 cursor-pointer"
                                   >
                                     <CalendarPlus className="w-3 h-3" />
                                     Book
@@ -725,7 +823,7 @@ function TelecallerDashboardContent() {
                                       setActiveCallPatient(p);
                                       setLogCallModalOpen(true);
                                     }}
-                                    className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-200 transition flex items-center gap-1 cursor-pointer"
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200 transition flex items-center gap-1 cursor-pointer"
                                   >
                                     <PhoneOutgoing className="w-3 h-3 text-slate-500" />
                                     Log Call
@@ -737,7 +835,7 @@ function TelecallerDashboardContent() {
                                       setActiveReschedulePatient(p);
                                       setRescheduleModalOpen(true);
                                     }}
-                                    className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px] border border-amber-200 transition cursor-pointer"
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] border border-amber-200 transition cursor-pointer"
                                   >
                                     Reschedule
                                   </button>
@@ -755,216 +853,242 @@ function TelecallerDashboardContent() {
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 2: BOOK APPOINTMENT FORM                                             */}
+          {/* TAB 2: BOOK APPOINTMENT FORM (Reception Clean Card Layout)               */}
           {/* ========================================================================= */}
           {activeTab === "book_appointment" && (
-            <div className="max-w-3xl mx-auto bg-white p-6 sm:p-7 rounded-2xl border border-slate-200/90 shadow-2xs space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-100">
-                    <CalendarPlus className="w-5 h-5" />
+            <div className="max-w-4xl mx-auto space-y-5">
+              <form onSubmit={handleConfirmBooking} className="space-y-5">
+                {/* CARD 1: PATIENT DETAILS */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-[#0284c7] text-white flex items-center justify-center text-xs font-extrabold shadow-2xs">
+                        1
+                      </div>
+                      <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                        Patient Details
+                      </h2>
+                    </div>
+
+                    {bookFollowUpId && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-sky-50 text-[#0284c7] text-xs font-bold border border-sky-200">
+                        Linked to Follow-Up Queue
+                      </span>
+                    )}
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Patient Full Name */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Patient Full Name <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Ramesh Kumar"
+                          value={bookPatientName}
+                          onChange={(e) => setBookPatientName(e.target.value)}
+                          className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 10-Digit Mobile Number */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        10-Digit Mobile Number <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="tel"
+                          required
+                          maxLength={10}
+                          placeholder="9876543210"
+                          value={bookMobileNumber}
+                          onChange={(e) => setBookMobileNumber(e.target.value.replace(/\D/g, ""))}
+                          className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Disease / Complaint */}
                   <div>
-                    <h2 className="text-base font-black text-slate-900 tracking-tight">
-                      Book Patient Appointment
-                    </h2>
-                    <p className="text-xs text-slate-500">
-                      Schedule consultation slot across hospital branches
-                    </p>
-                  </div>
-                </div>
-
-                {bookFollowUpId && (
-                  <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 text-xs font-bold border border-sky-200">
-                    Linked to Follow-Up
-                  </span>
-                )}
-              </div>
-
-              {bookingSuccessMsg && (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-start gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-bold text-emerald-900">Appointment Confirmed!</p>
-                    <p className="mt-0.5">{bookingSuccessMsg}</p>
-                  </div>
-                  <button onClick={() => setBookingSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-800">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              <form onSubmit={handleConfirmBooking} className="space-y-4 text-xs font-semibold">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Patient Name */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Patient Full Name <span className="text-rose-500">*</span>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Chief Complaint / Disease / Reason for Visit
                     </label>
                     <input
                       type="text"
-                      required
-                      placeholder="e.g. Ramesh Kumar"
-                      value={bookPatientName}
-                      onChange={(e) => setBookPatientName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium text-slate-800"
-                    />
-                  </div>
-
-                  {/* Phone */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      10-Digit Mobile Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      maxLength={10}
-                      placeholder="9876543210"
-                      value={bookMobileNumber}
-                      onChange={(e) => setBookMobileNumber(e.target.value.replace(/\D/g, ""))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium text-slate-800"
+                      placeholder="e.g. Migraine, Hair Fall, Skin Allergy, Joint Pain"
+                      value={bookDisease}
+                      onChange={(e) => setBookDisease(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Hospital Branch */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Hospital Branch <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={bookBranch}
-                      onChange={(e) => setBookBranch(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-bold text-slate-800"
-                    >
-                      {branches.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Doctor */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Consulting Doctor <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={bookDoctor}
-                      onChange={(e) => {
-                        setBookDoctor(e.target.value);
-                        const match = doctors.find((d) => d.name === e.target.value);
-                        if (match) setBookDoctorId(match.id);
-                      }}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-bold text-slate-800"
-                    >
-                      {doctors.map((d) => (
-                        <option key={d.id} value={d.name}>
-                          {d.name} ({d.specialty || "Consultant"})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Date */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Appointment Date <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={bookDate}
-                      onChange={(e) => setBookDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-bold text-slate-800"
-                    />
-                  </div>
-
-                  {/* Slot */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Time Slot <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={bookSlot}
-                      onChange={(e) => setBookSlot(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-bold text-slate-800"
-                    >
-                      {TIME_SLOTS.map((slot) => (
-                        <option key={slot} value={slot}>
-                          {slot}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Mode */}
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1.5">
-                      Consultation Mode
-                    </label>
-                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-                      <button
-                        type="button"
-                        onClick={() => setBookMode("In-Clinic")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
-                          bookMode === "In-Clinic"
-                            ? "bg-white text-sky-700 shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        In-Clinic
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBookMode("Online")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
-                          bookMode === "Online"
-                            ? "bg-white text-purple-700 shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        Online
-                      </button>
+                {/* CARD 2: APPOINTMENT & DOCTOR SCHEDULE */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-[#0284c7] text-white flex items-center justify-center text-xs font-extrabold shadow-2xs">
+                        2
+                      </div>
+                      <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                        Appointment &amp; Doctor Schedule
+                      </h2>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Hospital Branch */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Hospital Branch <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={bookBranch}
+                        onChange={(e) => setBookBranch(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      >
+                        {branches.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Consulting Doctor */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Consulting Doctor <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={bookDoctor}
+                        onChange={(e) => {
+                          setBookDoctor(e.target.value);
+                          const match = doctors.find((d) => d.name === e.target.value);
+                          if (match) setBookDoctorId(match.id);
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      >
+                        {doctors.map((d) => (
+                          <option key={d.id} value={d.name}>
+                            {d.name} ({d.specialty || "Consultant"})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Appointment Date */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700">
+                          Date <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setBookDate(new Date().toISOString().split("T")[0])}
+                            className="text-[10px] font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 px-1.5 py-0.5 rounded border border-sky-200 cursor-pointer"
+                          >
+                            Today
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tom = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+                              setBookDate(tom);
+                            }}
+                            className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200 cursor-pointer"
+                          >
+                            Tomorrow
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="date"
+                        required
+                        value={bookDate}
+                        onChange={(e) => setBookDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Time Slot */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Time Slot <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={bookSlot}
+                        onChange={(e) => setBookSlot(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                      >
+                        {TIME_SLOTS.map((slot) => (
+                          <option key={slot} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Consultation Mode */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Consultation Mode
+                      </label>
+                      <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200/80">
+                        <button
+                          type="button"
+                          onClick={() => setBookMode("In-Clinic")}
+                          className={`flex-1 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                            bookMode === "In-Clinic"
+                              ? "bg-white text-[#0284c7] shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          In-Clinic
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBookMode("Online")}
+                          className={`flex-1 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                            bookMode === "Online"
+                              ? "bg-white text-purple-700 shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          Online
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Telecaller Notes */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Telecaller Notes (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Patient confirmed morning visit, requested consultation with senior doctor"
+                      value={bookNotes}
+                      onChange={(e) => setBookNotes(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 resize-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Disease / Subject */}
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5">
-                    Chief Complaint / Disease
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Migraine, Hair Fall, Gastritis, Skin Allergy"
-                    value={bookDisease}
-                    onChange={(e) => setBookDisease(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium text-slate-800"
-                  />
-                </div>
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-slate-700 font-bold mb-1.5">
-                    Telecaller Notes (Optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Patient agreed to morning slot, requested direct doctor consultation"
-                    value={bookNotes}
-                    onChange={(e) => setBookNotes(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 font-medium text-slate-800 resize-none"
-                  />
-                </div>
-
-                {/* Submit */}
-                <div className="pt-2 flex items-center justify-end gap-3">
+                {/* Form Action Buttons */}
+                <div className="flex items-center justify-end gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -974,24 +1098,24 @@ function TelecallerDashboardContent() {
                       setBookDisease("");
                       setBookNotes("");
                     }}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition"
+                    className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
                   >
                     Clear Form
                   </button>
                   <button
                     type="submit"
                     disabled={bookingLoading}
-                    className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black shadow-md shadow-sky-600/20 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="px-5 py-2 rounded-lg bg-[#0284c7] hover:bg-sky-700 text-white text-xs font-bold shadow-2xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {bookingLoading ? (
                       <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Confirming Slot...
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Confirming Slot...</span>
                       </>
                     ) : (
                       <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        Confirm & Book Appointment
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Confirm &amp; Book Appointment</span>
                       </>
                     )}
                   </button>
@@ -1006,27 +1130,35 @@ function TelecallerDashboardContent() {
           {activeTab === "log_call" && (
             <div className="space-y-4">
               {/* Filter Bar */}
-              <div className="bg-white p-3.5 px-4 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Search logs by patient name, phone, notes..."
                     value={logSearch}
                     onChange={(e) => setLogSearch(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-medium text-slate-800"
+                    className="w-full pl-8 pr-3.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium text-slate-800"
                   />
+                  {logSearch && (
+                    <button
+                      onClick={() => setLogSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <select
                     value={outcomeFilter}
                     onChange={(e) => setOutcomeFilter(e.target.value)}
-                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:outline-none"
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                   >
                     <option value="all">All Call Outcomes</option>
                     <option value="Interested">Interested</option>
-                    <option value="Callback Requested">Callback</option>
+                    <option value="Callback Requested">Callback Requested</option>
                     <option value="Not Interested">Not Interested</option>
                     <option value="No Response">No Response</option>
                   </select>
@@ -1034,38 +1166,39 @@ function TelecallerDashboardContent() {
                   <button
                     onClick={fetchCallLogs}
                     disabled={loadingLogs}
-                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? "animate-spin text-sky-600" : ""}`} />
+                    <span>Refresh</span>
                   </button>
                 </div>
               </div>
 
               {/* Logs Table */}
-              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
-                <div className="p-3.5 px-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="p-3.5 px-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-800 text-xs uppercase tracking-wider">
-                      Telecaller Call Logs & Patient Updates
+                    <span className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">
+                      Telecaller Call Logs &amp; Patient Updates
                     </span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
-                      {filteredLogs.length} logged
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                      {filteredLogs.length} Logged
                     </span>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100/70 text-slate-500 text-[10.5px] uppercase font-black border-b border-slate-200">
+                    <thead className="bg-slate-50/80 text-slate-600 text-[10.5px] uppercase font-bold border-b border-slate-200">
                       <tr>
-                        <th className="py-3 px-4">#</th>
-                        <th className="py-3 px-4">Date & Time</th>
-                        <th className="py-3 px-4">Patient / Mobile</th>
-                        <th className="py-3 px-4">Branch</th>
-                        <th className="py-3 px-4">Call Outcome</th>
-                        <th className="py-3 px-4">Next Follow-Up</th>
-                        <th className="py-3 px-4">Notes</th>
-                        <th className="py-3 px-4">Agent</th>
+                        <th className="py-3 px-4 font-bold">#</th>
+                        <th className="py-3 px-4 font-bold">Date &amp; Time</th>
+                        <th className="py-3 px-4 font-bold">Patient / Mobile</th>
+                        <th className="py-3 px-4 font-bold">Branch</th>
+                        <th className="py-3 px-4 font-bold">Call Outcome</th>
+                        <th className="py-3 px-4 font-bold">Next Follow-Up</th>
+                        <th className="py-3 px-4 font-bold">Notes</th>
+                        <th className="py-3 px-4 font-bold">Agent</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[11.5px] text-slate-700">
@@ -1090,8 +1223,8 @@ function TelecallerDashboardContent() {
                               {formatDisplayDate(l.callDate || l.createdAt)}
                             </td>
                             <td className="py-3 px-4">
-                              <div className="font-bold text-slate-900">{l.patientName}</div>
-                              <div className="text-[10.5px] text-slate-500">{l.phoneNumber}</div>
+                              <div className="font-extrabold text-slate-900">{l.patientName}</div>
+                              <div className="text-[10.5px] text-slate-500 font-medium">{l.phoneNumber}</div>
                             </td>
                             <td className="py-3 px-4 font-semibold text-slate-700">
                               {l.branch || "KPHB Branch"}
@@ -1136,7 +1269,7 @@ function TelecallerDashboardContent() {
       </main>
 
       {/* ========================================================================= */}
-      {/* MODAL 1: LOG CALL OUTCOME                                                 */}
+      {/* MODAL 1: LOG CALL OUTCOME (Reception Modal Styling)                       */}
       {/* ========================================================================= */}
       {logCallModalOpen && activeCallPatient && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1147,13 +1280,13 @@ function TelecallerDashboardContent() {
                   <PhoneOutgoing className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">Record Call Outcome</h3>
+                  <h3 className="font-extrabold text-sm text-slate-900">Record Call Outcome</h3>
                   <p className="text-[11px] text-slate-500">{activeCallPatient.patientName}</p>
                 </div>
               </div>
               <button
                 onClick={() => setLogCallModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1188,7 +1321,7 @@ function TelecallerDashboardContent() {
                   type="date"
                   value={callNextDate}
                   onChange={(e) => setCallNextDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-bold text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 font-bold text-slate-800"
                 />
               </div>
 
@@ -1197,10 +1330,10 @@ function TelecallerDashboardContent() {
                 <textarea
                   rows={3}
                   required
-                  placeholder="e.g. Patient is feeling better, agreed to come next Saturday for renewal"
+                  placeholder="e.g. Patient is feeling better, agreed to visit branch next Saturday"
                   value={callNotes}
                   onChange={(e) => setCallNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-medium text-slate-800 resize-none"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium text-slate-800 resize-none"
                 />
               </div>
 
@@ -1208,14 +1341,14 @@ function TelecallerDashboardContent() {
                 <button
                   type="button"
                   onClick={() => setLogCallModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition"
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingLog}
-                  className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-lg bg-[#0284c7] hover:bg-sky-700 text-white font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {submittingLog ? "Saving..." : "Save Call Log"}
                 </button>
@@ -1226,7 +1359,7 @@ function TelecallerDashboardContent() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 2: RESCHEDULE FOLLOW-UP                                            */}
+      {/* MODAL 2: RESCHEDULE FOLLOW-UP (Reception Modal Styling)                    */}
       {/* ========================================================================= */}
       {rescheduleModalOpen && activeReschedulePatient && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1237,13 +1370,13 @@ function TelecallerDashboardContent() {
                   <Calendar className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">Reschedule Follow-Up</h3>
+                  <h3 className="font-extrabold text-sm text-slate-900">Reschedule Follow-Up</h3>
                   <p className="text-[11px] text-slate-500">{activeReschedulePatient.patientName}</p>
                 </div>
               </div>
               <button
                 onClick={() => setRescheduleModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1257,7 +1390,7 @@ function TelecallerDashboardContent() {
                   required
                   value={rescheduleDate}
                   onChange={(e) => setRescheduleDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-bold text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 font-bold text-slate-800"
                 />
               </div>
 
@@ -1266,7 +1399,7 @@ function TelecallerDashboardContent() {
                 <select
                   value={rescheduleSlot}
                   onChange={(e) => setRescheduleSlot(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-bold text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 font-bold text-slate-800"
                 >
                   {TIME_SLOTS.map((s) => (
                     <option key={s} value={s}>
@@ -1280,14 +1413,14 @@ function TelecallerDashboardContent() {
                 <button
                   type="button"
                   onClick={() => setRescheduleModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition"
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingReschedule}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {submittingReschedule ? "Updating..." : "Confirm Reschedule"}
                 </button>

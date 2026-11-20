@@ -3,15 +3,15 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Headset,
-  CalendarPlus,
-  PhoneCall,
-  Clock,
+  CalendarCheck,
+  Calendar,
+  ClipboardList,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Building2,
-  ShieldCheck,
+  Headset,
+  Phone,
 } from "lucide-react";
 
 interface TelecallerSidebarProps {
@@ -24,7 +24,7 @@ export default function TelecallerSidebar({
   onTabChange,
 }: TelecallerSidebarProps) {
   const router = useRouter();
-  const [agentName, setAgentName] = useState<string>("Telecaller Agent");
+  const [agentName, setAgentName] = useState<string>("Telecaller Desk");
   const [telecallerId, setTelecallerId] = useState<string>("TC01");
   const [branchName, setBranchName] = useState<string>("All Branches");
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -70,129 +70,138 @@ export default function TelecallerSidebar({
   const navItems = [
     {
       id: "followups",
-      name: "Follow-Ups Queue",
-      icon: PhoneCall,
-      description: "Patient calling desk & rescheduling",
+      name: "Follow-ups",
+      icon: CalendarCheck,
     },
     {
       id: "book_appointment",
       name: "Book Appointment",
-      icon: CalendarPlus,
-      description: "Schedule across clinic branches",
+      icon: Calendar,
     },
     {
       id: "log_call",
-      name: "Call Logs & History",
-      icon: Clock,
-      description: "Outcomes & patient updates",
+      name: "Call Logs & Updates",
+      icon: ClipboardList,
     },
   ];
 
   return (
     <aside
-      className={`relative flex flex-col bg-slate-900 border-r border-slate-800 text-white transition-all duration-300 z-30 select-none shadow-xl shrink-0 h-screen ${
-        isCollapsed ? "w-20" : "w-64"
-      }`}
+      className={`${
+        isCollapsed ? "w-14" : "w-52"
+      } bg-white flex flex-col justify-between shrink-0 shadow-xs h-full z-20 select-none transition-all duration-300 ease-in-out border-r border-slate-200/80`}
     >
-      {/* Brand Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-800/80">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-sky-400 text-white flex items-center justify-center shrink-0 shadow-lg shadow-sky-500/20">
-            <Headset className="w-5 h-5 text-white" />
-          </div>
-          {!isCollapsed && (
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-sm tracking-tight text-white truncate">
-                  Calling Desk
-                </span>
-                <span className="px-1.5 py-0.2 rounded-md bg-sky-500/20 text-sky-400 font-bold text-[9.5px] border border-sky-400/30">
-                  {telecallerId}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 truncate">Spiritual Homeopathy</p>
+      <div>
+        {/* Brand Header with Collapse Toggle */}
+        <div
+          className={`pt-6 px-2.5 pb-2.5 flex items-center ${
+            isCollapsed ? "flex-col justify-center gap-2" : "justify-between gap-1.5"
+          }`}
+        >
+          {!isCollapsed ? (
+            <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+              <img
+                src="/assets/SH logo.png"
+                alt="Spiritual Homeopathy"
+                className="h-7 w-auto max-w-[125px] object-contain shrink-0"
+              />
+              <span className="text-[8px] font-black text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                Telecaller
+              </span>
+            </div>
+          ) : (
+            <div
+              className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shrink-0"
+              title="Spiritual Homeopathy Telecaller"
+            >
+              <img
+                src="/assets/SH logo.png"
+                alt="SH Logo"
+                className="h-6 w-auto max-w-none object-contain"
+              />
             </div>
           )}
+
+          {/* < / > Collapse Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleCollapse}
+            title={isCollapsed ? "Expand sidebar (>)" : "Collapse sidebar (<)"}
+            className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
 
-        {/* Collapse Toggle */}
-        <button
-          onClick={toggleCollapse}
-          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition text-xs shrink-0 cursor-pointer"
-          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-        >
-          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-      </div>
-
-      {/* Telecaller Profile Card */}
-      {!isCollapsed ? (
-        <div className="p-3 mx-3 my-3 bg-slate-800/60 rounded-xl border border-slate-700/60 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-slate-200 truncate">{agentName}</span>
-            <span className="text-[9.5px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 font-bold border border-sky-800/50">
-              {telecallerId}
-            </span>
+        {/* Active Telecaller & Branch Pill - Shown when expanded */}
+        {!isCollapsed && (
+          <div className="mx-2.5 mt-1.5 p-2 bg-slate-50/80 rounded-lg border border-slate-100">
+            <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-800">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="truncate">{agentName}</span>
+              </div>
+              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-sky-100 text-sky-800 font-bold shrink-0">
+                {telecallerId}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-1">
+              <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+              <span className="truncate">{branchName}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1 text-[10.5px] text-slate-400 mt-1 truncate">
-            <Building2 className="w-3 h-3 text-sky-400 shrink-0" />
-            <span className="truncate">{branchName}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="my-2 flex justify-center">
-          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-sky-950 text-sky-300 font-bold border border-sky-800/50">
-            {telecallerId}
-          </span>
-        </div>
-      )}
+        )}
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-2.5 py-2 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                if (onTabChange) {
-                  onTabChange(item.id as any);
-                } else {
-                  router.push(`/telecaller/dashboard?tab=${item.id}`);
-                }
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
-                isActive
-                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-              title={isCollapsed ? item.name : undefined}
-            >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
-              {!isCollapsed && (
-                <div className="text-left min-w-0">
-                  <div className="truncate font-medium">{item.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate font-normal">
-                    {item.description}
-                  </div>
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+        {/* Navigation Items */}
+        <nav className="p-1.5 space-y-0.5 mt-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (onTabChange) {
+                    onTabChange(item.id as any);
+                  } else {
+                    router.push(`/telecaller/dashboard?tab=${item.id}`);
+                  }
+                }}
+                title={isCollapsed ? item.name : undefined}
+                className={`w-full flex items-center ${
+                  isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
+                } py-1.5 rounded-lg text-[11px] transition-all cursor-pointer ${
+                  isActive
+                    ? "text-[#0284c7] font-extrabold bg-sky-50/70"
+                    : "text-slate-600 font-semibold hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                <Icon
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isActive ? "text-[#0284c7]" : "text-slate-400"
+                  }`}
+                />
+                {!isCollapsed && <span className="truncate">{item.name}</span>}
+              </button>
+            );
+          })}
 
-      {/* Footer / Logout */}
-      <div className="p-3 border-t border-slate-800/80 space-y-2">
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 p-2 rounded-xl text-xs font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition cursor-pointer"
-          title="Sign Out"
-        >
-          <LogOut className="w-4 h-4" />
-          {!isCollapsed && <span>Logout Desk</span>}
-        </button>
+          {/* Sign Out (Inside side navigation, exact same as Reception) */}
+          <button
+            onClick={handleLogout}
+            title={isCollapsed ? "Sign Out" : undefined}
+            className={`w-full flex items-center ${
+              isCollapsed ? "justify-center px-1.5" : "gap-2.5 px-2.5"
+            } py-1.5 rounded-lg text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/60 transition-colors cursor-pointer mt-2`}
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            {!isCollapsed && <span>Sign Out</span>}
+          </button>
+        </nav>
       </div>
     </aside>
   );
