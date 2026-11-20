@@ -240,7 +240,6 @@ export async function GET(req: Request) {
       } else if (a.paymentMethod) {
         displayMethod = a.paymentMethod;
       }
-
       // Determine clean date: paidAt first, then appointmentDate, then createdAt
       const rawDate = a.paidAt || a.appointmentDate || a.createdAt;
       const dt =
@@ -270,10 +269,10 @@ export async function GET(req: Request) {
         patientName: a.patientName || "Patient",
         phone: a.phone || "N/A",
         branchName: a.branch || "Clinic Branch",
-        doctorName: a.doctorName || "Dr. Prashanth K Vaidya",
+        doctorName: (a.doctorName || (a as any).doctor || "Dr. Prashanth K Vaidya").trim(),
         paymentType: pType || (isPkg ? "package" : (split === "Consultation & Medicine" ? "consult_and_med" : "consultation")),
         revenueSplit: split,
-        source: a.marketingSource || "Walk-in",
+        source: (a.marketingSource || (a as any).source || (a as any).patientSource || "Walk-in").trim(),
         consultationFee: isPkg ? 0 : cFee,
         medicineFee: isPkg ? 0 : mFee,
         packageFee: isPkg ? total : (total >= 5000 ? total : 0),

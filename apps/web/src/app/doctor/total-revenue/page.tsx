@@ -287,6 +287,17 @@ export default function DoctorTotalRevenuePage() {
     return Array.from(set);
   }, [registeredDoctors, transactions]);
 
+  // Patient Source options computed dynamically from recorded transactions + default sources
+  const sourceOptions = useMemo(() => {
+    const set = new Set<string>();
+    ["Walk-in", "Old Patient", "Instagram", "Google", "Referral", "YouTube", "Facebook", "Camp / Event"].forEach((s) => set.add(s));
+    transactions.forEach((t) => {
+      const src = t.source?.trim();
+      if (src && src !== "Unknown") set.add(src);
+    });
+    return Array.from(set).sort();
+  }, [transactions]);
+
   // --- Filtering Engine ---
   const filteredTransactions = useMemo(() => {
     return transactions
@@ -351,10 +362,49 @@ export default function DoctorTotalRevenuePage() {
         }
 
         // Doctor
-        if (revenueDoctor !== "all" && !t.doctorName.includes(revenueDoctor)) return false;
+        if (revenueDoctor !== "all") {
+          const normFilter = revenueDoctor
+            .toLowerCase()
+            .replace(/^(dr\.?|doctor)\s+/i, "")
+            .replace(/[^a-z0-9]/g, "");
+          const normDoc = (t.doctorName || "")
+            .toLowerCase()
+            .replace(/^(dr\.?|doctor)\s+/i, "")
+            .replace(/[^a-z0-9]/g, "");
+          const filterTokens = revenueDoctor
+            .toLowerCase()
+            .replace(/^(dr\.?|doctor)\s+/i, "")
+            .split(/\s+/)
+            .filter((tok) => tok.length > 2);
+          const docTokens = (t.doctorName || "")
+            .toLowerCase()
+            .replace(/^(dr\.?|doctor)\s+/i, "")
+            .split(/\s+/)
+            .filter((tok) => tok.length > 2);
+          const hasTokenOverlap = filterTokens.some((tok) => docTokens.some((dt) => dt.includes(tok) || tok.includes(dt)));
+
+          const isDocMatch =
+            normDoc === normFilter ||
+            normDoc.includes(normFilter) ||
+            normFilter.includes(normDoc) ||
+            t.doctorName.toLowerCase().includes(revenueDoctor.toLowerCase()) ||
+            revenueDoctor.toLowerCase().includes(t.doctorName.toLowerCase()) ||
+            hasTokenOverlap;
+
+          if (!isDocMatch) return false;
+        }
 
         // Source
-        if (revenueSource !== "all" && t.source !== revenueSource) return false;
+        if (revenueSource !== "all") {
+          const normFilter = revenueSource.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const normSrc = (t.source || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const isSrcMatch =
+            normSrc === normFilter ||
+            normSrc.includes(normFilter) ||
+            normFilter.includes(normSrc) ||
+            (t.source || "").toLowerCase().trim() === revenueSource.toLowerCase().trim();
+          if (!isSrcMatch) return false;
+        }
 
         // Payment Method Filter
         if (revenueMethod !== "all") {
@@ -1057,17 +1107,14 @@ export default function DoctorTotalRevenuePage() {
                     setRevenueSource(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium"
+                  className="w-full px-2 py-1 text-[11px] h-7 border border-slate-200 rounded-md focus:ring-1 focus:ring-emerald-500 focus:outline-none bg-slate-50/50 font-medium cursor-pointer"
                 >
                   <option value="all">All Sources</option>
-                  <option value="Walk-in">Walk-in</option>
-                  <option value="Old Patient">Old Patient</option>
-                  <option value="Instagram">Instagram</option>
-                  <option value="Google">Google</option>
-                  <option value="Referral">Referral</option>
-                  <option value="YouTube">YouTube</option>
-                  <option value="Facebook">Facebook</option>
-                  <option value="Camp / Event">Camp / Event</option>
+                  {sourceOptions.map((src) => (
+                    <option key={src} value={src}>
+                      {src}
+                    </option>
+                  ))}
                 </select>
               </div>
 
