@@ -1,15 +1,20 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect } from "react";
+import { View, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
 
-export default function Screen() {
+export default function TelecallerAppointmentsRedirect() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace({
+      pathname: "/(telecaller)",
+      params: { tab: "book_appointment" },
+    } as any);
+  }, [router]);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>appointments</Text>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#f8fafc" }}>
+      <ActivityIndicator size="large" color="#0284c7" />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' },
-  title: { fontSize: 18, fontWeight: '700', color: '#268ec8' },
-});

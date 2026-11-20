@@ -155,6 +155,11 @@ export default function WebLoginPage() {
         window.location.href = "/reception/dashboard";
       } else if (returnedRole === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");
+        if (validatedData?.user) {
+          localStorage.setItem("telecaller_id", validatedData.user.telecallerId || "TC01");
+          localStorage.setItem("telecaller_name", validatedData.user.name || "Telecaller Staff");
+          localStorage.setItem("branch_name", validatedData.user.branch || "All Branches");
+        }
         window.location.href = "/telecaller/dashboard";
       } else {
         setErrorMessage("Unauthorized: Please sign in with your registered role.");

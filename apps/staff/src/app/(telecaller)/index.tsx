@@ -12,7 +12,7 @@ import {
   Linking,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken, clearAllAuthData, getAssignedBranch } from "../../services/auth";
@@ -73,7 +73,14 @@ function getTodayDDMMYYYY(): string {
 
 export default function TelecallerPortalScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState<TelecallerTab>("followups");
+
+  useEffect(() => {
+    if (searchParams?.tab === "book_appointment" || searchParams?.tab === "log_call" || searchParams?.tab === "followups") {
+      setActiveTab(searchParams.tab as TelecallerTab);
+    }
+  }, [searchParams?.tab]);
 
   // Telecaller Profile info
   const [telecallerProfile, setTelecallerProfile] = useState({
@@ -121,6 +128,60 @@ export default function TelecallerPortalScreen() {
   const [bookSlot, setBookSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [bookNotes, setBookNotes] = useState("");
+
+  // Calendar Modal State
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [calendarTarget, setCalendarTarget] = useState<"book" | "reschedule">("book");
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+
+  const daysInMonth = useMemo(() => {
+    return new Date(calYear, calMonth + 1, 0).getDate();
+  }, [calYear, calMonth]);
+
+  const firstDayOffset = useMemo(() => {
+    return new Date(calYear, calMonth, 1).getDay();
+  }, [calYear, calMonth]);
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+
+  const openCalendar = (target: "book" | "reschedule") => {
+    setCalendarTarget(target);
+    const currentDate = target === "book" ? bookDate : rescheduleDate;
+    if (currentDate && currentDate.includes("-")) {
+      const parts = currentDate.split("-");
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          const y = parseInt(parts[2], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          if (!isNaN(y) && !isNaN(m)) {
+            setCalYear(y);
+            setCalMonth(m);
+          }
+        } else if (parts[0].length === 4) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          if (!isNaN(y) && !isNaN(m)) {
+            setCalYear(y);
+            setCalMonth(m);
+          }
+        }
+      }
+    }
+    setCalendarModalOpen(true);
+  };
+
+  const handleSelectDay = (formatted: string) => {
+    if (calendarTarget === "book") {
+      setBookDate(formatted);
+    } else {
+      setRescheduleDate(formatted);
+    }
+    setCalendarModalOpen(false);
+  };
   const [bookingAppt, setBookingAppt] = useState(false);
   const [availableDoctors, setAvailableDoctors] = useState<any[]>([
     { id: "1793864791241", name: "Dr. Prashant K Vaidya", branchName: "All Branches" },
@@ -895,17 +956,21 @@ export default function TelecallerPortalScreen() {
               ))}
             </View>
 
-            {/* Appointment Date */}
+            {/* Appointment Date with Interactive Calendar Picker */}
             <Text style={styles.inputLabel}>
-              Appointment Date (DD-MM-YYYY): <Text style={{ color: "#ef4444" }}>*</Text>
+              Appointment Date: <Text style={{ color: "#ef4444" }}>*</Text>
             </Text>
-            <TextInput
-              style={styles.textInput}
-              value={bookDate}
-              onChangeText={setBookDate}
-              placeholder="DD-MM-YYYY"
-              placeholderTextColor="#94a3b8"
-            />
+            <TouchableOpacity
+              onPress={() => openCalendar("book")}
+              style={styles.dateSelectorBtn}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#0284c7" />
+              <Text style={styles.dateSelectorBtnText}>
+                {bookDate || "Select Appointment Date"}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color="#64748b" />
+            </TouchableOpacity>
 
             {/* Time Slot */}
             <Text style={styles.inputLabel}>
@@ -1031,14 +1096,18 @@ export default function TelecallerPortalScreen() {
               </View>
             )}
 
-            <Text style={styles.inputLabel}>New Follow-Up Date (DD-MM-YYYY):</Text>
-            <TextInput
-              style={styles.textInput}
-              value={rescheduleDate}
-              onChangeText={setRescheduleDate}
-              placeholder="DD-MM-YYYY"
-              placeholderTextColor="#94a3b8"
-            />
+            <Text style={styles.inputLabel}>New Follow-Up Date: <Text style={{ color: "#ef4444" }}>*</Text></Text>
+            <TouchableOpacity
+              onPress={() => openCalendar("reschedule")}
+              style={styles.dateSelectorBtn}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#0284c7" />
+              <Text style={styles.dateSelectorBtnText}>
+                {rescheduleDate || "Select New Date"}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color="#64748b" />
+            </TouchableOpacity>
 
             <Text style={styles.inputLabel}>Preferred Time Slot:</Text>
             <View style={styles.slotWrap}>
@@ -1095,6 +1164,126 @@ export default function TelecallerPortalScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Interactive Calendar Modal */}
+      <Modal
+        visible={calendarModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.calModalOverlay}
+          activeOpacity={1}
+          onPress={() => setCalendarModalOpen(false)}
+        >
+          <View style={styles.calModalContainer} onStartShouldSetResponder={() => true}>
+            {/* Calendar Nav Header */}
+            <View style={styles.calNavHeader}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 0) {
+                    setCalMonth(11);
+                    setCalYear((y) => y - 1);
+                  } else {
+                    setCalMonth((m) => m - 1);
+                  }
+                }}
+                style={{ padding: 6 }}
+              >
+                <Ionicons name="chevron-back" size={20} color="#0284c7" />
+              </TouchableOpacity>
+
+              <Text style={styles.calMonthTitle}>
+                {monthNames[calMonth]} {calYear}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (calMonth === 11) {
+                    setCalMonth(0);
+                    setCalYear((y) => y + 1);
+                  } else {
+                    setCalMonth((m) => m + 1);
+                  }
+                }}
+                style={{ padding: 6 }}
+              >
+                <Ionicons name="chevron-forward" size={20} color="#0284c7" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Weekdays Row */}
+            <View style={styles.calWeekdaysRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <Text key={d} style={styles.calWeekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Days Grid */}
+            <View style={styles.calDaysGrid}>
+              {Array.from({ length: firstDayOffset }).map((_, i) => (
+                <View key={`empty-${i}`} style={styles.calDayCell} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
+                const targetDate = calendarTarget === "book" ? bookDate : rescheduleDate;
+                const isSelected = targetDate === formatted;
+
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    onPress={() => handleSelectDay(formatted)}
+                    style={[
+                      styles.calDayCell,
+                      isSelected && styles.calDayCellSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.calDayText,
+                        isSelected && styles.calDayTextSelected,
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Quick Actions (Today, Tomorrow, Close) */}
+            <View style={styles.calQuickActionsRow}>
+              <TouchableOpacity
+                style={styles.calQuickBtn}
+                onPress={() => handleSelectDay(getTodayDDMMYYYY())}
+              >
+                <Text style={styles.calQuickBtnText}>Today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.calQuickBtn}
+                onPress={() => {
+                  const tom = new Date();
+                  tom.setDate(tom.getDate() + 1);
+                  const day = String(tom.getDate()).padStart(2, "0");
+                  const month = String(tom.getMonth() + 1).padStart(2, "0");
+                  const year = tom.getFullYear();
+                  handleSelectDay(`${day}-${month}-${year}`);
+                }}
+              >
+                <Text style={styles.calQuickBtnText}>Tomorrow</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.calQuickBtn, { backgroundColor: "#f1f5f9" }]}
+                onPress={() => setCalendarModalOpen(false)}
+              >
+                <Text style={[styles.calQuickBtnText, { color: "#475569" }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Persistent Bottom Navigation Bar */}
@@ -1490,4 +1679,108 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   saveBtnText: { fontSize: 12.5, fontWeight: "800", color: "#ffffff" },
+  dateSelectorBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 12,
+  },
+  dateSelectorBtnText: {
+    fontWeight: "800",
+    color: "#0f172a",
+    fontSize: 13.5,
+    flex: 1,
+    marginLeft: 8,
+  },
+  calModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  calModalContainer: {
+    width: "100%",
+    maxWidth: 350,
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  calNavHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  calMonthTitle: {
+    fontWeight: "800",
+    fontSize: 16,
+    color: "#0f172a",
+  },
+  calWeekdaysRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 8,
+  },
+  calWeekdayText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    width: 38,
+    textAlign: "center",
+  },
+  calDaysGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  calDayCell: {
+    width: "14.28%",
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    marginVertical: 2,
+  },
+  calDayCellSelected: {
+    backgroundColor: "#0284c7",
+  },
+  calDayText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  calDayTextSelected: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  calQuickActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  calQuickBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#e0f2fe",
+  },
+  calQuickBtnText: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#0284c7",
+  },
 });
