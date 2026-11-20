@@ -25,21 +25,109 @@ export interface TransactionRecord {
   status: "PAID" | "PENDING" | "COMPLETED";
 }
 
-function normalizeDateToYYYYMMDD(dt?: string | null): string {
-  if (!dt) return "";
-  const trimmed = dt.trim();
-  if (trimmed.includes("T")) return trimmed.split("T")[0];
-  const clean = trimmed.replace(/\//g, "-");
-  const parts = clean.split("-");
-  // YYYY-MM-DD
-  if (parts.length === 3 && parts[0].length === 4) {
-    return `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+function formatTransactionDateTime(a: any): { timestamp: string; dateTime: string } {
+  // 1. Determine clean date (YYYY-MM-DD for sorting/filtering, and DD/MM/YYYY for display)
+  let yyyy_mm_dd = "";
+  let dd_mm_yyyy = "";
+
+  const rawDateStr = a.appointmentDate || a.paidAt || a.createdAt;
+  if (rawDateStr) {
+    const trimmed = String(rawDateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [y, m, d] = trimmed.split("-");
+      yyyy_mm_dd = trimmed;
+      dd_mm_yyyy = `${d}/${m}/${y}`;
+    } else if (/^\d{2}[/-]\d{2}[/-]\d{4}$/.test(trimmed)) {
+      const parts = trimmed.split(/[/-]/);
+      const [d, m, y] = parts;
+      yyyy_mm_dd = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      dd_mm_yyyy = `${d.padStart(2, "0")}/${m.padStart(2, "0")}/${y}`;
+    } else {
+      try {
+        const pDate = new Date(trimmed);
+        if (!isNaN(pDate.getTime())) {
+          const parts = new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).formatToParts(pDate);
+          const day = parts.find((p) => p.type === "day")?.value || "01";
+          const month = parts.find((p) => p.type === "month")?.value || "01";
+          const year = parts.find((p) => p.type === "year")?.value || "2026";
+          yyyy_mm_dd = `${year}-${month}-${day}`;
+          dd_mm_yyyy = `${day}/${month}/${year}`;
+        }
+      } catch {}
+    }
   }
-  // DD-MM-YYYY
-  if (parts.length === 3 && parts[2].length === 4) {
-    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+
+  if (!yyyy_mm_dd) {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const day = parts.find((p) => p.type === "day")?.value || "01";
+    const month = parts.find((p) => p.type === "month")?.value || "01";
+    const year = parts.find((p) => p.type === "year")?.value || "2026";
+    yyyy_mm_dd = `${year}-${month}-${day}`;
+    dd_mm_yyyy = `${day}/${month}/${year}`;
   }
-  return clean;
+
+  // 2. Clean Time in IST (12-hour hh:mm A)
+  let timeStr = "";
+  if (a.timeSlot && typeof a.timeSlot === "string" && a.timeSlot.trim()) {
+    const rawSlot = a.timeSlot.trim();
+    if (rawSlot.includes("-")) {
+      timeStr = rawSlot.split("-")[0].trim();
+    } else {
+      timeStr = rawSlot;
+    }
+  } else if (a.paidAt) {
+    try {
+      const pDate = new Date(a.paidAt);
+      if (!isNaN(pDate.getTime())) {
+        const formatted = pDate.toLocaleTimeString("en-US", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+        if (formatted !== "05:30 AM" && !String(a.paidAt).includes("T00:00:00")) {
+          timeStr = formatted;
+        }
+      }
+    } catch {}
+  }
+
+  if (!timeStr && a.createdAt) {
+    try {
+      const cDate = new Date(a.createdAt);
+      if (!isNaN(cDate.getTime())) {
+        const formatted = cDate.toLocaleTimeString("en-US", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+        if (formatted !== "05:30 AM" && !String(a.createdAt).includes("T00:00:00")) {
+          timeStr = formatted;
+        }
+      }
+    } catch {}
+  }
+
+  if (!timeStr) {
+    timeStr = "10:00 AM";
+  }
+
+  return {
+    timestamp: yyyy_mm_dd,
+    dateTime: `${dd_mm_yyyy}, ${timeStr}`,
+  };
 }
 
 function isHistoricalOrUploadPlaceholder(a: any): boolean {
@@ -240,25 +328,7 @@ export async function GET(req: Request) {
       } else if (a.paymentMethod) {
         displayMethod = a.paymentMethod;
       }
-      // Determine clean date: paidAt first, then appointmentDate, then createdAt
-      const rawDate = a.paidAt || a.appointmentDate || a.createdAt;
-      const dt =
-        normalizeDateToYYYYMMDD(rawDate) ||
-        new Date().toISOString().split("T")[0];
-
-      let formattedTime = a.timeSlot || "10:00 AM";
-      if (a.paidAt) {
-        try {
-          const pDate = new Date(a.paidAt);
-          if (!isNaN(pDate.getTime())) {
-            formattedTime = pDate.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            });
-          }
-        } catch {}
-      }
+      const { timestamp: dt, dateTime } = formatTransactionDateTime(a);
 
       const isPaid =
         a.isFeeCollected || Boolean(a.paidAt) || a.status === "COMPLETED";
@@ -283,7 +353,7 @@ export async function GET(req: Request) {
         splitDetails: (a as any).splitDetails,
         consultationMode: (a.consultationMode || (a as any).mode || "").toLowerCase().includes("online") ? "Online" : "In-Clinic",
         timestamp: dt,
-        dateTime: `${dt}, ${formattedTime}`,
+        dateTime,
         status: isPaid ? "PAID" : "PENDING",
       };
     });

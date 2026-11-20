@@ -44,9 +44,20 @@ export interface TransactionRecord {
   status: "PAID" | "PENDING" | "COMPLETED";
 }
 
+function formatDisplayDateTime(dateTimeStr?: string): string {
+  if (!dateTimeStr) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(dateTimeStr)) return dateTimeStr;
+  const match = dateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})(.*)$/);
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1]}${match[4]}`;
+  }
+  return dateTimeStr;
+}
+
 export default function AdminTotalRevenuePage() {
   // Stable dates initialized cleanly to avoid SSR prerender mismatch
-  const [todayStr, setTodayStr] = useState("2026-11-07");
+  const [todayStr, setTodayStr] = useState("2026-11-20");
+  const [yesterdayStr, setYesterdayStr] = useState("2026-11-19");
   const [currentYearStr, setCurrentYearStr] = useState("2026");
   const [currentMonthNumStr, setCurrentMonthNumStr] = useState("11");
   const [thisMonthPrefix, setThisMonthPrefix] = useState("2026-11");
@@ -59,6 +70,14 @@ export default function AdminTotalRevenuePage() {
     const day = String(d.getDate()).padStart(2, "0");
     const today = `${y}-${m}-${day}`;
     setTodayStr(today);
+
+    const yd = new Date(d);
+    yd.setDate(yd.getDate() - 1);
+    const yY = yd.getFullYear();
+    const yM = String(yd.getMonth() + 1).padStart(2, "0");
+    const yDay = String(yd.getDate()).padStart(2, "0");
+    setYesterdayStr(`${yY}-${yM}-${yDay}`);
+
     setCurrentYearStr(String(y));
     setCurrentMonthNumStr(String(parseInt(m, 10)));
     setThisMonthPrefix(`${y}-${m}`);
@@ -91,7 +110,7 @@ export default function AdminTotalRevenuePage() {
   const [revenueAmountRange, setRevenueAmountRange] = useState("all");
   const [revenueConsultationMode, setRevenueConsultationMode] = useState("all");
   const [dateMode, setDateMode] = useState<
-    "this_month" | "prev_month" | "this_year" | "prev_year" | "today" | "custom" | "all"
+    "today" | "yesterday" | "this_month" | "prev_month" | "this_year" | "prev_year" | "custom" | "all"
   >("this_month");
 
   // Sorting
@@ -360,6 +379,8 @@ export default function AdminTotalRevenuePage() {
           if (tDate !== revenueDate) return false;
         } else if (dateMode === "today") {
           if (tDate !== todayStr) return false;
+        } else if (dateMode === "yesterday") {
+          if (tDate !== yesterdayStr) return false;
         } else if (dateMode === "this_month") {
           if (!tDate.startsWith(thisMonthPrefix)) return false;
         } else if (dateMode === "prev_month") {
@@ -522,6 +543,7 @@ export default function AdminTotalRevenuePage() {
     revenueConsultationMode,
     dateMode,
     todayStr,
+    yesterdayStr,
     thisMonthPrefix,
     prevMonthPrefix,
     currentYearStr,
@@ -767,11 +789,12 @@ export default function AdminTotalRevenuePage() {
               <div className="flex items-center flex-wrap gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/70">
               {(
                 [
+                  { id: "today", label: "Today" },
+                  { id: "yesterday", label: "Yesterday" },
                   { id: "this_month", label: "This Month" },
                   { id: "prev_month", label: "Prev Month" },
                   { id: "this_year", label: "This Year" },
                   { id: "prev_year", label: "Prev Year" },
-                  { id: "today", label: "Today" },
                   { id: "custom", label: "Custom Range" },
                   { id: "all", label: "All Time" },
                 ] as const
@@ -1375,7 +1398,7 @@ export default function AdminTotalRevenuePage() {
                             {t.displayPaymentMethod || t.paymentMethod.toUpperCase()}
                           </span>
                         </td>
-                        <td className="py-2 px-3 text-slate-500 whitespace-nowrap">{t.dateTime}</td>
+                        <td className="py-2 px-3 text-slate-500 whitespace-nowrap">{formatDisplayDateTime(t.dateTime)}</td>
                         <td className="py-2 px-3">
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
                             <CheckCircle2 className="w-2.5 h-2.5" /> {t.status}

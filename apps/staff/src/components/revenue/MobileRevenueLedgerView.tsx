@@ -65,7 +65,7 @@ export interface TransactionRecord {
   status: "PAID" | "PENDING" | "COMPLETED";
 }
 
-export type DatePreset = "THIS_MONTH" | "PREV_MONTH" | "THIS_YEAR" | "PREV_YEAR" | "TODAY" | "CUSTOM" | "ALL";
+export type DatePreset = "TODAY" | "YESTERDAY" | "THIS_MONTH" | "PREV_MONTH" | "THIS_YEAR" | "PREV_YEAR" | "CUSTOM" | "ALL";
 
 interface MobileRevenueLedgerViewProps {
   role: "ADMIN" | "HR" | "DOCTOR";
@@ -76,6 +76,16 @@ interface MobileRevenueLedgerViewProps {
 }
 
 // Helper to normalize branch names for reliable comparisons and deduplication
+const formatDisplayDateTime = (dateTimeStr?: string): string => {
+  if (!dateTimeStr) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(dateTimeStr)) return dateTimeStr;
+  const match = dateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})(.*)$/);
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1]}${match[4]}`;
+  }
+  return dateTimeStr;
+};
+
 const normalizeBranchKey = (name: string): string => {
   let c = (name || "")
     .toLowerCase()
@@ -319,6 +329,9 @@ export function MobileRevenueLedgerView({
     const currentMonth = now.getMonth();
 
     const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, "0")}-${String(yesterdayDate.getDate()).padStart(2, "0")}`;
     const thisMonthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
 
     const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
@@ -417,6 +430,8 @@ export function MobileRevenueLedgerView({
 
       if (datePreset === "TODAY") {
         return txDate === todayStr;
+      } else if (datePreset === "YESTERDAY") {
+        return txDate === yesterdayStr;
       } else if (datePreset === "THIS_MONTH") {
         return txDate.startsWith(thisMonthPrefix);
       } else if (datePreset === "PREV_MONTH") {
@@ -761,12 +776,14 @@ export function MobileRevenueLedgerView({
           <View style={styles.presetsRow}>
             {(
               [
-                { id: "THIS_MONTH", label: "This Month" },
                 { id: "TODAY", label: "Today" },
-                { id: "PREV_MONTH", label: "Last Month" },
+                { id: "YESTERDAY", label: "Yesterday" },
+                { id: "THIS_MONTH", label: "This Month" },
+                { id: "PREV_MONTH", label: "Prev Month" },
                 { id: "THIS_YEAR", label: "This Year" },
-                { id: "ALL", label: "All History" },
-                { id: "CUSTOM", label: "Custom Dates" },
+                { id: "PREV_YEAR", label: "Prev Year" },
+                { id: "CUSTOM", label: "Custom Range" },
+                { id: "ALL", label: "All Time" },
               ] as const
             ).map((p) => {
               const active = datePreset === p.id;
@@ -1080,7 +1097,7 @@ export function MobileRevenueLedgerView({
                     </Text>
 
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
-                      <Text style={styles.txDateText}>{tx.dateTime || tx.timestamp}</Text>
+                      <Text style={styles.txDateText}>{formatDisplayDateTime(tx.dateTime || tx.timestamp)}</Text>
                       {/* Consultation Mode Badge */}
                       <View
                         style={[
