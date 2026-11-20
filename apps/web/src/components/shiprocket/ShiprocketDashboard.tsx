@@ -29,6 +29,9 @@ import {
   Tag,
   Star,
   Info,
+  CalendarCheck,
+  Download,
+  Mail,
 } from "lucide-react";
 import { NormalizedShipment, CourierOption, PickupLocationInfo } from "@/utils/shiprocket";
 
@@ -52,31 +55,35 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
   const [trackingData, setTrackingData] = useState<any>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState<boolean>(false);
 
+  // Quick Action States
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+  const [labelLoadingId, setLabelLoadingId] = useState<string | null>(null);
+
   // Order Type & Mode
   const [orderKind, setOrderKind] = useState<"domestic" | "international">("domestic");
   const [orderBatch, setOrderBatch] = useState<"single" | "bulk">("single");
 
-  // Create Parcel Form State - STRICTLY NO PRE-FILLED TEXT (all empty strings)
+  // Create Parcel Form State - Blank fields with standard patient email default
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("patient@spiritualhomeo.com");
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
-  const [pickupLocation, setPickupLocation] = useState("spiritual homeopathy dilsukhnagar");
+  const [pickupLocation, setPickupLocation] = useState("work");
   const [pickupLocations, setPickupLocations] = useState<PickupLocationInfo[]>([
     {
-      pickupLocation: "spiritual homeopathy dilsukhnagar",
+      pickupLocation: "work",
       nickname: "work",
-      name: "spiritual homeopathy dilsukhnagar",
+      name: "Dr.Ramakrishna",
       address:
-        "Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, Hyderabad, Telangana 500060 model bank road K.V.Rangareddy",
-      city: "Hyderabad",
+        "spiritual homeopathy dilsukhnagar , Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, Hyderabad, Telangana 500060",
+      city: "K.V.Rangareddy",
       state: "Telangana",
       pincode: "500060",
-      phone: "9100000000",
+      phone: "9804176176",
       isVerified: true,
     },
   ]);
@@ -169,11 +176,58 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       .then((data) => {
         if (data.success && Array.isArray(data.locations) && data.locations.length > 0) {
           setPickupLocations(data.locations);
-          setPickupLocation(data.locations[0].pickupLocation || "spiritual homeopathy dilsukhnagar");
+          setPickupLocation(data.locations[0].pickupLocation || "work");
         }
       })
       .catch((_) => {});
   }, [loadOrders]);
+
+  // Schedule Pickup Handler
+  const handleSchedulePickup = async (shipmentId: string) => {
+    if (!shipmentId) return;
+    setSchedulingId(shipmentId);
+    try {
+      const res = await fetch("/api/shiprocket/schedule-pickup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to schedule pickup.");
+      }
+      alert(
+        `✓ Pickup Scheduled Successfully!\n\n${data.message || "Pickup confirmed by courier partner."}\nScheduled Date: ${data.pickupScheduledDate || "Next pickup cycle"}\nToken / Ref: ${data.pickupToken || "Generated"}`
+      );
+      loadOrders();
+    } catch (err: any) {
+      alert("Schedule Pickup Error: " + err.message);
+    } finally {
+      setSchedulingId(null);
+    }
+  };
+
+  // Generate / Download Label Handler
+  const handleGenerateLabel = async (shipmentId: string) => {
+    if (!shipmentId) return;
+    setLabelLoadingId(shipmentId);
+    try {
+      const res = await fetch("/api/shiprocket/generate-label", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shipmentId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.labelUrl) {
+        throw new Error(data.error || "Failed to generate label.");
+      }
+      window.open(data.labelUrl, "_blank");
+    } catch (err: any) {
+      alert("Download Label Error: " + err.message);
+    } finally {
+      setLabelLoadingId(null);
+    }
+  };
 
   // Live Fetch Couriers & Rates when 6-digit Pincode is entered
   const fetchLiveRates = useCallback(async (pin: string, wt: number, cod: string) => {
@@ -314,7 +368,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
         city: city.trim(),
         state: state.trim() || "Telangana",
         pincode: pincode.trim(),
-        pickupLocation: pickupLocation || "spiritual homeopathy dilsukhnagar",
+        pickupLocation: pickupLocation || "work",
         paymentMethod,
         subTotal: totalOrderValue || subTotal || 500,
         weightKg: applicableWeight,
@@ -343,7 +397,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       // Reset Form fields to blank
       setPatientName("");
       setPhone("");
-      setEmail("");
+      setEmail("patient@spiritualhomeo.com");
       setAddress("");
       setLandmark("");
       setCity("");
@@ -387,6 +441,8 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
         return "bg-blue-50 text-blue-700 border-blue-200";
       case "Pickup Scheduled":
         return "bg-amber-50 text-amber-700 border-amber-200";
+      case "Ready to Ship":
+        return "bg-violet-50 text-violet-700 border-violet-200";
       case "RTO":
         return "bg-rose-50 text-rose-700 border-rose-200";
       default:
@@ -609,27 +665,26 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-black uppercase text-[10.5px] tracking-wider">
-                      <th className="py-3 px-4">Order & AWB</th>
-                      <th className="py-3 px-4">Patient & Phone</th>
-                      <th className="py-3 px-4">Delivery Destination</th>
-                      <th className="py-3 px-4">Courier</th>
-                      <th className="py-3 px-4">Amount</th>
-                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Order Details</th>
+                      <th className="py-3 px-4">Customer Details</th>
+                      <th className="py-3 px-4">Payment</th>
+                      <th className="py-3 px-4">Pickup Address</th>
+                      <th className="py-3 px-4">Shipping Details</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Live Track</th>
+                      <th className="py-3 px-4 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {isLoading ? (
                       <tr>
-                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
                           <RefreshCw className="animate-spin w-6 h-6 mx-auto mb-2 text-violet-600" />
                           <span>Connecting to Shiprocket API...</span>
                         </td>
                       </tr>
                     ) : filteredParcels.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-14 text-center text-slate-400 font-medium">
+                        <td colSpan={7} className="py-14 text-center text-slate-400 font-medium">
                           <Package size={36} className="mx-auto mb-2 text-slate-300" />
                           <p>No parcels matching current filter or search criteria.</p>
                           <button
@@ -645,51 +700,86 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     ) : (
                       filteredParcels.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                          <td className="py-3.5 px-4">
-                            <div className="font-extrabold text-slate-900">{item.orderId}</div>
+                          {/* 1. Order Details */}
+                          <td className="py-3.5 px-4 align-top">
+                            <div className="font-extrabold text-slate-900 text-xs">{item.orderId}</div>
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <Clock size={10} className="text-slate-400 shrink-0" />
+                              <span>{item.date}</span>
+                            </div>
+                            <div className="mt-1">
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-100 text-slate-600 uppercase tracking-tight">
+                                Smart Order
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* 2. Customer Details */}
+                          <td className="py-3.5 px-4 align-top">
+                            <div className="font-bold text-slate-900">{item.patientName}</div>
+                            {item.email && (
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                <Mail size={10} className="text-slate-400 shrink-0" />
+                                <span className="font-mono text-[10.5px]">{item.email}</span>
+                              </div>
+                            )}
+                            <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1 mt-0.5">
+                              <Phone size={10} className="text-slate-400 shrink-0" />
+                              <span>{item.phone}</span>
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 truncate max-w-xs mt-0.5">
+                              {item.city}{item.state ? `, ${item.state}` : ""}
+                            </div>
+                          </td>
+
+                          {/* 3. Payment */}
+                          <td className="py-3.5 px-4 align-top">
+                            <div className="font-extrabold text-slate-900 text-xs">
+                              ₹{item.amount.toLocaleString()}
+                            </div>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase mt-1 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {item.paymentMethod || "Prepaid"}
+                            </span>
+                          </td>
+
+                          {/* 4. Pickup Address */}
+                          <td className="py-3.5 px-4 align-top">
+                            <span className="inline-block px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-black text-[10px] uppercase">
+                              {item.pickupLocation || "work"}
+                            </span>
+                            <div className="text-[10.5px] text-slate-500 mt-1">
+                              Dilsukhnagar Clinic Hub
+                            </div>
+                          </td>
+
+                          {/* 5. Shipping Details */}
+                          <td className="py-3.5 px-4 align-top">
+                            <div className="font-bold text-slate-900 flex items-center gap-1">
+                              <Truck size={12} className="text-violet-600 shrink-0" />
+                              <span>{item.courier || "Assigned Courier"}</span>
+                            </div>
                             {item.awbNumber ? (
                               <button
                                 type="button"
                                 onClick={() => handleOpenTracking(item.awbNumber)}
-                                className="font-mono text-[11px] text-violet-600 hover:text-violet-800 font-bold flex items-center gap-1 mt-0.5 cursor-pointer underline"
+                                className="font-mono text-[11px] text-violet-600 hover:text-violet-800 font-bold flex items-center gap-1 mt-1 cursor-pointer underline"
                               >
-                                <span>AWB: {item.awbNumber}</span>
+                                <span>AWB# {item.awbNumber}</span>
                               </button>
                             ) : (
-                              <span className="text-[10.5px] text-slate-400 font-medium">
+                              <span className="text-[10.5px] text-slate-400 font-medium block mt-0.5">
                                 AWB Pending
                               </span>
                             )}
+                            {item.awbAssignDate && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Assigned: {item.awbAssignDate}
+                              </div>
+                            )}
                           </td>
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-slate-900">{item.patientName}</div>
-                            <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1 mt-0.5">
-                              <Phone size={10} />
-                              <span>{item.phone}</span>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="font-semibold text-slate-900">{item.city}{item.state ? `, ${item.state}` : ""}</div>
-                            <div className="text-[11px] text-slate-500 truncate max-w-xs mt-0.5">
-                              {item.address} {item.pincode ? `- ${item.pincode}` : ""}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 font-bold text-slate-800 text-[11px]">
-                              <Truck size={11} className="text-slate-500" />
-                              <span>{item.courier || "Shiprocket"}</span>
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 font-bold text-slate-900">
-                            ₹{item.amount.toLocaleString()}
-                            <div className="text-[10px] text-slate-500 font-medium">
-                              {item.paymentMethod}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-slate-700 font-medium whitespace-nowrap">
-                            {item.date}
-                          </td>
-                          <td className="py-3.5 px-4 whitespace-nowrap">
+
+                          {/* 6. Status */}
+                          <td className="py-3.5 px-4 align-top whitespace-nowrap">
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full text-[10.5px] font-black border ${getStatusBadge(
                                 item.statusLabel
@@ -697,20 +787,71 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                             >
                               {item.statusLabel}
                             </span>
-                          </td>
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                            {item.awbNumber ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenTracking(item.awbNumber)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-[11px] transition cursor-pointer"
-                              >
-                                <span>Track</span>
-                                <ArrowUpRight size={12} />
-                              </button>
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">—</span>
+                            {item.pickupScheduledDate && (
+                              <div className="text-[10px] text-amber-600 font-semibold mt-1">
+                                Scheduled: {item.pickupScheduledDate}
+                              </div>
                             )}
+                          </td>
+
+                          {/* 7. Action */}
+                          <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {/* AWB Live Track Check */}
+                              {item.awbNumber && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenTracking(item.awbNumber)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-[11px] transition cursor-pointer"
+                                  title="Check AWB Live Tracking"
+                                >
+                                  <span>Track</span>
+                                  <ArrowUpRight size={12} />
+                                </button>
+                              )}
+
+                              {/* Schedule Pickup Action */}
+                              {item.shipmentId && item.statusLabel !== "Delivered" && item.statusLabel !== "Cancelled" && (
+                                <button
+                                  type="button"
+                                  disabled={schedulingId === item.shipmentId}
+                                  onClick={() => handleSchedulePickup(item.shipmentId)}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition cursor-pointer shadow-2xs ${
+                                    item.statusLabel === "Pickup Scheduled"
+                                      ? "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
+                                      : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  }`}
+                                  title="Schedule Courier Pickup"
+                                >
+                                  {schedulingId === item.shipmentId ? (
+                                    <RefreshCw className="animate-spin" size={11} />
+                                  ) : (
+                                    <CalendarCheck size={11} />
+                                  )}
+                                  <span>
+                                    {item.statusLabel === "Pickup Scheduled" ? "Reschedule Pickup" : "Schedule Pickup"}
+                                  </span>
+                                </button>
+                              )}
+
+                              {/* Download Shipping Label */}
+                              {item.shipmentId && item.awbNumber && (
+                                <button
+                                  type="button"
+                                  disabled={labelLoadingId === item.shipmentId}
+                                  onClick={() => handleGenerateLabel(item.shipmentId)}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition cursor-pointer"
+                                  title="Download / Print Shipping Label"
+                                >
+                                  {labelLoadingId === item.shipmentId ? (
+                                    <RefreshCw className="animate-spin" size={11} />
+                                  ) : (
+                                    <Download size={11} />
+                                  )}
+                                  <span>Label</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -913,7 +1054,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
                       Mobile Number *
@@ -943,6 +1084,19 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                       placeholder="Enter Full Name"
                       value={patientName}
                       onChange={(e) => setPatientName(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Patient Email ID
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="patient@spiritualhomeo.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-900 placeholder:text-slate-400 font-medium"
                     />
                   </div>

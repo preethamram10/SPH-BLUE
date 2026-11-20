@@ -56,12 +56,15 @@ export interface NormalizedShipment {
   awbNumber: string;
   status: string;
   statusCode: number;
-  statusLabel: "Delivered" | "In Transit" | "Pickup Scheduled" | "Dispatched" | "RTO" | "Cancelled" | "Pending";
+  statusLabel: "Delivered" | "In Transit" | "Pickup Scheduled" | "Ready to Ship" | "Dispatched" | "RTO" | "Cancelled" | "Pending";
   date: string;
   amount: number;
   paymentMethod: string;
   items: Array<{ name: string; quantity: number; price: number }>;
   trackingUrl?: string;
+  pickupScheduledDate?: string;
+  pickupToken?: string;
+  awbAssignDate?: string;
 }
 
 /**
@@ -116,17 +119,19 @@ export async function getShiprocketAuthToken(): Promise<string> {
  * Map Shiprocket status string to clean UI status labels
  */
 export function normalizeShiprocketStatus(
-  status: string,
+  status: any,
   statusCode?: number
 ): NormalizedShipment["statusLabel"] {
-  const s = (status || "").toUpperCase();
+  const s = String(status || "").toUpperCase();
   if (s.includes("DELIVERED") || statusCode === 7) return "Delivered";
   if (s.includes("RTO") || s.includes("RETURN") || statusCode === 13) return "RTO";
   if (s.includes("TRANSIT") || s.includes("OUT FOR DELIVERY") || statusCode === 6 || statusCode === 17)
     return "In Transit";
   if (s.includes("DISPATCH") || s.includes("PICKED UP") || statusCode === 18) return "Dispatched";
-  if (s.includes("PICKUP") || s.includes("READY TO SHIP") || statusCode === 3 || statusCode === 4)
-    return "Pickup Scheduled";
+  if (s.includes("PICKUP SCHEDULED") || statusCode === 4) return "Pickup Scheduled";
+  if (s.includes("READY TO SHIP") || s.includes("AWB ASSIGNED") || statusCode === 3 || statusCode === 1)
+    return "Ready to Ship";
+  if (s.includes("PICKUP")) return "Pickup Scheduled";
   if (s.includes("CANCELL") || statusCode === 8) return "Cancelled";
   return "Pending";
 }
@@ -165,31 +170,32 @@ export async function getShiprocketOrders(params?: {
     const orderList: any[] = Array.isArray(data?.data) ? data.data : [];
     const shipments: NormalizedShipment[] = orderList.map((order: any) => {
       const shipment = order.shipments?.[0] || {};
-      const statusStr = shipment.status || order.status || "NEW";
-      const statusCode = shipment.status_code || order.status_code;
+      const statusStr =
+        typeof order.status === "string" && order.status.trim().length > 0
+          ? order.status
+          : typeof shipment.status === "string" && shipment.status.trim().length > 0
+          ? shipment.status
+          : String(order.status || shipment.status || "NEW");
+      const statusCode = Number(shipment.status_code || order.status_code) || 0;
 
       return {
         id: String(order.id),
         orderId: String(order.channel_order_id || order.id),
         shipmentId: String(shipment.id || ""),
-        patientName: order.customer_name || `${order.billing_name || ""}`.trim(),
+        patientName: (order.customer_name || `${order.billing_name || ""}`).trim(),
         phone: order.customer_phone || order.billing_phone || "",
         email: order.customer_email || order.billing_email || "",
         address: [order.billing_address, order.billing_address_2].filter(Boolean).join(", "),
         city: order.billing_city || "",
         state: order.billing_state || "",
         pincode: order.billing_pincode || "",
-        pickupLocation: order.pickup_location || "Clinic Primary",
-        courier: shipment.courier_name || "Assigned Courier",
+        pickupLocation: order.pickup_location || "work",
+        courier: shipment.courier || shipment.sr_courier_name || shipment.courier_name || "Assigned Courier",
         awbNumber: shipment.awb || order.awb_code || "",
         status: statusStr,
         statusCode: statusCode || 0,
         statusLabel: normalizeShiprocketStatus(statusStr, statusCode),
-        date: order.created_at ? new Date(order.created_at).toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }) : "N/A",
+        date: order.created_at || (order.order_date ? new Date(order.order_date).toLocaleString("en-IN") : "N/A"),
         amount: parseFloat(order.total) || 0,
         paymentMethod: order.payment_method || "Prepaid",
         items: (order.products || []).map((p: any) => ({
@@ -198,6 +204,9 @@ export async function getShiprocketOrders(params?: {
           price: parseFloat(p.price) || 0,
         })),
         trackingUrl: shipment.awb ? `https://shiprocket.co/tracking/${shipment.awb}` : undefined,
+        pickupScheduledDate: shipment.pickup_scheduled_date && shipment.pickup_scheduled_date !== "0000-00-00 00:00:00" ? shipment.pickup_scheduled_date : undefined,
+        pickupToken: shipment.pickup_token_number || undefined,
+        awbAssignDate: shipment.awb_assign_date || undefined,
       };
     });
 
@@ -241,10 +250,15 @@ export async function createShiprocketShipment(payload: CreateShipmentPayload) {
     payload.subTotal ||
     formattedItems.reduce((sum, item) => sum + item.units * item.selling_price, 0);
 
+  const validPickupLocation =
+    payload.pickupLocation && !payload.pickupLocation.toLowerCase().includes("spiritual")
+      ? payload.pickupLocation
+      : "work";
+
   const bodyData = {
     order_id: orderId,
     order_date: orderDate,
-    pickup_location: payload.pickupLocation || "work",
+    pickup_location: validPickupLocation,
     billing_customer_name: payload.patientName,
     billing_last_name: "",
     billing_address: payload.address,
@@ -339,18 +353,95 @@ export async function trackShiprocketShipment(awb: string) {
   }
 
   const trackData = data?.tracking_data || {};
+  const trackInfo = trackData.shipment_track?.[0] || {};
+  const statusDisplay = trackInfo.current_status || (trackData.shipment_status === 1 ? "AWB Assigned" : String(trackData.shipment_status || "In Transit"));
+
+  const activities = Array.isArray(trackData.shipment_track_activities) && trackData.shipment_track_activities.length > 0
+    ? trackData.shipment_track_activities
+    : trackInfo.current_status
+    ? [
+        {
+          activity: trackInfo.current_status,
+          location: trackInfo.origin ? `${trackInfo.origin} → ${trackInfo.destination || ""}` : trackInfo.destination || "Origin Hub",
+          date: trackInfo.awb_assign_date || "Active",
+        },
+      ]
+    : [];
+
   return {
     awb,
     trackStatus: trackData.track_status || 0,
-    shipmentStatus: trackData.shipment_status || "",
-    courierName: trackData.courier_name || "",
-    origin: trackData.origin || "",
-    destination: trackData.destination || "",
-    currentLocation: trackData.current_location || "",
-    expectedDelivery: trackData.expected_date || "",
-    activities: Array.isArray(trackData.shipment_track_activities)
-      ? trackData.shipment_track_activities
-      : [],
+    shipmentStatus: statusDisplay,
+    courierName: trackInfo.courier_name || trackData.courier_name || "Shiprocket Partner",
+    origin: trackInfo.origin || trackData.origin || "",
+    destination: trackInfo.destination || trackData.destination || "",
+    currentLocation: trackInfo.current_status || trackData.current_location || trackInfo.destination || "In Network",
+    expectedDelivery: trackInfo.edd || trackData.expected_date || trackData.etd || "",
+    trackUrl: trackData.track_url || `https://shiprocket.co/tracking/${awb}`,
+    activities,
+    raw: data,
+  };
+}
+
+/**
+ * Schedule Courier Pickup in Shiprocket
+ */
+export async function scheduleShiprocketPickup(shipmentId: number | string) {
+  const token = await getShiprocketAuthToken();
+  const res = await fetch(`${SHIPROCKET_BASE_URL}/courier/generate/pickup`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      shipment_id: [Number(shipmentId)],
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to schedule pickup with courier.");
+  }
+
+  const pickupScheduledDate = data.response?.pickup_scheduled_date || "";
+  const pickupToken = data.response?.pickup_token_number || "";
+  const message = data.response?.data || data.message || "Pickup scheduled successfully!";
+
+  return {
+    success: true,
+    pickupScheduledDate,
+    pickupToken,
+    message,
+    raw: data,
+  };
+}
+
+/**
+ * Generate Shipping Label in Shiprocket
+ */
+export async function generateShiprocketLabel(shipmentId: number | string) {
+  const token = await getShiprocketAuthToken();
+  const res = await fetch(`${SHIPROCKET_BASE_URL}/courier/generate/label`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      shipment_id: [Number(shipmentId)],
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.label_url) {
+    throw new Error(data.message || "Failed to generate shipping label.");
+  }
+
+  return {
+    success: true,
+    labelUrl: data.label_url,
+    message: data.message || "Label generated successfully!",
     raw: data,
   };
 }

@@ -19,16 +19,21 @@ import { apiFetch } from "../../services/auth";
 interface ShipmentItem {
   id: string;
   orderId: string;
+  shipmentId?: string;
   patientName: string;
   phone: string;
+  email?: string;
   destination?: string;
   address?: string;
   city?: string;
   state?: string;
   pincode?: string;
+  pickupLocation?: string;
   courier: string;
   awbNumber: string;
+  awbAssignDate?: string;
   statusLabel: string;
+  pickupScheduledDate?: string;
   date: string;
   amount: number;
   paymentMethod?: string;
@@ -124,10 +129,13 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   const [trackingAwb, setTrackingAwb] = useState<string | null>(null);
   const [trackingData, setTrackingData] = useState<any>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState<boolean>(false);
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+  const [labelLoadingId, setLabelLoadingId] = useState<string | null>(null);
 
   // Create Parcel Form State - STRICTLY NO PRE-FILLED TEXT (all clean blank fields)
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("patient@spiritualhomeo.com");
   const [address, setAddress] = useState("");
   const [landmark, setLandmark] = useState("");
   const [city, setCity] = useState("");
@@ -279,6 +287,50 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
     }
   };
 
+  // Schedule Courier Pickup Handler
+  const handleSchedulePickup = async (shipmentId: string) => {
+    if (!shipmentId) return;
+    setSchedulingId(shipmentId);
+    try {
+      const res = await apiFetch<any>("/shiprocket/schedule-pickup", {
+        method: "POST",
+        body: JSON.stringify({ shipmentId }),
+      });
+      if (!res?.success) {
+        throw new Error(res?.error || "Failed to schedule pickup.");
+      }
+      Alert.alert(
+        "Pickup Scheduled! ✓",
+        `${res.message || "Pickup request confirmed by courier."}\nScheduled Date: ${res.pickupScheduledDate || "Next Working Day"}\nToken: ${res.pickupToken || "Generated"}`
+      );
+      loadOrders();
+    } catch (err: any) {
+      Alert.alert("Pickup Error", err.message || "Failed to schedule pickup.");
+    } finally {
+      setSchedulingId(null);
+    }
+  };
+
+  // Generate / Download Label Handler
+  const handleGenerateLabel = async (shipmentId: string) => {
+    if (!shipmentId) return;
+    setLabelLoadingId(shipmentId);
+    try {
+      const res = await apiFetch<any>("/shiprocket/generate-label", {
+        method: "POST",
+        body: JSON.stringify({ shipmentId }),
+      });
+      if (!res?.success || !res?.labelUrl) {
+        throw new Error(res?.error || "Failed to generate label.");
+      }
+      Linking.openURL(res.labelUrl);
+    } catch (err: any) {
+      Alert.alert("Label Error", err.message || "Failed to generate label.");
+    } finally {
+      setLabelLoadingId(null);
+    }
+  };
+
   // Submit New Parcel
   const handleCreateParcel = async () => {
     if (!patientName.trim()) {
@@ -301,11 +353,12 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       const payload = {
         patientName: patientName.trim(),
         phone: phone.trim(),
+        email: email.trim() || "patient@spiritualhomeo.com",
         address: landmark.trim() ? `${address.trim()}, Near ${landmark.trim()}` : address.trim(),
         city: city.trim(),
         state: state.trim() || "Telangana",
         pincode: pincode.trim(),
-        pickupLocation: "spiritual homeopathy dilsukhnagar",
+        pickupLocation: "work",
         paymentMethod,
         subTotal: totalOrderValue || 500,
         weightKg: applicableWeight,
@@ -343,6 +396,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
       // Reset form fields to blank & reload
       setPatientName("");
       setPhone("");
+      setEmail("patient@spiritualhomeo.com");
       setAddress("");
       setLandmark("");
       setCity("");
@@ -390,6 +444,8 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
         return { bg: "#eff6ff", border: "#bfdbfe", text: "#1e40af" };
       case "Pickup Scheduled":
         return { bg: "#fffbeb", border: "#fde68a", text: "#92400e" };
+      case "Ready to Ship":
+        return { bg: "#f5f3ff", border: "#ddd6fe", text: "#6d28d9" };
       case "RTO":
         return { bg: "#fff1f2", border: "#fecdd3", text: "#9f1239" };
       default:
@@ -596,10 +652,26 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                       <Text style={styles.infoSub}>{item.phone}</Text>
                     </View>
 
+                    {item.email ? (
+                      <View style={[styles.infoRow, { marginTop: 2 }]}>
+                        <Ionicons name="mail-outline" size={13} color="#64748b" />
+                        <Text style={[styles.infoSub, { color: "#64748b", fontSize: 11 }]}>
+                          {item.email}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <View style={styles.infoRow}>
                       <Ionicons name="location-outline" size={13} color="#64748b" />
                       <Text style={styles.addressText} numberOfLines={1}>
                         {item.destination || item.address || "Destination"}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.infoRow, { marginTop: 2 }]}>
+                      <Ionicons name="business-outline" size={13} color="#7c3aed" />
+                      <Text style={{ fontSize: 11, color: "#6d28d9", fontWeight: "700" }}>
+                        Pickup Hub: {item.pickupLocation || "work"} (Dilsukhnagar)
                       </Text>
                     </View>
 
@@ -609,8 +681,10 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                         <Text style={styles.courierText}>{item.courier || "Shiprocket"}</Text>
                       </View>
 
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         <Text style={styles.priceText}>₹{item.amount.toLocaleString()}</Text>
+
+                        {/* Track Button */}
                         {item.awbNumber ? (
                           <TouchableOpacity
                             style={styles.trackBtn}
@@ -619,6 +693,72 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                           >
                             <Text style={styles.trackBtnText}>Track</Text>
                             <Ionicons name="navigate-outline" size={11} color="#ffffff" />
+                          </TouchableOpacity>
+                        ) : null}
+
+                        {/* Schedule Pickup Action Button */}
+                        {item.shipmentId && item.statusLabel !== "Delivered" && item.statusLabel !== "Cancelled" ? (
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 3,
+                              backgroundColor: item.statusLabel === "Pickup Scheduled" ? "#fef3c7" : "#059669",
+                              paddingHorizontal: 8,
+                              paddingVertical: 5,
+                              borderRadius: 8,
+                            }}
+                            onPress={() => handleSchedulePickup(item.shipmentId!)}
+                            disabled={schedulingId === item.shipmentId}
+                            activeOpacity={0.7}
+                          >
+                            {schedulingId === item.shipmentId ? (
+                              <ActivityIndicator size={10} color={item.statusLabel === "Pickup Scheduled" ? "#92400e" : "#ffffff"} />
+                            ) : (
+                              <Ionicons
+                                name="calendar-outline"
+                                size={11}
+                                color={item.statusLabel === "Pickup Scheduled" ? "#92400e" : "#ffffff"}
+                              />
+                            )}
+                            <Text
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: "800",
+                                color: item.statusLabel === "Pickup Scheduled" ? "#92400e" : "#ffffff",
+                              }}
+                            >
+                              {item.statusLabel === "Pickup Scheduled" ? "Reschedule" : "Pickup"}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+
+                        {/* Generate / Download Label */}
+                        {item.shipmentId && item.awbNumber ? (
+                          <TouchableOpacity
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 2,
+                              backgroundColor: "#f1f5f9",
+                              borderWidth: 1,
+                              borderColor: "#cbd5e1",
+                              paddingHorizontal: 7,
+                              paddingVertical: 4,
+                              borderRadius: 8,
+                            }}
+                            onPress={() => handleGenerateLabel(item.shipmentId!)}
+                            disabled={labelLoadingId === item.shipmentId}
+                            activeOpacity={0.7}
+                          >
+                            {labelLoadingId === item.shipmentId ? (
+                              <ActivityIndicator size={10} color="#475569" />
+                            ) : (
+                              <Ionicons name="document-text-outline" size={11} color="#475569" />
+                            )}
+                            <Text style={{ fontSize: 10, fontWeight: "700", color: "#334155" }}>
+                              Label
+                            </Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
@@ -739,6 +879,17 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
               placeholderTextColor="#94a3b8"
               value={patientName}
               onChangeText={setPatientName}
+            />
+
+            <Text style={styles.inputLabel}>Patient Email ID</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="patient@spiritualhomeo.com"
+              placeholderTextColor="#94a3b8"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
             />
 
             <Text style={styles.inputLabel}>Complete Address *</Text>
