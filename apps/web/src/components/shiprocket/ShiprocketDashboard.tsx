@@ -72,21 +72,8 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
-  const [pickupLocation, setPickupLocation] = useState("work");
-  const [pickupLocations, setPickupLocations] = useState<PickupLocationInfo[]>([
-    {
-      pickupLocation: "work",
-      nickname: "work",
-      name: "Dr.Ramakrishna",
-      address:
-        "spiritual homeopathy dilsukhnagar , Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, Hyderabad, Telangana 500060",
-      city: "K.V.Rangareddy",
-      state: "Telangana",
-      pincode: "500060",
-      phone: "9804176176",
-      isVerified: true,
-    },
-  ]);
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [pickupLocations, setPickupLocations] = useState<PickupLocationInfo[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"Prepaid" | "COD">("Prepaid");
 
   // Multi-item Products State (Blank initial values)
@@ -176,7 +163,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
       .then((data) => {
         if (data.success && Array.isArray(data.locations) && data.locations.length > 0) {
           setPickupLocations(data.locations);
-          setPickupLocation(data.locations[0].pickupLocation || "work");
+          setPickupLocation(data.locations[0].pickupLocation || "");
         }
       })
       .catch((_) => {});
@@ -368,7 +355,7 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
         city: city.trim(),
         state: state.trim() || "Telangana",
         pincode: pincode.trim(),
-        pickupLocation: pickupLocation || "work",
+        pickupLocation: pickupLocation || (pickupLocations[0]?.pickupLocation || ""),
         paymentMethod,
         subTotal: totalOrderValue || subTotal || 500,
         weightKg: applicableWeight,
@@ -745,11 +732,8 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                           {/* 4. Pickup Address */}
                           <td className="py-3.5 px-4 align-top">
                             <span className="inline-block px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-black text-[10px] uppercase">
-                              {item.pickupLocation || "work"}
+                              {item.pickupLocation || "Hub"}
                             </span>
-                            <div className="text-[10.5px] text-slate-500 mt-1">
-                              Dilsukhnagar Clinic Hub
-                            </div>
                           </td>
 
                           {/* 5. Shipping Details */}
@@ -1000,46 +984,70 @@ export const ShiprocketDashboard: React.FC<ShiprocketDashboardProps> = ({ role }
                     <Building2 size={14} className="text-violet-600" />
                     <span>Pickup Address (From Address)</span>
                   </h3>
-                  <span className="text-[11px] text-slate-500 font-medium">Default Dispatch Hub</span>
+                  <span className="text-[11px] text-slate-500 font-medium">Registered Shiprocket Hub</span>
                 </div>
 
-                <div className="p-4 rounded-xl border border-violet-200 bg-violet-50/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0 mt-0.5">
-                      <MapPin size={18} />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-violet-700 text-white">
-                          work
-                        </span>
-                        <span className="text-xs font-black text-slate-900">
-                          spiritual homeopathy dilsukhnagar
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                          <ShieldCheck size={11} className="text-emerald-700" />
-                          <span>Verified</span>
-                        </span>
+                {(() => {
+                  const selectedPickupLoc =
+                    pickupLocations.find((l) => l.pickupLocation === pickupLocation) ||
+                    pickupLocations[0];
+                  if (!selectedPickupLoc) {
+                    return (
+                      <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-xs">
+                        Loading registered pickup locations from Shiprocket account...
                       </div>
-                      <p className="text-[11.5px] text-slate-700 mt-1 leading-relaxed font-medium">
-                        Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar,
-                        Hyderabad, Telangana 500060 model bank road K.V.Rangareddy Telangana-500060
-                      </p>
-                    </div>
-                  </div>
+                    );
+                  }
+                  return (
+                    <div className="p-4 rounded-xl border border-violet-200 bg-violet-50/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                          <MapPin size={18} />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-violet-700 text-white">
+                              {selectedPickupLoc.pickupLocation}
+                            </span>
+                            <span className="text-xs font-black text-slate-900">
+                              {selectedPickupLoc.name}
+                            </span>
+                            {selectedPickupLoc.isVerified && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <ShieldCheck size={11} className="text-emerald-700" />
+                                <span>Verified</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11.5px] text-slate-700 mt-1 leading-relaxed font-medium">
+                            {[
+                              selectedPickupLoc.address,
+                              selectedPickupLoc.city,
+                              selectedPickupLoc.state,
+                              selectedPickupLoc.pincode,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </p>
+                        </div>
+                      </div>
 
-                  <select
-                    value={pickupLocation}
-                    onChange={(e) => setPickupLocation(e.target.value)}
-                    className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-violet-200 bg-white font-bold text-violet-900 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
-                  >
-                    {pickupLocations.map((loc) => (
-                      <option key={loc.pickupLocation} value={loc.pickupLocation} className="text-slate-900">
-                        {loc.name || loc.pickupLocation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                      {pickupLocations.length > 1 && (
+                        <select
+                          value={pickupLocation}
+                          onChange={(e) => setPickupLocation(e.target.value)}
+                          className="shrink-0 px-3 py-1.5 text-xs rounded-lg border border-violet-200 bg-white font-bold text-violet-900 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
+                        >
+                          {pickupLocations.map((loc) => (
+                            <option key={loc.pickupLocation} value={loc.pickupLocation} className="text-slate-900">
+                              {loc.name || loc.pickupLocation}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 2. Delivery Details */}

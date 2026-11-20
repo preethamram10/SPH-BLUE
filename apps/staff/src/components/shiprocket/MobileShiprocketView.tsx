@@ -141,6 +141,8 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [pickupLocations, setPickupLocations] = useState<any[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"Prepaid" | "COD">("Prepaid");
 
   // Product & Pricing State
@@ -211,6 +213,14 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
 
   useEffect(() => {
     loadOrders();
+    apiFetch<any>("/shiprocket/pickup-locations")
+      .then((data) => {
+        if (data?.success && Array.isArray(data.locations) && data.locations.length > 0) {
+          setPickupLocations(data.locations);
+          setPickupLocation(data.locations[0].pickupLocation || "");
+        }
+      })
+      .catch((_) => {});
   }, [loadOrders]);
 
   // Fetch Couriers & Rates live from Shiprocket API when 6-digit Pincode is typed
@@ -358,7 +368,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
         city: city.trim(),
         state: state.trim() || "Telangana",
         pincode: pincode.trim(),
-        pickupLocation: "work",
+        pickupLocation: pickupLocation || (pickupLocations[0]?.pickupLocation || ""),
         paymentMethod,
         subTotal: totalOrderValue || 500,
         weightKg: applicableWeight,
@@ -671,7 +681,7 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
                     <View style={[styles.infoRow, { marginTop: 2 }]}>
                       <Ionicons name="business-outline" size={13} color="#7c3aed" />
                       <Text style={{ fontSize: 11, color: "#6d28d9", fontWeight: "700" }}>
-                        Pickup Hub: {item.pickupLocation || "work"} (Dilsukhnagar)
+                        Pickup Hub: {item.pickupLocation || "Hub"}
                       </Text>
                     </View>
 
@@ -777,54 +787,87 @@ export const MobileShiprocketView: React.FC<MobileShiprocketViewProps> = ({ role
           <View style={styles.formCard}>
             {/* 1. Pickup Address (From Address) */}
             <Text style={styles.sectionHeader}>Pickup Address (From Address)</Text>
-            <View
-              style={{
-                backgroundColor: "#f5f3ff",
-                borderWidth: 1,
-                borderColor: "#ddd6fe",
-                borderRadius: 12,
-                padding: 12,
-                marginBottom: 14,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            {(() => {
+              const selectedPickupLoc =
+                pickupLocations.find((l) => l.pickupLocation === pickupLocation) ||
+                pickupLocations[0];
+              if (!selectedPickupLoc) {
+                return (
+                  <View
+                    style={{
+                      backgroundColor: "#f8fafc",
+                      borderWidth: 1,
+                      borderColor: "#e2e8f0",
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: "#64748b" }}>
+                      Loading registered pickup hub from Shiprocket...
+                    </Text>
+                  </View>
+                );
+              }
+              return (
                 <View
                   style={{
-                    backgroundColor: "#6d28d9",
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 5,
+                    backgroundColor: "#f5f3ff",
+                    borderWidth: 1,
+                    borderColor: "#ddd6fe",
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 14,
                   }}
                 >
-                  <Text style={{ color: "#ffffff", fontSize: 9.5, fontWeight: "900", textTransform: "uppercase" }}>
-                    work
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                    <View
+                      style={{
+                        backgroundColor: "#6d28d9",
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 5,
+                      }}
+                    >
+                      <Text style={{ color: "#ffffff", fontSize: 9.5, fontWeight: "900", textTransform: "uppercase" }}>
+                        {selectedPickupLoc.pickupLocation}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 12, fontWeight: "900", color: "#0f172a", flex: 1 }}>
+                      {selectedPickupLoc.name}
+                    </Text>
+                    {selectedPickupLoc.isVerified && (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 3,
+                          backgroundColor: "#dcfce7",
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: "#86efac",
+                        }}
+                      >
+                        <Ionicons name="checkmark-circle" size={11} color="#15803d" />
+                        <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#15803d" }}>Verified</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 11, color: "#475569", lineHeight: 16 }}>
+                    {[
+                      selectedPickupLoc.address,
+                      selectedPickupLoc.city,
+                      selectedPickupLoc.state,
+                      selectedPickupLoc.pincode,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
                   </Text>
                 </View>
-                <Text style={{ fontSize: 12, fontWeight: "900", color: "#0f172a", flex: 1 }}>
-                  spiritual homeopathy dilsukhnagar
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 3,
-                    backgroundColor: "#dcfce7",
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: "#86efac",
-                  }}
-                >
-                  <Ionicons name="checkmark-circle" size={11} color="#15803d" />
-                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#15803d" }}>Verified</Text>
-                </View>
-              </View>
-              <Text style={{ fontSize: 11, color: "#475569", lineHeight: 16 }}>
-                Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar,
-                Hyderabad, Telangana 500060 model bank road K.V.Rangareddy Telangana-500060
-              </Text>
-            </View>
+              );
+            })()}
 
             {/* 2. Delivery Details */}
             <Text style={styles.sectionHeader}>Delivery Details (Buyer)</Text>

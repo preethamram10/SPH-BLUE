@@ -250,10 +250,7 @@ export async function createShiprocketShipment(payload: CreateShipmentPayload) {
     payload.subTotal ||
     formattedItems.reduce((sum, item) => sum + item.units * item.selling_price, 0);
 
-  const validPickupLocation =
-    payload.pickupLocation && !payload.pickupLocation.toLowerCase().includes("spiritual")
-      ? payload.pickupLocation
-      : "work";
+  const validPickupLocation = payload.pickupLocation?.trim() || "";
 
   const bodyData = {
     order_id: orderId,
@@ -458,18 +455,6 @@ export interface PickupLocationInfo {
   isVerified?: boolean;
 }
 
-const DEFAULT_VERIFIED_PICKUP_LOCATION: PickupLocationInfo = {
-  pickupLocation: "work",
-  nickname: "work",
-  name: "Dr.Ramakrishna",
-  address: "spiritual homeopathy dilsukhnagar , Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, Hyderabad, Telangana 500060",
-  city: "K.V.Rangareddy",
-  state: "Telangana",
-  pincode: "500060",
-  phone: "9804176176",
-  isVerified: true,
-};
-
 /**
  * Fetch Configured Pickup Locations in Shiprocket
  */
@@ -488,19 +473,19 @@ export async function getShiprocketPickupLocations(): Promise<PickupLocationInfo
     if (res.ok && data?.data?.shipping_address && data.data.shipping_address.length > 0) {
       return data.data.shipping_address.map((loc: any) => ({
         pickupLocation: loc.pickup_location,
-        nickname: loc.pickup_location === "work" ? "work" : "Clinic Hub",
+        nickname: loc.pickup_location,
         name: loc.name || loc.pickup_location,
         address: loc.address || "",
-        city: loc.city || "Hyderabad",
-        state: loc.state || "Telangana",
-        pincode: loc.pin_code || "500060",
+        city: loc.city || "",
+        state: loc.state || "",
+        pincode: loc.pin_code || "",
         phone: loc.phone || "",
         isVerified: true,
       }));
     }
-    return [DEFAULT_VERIFIED_PICKUP_LOCATION];
+    return [];
   } catch (_) {
-    return [DEFAULT_VERIFIED_PICKUP_LOCATION];
+    return [];
   }
 }
 
