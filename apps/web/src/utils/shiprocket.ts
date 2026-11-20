@@ -79,12 +79,12 @@ export async function getShiprocketAuthToken(): Promise<string> {
     return cachedToken;
   }
 
-  const email = process.env.SHIPROCKET_EMAIL?.trim();
-  const password = process.env.SHIPROCKET_PASSWORD?.trim();
+  const email = process.env.SHIPROCKET_EMAIL?.trim() || "sph176176@gmail.com";
+  const password = process.env.SHIPROCKET_PASSWORD?.trim() || "6ZMNO4OeQ18@RPX#SAyRCRMdUSyaNiyL";
 
   if (!email || !password) {
     throw new Error(
-      "Shiprocket credentials missing. Please set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in environment."
+      "Shiprocket credentials missing. Please set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in environment or provide SHIPROCKET_API_TOKEN."
     );
   }
 
@@ -100,7 +100,10 @@ export async function getShiprocketAuthToken(): Promise<string> {
 
   if (!res.ok || !data.token) {
     console.error("Shiprocket Login Response Error:", data);
-    throw new Error(data.message || data.error || "Failed to authenticate with Shiprocket API.");
+    const errMsg = data.message || data.error || (data.errors ? JSON.stringify(data.errors) : "");
+    throw new Error(
+      errMsg ? `Shiprocket Authentication Failed: ${errMsg}` : "Failed to authenticate with Shiprocket API. Please check your credentials or API token."
+    );
   }
 
   cachedToken = data.token;
@@ -241,7 +244,7 @@ export async function createShiprocketShipment(payload: CreateShipmentPayload) {
   const bodyData = {
     order_id: orderId,
     order_date: orderDate,
-    pickup_location: payload.pickupLocation || "Primary",
+    pickup_location: payload.pickupLocation || "work",
     billing_customer_name: payload.patientName,
     billing_last_name: "",
     billing_address: payload.address,
@@ -365,14 +368,14 @@ export interface PickupLocationInfo {
 }
 
 const DEFAULT_VERIFIED_PICKUP_LOCATION: PickupLocationInfo = {
-  pickupLocation: "spiritual homeopathy dilsukhnagar",
+  pickupLocation: "work",
   nickname: "work",
-  name: "spiritual homeopathy dilsukhnagar",
-  address: "Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, model bank road K.V.Rangareddy",
-  city: "Hyderabad",
+  name: "Dr.Ramakrishna",
+  address: "spiritual homeopathy dilsukhnagar , Durganagar Rd, AP State Housing Board, Durga Nagar, Krishna Nagar, Dilsukhnagar, Hyderabad, Telangana 500060",
+  city: "K.V.Rangareddy",
   state: "Telangana",
   pincode: "500060",
-  phone: "9100000000",
+  phone: "9804176176",
   isVerified: true,
 };
 
