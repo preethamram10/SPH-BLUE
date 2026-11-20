@@ -227,26 +227,97 @@ export default function AdminTotalRevenuePage() {
     return Array.from(set);
   }, [availableBranches, transactions]);
 
-  // Doctor options computed dynamically from recorded transactions + default doctors
+  // Doctor options computed dynamically from recorded transactions with strict deduplication
   const doctorOptions = useMemo(() => {
-    const set = new Set<string>();
-    ["Dr. Prashanth K Vaidya", "Dr. Ramakrishna Chanduri", "Dr. Jobedah Parveej", "Dr. Padma Priya"].forEach((d) => set.add(d));
+    const map = new Map<string, string>();
+    if (!transactions || transactions.length === 0) {
+      return ["Dr. Jobeadh Parveej", "Dr. Padma Priya", "Dr. Prashanth K Vaidya", "Dr. Ramakrishna Chanduri"];
+    }
+
     transactions.forEach((t) => {
-      const doc = t.doctorName?.trim();
-      if (doc && doc !== "Doctor" && doc !== "Unknown") set.add(doc);
+      const raw = t.doctorName?.trim();
+      if (!raw || raw === "Doctor" || raw === "Unknown") return;
+      const norm = raw
+        .toLowerCase()
+        .replace(/^(dr\.?|doctor)\s+/i, "")
+        .replace(/[^a-z0-9]/g, "");
+      if (!norm) return;
+
+      let matchedKey: string | null = null;
+      for (const k of map.keys()) {
+        if (k === norm || (k.length > 5 && norm.length > 5 && (k.includes(norm) || norm.includes(k)))) {
+          matchedKey = k;
+          break;
+        }
+        // Levenshtein similarity for spelling variations (e.g. Jobedah vs Jobeadh)
+        const longer = k.length >= norm.length ? k : norm;
+        const shorter = k.length < norm.length ? k : norm;
+        const costs: number[] = [];
+        for (let i = 0; i <= longer.length; i++) {
+          let lastVal = i;
+          for (let j = 0; j <= shorter.length; j++) {
+            if (i === 0) costs[j] = j;
+            else if (j > 0) {
+              let newVal = costs[j - 1];
+              if (longer.charAt(i - 1) !== shorter.charAt(j - 1)) {
+                newVal = Math.min(Math.min(newVal, lastVal), costs[j]) + 1;
+              }
+              costs[j - 1] = lastVal;
+              lastVal = newVal;
+            }
+          }
+          if (i > 0) costs[shorter.length] = lastVal;
+        }
+        const sim = (longer.length - costs[shorter.length]) / parseFloat(String(longer.length));
+        if (sim >= 0.8) {
+          matchedKey = k;
+          break;
+        }
+      }
+
+      if (matchedKey) {
+        const existing = map.get(matchedKey)!;
+        if ((raw.startsWith("Dr.") && !existing.startsWith("Dr.")) || raw.length > existing.length) {
+          map.set(matchedKey, raw);
+        }
+      } else {
+        map.set(norm, raw);
+      }
     });
-    return Array.from(set).sort();
+
+    return Array.from(map.values()).sort();
   }, [transactions]);
 
-  // Patient Source options computed dynamically from recorded transactions + default sources
+  // Patient Source options computed dynamically and cleanly deduplicated
   const sourceOptions = useMemo(() => {
-    const set = new Set<string>();
-    ["Walk-in", "Old Patient", "Instagram", "Google", "Referral", "YouTube", "Facebook", "Camp / Event"].forEach((s) => set.add(s));
+    const map = new Map<string, string>();
+    const canonicalDisplay: Record<string, string> = {
+      youtube: "YouTube",
+      walkin: "Walk-in",
+      oldpatient: "Old Patient",
+      instagram: "Instagram",
+      google: "Google",
+      referral: "Referral",
+      facebook: "Facebook",
+      campevent: "Camp / Event",
+      followupbooking: "Follow-up Booking",
+    };
+
     transactions.forEach((t) => {
       const src = t.source?.trim();
-      if (src && src !== "Unknown") set.add(src);
+      if (!src || src === "Unknown") return;
+      const norm = src.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!norm) return;
+      if (!map.has(norm)) {
+        map.set(norm, canonicalDisplay[norm] || src);
+      }
     });
-    return Array.from(set).sort();
+
+    if (map.size === 0) {
+      return ["Walk-in", "Old Patient", "Instagram", "Google", "Referral", "YouTube", "Facebook"];
+    }
+
+    return Array.from(map.values()).sort();
   }, [transactions]);
 
   // --- Filtering Engine ---
