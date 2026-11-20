@@ -1,7 +1,9 @@
 "use client";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TelecallerSidebar from "@/components/telecaller/TelecallerSidebar";
+
+export const dynamic = "force-dynamic";
 import {
   Headset,
   PhoneCall,
@@ -73,7 +75,7 @@ function formatDisplayDate(dateStr?: string): string {
   return trimmed;
 }
 
-export default function TelecallerDashboardPage() {
+function TelecallerDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1295,5 +1297,19 @@ export default function TelecallerDashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TelecallerDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-[#f8fafc]">
+          <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <TelecallerDashboardContent />
+    </Suspense>
   );
 }
