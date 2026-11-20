@@ -72,11 +72,11 @@ export async function GET(req: Request) {
       const isMultiShift = emp.shiftType === "MULTI_STRICT";
 
       if (punch) {
-        const resolvedPunchIn = (punch.createdAt && !isNaN(new Date(punch.createdAt).getTime()))
+        const resolvedPunchIn = (punch.punchInTime && punch.createdAt && !isNaN(new Date(punch.createdAt).getTime()))
           ? formatToIST12Hour(new Date(punch.createdAt))
           : (punch.punchInTime ? formatToIST12Hour(punch.punchInTime) : null);
 
-        const resolvedPunchOut = (punch.updatedAt && punch.punchOutTime && !isNaN(new Date(punch.updatedAt).getTime()))
+        const resolvedPunchOut = (punch.punchOutTime && punch.updatedAt && !isNaN(new Date(punch.updatedAt).getTime()))
           ? formatToIST12Hour(new Date(punch.updatedAt))
           : (punch.punchOutTime ? formatToIST12Hour(punch.punchOutTime) : null);
 
@@ -89,14 +89,24 @@ export async function GET(req: Request) {
           dailyHours: punch.dailyHours || emp.dailyHours,
           shift1Start: punch.shift1Start || emp.shift1Start ? formatToIST12Hour(punch.shift1Start || emp.shift1Start) : reportTime,
           shift1End: punch.shift1End || emp.shift1End ? formatToIST12Hour(punch.shift1End || emp.shift1End) : undefined,
-          shift1PunchInTime: punch.shift1PunchInTime ? formatToIST12Hour(punch.shift1PunchInTime) : (isMultiShift ? null : resolvedPunchIn),
+          shift1PunchInTime: punch.shift1PunchInTime ? formatToIST12Hour(punch.shift1PunchInTime) : resolvedPunchIn,
           shift1PunchOutTime: punch.shift1PunchOutTime ? formatToIST12Hour(punch.shift1PunchOutTime) : (isMultiShift ? null : resolvedPunchOut),
+          shift1PunchInPhoto: punch.shift1PunchInPhoto || (punch.punches?.find((p: any) => p.shift === "shift1" && p.type === "in")?.photo) || punch.punchInPhoto,
+          shift1PunchInLocation: punch.shift1PunchInLocation || (punch.punches?.find((p: any) => p.shift === "shift1" && p.type === "in")?.location) || punch.punchInLocation,
+          shift1PunchOutPhoto: punch.shift1PunchOutPhoto || (punch.punches?.find((p: any) => p.shift === "shift1" && p.type === "out")?.photo),
+          shift1PunchOutLocation: punch.shift1PunchOutLocation || (punch.punches?.find((p: any) => p.shift === "shift1" && p.type === "out")?.location),
           shift2Start: punch.shift2Start || emp.shift2Start ? formatToIST12Hour(punch.shift2Start || emp.shift2Start) : (isMultiShift ? "04:30 PM" : undefined),
           shift2End: punch.shift2End || emp.shift2End ? formatToIST12Hour(punch.shift2End || emp.shift2End) : undefined,
           shift2PunchInTime: punch.shift2PunchInTime ? formatToIST12Hour(punch.shift2PunchInTime) : null,
           shift2PunchOutTime: punch.shift2PunchOutTime ? formatToIST12Hour(punch.shift2PunchOutTime) : null,
+          shift2PunchInPhoto: punch.shift2PunchInPhoto || (punch.punches?.find((p: any) => p.shift === "shift2" && p.type === "in")?.photo),
+          shift2PunchInLocation: punch.shift2PunchInLocation || (punch.punches?.find((p: any) => p.shift === "shift2" && p.type === "in")?.location),
+          shift2PunchOutPhoto: punch.shift2PunchOutPhoto || (punch.punches?.find((p: any) => p.shift === "shift2" && p.type === "out")?.photo),
+          shift2PunchOutLocation: punch.shift2PunchOutLocation || (punch.punches?.find((p: any) => p.shift === "shift2" && p.type === "out")?.location),
           punchInTime: resolvedPunchIn,
           punchOutTime: resolvedPunchOut,
+          punchInPhoto: punch.punchInPhoto,
+          punchOutPhoto: punch.punchOutPhoto,
           punches: punch.punches || [],
           role: emp.category === "DOCTOR" ? "Doctor" : emp.category === "HR" ? "HR Staff" : emp.category || "Staff Member",
           branch: punch.branch || emp.branchName || "KPHB Branch",

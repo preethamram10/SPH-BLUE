@@ -20,6 +20,19 @@ export interface AttendanceRecord {
   staffName: string;
   branch: string;
   date: string;
+  shiftType?: "SINGLE_STRICT" | "MULTI_STRICT";
+  shift1PunchInTime?: string;
+  shift1PunchInLocation?: string;
+  shift1PunchInPhoto?: string;
+  shift1PunchOutTime?: string;
+  shift1PunchOutLocation?: string;
+  shift1PunchOutPhoto?: string;
+  shift2PunchInTime?: string;
+  shift2PunchInLocation?: string;
+  shift2PunchInPhoto?: string;
+  shift2PunchOutTime?: string;
+  shift2PunchOutLocation?: string;
+  shift2PunchOutPhoto?: string;
   punchInTime?: string;
   punchInLocation?: string;
   punchInPhoto?: string;
@@ -29,10 +42,21 @@ export interface AttendanceRecord {
   workingHours?: string;
   status: "Present" | "Late" | "Half Day" | "Absent";
   lateMinutes?: number;
+  punches?: Array<any>;
 }
 
 interface StaffPunchProps {
-  staff: { id: string; name: string; branch: string; shiftStartTime?: string };
+  staff: {
+    id: string;
+    name: string;
+    branch: string;
+    shiftStartTime?: string;
+    shiftType?: "SINGLE_STRICT" | "MULTI_STRICT";
+    shift1Start?: string;
+    shift1End?: string;
+    shift2Start?: string;
+    shift2End?: string;
+  };
   todayRecord: AttendanceRecord | null;
   onPunchSuccess: (updatedRecord: AttendanceRecord) => void;
 }
@@ -45,6 +69,7 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
   const [currentTime, setCurrentTime] = useState<string>("");
   const [currentDate, setCurrentDate] = useState<string>("");
   const [isPunching, setIsPunching] = useState<"in" | "out" | null>(null);
+  const [punchShift, setPunchShift] = useState<"shift1" | "shift2">("shift1");
   const [locationText, setLocationText] = useState<string>("Locating GPS...");
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
@@ -114,9 +139,10 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
   };
 
   // Open Camera Stream
-  const startCamera = async (type: "in" | "out") => {
+  const startCamera = async (type: "in" | "out", targetShift?: "shift1" | "shift2") => {
     setErrorMsg("");
     setIsPunching(type);
+    if (targetShift) setPunchShift(targetShift);
     setCapturedPhoto(null);
     fetchLocation();
 
@@ -180,6 +206,7 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
       staffName: staff.name,
       branch: staff.branch,
       type: isPunching, // 'in' or 'out'
+      shift: punchShift,
       photo: capturedPhoto,
       location: locationText,
       coords: locationCoords,
@@ -231,9 +258,42 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
     }
   };
 
-  const isPunchedIn = Boolean(todayRecord?.punchInTime);
-  const isPunchedOut = Boolean(todayRecord?.punchOutTime);
-  const shiftDisplay = staff.shiftStartTime ? `${staff.shiftStartTime} - 06:00 PM` : "09:00 AM - 06:00 PM";
+  const isMultiShift =
+    todayRecord?.shiftType === "MULTI_STRICT" ||
+    staff.shiftType === "MULTI_STRICT" ||
+    Boolean(todayRecord?.shift2PunchInTime || todayRecord?.shift2PunchOutTime || todayRecord?.shift1PunchOutTime);
+
+  const s1In = todayRecord?.shift1PunchInTime || (!isMultiShift ? todayRecord?.punchInTime : undefined);
+  const s1Out = todayRecord?.shift1PunchOutTime;
+  const s2In = todayRecord?.shift2PunchInTime;
+  const s2Out = todayRecord?.shift2PunchOutTime || (!isMultiShift ? todayRecord?.punchOutTime : undefined);
+
+  const isPunchedIn = Boolean(todayRecord?.punchInTime || todayRecord?.shift1PunchInTime || todayRecord?.shift2PunchInTime);
+  const isPunchedOut = Boolean(todayRecord?.punchOutTime || todayRecord?.shift2PunchOutTime);
+
+  const logsCount = [s1In, s1Out, s2In, s2Out].filter(Boolean).length;
+
+  const shiftDisplay = isMultiShift
+    ? `S1: ${staff.shift1Start || "09:00 AM"} - ${staff.shift1End || "01:00 PM"} | S2: ${staff.shift2Start || "04:30 PM"} - ${staff.shift2End || "08:30 PM"}`
+    : staff.shiftStartTime
+    ? `${staff.shiftStartTime} - 06:00 PM`
+    : "09:00 AM - 06:00 PM";
+
+  const statusDisplay = isMultiShift
+    ? logsCount === 4
+      ? "Completed (4/4 Logs)"
+      : logsCount === 3
+      ? "Shift 2 Active (3/4 Logs)"
+      : logsCount === 2
+      ? "Shift 1 Closed (2/4 Logs)"
+      : logsCount === 1
+      ? "Shift 1 Active (1/4 Logs)"
+      : "Not Checked In (0/4 Logs)"
+    : isPunchedOut
+    ? "Completed"
+    : isPunchedIn
+    ? "Active Shift"
+    : "Not Checked In";
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -246,6 +306,11 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
                 Attendance Punch
               </span>
               <span className="text-xs text-white/80">{staff.branch} Branch</span>
+              {isMultiShift && (
+                <span className="text-xs font-bold uppercase tracking-wider bg-amber-400 text-slate-900 px-2.5 py-0.5 rounded-full">
+                  Split / Multi Shift
+                </span>
+              )}
             </div>
             <h2 className="text-2xl font-black mt-1 font-mono tracking-tight">{currentTime || "--:--:--"}</h2>
             <p className="text-sm text-emerald-100 flex items-center gap-1.5 mt-0.5">
@@ -261,7 +326,7 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10">
               <span className="text-xs text-emerald-200 block">Today&apos;s Status</span>
               <span className="text-sm font-bold text-emerald-300">
-                {isPunchedOut ? "Completed" : isPunchedIn ? "Active Shift" : "Not Checked In"}
+                {statusDisplay}
               </span>
             </div>
           </div>
@@ -277,139 +342,410 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Punch In Card */}
-          <div
-            className={`rounded-xl border p-5 transition-all ${
-              isPunchedIn
-                ? "bg-emerald-50/50 border-emerald-200"
-                : "bg-slate-50 border-slate-200 hover:border-emerald-300"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <LogIn className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-slate-800 text-base">Punch In</h4>
-                  <p className="text-xs text-slate-500">Morning Shift Entry (GPS + Selfie)</p>
-                </div>
+        {isMultiShift ? (
+          /* Multi / Split Shift (4 Logs Total) */
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Split Shift Daily Logs (4 Punches Required)</h3>
+                <p className="text-xs text-slate-500">Record Shift 1 (In &amp; Out) and Shift 2 (In &amp; Out) with GPS &amp; facial selfie verification.</p>
               </div>
-              {isPunchedIn && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Checked In
-                </span>
-              )}
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {logsCount} / 4 Logs Recorded
+              </span>
             </div>
 
-            {isPunchedIn && todayRecord ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Time:</span>
-                  <span className="font-bold text-slate-800">{todayRecord.punchInTime}</span>
-                </div>
-                {todayRecord.punchInLocation && (
-                  <div className="flex items-start gap-1.5 text-xs text-slate-500">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-                    <span className="line-clamp-2">{todayRecord.punchInLocation}</span>
-                  </div>
-                )}
-                {todayRecord.punchInPhoto && (
-                  <div className="mt-3 flex items-center gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={todayRecord.punchInPhoto}
-                      alt="Punch In Selfie"
-                      className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shadow-sm"
-                    />
-                    <div className="text-xs space-y-0.5">
-                      <span className="text-emerald-700 font-bold block">✓ Selfie Verified</span>
-                      <span className="text-slate-400">{todayRecord.status === "Late" ? "⚠️ Marked Late" : "On Time"}</span>
+            {/* Shift 1 Section */}
+            <div className="bg-sky-50/40 rounded-2xl border border-sky-100 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded text-xs font-black bg-sky-600 text-white">SHIFT 1</span>
+                <span className="text-xs font-semibold text-sky-900">Morning Session ({staff.shift1Start || "09:00 AM"} - {staff.shift1End || "01:00 PM"})</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* S1 In */}
+                <div className={`rounded-xl border p-4 transition-all ${s1In ? "bg-white border-emerald-300 shadow-2xs" : "bg-white/80 border-slate-200"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <LogIn className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">Shift 1 • Punch In</h4>
+                        <p className="text-[11px] text-slate-500">Morning Login (1 of 4)</p>
+                      </div>
                     </div>
+                    {s1In && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Logged
+                      </span>
+                    )}
                   </div>
+                  {s1In ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Time:</span>
+                        <span className="font-bold text-slate-800">{s1In}</span>
+                      </div>
+                      {(todayRecord?.shift1PunchInLocation || todayRecord?.punchInLocation) && (
+                        <div className="flex items-start gap-1 text-[11px] text-slate-500">
+                          <MapPin className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-1">{todayRecord.shift1PunchInLocation || todayRecord.punchInLocation}</span>
+                        </div>
+                      )}
+                      {(todayRecord?.shift1PunchInPhoto || todayRecord?.punchInPhoto) && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={todayRecord.shift1PunchInPhoto || todayRecord.punchInPhoto}
+                            alt="S1 In Selfie"
+                            className="w-12 h-12 rounded-lg object-cover border border-emerald-300"
+                          />
+                          <span className="text-[11px] font-bold text-emerald-700">✓ Selfie Verified</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startCamera("in", "shift1")}
+                      className="w-full mt-2 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 rounded-xl transition text-xs shadow-xs cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Take Selfie &amp; Punch In (Shift 1)
+                    </button>
+                  )}
+                </div>
+
+                {/* S1 Out */}
+                <div className={`rounded-xl border p-4 transition-all ${s1Out ? "bg-white border-slate-300 shadow-2xs" : s1In ? "bg-white/80 border-rose-200" : "bg-slate-50 border-slate-200 opacity-60"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <LogOut className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">Shift 1 • Punch Out</h4>
+                        <p className="text-[11px] text-slate-500">Morning Logout (2 of 4)</p>
+                      </div>
+                    </div>
+                    {s1Out && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-slate-200 text-slate-700 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Logged
+                      </span>
+                    )}
+                  </div>
+                  {s1Out ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Time:</span>
+                        <span className="font-bold text-slate-800">{s1Out}</span>
+                      </div>
+                      {todayRecord?.shift1PunchOutLocation && (
+                        <div className="flex items-start gap-1 text-[11px] text-slate-500">
+                          <MapPin className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-1">{todayRecord.shift1PunchOutLocation}</span>
+                        </div>
+                      )}
+                      {todayRecord?.shift1PunchOutPhoto && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={todayRecord.shift1PunchOutPhoto}
+                            alt="S1 Out Selfie"
+                            className="w-12 h-12 rounded-lg object-cover border border-slate-300"
+                          />
+                          <span className="text-[11px] font-medium text-slate-600">✓ Exit Selfie Verified</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!s1In}
+                      onClick={() => startCamera("out", "shift1")}
+                      className={`w-full mt-2 flex items-center justify-center gap-1.5 font-medium py-2.5 rounded-xl transition text-xs shadow-xs ${
+                        s1In
+                          ? "bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Take Selfie &amp; Punch Out (Shift 1)
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Shift 2 Section */}
+            <div className="bg-purple-50/40 rounded-2xl border border-purple-100 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 rounded text-xs font-black bg-purple-600 text-white">SHIFT 2</span>
+                <span className="text-xs font-semibold text-purple-900">Evening Session ({staff.shift2Start || "04:30 PM"} - {staff.shift2End || "08:30 PM"})</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* S2 In */}
+                <div className={`rounded-xl border p-4 transition-all ${s2In ? "bg-white border-purple-300 shadow-2xs" : s1Out ? "bg-white/80 border-purple-200" : "bg-slate-50 border-slate-200 opacity-60"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                        <LogIn className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">Shift 2 • Punch In</h4>
+                        <p className="text-[11px] text-slate-500">Evening Login (3 of 4)</p>
+                      </div>
+                    </div>
+                    {s2In && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Logged
+                      </span>
+                    )}
+                  </div>
+                  {s2In ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Time:</span>
+                        <span className="font-bold text-purple-900">{s2In}</span>
+                      </div>
+                      {todayRecord?.shift2PunchInLocation && (
+                        <div className="flex items-start gap-1 text-[11px] text-slate-500">
+                          <MapPin className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-1">{todayRecord.shift2PunchInLocation}</span>
+                        </div>
+                      )}
+                      {todayRecord?.shift2PunchInPhoto && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={todayRecord.shift2PunchInPhoto}
+                            alt="S2 In Selfie"
+                            className="w-12 h-12 rounded-lg object-cover border border-purple-300"
+                          />
+                          <span className="text-[11px] font-bold text-purple-700">✓ Selfie Verified</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!s1Out}
+                      onClick={() => startCamera("in", "shift2")}
+                      className={`w-full mt-2 flex items-center justify-center gap-1.5 font-medium py-2.5 rounded-xl transition text-xs shadow-xs ${
+                        s1Out
+                          ? "bg-purple-600 hover:bg-purple-700 text-white cursor-pointer"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Take Selfie &amp; Punch In (Shift 2)
+                    </button>
+                  )}
+                </div>
+
+                {/* S2 Out */}
+                <div className={`rounded-xl border p-4 transition-all ${s2Out ? "bg-white border-slate-300 shadow-2xs" : s2In ? "bg-white/80 border-rose-200" : "bg-slate-50 border-slate-200 opacity-60"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <LogOut className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">Shift 2 • Punch Out</h4>
+                        <p className="text-[11px] text-slate-500">Evening Logout (4 of 4)</p>
+                      </div>
+                    </div>
+                    {s2Out && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 bg-slate-200 text-slate-700 rounded-full">
+                        <CheckCircle2 className="w-3 h-3" /> Logged
+                      </span>
+                    )}
+                  </div>
+                  {s2Out ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Time:</span>
+                        <span className="font-bold text-slate-800">{s2Out}</span>
+                      </div>
+                      {todayRecord?.workingHours && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500">Total Worked:</span>
+                          <span className="font-bold text-emerald-600">{todayRecord.workingHours}</span>
+                        </div>
+                      )}
+                      {todayRecord?.shift2PunchOutLocation && (
+                        <div className="flex items-start gap-1 text-[11px] text-slate-500">
+                          <MapPin className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-1">{todayRecord.shift2PunchOutLocation}</span>
+                        </div>
+                      )}
+                      {todayRecord?.shift2PunchOutPhoto && (
+                        <div className="flex items-center gap-2 pt-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={todayRecord.shift2PunchOutPhoto}
+                            alt="S2 Out Selfie"
+                            className="w-12 h-12 rounded-lg object-cover border border-slate-300"
+                          />
+                          <span className="text-[11px] font-medium text-slate-600">✓ Exit Selfie Verified</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!s2In}
+                      onClick={() => startCamera("out", "shift2")}
+                      className={`w-full mt-2 flex items-center justify-center gap-1.5 font-medium py-2.5 rounded-xl transition text-xs shadow-xs ${
+                        s2In
+                          ? "bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      Take Selfie &amp; Punch Out (Shift 2)
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Single Shift (2 Logs Total) */
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Punch In Card */}
+            <div
+              className={`rounded-xl border p-5 transition-all ${
+                isPunchedIn
+                  ? "bg-emerald-50/50 border-emerald-200"
+                  : "bg-slate-50 border-slate-200 hover:border-emerald-300"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <LogIn className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-800 text-base">Punch In</h4>
+                    <p className="text-xs text-slate-500">Morning Shift Entry (GPS + Selfie)</p>
+                  </div>
+                </div>
+                {isPunchedIn && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Checked In
+                  </span>
                 )}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => startCamera("in")}
-                className="w-full mt-4 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-medium py-3 rounded-xl transition shadow-sm cursor-pointer"
-              >
-                <Camera className="w-4 h-4" />
-                Take Selfie &amp; Punch In
-              </button>
-            )}
-          </div>
 
-          {/* Punch Out Card */}
-          <div
-            className={`rounded-xl border p-5 transition-all ${
-              isPunchedOut
-                ? "bg-slate-100/70 border-slate-300"
-                : isPunchedIn
-                ? "bg-rose-50/50 border-rose-200 hover:border-rose-300"
-                : "bg-slate-50 border-slate-200 opacity-60"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
-                  <LogOut className="w-5 h-5" />
+              {isPunchedIn && todayRecord ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Time:</span>
+                    <span className="font-bold text-slate-800">{todayRecord.punchInTime}</span>
+                  </div>
+                  {todayRecord.punchInLocation && (
+                    <div className="flex items-start gap-1.5 text-xs text-slate-500">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                      <span className="line-clamp-2">{todayRecord.punchInLocation}</span>
+                    </div>
+                  )}
+                  {todayRecord.punchInPhoto && (
+                    <div className="mt-3 flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={todayRecord.punchInPhoto}
+                        alt="Punch In Selfie"
+                        className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shadow-sm"
+                      />
+                      <div className="text-xs space-y-0.5">
+                        <span className="text-emerald-700 font-bold block">✓ Selfie Verified</span>
+                        <span className="text-slate-400">{todayRecord.status === "Late" ? "⚠️ Marked Late" : "On Time"}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h4 className="font-semibold text-slate-800 text-base">Punch Out</h4>
-                  <p className="text-xs text-slate-500">Evening Shift Exit (GPS + Selfie)</p>
-                </div>
-              </div>
-              {isPunchedOut && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-slate-200 text-slate-700 rounded-full">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Shift Completed
-                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startCamera("in")}
+                  className="w-full mt-4 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-medium py-3 rounded-xl transition shadow-sm cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  Take Selfie &amp; Punch In
+                </button>
               )}
             </div>
 
-            {isPunchedOut && todayRecord ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Time:</span>
-                  <span className="font-bold text-slate-800">{todayRecord.punchOutTime}</span>
+            {/* Punch Out Card */}
+            <div
+              className={`rounded-xl border p-5 transition-all ${
+                isPunchedOut
+                  ? "bg-slate-100/70 border-slate-300"
+                  : isPunchedIn
+                  ? "bg-rose-50/50 border-rose-200 hover:border-rose-300"
+                  : "bg-slate-50 border-slate-200 opacity-60"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                    <LogOut className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-800 text-base">Punch Out</h4>
+                    <p className="text-xs text-slate-500">Evening Shift Exit (GPS + Selfie)</p>
+                  </div>
                 </div>
-                {todayRecord.workingHours && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">Total Hours:</span>
-                    <span className="font-bold text-emerald-600">{todayRecord.workingHours}</span>
-                  </div>
-                )}
-                {todayRecord.punchOutPhoto && (
-                  <div className="mt-3 flex items-center gap-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={todayRecord.punchOutPhoto}
-                      alt="Punch Out Selfie"
-                      className="w-14 h-14 rounded-lg object-cover border border-slate-300 shadow-sm"
-                    />
-                    <span className="text-xs text-slate-500">✓ Exit Selfie Verified</span>
-                  </div>
+                {isPunchedOut && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-slate-200 text-slate-700 rounded-full">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Shift Completed
+                  </span>
                 )}
               </div>
-            ) : (
-              <button
-                type="button"
-                disabled={!isPunchedIn}
-                onClick={() => startCamera("out")}
-                className={`w-full mt-4 flex items-center justify-center gap-2 font-medium py-3 rounded-xl transition shadow-sm ${
-                  isPunchedIn
-                    ? "bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white cursor-pointer"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                <Camera className="w-4 h-4" />
-                Take Selfie &amp; Punch Out
-              </button>
-            )}
+
+              {isPunchedOut && todayRecord ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Time:</span>
+                    <span className="font-bold text-slate-800">{todayRecord.punchOutTime}</span>
+                  </div>
+                  {todayRecord.workingHours && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">Total Hours:</span>
+                      <span className="font-bold text-emerald-600">{todayRecord.workingHours}</span>
+                    </div>
+                  )}
+                  {todayRecord.punchOutPhoto && (
+                    <div className="mt-3 flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={todayRecord.punchOutPhoto}
+                        alt="Punch Out Selfie"
+                        className="w-14 h-14 rounded-lg object-cover border border-slate-300 shadow-sm"
+                      />
+                      <span className="text-xs text-slate-500">✓ Exit Selfie Verified</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!isPunchedIn}
+                  onClick={() => startCamera("out")}
+                  className={`w-full mt-4 flex items-center justify-center gap-2 font-medium py-3 rounded-xl transition shadow-sm ${
+                    isPunchedIn
+                      ? "bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  Take Selfie &amp; Punch Out
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Camera Capture Modal */}
@@ -420,7 +756,7 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-bold text-base">
-                  {isPunching === "in" ? "Punch In" : "Punch Out"} Selfie
+                  {isPunching === "in" ? "Punch In" : "Punch Out"} Selfie {isMultiShift ? (punchShift === "shift2" ? "(Shift 2 • Evening)" : "(Shift 1 • Morning)") : ""}
                 </h3>
               </div>
               <button
@@ -466,7 +802,7 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 text-center shadow-2xl border border-slate-200">
             <h3 className="font-bold text-lg text-slate-800 mb-1">
-              Confirm {isPunching === "in" ? "Punch In" : "Punch Out"}
+              Confirm {isPunching === "in" ? "Punch In" : "Punch Out"} {isMultiShift ? (punchShift === "shift2" ? "• Shift 2" : "• Shift 1") : ""}
             </h3>
             <p className="text-xs text-slate-500 mb-4">Please verify your selfie before submitting</p>
 
@@ -480,6 +816,14 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
                 <span className="text-slate-500">Staff:</span>
                 <span className="font-semibold text-slate-700">{staff.name}</span>
               </div>
+              {isMultiShift && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Duty Session:</span>
+                  <span className="font-bold text-emerald-700">
+                    {punchShift === "shift2" ? "Shift 2 (Evening Session)" : "Shift 1 (Morning Session)"}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">Time:</span>
                 <span className="font-semibold text-slate-700">{currentTime}</span>

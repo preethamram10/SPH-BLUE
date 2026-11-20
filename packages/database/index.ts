@@ -5295,11 +5295,11 @@ export const staffAttendanceService = {
       const empInfo = empMap.get(r.staffId) || empMap.get((r.staffName || "").toLowerCase().trim());
       const repTime = formatToIST12Hour(r.reportTime || r.shiftStartTime || empInfo?.shiftStartTime || "09:00 AM");
       // Resolve true Indian Standard Time from ISO timestamps if available, avoiding UTC server drift
-      const resolvedPunchIn = (r.createdAt && !isNaN(new Date(r.createdAt).getTime()))
+      const resolvedPunchIn = (r.punchInTime && r.createdAt && !isNaN(new Date(r.createdAt).getTime()))
         ? formatToIST12Hour(new Date(r.createdAt))
         : (r.punchInTime ? formatToIST12Hour(r.punchInTime) : undefined);
 
-      const resolvedPunchOut = (r.updatedAt && r.punchOutTime && !isNaN(new Date(r.updatedAt).getTime()))
+      const resolvedPunchOut = (r.punchOutTime && r.updatedAt && !isNaN(new Date(r.updatedAt).getTime()))
         ? formatToIST12Hour(new Date(r.updatedAt))
         : (r.punchOutTime ? formatToIST12Hour(r.punchOutTime) : undefined);
 
@@ -5313,11 +5313,19 @@ export const staffAttendanceService = {
         shift1Start: r.shift1Start || empInfo?.shift1Start,
         shift1End: r.shift1End || empInfo?.shift1End,
         shift1PunchInTime: r.shift1PunchInTime ? formatToIST12Hour(r.shift1PunchInTime) : resolvedPunchIn,
-        shift1PunchOutTime: r.shift1PunchOutTime ? formatToIST12Hour(r.shift1PunchOutTime) : resolvedPunchOut,
+        shift1PunchOutTime: r.shift1PunchOutTime ? formatToIST12Hour(r.shift1PunchOutTime) : (r.shiftType === "MULTI_STRICT" ? undefined : resolvedPunchOut),
+        shift1PunchInPhoto: r.shift1PunchInPhoto || (r.punches?.find((p) => p.shift === "shift1" && p.type === "in")?.photo) || r.punchInPhoto,
+        shift1PunchInLocation: r.shift1PunchInLocation || (r.punches?.find((p) => p.shift === "shift1" && p.type === "in")?.location) || r.punchInLocation,
+        shift1PunchOutPhoto: r.shift1PunchOutPhoto || (r.punches?.find((p) => p.shift === "shift1" && p.type === "out")?.photo),
+        shift1PunchOutLocation: r.shift1PunchOutLocation || (r.punches?.find((p) => p.shift === "shift1" && p.type === "out")?.location),
         shift2Start: r.shift2Start || empInfo?.shift2Start,
         shift2End: r.shift2End || empInfo?.shift2End,
         shift2PunchInTime: r.shift2PunchInTime ? formatToIST12Hour(r.shift2PunchInTime) : undefined,
         shift2PunchOutTime: r.shift2PunchOutTime ? formatToIST12Hour(r.shift2PunchOutTime) : undefined,
+        shift2PunchInPhoto: r.shift2PunchInPhoto || (r.punches?.find((p) => p.shift === "shift2" && p.type === "in")?.photo),
+        shift2PunchInLocation: r.shift2PunchInLocation || (r.punches?.find((p) => p.shift === "shift2" && p.type === "in")?.location),
+        shift2PunchOutPhoto: r.shift2PunchOutPhoto || (r.punches?.find((p) => p.shift === "shift2" && p.type === "out")?.photo),
+        shift2PunchOutLocation: r.shift2PunchOutLocation || (r.punches?.find((p) => p.shift === "shift2" && p.type === "out")?.location),
         punchInTime: resolvedPunchIn,
         punchOutTime: resolvedPunchOut,
         punches: r.punches || [],
@@ -5383,16 +5391,10 @@ export const staffAttendanceService = {
         if (existing?.shift1PunchInTime && existing?.shift1PunchOutTime) {
           targetShift = "shift2";
         } else {
-          const istHour = parseInt(
-            new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Kolkata", hour12: false }).split(":")[0],
-            10
-          );
-          if (istHour >= 14 && existing?.shift1PunchInTime) {
-            targetShift = "shift2";
-          }
+          targetShift = "shift1";
         }
       } else {
-        if (existing?.shift2PunchInTime) {
+        if (existing?.shift2PunchInTime && !existing?.shift2PunchOutTime) {
           targetShift = "shift2";
         } else {
           targetShift = "shift1";
@@ -5470,6 +5472,8 @@ export const staffAttendanceService = {
         existing.shift2PunchInTime = nowTime;
         existing.shift2PunchInLocation = payload.location;
         existing.shift2PunchInPhoto = payload.photo;
+        // Shift 2 duty is actively on-duty, clear overall punchOutTime
+        existing.punchOutTime = undefined;
       } else {
         existing.shift1PunchInTime = nowTime;
         existing.shift1PunchInLocation = payload.location;
@@ -5491,16 +5495,19 @@ export const staffAttendanceService = {
         existing.shift2PunchOutTime = nowTime;
         existing.shift2PunchOutLocation = payload.location;
         existing.shift2PunchOutPhoto = payload.photo;
+        existing.punchOutTime = nowTime;
+        existing.punchOutLocation = payload.location;
+        existing.punchOutPhoto = payload.photo;
+        existing.punchOutCoords = payload.coords || undefined;
       } else {
         existing.shift1PunchOutTime = nowTime;
         existing.shift1PunchOutLocation = payload.location;
         existing.shift1PunchOutPhoto = payload.photo;
+        existing.punchOutTime = nowTime;
+        existing.punchOutLocation = payload.location;
+        existing.punchOutPhoto = payload.photo;
+        existing.punchOutCoords = payload.coords || undefined;
       }
-
-      existing.punchOutTime = nowTime;
-      existing.punchOutLocation = payload.location;
-      existing.punchOutPhoto = payload.photo;
-      existing.punchOutCoords = payload.coords || undefined;
     }
 
     // Append to punch log
@@ -5520,7 +5527,11 @@ export const staffAttendanceService = {
       const s1M = calculateMinutesDiff(existing.shift1PunchInTime, existing.shift1PunchOutTime);
       const s2M = calculateMinutesDiff(existing.shift2PunchInTime, existing.shift2PunchOutTime);
       const totalM = s1M + s2M;
-      existing.workingHours = formatMinutesToHours(totalM);
+      if (existing.shift2PunchInTime && !existing.shift2PunchOutTime) {
+        existing.workingHours = s1M > 0 ? `${formatMinutesToHours(s1M)} + Shift 2 Active` : "Shift 2 Active";
+      } else {
+        existing.workingHours = formatMinutesToHours(totalM);
+      }
     } else {
       const diffM = calculateMinutesDiff(existing.punchInTime, existing.punchOutTime);
       existing.workingHours = formatMinutesToHours(diffM);
@@ -5688,11 +5699,11 @@ export const staffAttendanceService = {
         absentDays++;
       }
 
-      const resolvedPunchIn = (att?.createdAt && !isNaN(new Date(att.createdAt).getTime()))
+      const resolvedPunchIn = (att?.punchInTime && att?.createdAt && !isNaN(new Date(att.createdAt).getTime()))
         ? formatToIST12Hour(new Date(att.createdAt))
         : (att?.punchInTime ? formatToIST12Hour(att.punchInTime) : undefined);
 
-      const resolvedPunchOut = (att?.updatedAt && att.punchOutTime && !isNaN(new Date(att.updatedAt).getTime()))
+      const resolvedPunchOut = (att?.punchOutTime && att?.updatedAt && !isNaN(new Date(att.updatedAt).getTime()))
         ? formatToIST12Hour(new Date(att.updatedAt))
         : (att?.punchOutTime ? formatToIST12Hour(att.punchOutTime) : undefined);
 

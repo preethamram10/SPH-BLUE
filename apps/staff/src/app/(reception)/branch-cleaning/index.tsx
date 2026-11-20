@@ -19,6 +19,7 @@ import * as ImagePicker from "expo-image-picker";
 import { safeLaunchCamera } from "../../../utils/cameraPermissions";
 import { getActiveBranch } from "../../../services/auth";
 import { API_BASE_URL } from "../../../config/api";
+import { PhotoPreviewModal } from "../../../components/ui/PhotoPreviewModal";
 
 const COLORS = {
   primary: "#0284c7",
@@ -774,45 +775,14 @@ export default function ReceptionBranchCleaningScreen() {
         </ScrollView>
       )}
 
-      {/* Full-Screen Photo Preview Modal */}
-      <Modal visible={!!previewPhotoUrl} transparent animationType="fade" onRequestClose={() => setPreviewPhotoUrl(null)}>
-        <View style={styles.modalBg}>
-          <TouchableOpacity
-            style={styles.closeModalBtn}
-            onPress={() => setPreviewPhotoUrl(null)}
-          >
-            <Ionicons name="close" size={26} color="#ffffff" />
-          </TouchableOpacity>
-
-          {isPhotoLoading && (
-            <ActivityIndicator size="large" color="#ffffff" style={{ position: "absolute" }} />
-          )}
-
-          {previewPhotoUrl && !photoLoadError && (
-            <Image
-              source={{ uri: previewPhotoUrl }}
-              style={styles.modalImage}
-              resizeMode="contain"
-              onLoadStart={() => setIsPhotoLoading(true)}
-              onLoadEnd={() => setIsPhotoLoading(false)}
-              onError={() => {
-                setIsPhotoLoading(false);
-                setPhotoLoadError(true);
-              }}
-            />
-          )}
-
-          {photoLoadError && (
-            <View style={{ alignItems: "center", gap: 10, padding: 20 }}>
-              <Ionicons name="alert-circle" size={40} color={COLORS.danger} />
-              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 14 }}>Could not load photo</Text>
-              <Text style={{ color: "#94a3b8", fontSize: 12, textAlign: "center" }}>
-                Tap close button to return.
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
+      {/* Full-Screen Photo Preview Modal with Hand Pinch Zoom & Rotate */}
+      <PhotoPreviewModal
+        visible={!!previewPhotoUrl}
+        photoUrl={previewPhotoUrl}
+        title="Hygiene Inspection Photo"
+        subtitle="Pinch to zoom • Drag to inspect"
+        onClose={() => setPreviewPhotoUrl(null)}
+      />
     </SafeAreaView>
   );
 }

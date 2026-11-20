@@ -385,7 +385,81 @@ export default function EmployeeAttendancePage() {
 
                           {/* Punch In */}
                           <td className="py-3.5 px-4">
-                            {item.punchInTime ? (
+                            {item.shiftType === "MULTI_STRICT" || Boolean(item.shift2PunchInTime || item.shift2PunchOutTime || item.shift2Start) ? (
+                              <div className="space-y-2">
+                                {/* Shift 1 Login */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 In</span>
+                                  {item.shift1PunchInTime || item.punchInTime ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {(item.shift1PunchInPhoto || item.punchInPhoto) && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPreviewPhoto({
+                                              url: (item.shift1PunchInPhoto || item.punchInPhoto)!,
+                                              title: `Shift 1 Login - ${item.staffName}`,
+                                              location: item.shift1PunchInLocation || item.punchInLocation,
+                                              time: item.shift1PunchInTime || item.punchInTime!,
+                                            })
+                                          }
+                                          className="cursor-pointer"
+                                          title="View Shift 1 Selfie"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={item.shift1PunchInPhoto || item.punchInPhoto}
+                                            alt="S1 In"
+                                            className="w-7 h-7 rounded-md object-cover border border-emerald-400 shadow-2xs"
+                                          />
+                                        </button>
+                                      )}
+                                      <span className="font-bold text-slate-800 text-xs">
+                                        {formatToIST12Hour(item.shift1PunchInTime || item.punchInTime!)}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">—</span>
+                                  )}
+                                </div>
+
+                                {/* Shift 2 Login */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 In</span>
+                                  {item.shift2PunchInTime ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {item.shift2PunchInPhoto && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPreviewPhoto({
+                                              url: item.shift2PunchInPhoto!,
+                                              title: `Shift 2 Login - ${item.staffName}`,
+                                              location: item.shift2PunchInLocation,
+                                              time: item.shift2PunchInTime!,
+                                            })
+                                          }
+                                          className="cursor-pointer"
+                                          title="View Shift 2 Selfie"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={item.shift2PunchInPhoto}
+                                            alt="S2 In"
+                                            className="w-7 h-7 rounded-md object-cover border border-purple-400 shadow-2xs"
+                                          />
+                                        </button>
+                                      )}
+                                      <span className="font-bold text-purple-900 text-xs">
+                                        {formatToIST12Hour(item.shift2PunchInTime)}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : item.punchInTime ? (
                               <div className="flex items-center gap-2">
                                 {item.punchInPhoto && (
                                   <button
@@ -425,7 +499,89 @@ export default function EmployeeAttendancePage() {
 
                           {/* Punch Out */}
                           <td className="py-3.5 px-4">
-                            {item.punchOutTime ? (
+                            {item.shiftType === "MULTI_STRICT" || Boolean(item.shift2PunchInTime || item.shift2PunchOutTime || item.shift2Start) ? (
+                              <div className="space-y-2">
+                                {/* Shift 1 Logout */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 Out</span>
+                                  {item.shift1PunchOutTime ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {item.shift1PunchOutPhoto && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPreviewPhoto({
+                                              url: item.shift1PunchOutPhoto!,
+                                              title: `Shift 1 Logout - ${item.staffName}`,
+                                              location: item.shift1PunchOutLocation,
+                                              time: item.shift1PunchOutTime!,
+                                            })
+                                          }
+                                          className="cursor-pointer"
+                                          title="View Shift 1 Exit Selfie"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={item.shift1PunchOutPhoto}
+                                            alt="S1 Out"
+                                            className="w-7 h-7 rounded-md object-cover border border-slate-300 shadow-2xs"
+                                          />
+                                        </button>
+                                      )}
+                                      <span className="font-bold text-slate-800 text-xs">
+                                        {formatToIST12Hour(item.shift1PunchOutTime)}
+                                      </span>
+                                    </div>
+                                  ) : (item.shift1PunchInTime || item.punchInTime) ? (
+                                    <span className="text-amber-600 font-semibold text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                      In Clinic
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">—</span>
+                                  )}
+                                </div>
+
+                                {/* Shift 2 Logout */}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 Out</span>
+                                  {item.shift2PunchOutTime ? (
+                                    <div className="flex items-center gap-1.5">
+                                      {item.shift2PunchOutPhoto && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPreviewPhoto({
+                                              url: item.shift2PunchOutPhoto!,
+                                              title: `Shift 2 Logout - ${item.staffName}`,
+                                              location: item.shift2PunchOutLocation,
+                                              time: item.shift2PunchOutTime!,
+                                            })
+                                          }
+                                          className="cursor-pointer"
+                                          title="View Shift 2 Exit Selfie"
+                                        >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={item.shift2PunchOutPhoto}
+                                            alt="S2 Out"
+                                            className="w-7 h-7 rounded-md object-cover border border-purple-300 shadow-2xs"
+                                          />
+                                        </button>
+                                      )}
+                                      <span className="font-bold text-purple-900 text-xs">
+                                        {formatToIST12Hour(item.shift2PunchOutTime)}
+                                      </span>
+                                    </div>
+                                  ) : item.shift2PunchInTime ? (
+                                    <span className="text-purple-600 font-semibold text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                      In Clinic
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : item.punchOutTime ? (
                               <div className="flex items-center gap-2">
                                 {item.punchOutPhoto && (
                                   <button

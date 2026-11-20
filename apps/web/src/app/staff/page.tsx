@@ -41,6 +41,11 @@ export default function StaffDashboardPage() {
     name: string;
     branch: string;
     shiftStartTime?: string;
+    shiftType?: "SINGLE_STRICT" | "MULTI_STRICT";
+    shift1Start?: string;
+    shift1End?: string;
+    shift2Start?: string;
+    shift2End?: string;
     isAccessGranted?: boolean;
   }>({
     id: "staff-01",
@@ -105,6 +110,11 @@ export default function StaffDashboardPage() {
             name: found.name,
             branch: found.branchName || branch,
             shiftStartTime: found.shiftStartTime || shiftStart,
+            shiftType: found.shiftType,
+            shift1Start: found.shift1Start,
+            shift1End: found.shift1End,
+            shift2Start: found.shift2Start,
+            shift2End: found.shift2End,
             isAccessGranted: true,
           });
         }

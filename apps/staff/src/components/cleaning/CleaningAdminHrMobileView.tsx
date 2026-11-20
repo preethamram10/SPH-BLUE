@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../config/api";
+import { PhotoPreviewModal } from "../ui/PhotoPreviewModal";
 
 const COLORS = {
   primary: "#0284c7",
@@ -875,43 +876,15 @@ export default function CleaningAdminHrMobileView({ role, userName, onBack }: Pr
       )}
 
       {/* ------------------------------------------------ */}
-      {/* 4. PHOTO PREVIEW MODAL                            */}
+      {/* 4. PHOTO PREVIEW MODAL WITH HAND PINCH ZOOM      */}
       {/* ------------------------------------------------ */}
-      <Modal visible={!!previewPhoto} transparent animationType="fade" onRequestClose={() => setPreviewPhoto(null)}>
-        <View style={styles.fullPhotoBg}>
-          <TouchableOpacity style={styles.closeFullPhoto} onPress={() => setPreviewPhoto(null)}>
-            <Ionicons name="close" size={26} color="#ffffff" />
-          </TouchableOpacity>
-
-          {isPhotoLoading && (
-            <ActivityIndicator size="large" color="#ffffff" style={{ position: "absolute" }} />
-          )}
-
-          {previewPhoto && !photoLoadError && (
-            <Image
-              source={{ uri: previewPhoto }}
-              style={styles.fullPhoto}
-              resizeMode="contain"
-              onLoadStart={() => setIsPhotoLoading(true)}
-              onLoadEnd={() => setIsPhotoLoading(false)}
-              onError={() => {
-                setIsPhotoLoading(false);
-                setPhotoLoadError(true);
-              }}
-            />
-          )}
-
-          {photoLoadError && (
-            <View style={{ alignItems: "center", gap: 10, padding: 20 }}>
-              <Ionicons name="alert-circle" size={40} color={COLORS.danger} />
-              <Text style={{ color: "#ffffff", fontWeight: "700", fontSize: 14 }}>Could not load photo preview</Text>
-              <Text style={{ color: "#94a3b8", fontSize: 12, textAlign: "center" }}>
-                Tap close button to return.
-              </Text>
-            </View>
-          )}
-        </View>
-      </Modal>
+      <PhotoPreviewModal
+        visible={!!previewPhoto}
+        photoUrl={previewPhoto}
+        title="Admin Hygiene Inspection"
+        subtitle="Pinch to zoom • Drag to inspect"
+        onClose={() => setPreviewPhoto(null)}
+      />
     </SafeAreaView>
   );
 }

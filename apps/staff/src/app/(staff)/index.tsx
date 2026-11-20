@@ -70,7 +70,7 @@ interface DailyLogRecord {
   monthShort: string;
   punchIn: string;
   punchOut: string;
-  status: "On-Time" | "Late" | "Weekly Off" | "Duty Active" | "Pending";
+  status: "On-Time" | "Late" | "Weekly Off" | "Duty Active" | "Pending" | "Absent" | "Half Day" | "On Leave";
   lateMinutes: number;
   hoursWorked: string;
 }
@@ -116,6 +116,8 @@ export default function MobileStaffDashboard() {
   const [currentDate, setCurrentDate] = useState("");
 
   // Attendance Punch State
+  const [todayRecord, setTodayRecord] = useState<any>(null);
+  const [staffShiftType, setStaffShiftType] = useState<"SINGLE_STRICT" | "MULTI_STRICT">("SINGLE_STRICT");
   const [isPunchedIn, setIsPunchedIn] = useState(false);
   const [isPunchedOut, setIsPunchedOut] = useState(false);
   const [punchInTime, setPunchInTime] = useState<string | null>(null);
@@ -123,6 +125,7 @@ export default function MobileStaffDashboard() {
   const [punchStatus, setPunchStatus] = useState<"Present" | "Late" | null>(null);
   const [lateMinutes, setLateMinutes] = useState(0);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [punchShiftToConfirm, setPunchShiftToConfirm] = useState<"shift1" | "shift2">("shift1");
 
   // Pay Cuts & Penalties issued by Admin/HR
   const [staffPayCuts, setStaffPayCuts] = useState<any[]>([]);
@@ -139,43 +142,127 @@ export default function MobileStaffDashboard() {
       .catch((err) => console.warn("Failed to fetch staff pay cuts:", err));
   }, []);
 
-  // Daily Attendance Logs for This Month (Nov 2026)
-  const thisMonthDailyLogs = useMemo<DailyLogRecord[]>(() => {
+  // Real Attendance History from Backend Database (Zero Hardcoded / Fake Timings)
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+
+  const fetchMonthlyHistory = useCallback(async (id: string, monthKey: "this_month" | "last_month") => {
+    try {
+      const now = new Date();
+      let targetMonth: string;
+      if (monthKey === "last_month") {
+        const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        targetMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      } else {
+        targetMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/admin/attendance?view=full&staffId=${encodeURIComponent(id)}&month=${targetMonth}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.logs)) {
+          setHistoryLogs(data.logs);
+          if (data.stats) {
+            setMonthlyPresentDays(data.stats.presentDays || 0);
+            setMonthlyLateLogins(data.stats.lateDays || 0);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Failed fetching staff monthly history:", err);
+    }
+  }, []);
+
+  const activeDailyLogs = useMemo<DailyLogRecord[]>(() => {
+    if (historyLogs.length > 0) {
+      return historyLogs.map((d: any) => {
+        let inTime = d.shift1PunchInTime || d.punchInTime || "—";
+        let outTime = d.shift2PunchOutTime || d.shift1PunchOutTime || d.punchOutTime || "—";
+        let status: DailyLogRecord["status"] =
+          d.status === "Present"
+            ? "On-Time"
+            : d.status === "Late"
+            ? "Late"
+            : d.status === "Weekly Off"
+            ? "Weekly Off"
+            : d.status === "On Leave"
+            ? "On Leave"
+            : d.status === "Absent"
+            ? "Absent"
+            : d.status === "Half Day"
+            ? "Half Day"
+            : "Pending";
+        let worked = d.workingHours && d.workingHours !== "-" ? d.workingHours : "—";
+
+        // If today, synchronize with active todayRecord state
+        if (d.isToday) {
+          if (isPunchedIn) {
+            inTime = punchInTime || inTime;
+            outTime = punchOutTime || (isPunchedOut ? outTime : "Active in Clinic");
+            status = isPunchedOut ? (punchStatus === "Late" ? "Late" : "On-Time") : "Duty Active";
+            worked = todayRecord?.workingHours && todayRecord.workingHours !== "-" ? todayRecord.workingHours : (isPunchedOut ? "Completed" : "Active");
+          } else {
+            inTime = "—";
+            outTime = "—";
+            status = "Pending";
+            worked = "—";
+          }
+        }
+
+        return {
+          dateIso: d.date,
+          dayNum: String(d.dayNum).padStart(2, "0"),
+          dayName: d.dayName,
+          monthShort: d.monthShort,
+          punchIn: inTime,
+          punchOut: outTime,
+          status,
+          lateMinutes: d.lateMinutes || 0,
+          hoursWorked: worked,
+        };
+      });
+    }
+
+    // Dynamic generation from actual calendar days with strictly zero default / fake timings
     const logs: DailyLogRecord[] = [];
-    const todayNum = 11;
+    const now = new Date();
+    const isThisMonth = attendanceMonthFilter === "this_month";
+    const refDate = isThisMonth ? now : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const y = refDate.getFullYear();
+    const m = refDate.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const todayNum = isThisMonth ? now.getDate() : daysInMonth;
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const monthShort = refDate.toLocaleString("en-US", { month: "short" });
 
     for (let day = todayNum; day >= 1; day--) {
-      const d = new Date(2026, 10, day);
+      const d = new Date(y, m, day);
       const dayName = dayNames[d.getDay()];
       const dayNumStr = String(day).padStart(2, "0");
-      const dateIso = `2026-11-${dayNumStr}`;
+      const dateIso = `${y}-${String(m + 1).padStart(2, "0")}-${dayNumStr}`;
       const isSunday = d.getDay() === 0;
 
-      if (day === todayNum) {
+      if (isThisMonth && day === now.getDate()) {
         let status: DailyLogRecord["status"] = "Pending";
         let inTime = "—";
         let outTime = "—";
         let worked = "—";
-        let lMins = 0;
 
         if (isPunchedIn) {
-          inTime = punchInTime || "09:00 AM";
-          outTime = punchOutTime || (isPunchedOut ? "08:30 PM" : "Active in Clinic");
+          inTime = punchInTime || "—";
+          outTime = punchOutTime || (isPunchedOut ? "—" : "Active in Clinic");
           status = isPunchedOut ? (punchStatus === "Late" ? "Late" : "On-Time") : "Duty Active";
-          lMins = lateMinutes;
-          worked = isPunchedOut ? "11h 30m" : "Active";
+          worked = todayRecord?.workingHours && todayRecord.workingHours !== "-" ? todayRecord.workingHours : (isPunchedOut ? "Completed" : "Active");
         }
 
         logs.push({
           dateIso,
           dayNum: dayNumStr,
           dayName,
-          monthShort: "Nov",
+          monthShort,
           punchIn: inTime,
           punchOut: outTime,
           status,
-          lateMinutes: lMins,
+          lateMinutes,
           hoursWorked: worked,
         });
       } else if (isSunday) {
@@ -183,122 +270,29 @@ export default function MobileStaffDashboard() {
           dateIso,
           dayNum: dayNumStr,
           dayName,
-          monthShort: "Nov",
+          monthShort,
           punchIn: "—",
           punchOut: "—",
           status: "Weekly Off",
           lateMinutes: 0,
           hoursWorked: "—",
         });
-      } else if (day === 6) {
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Nov",
-          punchIn: "09:25 AM",
-          punchOut: "08:30 PM",
-          status: "Late",
-          lateMinutes: 10,
-          hoursWorked: "11h 05m",
-        });
-      } else if (day === 4) {
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Nov",
-          punchIn: "09:22 AM",
-          punchOut: "08:30 PM",
-          status: "Late",
-          lateMinutes: 7,
-          hoursWorked: "11h 08m",
-        });
       } else {
-        const randomM = 50 + (day % 8);
         logs.push({
           dateIso,
           dayNum: dayNumStr,
           dayName,
-          monthShort: "Nov",
-          punchIn: `08:${randomM} AM`,
-          punchOut: "08:30 PM",
-          status: "On-Time",
-          lateMinutes: 0,
-          hoursWorked: `11h ${40 - (day % 8)}m`,
-        });
-      }
-    }
-    return logs;
-  }, [isPunchedIn, isPunchedOut, punchInTime, punchOutTime, punchStatus, lateMinutes]);
-
-  // Daily Attendance Logs for Last Month (Oct 2026 - 31 Days)
-  const lastMonthDailyLogs = useMemo<DailyLogRecord[]>(() => {
-    const logs: DailyLogRecord[] = [];
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-    for (let day = 31; day >= 1; day--) {
-      const d = new Date(2026, 9, day);
-      const dayName = dayNames[d.getDay()];
-      const dayNumStr = String(day).padStart(2, "0");
-      const dateIso = `2026-10-${dayNumStr}`;
-      const isSunday = d.getDay() === 0;
-
-      if (isSunday) {
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Oct",
+          monthShort,
           punchIn: "—",
           punchOut: "—",
-          status: "Weekly Off",
+          status: "Absent",
           lateMinutes: 0,
           hoursWorked: "—",
         });
-      } else if (day === 22) {
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Oct",
-          punchIn: "09:28 AM",
-          punchOut: "08:30 PM",
-          status: "Late",
-          lateMinutes: 13,
-          hoursWorked: "11h 02m",
-        });
-      } else if (day === 14) {
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Oct",
-          punchIn: "09:24 AM",
-          punchOut: "08:32 PM",
-          status: "Late",
-          lateMinutes: 9,
-          hoursWorked: "11h 08m",
-        });
-      } else {
-        const randomM = 48 + (day % 10);
-        logs.push({
-          dateIso,
-          dayNum: dayNumStr,
-          dayName,
-          monthShort: "Oct",
-          punchIn: `08:${randomM < 60 ? randomM : 55} AM`,
-          punchOut: "08:30 PM",
-          status: "On-Time",
-          lateMinutes: 0,
-          hoursWorked: "11h 35m",
-        });
       }
     }
     return logs;
-  }, []);
-
-  const activeDailyLogs = attendanceMonthFilter === "this_month" ? thisMonthDailyLogs : lastMonthDailyLogs;
+  }, [historyLogs, attendanceMonthFilter, isPunchedIn, isPunchedOut, punchInTime, punchOutTime, punchStatus, lateMinutes, todayRecord]);
 
   // Punch Verification Modal State
   const [punchModalVisible, setPunchModalVisible] = useState(false);
@@ -482,15 +476,25 @@ export default function MobileStaffDashboard() {
         const data = await res.json();
         if (data.success && data.record) {
           const rec = data.record;
-          if (rec.punchInTime) {
-            setIsPunchedIn(true);
-            setPunchInTime(rec.punchInTime);
-            setPunchStatus(rec.status);
-            setLateMinutes(rec.lateMinutes || 0);
-          }
-          if (rec.punchOutTime) {
-            setIsPunchedOut(true);
-            setPunchOutTime(rec.punchOutTime);
+          setTodayRecord(rec);
+          if (rec.shiftType) setStaffShiftType(rec.shiftType);
+
+          const s1In = rec.shift1PunchInTime || rec.punchInTime;
+          const s1Out = rec.shift1PunchOutTime;
+          const s2In = rec.shift2PunchInTime;
+          const s2Out = rec.shift2PunchOutTime || (rec.shiftType !== "MULTI_STRICT" ? rec.punchOutTime : null);
+
+          setPunchInTime(s1In || null);
+          setPunchOutTime(s2Out || s1Out || rec.punchOutTime || null);
+          setPunchStatus(rec.status);
+          setLateMinutes(rec.lateMinutes || 0);
+
+          if (rec.shiftType === "MULTI_STRICT") {
+            setIsPunchedIn(Boolean(s1In));
+            setIsPunchedOut(Boolean(s1In && s1Out && s2In && s2Out));
+          } else {
+            setIsPunchedIn(Boolean(rec.punchInTime));
+            setIsPunchedOut(Boolean(rec.punchOutTime));
           }
         }
       }
@@ -523,14 +527,19 @@ export default function MobileStaffDashboard() {
   useEffect(() => {
     fetchTodayAttendance();
     fetchLeaves();
-  }, [fetchTodayAttendance, fetchLeaves]);
+    fetchMonthlyHistory(staffId, attendanceMonthFilter);
+  }, [fetchTodayAttendance, fetchLeaves, fetchMonthlyHistory, staffId, attendanceMonthFilter]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([fetchTodayAttendance(), fetchLeaves()]).finally(() => {
+    Promise.all([
+      fetchTodayAttendance(),
+      fetchLeaves(),
+      fetchMonthlyHistory(staffId, attendanceMonthFilter),
+    ]).finally(() => {
       setRefreshing(false);
     });
-  }, [fetchTodayAttendance, fetchLeaves]);
+  }, [fetchTodayAttendance, fetchLeaves, fetchMonthlyHistory, staffId, attendanceMonthFilter]);
 
   // Auto-Detect Location with Geofence check
   const detectLocation = () => {
@@ -554,8 +563,24 @@ export default function MobileStaffDashboard() {
   };
 
   // Open Punch Modal
-  const openPunchModal = (type: "in" | "out") => {
+  const openPunchModal = (type: "in" | "out", targetShift?: "shift1" | "shift2") => {
     setPunchTypeToConfirm(type);
+    if (targetShift) {
+      setPunchShiftToConfirm(targetShift);
+    } else {
+      const isMulti = staffShiftType === "MULTI_STRICT" || todayRecord?.shiftType === "MULTI_STRICT";
+      if (isMulti) {
+        const s1In = todayRecord?.shift1PunchInTime || todayRecord?.punchInTime;
+        const s1Out = todayRecord?.shift1PunchOutTime;
+        if (s1In && s1Out) {
+          setPunchShiftToConfirm("shift2");
+        } else {
+          setPunchShiftToConfirm("shift1");
+        }
+      } else {
+        setPunchShiftToConfirm("shift1");
+      }
+    }
     detectLocation();
     setSelfiePhoto(null);
     setPunchModalVisible(true);
@@ -608,6 +633,7 @@ export default function MobileStaffDashboard() {
           staffName,
           branch: branchName,
           type: punchTypeToConfirm,
+          shift: punchShiftToConfirm,
           photo: selfiePhoto,
           location: detectedLocation,
           coords: detectedCoords,
@@ -621,9 +647,12 @@ export default function MobileStaffDashboard() {
 
       setPunchModalVisible(false);
 
+      const isMulti = staffShiftType === "MULTI_STRICT" || data.shiftType === "MULTI_STRICT";
+      const shiftLabel = punchShiftToConfirm === "shift2" ? "Shift 2 (Evening)" : "Shift 1 (Morning)";
+
       if (punchTypeToConfirm === "in") {
         setIsPunchedIn(true);
-        setPunchInTime(data.punchInTime || currentTime);
+        setPunchInTime(data.shift1PunchInTime || data.punchInTime || currentTime);
         setPunchStatus(data.status);
         setLateMinutes(data.lateMinutes || 0);
 
@@ -631,21 +660,28 @@ export default function MobileStaffDashboard() {
           setMonthlyLateLogins((prev) => prev + 1);
           Alert.alert(
             "Late Punch-In Logged",
-            `Punched in at ${data.punchInTime || currentTime}. Since it is past the 15-minute grace period (09:15 AM), you are marked ${data.lateMinutes} mins late.`
+            `Punched in at ${currentTime} for ${shiftLabel}. You are marked ${data.lateMinutes || 0} mins late.`
           );
         } else {
           Alert.alert(
-            "On-Time Check-In!",
-            `Punched in successfully at ${data.punchInTime || currentTime}. Have a wonderful, productive day!`
+            "Check-In Successful!",
+            `Punched in successfully at ${currentTime} for ${shiftLabel}. Have a wonderful shift!`
           );
         }
       } else {
-        setIsPunchedOut(true);
-        setPunchOutTime(data.punchOutTime || currentTime);
-        Alert.alert(
-          "Punch-Out Logged",
-          `Punched out successfully at ${data.punchOutTime || currentTime}. Your duty for today is completed.`
-        );
+        if (!isMulti || punchShiftToConfirm === "shift2") {
+          setIsPunchedOut(true);
+          setPunchOutTime(data.shift2PunchOutTime || data.punchOutTime || currentTime);
+          Alert.alert(
+            "Duty Completed!",
+            `Punched out successfully at ${currentTime}. Your full duty for today is completed.`
+          );
+        } else {
+          Alert.alert(
+            "Shift 1 Completed!",
+            `Punched out of Shift 1 at ${currentTime}. Please remember to punch in for Shift 2 later.`
+          );
+        }
       }
 
       fetchTodayAttendance();
@@ -801,41 +837,113 @@ export default function MobileStaffDashboard() {
               <View style={styles.shiftPolicyPill}>
                 <Ionicons name="time-outline" size={14} color="#0284c7" />
                 <Text style={styles.shiftPolicyText}>
-                  Shift: {shiftStart} - 08:30 PM • {graceMinutes}m Grace (Late after {cutoffTimeStr})
+                  {staffShiftType === "MULTI_STRICT" || todayRecord?.shiftType === "MULTI_STRICT"
+                    ? `Split Shift: ${todayRecord?.shiftHours || "09:00 AM - 01:00 PM & 04:30 PM - 08:30 PM"}`
+                    : `Shift: ${shiftStart} - 08:30 PM • ${graceMinutes}m Grace (Late after ${cutoffTimeStr})`}
                 </Text>
               </View>
 
               {/* Punch-In & Punch-Out Status Times */}
-              <View style={styles.punchDetailsRow}>
-                <View style={styles.punchDetailCol}>
-                  <Text style={styles.punchDetailLabel}>PUNCH-IN TIME</Text>
-                  <Text style={styles.punchDetailVal}>{punchInTime || "Not Punched"}</Text>
-                  {punchStatus === "Late" && (
-                    <View style={styles.lateTag}>
-                      <Text style={styles.lateTagText}>⚠️ Late by {lateMinutes}m</Text>
+              {staffShiftType === "MULTI_STRICT" || todayRecord?.shiftType === "MULTI_STRICT" ? (
+                <View style={{ marginTop: 12, gap: 8 }}>
+                  {/* Shift 1 (Morning) */}
+                  <View style={{ backgroundColor: "rgba(2, 132, 199, 0.08)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: "rgba(2, 132, 199, 0.2)" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <View style={{ backgroundColor: "#0284c7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 9.5, fontWeight: "900", color: "#ffffff" }}>SHIFT 1</Text>
+                        </View>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#0f172a" }}>Morning Session</Text>
+                      </View>
+                      {todayRecord?.shift1PunchOutTime ? (
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#16a34a" }}>✓ Completed</Text>
+                      ) : (todayRecord?.shift1PunchInTime || punchInTime) ? (
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#0284c7" }}>● Active</Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#94a3b8" }}>Pending</Text>
+                      )}
                     </View>
-                  )}
-                  {punchStatus === "Present" && (
-                    <View style={styles.onTimeTag}>
-                      <Text style={styles.onTimeTagText}>✓ On-Time</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <View>
+                        <Text style={{ fontSize: 10, color: "#64748b" }}>Login 1</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                          {todayRecord?.shift1PunchInTime || punchInTime || "—"}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={{ fontSize: 10, color: "#64748b" }}>Logout 1</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                          {todayRecord?.shift1PunchOutTime || ((todayRecord?.shift1PunchInTime || punchInTime) && !todayRecord?.shift1PunchOutTime ? "In Clinic" : "—")}
+                        </Text>
+                      </View>
                     </View>
-                  )}
-                </View>
+                  </View>
 
-                <View style={styles.punchDetailDivider} />
-
-                <View style={styles.punchDetailCol}>
-                  <Text style={styles.punchDetailLabel}>PUNCH-OUT TIME</Text>
-                  <Text style={styles.punchDetailVal}>
-                    {punchOutTime || (isPunchedIn ? "In Clinic Duty" : "—")}
-                  </Text>
-                  {isPunchedOut && (
-                    <View style={styles.onTimeTag}>
-                      <Text style={styles.onTimeTagText}>✓ Duty Closed</Text>
+                  {/* Shift 2 (Evening) */}
+                  <View style={{ backgroundColor: "rgba(124, 58, 237, 0.08)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.2)" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <View style={{ backgroundColor: "#7c3aed", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 9.5, fontWeight: "900", color: "#ffffff" }}>SHIFT 2</Text>
+                        </View>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#0f172a" }}>Evening Session</Text>
+                      </View>
+                      {todayRecord?.shift2PunchOutTime ? (
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#16a34a" }}>✓ Completed</Text>
+                      ) : todayRecord?.shift2PunchInTime ? (
+                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#7c3aed" }}>● Active</Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#94a3b8" }}>Pending</Text>
+                      )}
                     </View>
-                  )}
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <View>
+                        <Text style={{ fontSize: 10, color: "#64748b" }}>Login 2</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                          {todayRecord?.shift2PunchInTime || "—"}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={{ fontSize: 10, color: "#64748b" }}>Logout 2</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                          {todayRecord?.shift2PunchOutTime || (todayRecord?.shift2PunchInTime && !todayRecord?.shift2PunchOutTime ? "In Clinic" : "—")}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.punchDetailsRow}>
+                  <View style={styles.punchDetailCol}>
+                    <Text style={styles.punchDetailLabel}>PUNCH-IN TIME</Text>
+                    <Text style={styles.punchDetailVal}>{punchInTime || "Not Punched"}</Text>
+                    {punchStatus === "Late" && (
+                      <View style={styles.lateTag}>
+                        <Text style={styles.lateTagText}>⚠️ Late by {lateMinutes}m</Text>
+                      </View>
+                    )}
+                    {punchStatus === "Present" && (
+                      <View style={styles.onTimeTag}>
+                        <Text style={styles.onTimeTagText}>✓ On-Time</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.punchDetailDivider} />
+
+                  <View style={styles.punchDetailCol}>
+                    <Text style={styles.punchDetailLabel}>PUNCH-OUT TIME</Text>
+                    <Text style={styles.punchDetailVal}>
+                      {punchOutTime || (isPunchedIn ? "In Clinic Duty" : "—")}
+                    </Text>
+                    {isPunchedOut && (
+                      <View style={styles.onTimeTag}>
+                        <Text style={styles.onTimeTagText}>✓ Duty Closed</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
 
               {/* Automatic Location Detection Banner */}
               <View style={styles.locationBanner}>
@@ -852,42 +960,108 @@ export default function MobileStaffDashboard() {
               </View>
 
               {/* Main Punch Action Button */}
-              {!isPunchedIn ? (
-                <TouchableOpacity
-                  style={[styles.punchActionBtn, styles.punchActionIn]}
-                  onPress={() => openPunchModal("in")}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="finger-print-outline" size={24} color={COLORS.white} />
-                  <View style={{ alignItems: "center" }}>
-                    <Text style={styles.punchActionText}>PUNCH IN ATTENDANCE</Text>
-                    <Text style={styles.punchActionSubText}>Facial Selfie + Location Verified</Text>
+              {staffShiftType === "MULTI_STRICT" || todayRecord?.shiftType === "MULTI_STRICT" ? (
+                // MULTI-SHIFT FLOW (4 logs: Login 1, Logout 1, Login 2, Logout 2)
+                !(todayRecord?.shift1PunchInTime || punchInTime) ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, styles.punchActionIn]}
+                    onPress={() => openPunchModal("in", "shift1")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="finger-print-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH IN • SHIFT 1 (LOGIN 1)</Text>
+                      <Text style={styles.punchActionSubText}>Morning Shift Login • Facial Selfie Verified</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : !todayRecord?.shift1PunchOutTime ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, styles.punchActionOut]}
+                    onPress={() => openPunchModal("out", "shift1")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="stop-circle-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH OUT • SHIFT 1 (LOGOUT 1)</Text>
+                      <Text style={styles.punchActionSubText}>End Morning Shift • Facial Selfie + Location</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : !todayRecord?.shift2PunchInTime ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, { backgroundColor: "#7c3aed" }]}
+                    onPress={() => openPunchModal("in", "shift2")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="log-in-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH IN • SHIFT 2 (LOGIN 2)</Text>
+                      <Text style={styles.punchActionSubText}>Shift 1 Done ✓ • Start Evening Shift</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : !todayRecord?.shift2PunchOutTime ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, styles.punchActionOut]}
+                    onPress={() => openPunchModal("out", "shift2")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="stop-circle-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH OUT • SHIFT 2 (LOGOUT 2)</Text>
+                      <Text style={styles.punchActionSubText}>End Evening Shift • Facial Selfie + Close Duty</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={[styles.punchActionBtn, styles.punchActionDone]}>
+                    <Ionicons name="checkmark-done-circle" size={24} color="#16a34a" />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={[styles.punchActionText, { color: "#16a34a" }]}>
+                        ALL 4 DUTY LOGS COMPLETED FOR TODAY ✓
+                      </Text>
+                      <Text style={[styles.punchActionSubText, { color: "#64748b" }]}>
+                        Shift 1 &amp; Shift 2 Logged &amp; Verified
+                      </Text>
+                    </View>
                   </View>
-                </TouchableOpacity>
-              ) : !isPunchedOut ? (
-                <TouchableOpacity
-                  style={[styles.punchActionBtn, styles.punchActionOut]}
-                  onPress={() => openPunchModal("out")}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="stop-circle-outline" size={24} color={COLORS.white} />
-                  <View style={{ alignItems: "center" }}>
-                    <Text style={styles.punchActionText}>PUNCH OUT ATTENDANCE</Text>
-                    <Text style={styles.punchActionSubText}>Facial Selfie + Close Duty</Text>
-                  </View>
-                </TouchableOpacity>
+                )
               ) : (
-                <View style={[styles.punchActionBtn, styles.punchActionDone]}>
-                  <Ionicons name="checkmark-done-circle" size={24} color="#16a34a" />
-                  <View style={{ alignItems: "center" }}>
-                    <Text style={[styles.punchActionText, { color: "#16a34a" }]}>
-                      DUTY COMPLETED FOR TODAY
-                    </Text>
-                    <Text style={[styles.punchActionSubText, { color: "#64748b" }]}>
-                      Total Work Logged &amp; Verified
-                    </Text>
+                // SINGLE SHIFT FLOW (2 logs: Login & Logout)
+                !isPunchedIn ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, styles.punchActionIn]}
+                    onPress={() => openPunchModal("in", "shift1")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="finger-print-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH IN ATTENDANCE</Text>
+                      <Text style={styles.punchActionSubText}>Facial Selfie + Location Verified</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : !isPunchedOut ? (
+                  <TouchableOpacity
+                    style={[styles.punchActionBtn, styles.punchActionOut]}
+                    onPress={() => openPunchModal("out", "shift1")}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="stop-circle-outline" size={24} color={COLORS.white} />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={styles.punchActionText}>PUNCH OUT ATTENDANCE</Text>
+                      <Text style={styles.punchActionSubText}>Facial Selfie + Close Duty</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={[styles.punchActionBtn, styles.punchActionDone]}>
+                    <Ionicons name="checkmark-done-circle" size={24} color="#16a34a" />
+                    <View style={{ alignItems: "center" }}>
+                      <Text style={[styles.punchActionText, { color: "#16a34a" }]}>
+                        DUTY COMPLETED FOR TODAY
+                      </Text>
+                      <Text style={[styles.punchActionSubText, { color: "#64748b" }]}>
+                        Total Work Logged &amp; Verified
+                      </Text>
+                    </View>
                   </View>
-                </View>
+                )
               )}
             </View>
 
@@ -1035,9 +1209,19 @@ export default function MobileStaffDashboard() {
                           <Text style={styles.statusPillActiveText}>Active Duty</Text>
                         </View>
                       )}
-                      {log.status === "Pending" && (
+                      {(log.status === "Pending" || log.status === "Absent") && (
                         <View style={styles.statusPillPending}>
-                          <Text style={styles.statusPillPendingText}>Not Punched</Text>
+                          <Text style={styles.statusPillPendingText}>{log.status === "Absent" ? "Absent" : "Not Punched"}</Text>
+                        </View>
+                      )}
+                      {log.status === "On Leave" && (
+                        <View style={styles.statusPillOff}>
+                          <Text style={styles.statusPillOffText}>On Leave</Text>
+                        </View>
+                      )}
+                      {log.status === "Half Day" && (
+                        <View style={styles.statusPillLate}>
+                          <Text style={styles.statusPillLateText}>Half Day</Text>
                         </View>
                       )}
                       <Text style={styles.dailyLogDuration}>{log.hoursWorked}</Text>

@@ -30,11 +30,34 @@ export interface TodayAttendanceItem {
   role: string;
   branch: string;
   reportTime?: string;
+  shiftType?: string;
+  shiftHours?: number | string;
+  dailyHours?: number | string;
+  shift1Start?: string;
+  shift1End?: string;
+  shift1PunchInTime?: string | null;
+  shift1PunchOutTime?: string | null;
+  shift1PunchInPhoto?: string;
+  shift1PunchInLocation?: string;
+  shift1PunchOutPhoto?: string;
+  shift1PunchOutLocation?: string;
+  shift2Start?: string;
+  shift2End?: string;
+  shift2PunchInTime?: string | null;
+  shift2PunchOutTime?: string | null;
+  shift2PunchInPhoto?: string;
+  shift2PunchInLocation?: string;
+  shift2PunchOutPhoto?: string;
+  shift2PunchOutLocation?: string;
+  punches?: Array<any>;
   punchInTime: string | null;
   punchOutTime: string | null;
+  punchInPhoto?: string;
+  punchOutPhoto?: string;
+  punchInLocation?: string;
+  punchOutLocation?: string;
   workingHours: string;
   status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
-  punchInLocation?: string;
 }
 
 export async function GET(req: Request) {
@@ -229,11 +252,34 @@ export async function GET(req: Request) {
         role,
         branch: att.branch || emp?.branchName || "KPHB Branch",
         reportTime: repTime,
+        shiftType: att.shiftType || emp?.shiftType || "SINGLE_STRICT",
+        shiftHours: att.shiftHours || emp?.shiftHours,
+        dailyHours: att.dailyHours || emp?.dailyHours,
+        shift1Start: att.shift1Start || (emp?.shift1Start ? formatToIST12Hour(emp.shift1Start) : repTime),
+        shift1End: att.shift1End || (emp?.shift1End ? formatToIST12Hour(emp.shift1End) : undefined),
+        shift1PunchInTime: att.shift1PunchInTime ? formatToIST12Hour(att.shift1PunchInTime) : (att.punchInTime ? formatToIST12Hour(att.punchInTime) : null),
+        shift1PunchOutTime: att.shift1PunchOutTime ? formatToIST12Hour(att.shift1PunchOutTime) : null,
+        shift1PunchInPhoto: att.shift1PunchInPhoto || (att.punches?.find((p: any) => p.shift === "shift1" && p.type === "in")?.photo) || att.punchInPhoto,
+        shift1PunchInLocation: att.shift1PunchInLocation || (att.punches?.find((p: any) => p.shift === "shift1" && p.type === "in")?.location) || att.punchInLocation,
+        shift1PunchOutPhoto: att.shift1PunchOutPhoto || (att.punches?.find((p: any) => p.shift === "shift1" && p.type === "out")?.photo),
+        shift1PunchOutLocation: att.shift1PunchOutLocation || (att.punches?.find((p: any) => p.shift === "shift1" && p.type === "out")?.location),
+        shift2Start: att.shift2Start || (emp?.shift2Start ? formatToIST12Hour(emp.shift2Start) : undefined),
+        shift2End: att.shift2End || (emp?.shift2End ? formatToIST12Hour(emp.shift2End) : undefined),
+        shift2PunchInTime: att.shift2PunchInTime ? formatToIST12Hour(att.shift2PunchInTime) : null,
+        shift2PunchOutTime: att.shift2PunchOutTime ? formatToIST12Hour(att.shift2PunchOutTime) : null,
+        shift2PunchInPhoto: att.shift2PunchInPhoto || (att.punches?.find((p: any) => p.shift === "shift2" && p.type === "in")?.photo),
+        shift2PunchInLocation: att.shift2PunchInLocation || (att.punches?.find((p: any) => p.shift === "shift2" && p.type === "in")?.location),
+        shift2PunchOutPhoto: att.shift2PunchOutPhoto || (att.punches?.find((p: any) => p.shift === "shift2" && p.type === "out")?.photo),
+        shift2PunchOutLocation: att.shift2PunchOutLocation || (att.punches?.find((p: any) => p.shift === "shift2" && p.type === "out")?.location),
         punchInTime: att.punchInTime ? formatToIST12Hour(att.punchInTime) : null,
         punchOutTime: att.punchOutTime ? formatToIST12Hour(att.punchOutTime) : null,
+        punchInPhoto: att.punchInPhoto,
+        punchOutPhoto: att.punchOutPhoto,
         workingHours: att.workingHours || (att.punchInTime && !att.punchOutTime ? "In Clinic" : "-"),
         status: statusDisplay,
         punchInLocation: att.punchInLocation || "Clinic Biometric",
+        punchOutLocation: att.punchOutLocation,
+        punches: att.punches || [],
       });
     });
 

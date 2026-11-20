@@ -8,11 +8,11 @@ import {
   Dimensions,
   ScrollView,
   Alert,
-  PanResponder,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../config/api";
+import { ZoomableImage } from "../ui/ZoomableImage";
 
 const resolveImageUrl = (url: string) => {
   if (!url) return "";
@@ -95,27 +95,6 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
     });
   };
 
-  // Swipe gesture support to flip images left/right
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 15;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx < -40) {
-          // Swiped Left -> go to Next image
-          handleNext();
-        } else if (gestureState.dx > 40) {
-          // Swiped Right -> go to Prev image
-          handlePrev();
-        }
-      },
-    })
-  ).current;
-
-  if (!visible || images.length === 0) return null;
-
   const currentImage = images[currentIndex] || images[0];
 
   const handleRotate = () => {
@@ -123,11 +102,11 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
   };
 
   const handleZoomIn = () => {
-    setZoomScale((prev) => Math.min(3, Math.round((prev + 0.25) * 100) / 100));
+    setZoomScale((prev) => Math.min(4, Math.round((prev + 0.3) * 100) / 100));
   };
 
   const handleZoomOut = () => {
-    setZoomScale((prev) => Math.max(0.75, Math.round((prev - 0.25) * 100) / 100));
+    setZoomScale((prev) => Math.max(1, Math.round((prev - 0.3) * 100) / 100));
   };
 
   const handleReset = () => {
@@ -193,9 +172,9 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
 
             {/* Zoom Out Button */}
             <TouchableOpacity
-              style={[styles.toolBtn, zoomScale <= 0.75 && styles.toolBtnDisabled]}
+              style={[styles.toolBtn, zoomScale <= 1.05 && styles.toolBtnDisabled]}
               onPress={handleZoomOut}
-              disabled={zoomScale <= 0.75}
+              disabled={zoomScale <= 1.05}
               activeOpacity={0.7}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -204,9 +183,9 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
 
             {/* Zoom In Button */}
             <TouchableOpacity
-              style={[styles.toolBtn, zoomScale >= 3 && styles.toolBtnDisabled]}
+              style={[styles.toolBtn, zoomScale >= 4 && styles.toolBtnDisabled]}
               onPress={handleZoomIn}
-              disabled={zoomScale >= 3}
+              disabled={zoomScale >= 4}
               activeOpacity={0.7}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -214,7 +193,7 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
             </TouchableOpacity>
 
             {/* Reset Zoom/Rotate (visible if modified) */}
-            {(zoomScale !== 1 || rotation !== 0) && (
+            {(zoomScale > 1.05 || rotation !== 0) && (
               <TouchableOpacity
                 style={styles.toolBtn}
                 onPress={handleReset}
@@ -248,8 +227,8 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
           </View>
         </View>
 
-        {/* MAIN VIEWPORT WITH IMAGE AND SWIPING */}
-        <View style={styles.imageViewport} {...panResponder.panHandlers}>
+        {/* MAIN VIEWPORT WITH IMAGE AND PINCH ZOOM / SWIPING */}
+        <View style={styles.imageViewport}>
           {/* Left Arrow Button (<) */}
           {images.length > 1 && (
             <TouchableOpacity
@@ -271,19 +250,17 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
             </TouchableOpacity>
           )}
 
-          {/* Center Image with Zoom & Rotate Transform */}
+          {/* Center Image with Hand Pinch Zoom & Rotate */}
           <View style={styles.imageContainer}>
-            <ExpoImage
+            <ZoomableImage
               source={resolveImageUrl(currentImage)}
-              style={[
-                styles.mainImage,
-                {
-                  transform: [
-                    { scale: zoomScale },
-                    { rotate: `${rotation}deg` },
-                  ],
-                },
-              ]}
+              scale={zoomScale}
+              rotation={rotation}
+              onScaleChange={(s) => setZoomScale(Math.round(s * 100) / 100)}
+              onSwipeLeft={handleNext}
+              onSwipeRight={handlePrev}
+              style={styles.mainImage}
+              imageStyle={styles.mainImageInner}
               contentFit="contain"
             />
           </View>
@@ -310,14 +287,14 @@ export const PrescriptionViewerModal: React.FC<PrescriptionViewerModalProps> = (
           )}
         </View>
 
-        {/* Swipe & Navigation Hint */}
-        {images.length > 1 && (
-          <View style={styles.swipeHintRow}>
-            <Ionicons name="chevron-back" size={12} color="rgba(255, 255, 255, 0.5)" />
-            <Text style={styles.swipeHintText}>Swipe or tap arrows to view ({currentIndex + 1} of {images.length})</Text>
-            <Ionicons name="chevron-forward" size={12} color="rgba(255, 255, 255, 0.5)" />
-          </View>
-        )}
+        {/* Swipe & Zoom Navigation Hint */}
+        <View style={styles.swipeHintRow}>
+          <Ionicons name="hand-left-outline" size={12} color="#38bdf8" />
+          <Text style={styles.swipeHintText}>
+            Pinch to zoom • Drag to pan
+            {images.length > 1 ? ` • Swipe (${currentIndex + 1} of ${images.length})` : ""}
+          </Text>
+        </View>
 
         {/* BOTTOM THUMBNAIL STRIP */}
         <View style={styles.bottomBar}>
@@ -441,6 +418,11 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     backgroundColor: "#ffffff",
+    borderRadius: 8,
+  },
+  mainImageInner: {
+    width: "100%",
+    height: "100%",
     borderRadius: 8,
   },
   navArrow: {

@@ -24,12 +24,41 @@ interface AttendanceItem {
   role: string;
   branch: string;
   reportTime?: string;
+  shiftType?: "SINGLE_STRICT" | "MULTI_STRICT";
+  shiftHours?: string;
+  dailyHours?: string;
+  shift1Start?: string;
+  shift1End?: string;
+  shift1PunchInTime?: string | null;
+  shift1PunchOutTime?: string | null;
+  shift1PunchInPhoto?: string;
+  shift1PunchOutPhoto?: string;
+  shift1PunchInLocation?: string;
+  shift1PunchOutLocation?: string;
+  shift2Start?: string;
+  shift2End?: string;
+  shift2PunchInTime?: string | null;
+  shift2PunchOutTime?: string | null;
+  shift2PunchInPhoto?: string;
+  shift2PunchOutPhoto?: string;
+  shift2PunchInLocation?: string;
+  shift2PunchOutLocation?: string;
   punchInTime: string | null;
   punchOutTime: string | null;
   workingHours: string;
   status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
   punchInLocation?: string;
   punchInPhoto?: string;
+  punchOutLocation?: string;
+  punchOutPhoto?: string;
+  punches?: Array<{
+    id: string;
+    type: "in" | "out";
+    time: string;
+    location?: string;
+    photo?: string;
+    shift?: string;
+  }>;
 }
 
 const STATUS_FILTERS = ["All", "Present", "Late", "On Leave", "Absent"];
@@ -107,12 +136,34 @@ export default function HRAttendanceScreen() {
           role: a.role || a.category || "Staff",
           branch: a.branch || a.branchName || "",
           reportTime: a.reportTime || a.shiftStartTime || "09:00 AM",
+          shiftType: a.shiftType || "SINGLE_STRICT",
+          shiftHours: a.shiftHours,
+          dailyHours: a.dailyHours,
+          shift1Start: a.shift1Start,
+          shift1End: a.shift1End,
+          shift1PunchInTime: a.shift1PunchInTime || null,
+          shift1PunchOutTime: a.shift1PunchOutTime || null,
+          shift1PunchInPhoto: a.shift1PunchInPhoto || a.punchInPhoto,
+          shift1PunchOutPhoto: a.shift1PunchOutPhoto,
+          shift1PunchInLocation: a.shift1PunchInLocation || a.punchInLocation,
+          shift1PunchOutLocation: a.shift1PunchOutLocation,
+          shift2Start: a.shift2Start,
+          shift2End: a.shift2End,
+          shift2PunchInTime: a.shift2PunchInTime || null,
+          shift2PunchOutTime: a.shift2PunchOutTime || null,
+          shift2PunchInPhoto: a.shift2PunchInPhoto,
+          shift2PunchOutPhoto: a.shift2PunchOutPhoto,
+          shift2PunchInLocation: a.shift2PunchInLocation,
+          shift2PunchOutLocation: a.shift2PunchOutLocation,
           punchInTime: a.punchInTime || null,
           punchOutTime: a.punchOutTime || null,
+          punchInPhoto: a.punchInPhoto || undefined,
+          punchOutPhoto: a.punchOutPhoto || undefined,
+          punchInLocation: a.punchInLocation || undefined,
+          punchOutLocation: a.punchOutLocation || undefined,
           workingHours: a.workingHours || "-",
           status: a.status || (a.punchInTime ? "Present" : "Absent"),
-          punchInLocation: a.punchInLocation || undefined,
-          punchInPhoto: a.punchInPhoto || undefined,
+          punches: a.punches || [],
         }));
       } else if (attData.success && Array.isArray(attData.records)) {
         items = attData.records.map((r: any, idx: number) => ({
@@ -122,12 +173,34 @@ export default function HRAttendanceScreen() {
           role: r.role || r.category || "Staff",
           branch: r.branch || r.branchName || "",
           reportTime: r.reportTime || r.shiftStartTime || "09:00 AM",
+          shiftType: r.shiftType || "SINGLE_STRICT",
+          shiftHours: r.shiftHours,
+          dailyHours: r.dailyHours,
+          shift1Start: r.shift1Start,
+          shift1End: r.shift1End,
+          shift1PunchInTime: r.shift1PunchInTime || null,
+          shift1PunchOutTime: r.shift1PunchOutTime || null,
+          shift1PunchInPhoto: r.shift1PunchInPhoto || r.punchInPhoto,
+          shift1PunchOutPhoto: r.shift1PunchOutPhoto,
+          shift1PunchInLocation: r.shift1PunchInLocation || r.punchInLocation,
+          shift1PunchOutLocation: r.shift1PunchOutLocation,
+          shift2Start: r.shift2Start,
+          shift2End: r.shift2End,
+          shift2PunchInTime: r.shift2PunchInTime || null,
+          shift2PunchOutTime: r.shift2PunchOutTime || null,
+          shift2PunchInPhoto: r.shift2PunchInPhoto,
+          shift2PunchOutPhoto: r.shift2PunchOutPhoto,
+          shift2PunchInLocation: r.shift2PunchInLocation,
+          shift2PunchOutLocation: r.shift2PunchOutLocation,
           punchInTime: r.punchInTime || null,
           punchOutTime: r.punchOutTime || null,
+          punchInPhoto: r.punchInPhoto || undefined,
+          punchOutPhoto: r.punchOutPhoto || undefined,
+          punchInLocation: r.punchInLocation || undefined,
+          punchOutLocation: r.punchOutLocation || undefined,
           workingHours: r.workingHours || "-",
           status: r.status || (r.punchInTime ? "Present" : "Absent"),
-          punchInLocation: r.punchInLocation || undefined,
-          punchInPhoto: r.punchInPhoto || undefined,
+          punches: r.punches || [],
         }));
       }
 
@@ -427,31 +500,173 @@ export default function HRAttendanceScreen() {
                 </View>
 
                 {/* Timings Strip */}
-                <View style={styles.timingsStrip}>
-                  <View style={styles.timingCol}>
-                    <Text style={styles.timingLabel}>Report</Text>
-                    <Text style={styles.timingValue}>{item.reportTime || "09:00 AM"}</Text>
+                {item.shiftType === "MULTI_STRICT" || Boolean(item.shift2PunchInTime || item.shift2PunchOutTime || item.shift2Start) ? (
+                  <View style={{ marginTop: 10, gap: 7 }}>
+                    {/* Shift 1 Strip */}
+                    <View style={{ backgroundColor: "#f0f9ff", borderRadius: 10, padding: 8, borderWidth: 1, borderColor: "#bae6fd" }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                          <View style={{ backgroundColor: "#0284c7", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: "900", color: "#ffffff" }}>SHIFT 1</Text>
+                          </View>
+                          <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1" }}>Morning Shift</Text>
+                        </View>
+                        {item.shift1PunchOutTime ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#16a34a" }}>✓ Completed</Text>
+                        ) : (item.shift1PunchInTime || item.punchInTime) ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>● Active</Text>
+                        ) : (
+                          <Text style={{ fontSize: 9.5, fontWeight: "700", color: "#94a3b8" }}>Pending</Text>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          {item.shift1PunchInPhoto && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                setPreviewPhoto({
+                                  url: item.shift1PunchInPhoto!,
+                                  title: `Shift 1 Login - ${item.staffName}`,
+                                  location: item.shift1PunchInLocation,
+                                })
+                              }
+                            >
+                              <Image source={{ uri: item.shift1PunchInPhoto }} style={{ width: 22, height: 22, borderRadius: 4 }} />
+                            </TouchableOpacity>
+                          )}
+                          <View>
+                            <Text style={{ fontSize: 9, color: "#64748b" }}>Login 1</Text>
+                            <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
+                              {item.shift1PunchInTime || item.punchInTime || "—"}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <View style={{ alignItems: "flex-end" }}>
+                            <Text style={{ fontSize: 9, color: "#64748b" }}>Logout 1</Text>
+                            <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
+                              {item.shift1PunchOutTime || "—"}
+                            </Text>
+                          </View>
+                          {item.shift1PunchOutPhoto && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                setPreviewPhoto({
+                                  url: item.shift1PunchOutPhoto!,
+                                  title: `Shift 1 Logout - ${item.staffName}`,
+                                  location: item.shift1PunchOutLocation,
+                                })
+                              }
+                            >
+                              <Image source={{ uri: item.shift1PunchOutPhoto }} style={{ width: 22, height: 22, borderRadius: 4 }} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Shift 2 Strip */}
+                    <View style={{ backgroundColor: "#faf5ff", borderRadius: 10, padding: 8, borderWidth: 1, borderColor: "#e9d5ff" }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                          <View style={{ backgroundColor: "#7c3aed", paddingHorizontal: 5, paddingVertical: 1.5, borderRadius: 4 }}>
+                            <Text style={{ fontSize: 9, fontWeight: "900", color: "#ffffff" }}>SHIFT 2</Text>
+                          </View>
+                          <Text style={{ fontSize: 10, fontWeight: "700", color: "#6b21a8" }}>Evening Shift</Text>
+                        </View>
+                        {item.shift2PunchOutTime ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#16a34a" }}>✓ Completed</Text>
+                        ) : item.shift2PunchInTime ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#7c3aed" }}>● Active</Text>
+                        ) : (
+                          <Text style={{ fontSize: 9.5, fontWeight: "700", color: "#94a3b8" }}>Pending</Text>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          {item.shift2PunchInPhoto && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                setPreviewPhoto({
+                                  url: item.shift2PunchInPhoto!,
+                                  title: `Shift 2 Login - ${item.staffName}`,
+                                  location: item.shift2PunchInLocation,
+                                })
+                              }
+                            >
+                              <Image source={{ uri: item.shift2PunchInPhoto }} style={{ width: 22, height: 22, borderRadius: 4 }} />
+                            </TouchableOpacity>
+                          )}
+                          <View>
+                            <Text style={{ fontSize: 9, color: "#64748b" }}>Login 2</Text>
+                            <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
+                              {item.shift2PunchInTime || "—"}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <View style={{ alignItems: "flex-end" }}>
+                            <Text style={{ fontSize: 9, color: "#64748b" }}>Logout 2</Text>
+                            <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
+                              {item.shift2PunchOutTime || "—"}
+                            </Text>
+                          </View>
+                          {item.shift2PunchOutPhoto && (
+                            <TouchableOpacity
+                              onPress={() =>
+                                setPreviewPhoto({
+                                  url: item.shift2PunchOutPhoto!,
+                                  title: `Shift 2 Logout - ${item.staffName}`,
+                                  location: item.shift2PunchOutLocation,
+                                })
+                              }
+                            >
+                              <Image source={{ uri: item.shift2PunchOutPhoto }} style={{ width: 22, height: 22, borderRadius: 4 }} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Total Hours & Logs Footnote */}
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 2, paddingHorizontal: 2 }}>
+                      <Text style={{ fontSize: 10.5, color: "#475569" }}>
+                        Total Hours: <Text style={{ color: "#0284c7", fontWeight: "800" }}>{item.workingHours && item.workingHours !== "-" ? item.workingHours : "—"}</Text>
+                      </Text>
+                      <View style={{ backgroundColor: "#e2e8f0", paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#334155" }}>
+                          {[item.shift1PunchInTime || item.punchInTime, item.shift1PunchOutTime, item.shift2PunchInTime, item.shift2PunchOutTime].filter(Boolean).length}/4 Logs Recorded
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <View style={styles.timingDivider} />
-                  <View style={styles.timingCol}>
-                    <Text style={styles.timingLabel}>Punch In</Text>
-                    <Text style={styles.timingValue}>{item.punchInTime || "—"}</Text>
+                ) : (
+                  <View style={styles.timingsStrip}>
+                    <View style={styles.timingCol}>
+                      <Text style={styles.timingLabel}>Report</Text>
+                      <Text style={styles.timingValue}>{item.reportTime || "09:00 AM"}</Text>
+                    </View>
+                    <View style={styles.timingDivider} />
+                    <View style={styles.timingCol}>
+                      <Text style={styles.timingLabel}>Punch In</Text>
+                      <Text style={styles.timingValue}>{item.punchInTime || "—"}</Text>
+                    </View>
+                    <View style={styles.timingDivider} />
+                    <View style={styles.timingCol}>
+                      <Text style={styles.timingLabel}>Punch Out</Text>
+                      <Text style={styles.timingValue}>
+                        {item.punchOutTime || (isPresent ? "In Clinic" : "—")}
+                      </Text>
+                    </View>
+                    <View style={styles.timingDivider} />
+                    <View style={styles.timingCol}>
+                      <Text style={styles.timingLabel}>Total Hours</Text>
+                      <Text style={[styles.timingValue, { color: "#0284c7", fontWeight: "800" }]}>
+                        {item.workingHours && item.workingHours !== "-" ? item.workingHours : "—"}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.timingDivider} />
-                  <View style={styles.timingCol}>
-                    <Text style={styles.timingLabel}>Punch Out</Text>
-                    <Text style={styles.timingValue}>
-                      {item.punchOutTime || (isPresent ? "In Clinic" : "—")}
-                    </Text>
-                  </View>
-                  <View style={styles.timingDivider} />
-                  <View style={styles.timingCol}>
-                    <Text style={styles.timingLabel}>Total Hours</Text>
-                    <Text style={[styles.timingValue, { color: "#0284c7", fontWeight: "800" }]}>
-                      {item.workingHours && item.workingHours !== "-" ? item.workingHours : "—"}
-                    </Text>
-                  </View>
-                </View>
+                )}
 
                 {/* Location / Photo footnote if available */}
                 {(item.punchInLocation || item.punchInPhoto) && (
