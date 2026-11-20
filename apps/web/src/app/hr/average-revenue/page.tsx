@@ -2,7 +2,6 @@
 
 import React from "react";
 import HRSidebar from "@/components/HRSidebar";
-import BranchRevenueQualityPanel from "@/components/BranchRevenueQualityPanel";
 import MonthlyFeeSpreadPanel from "@/components/MonthlyFeeSpreadPanel";
 import { TrendingUp } from "lucide-react";
 
@@ -35,20 +34,12 @@ export default function HRAverageRevenuePage() {
             </div>
           </div>
 
-          {/* Revenue Quality Panel */}
-          <BranchRevenueQualityPanel
-            initialBranch="ALL"
-            allowBranchChange={true}
-            title="Branch Unit Economics & Average Revenue"
-            subtitle="Analyzes treated patient counts, average duration, and quality rates across all branches"
-          />
-
-          {/* ADD-ON: Monthly Fee Spread & Averages (Month 1..N, Avg / Month, Avg / Patient-Month) */}
+          {/* Monthly Fee Spread & Averages (Month 1..N, Avg Monthly Revenue, Avg / Patient / Month) */}
           <MonthlyFeeSpreadPanel
             initialBranch="ALL"
             allowBranchChange={true}
             title="Monthly Fee Spread & Duration Averages"
-            subtitle="Plan fees distributed equally across N course months with Avg/Month and Avg/Patient-Month metrics"
+            subtitle="Plan fees distributed equally across N course months with Avg Monthly Revenue and Avg / Patient / Month metrics"
           />
         </div>
       </main>

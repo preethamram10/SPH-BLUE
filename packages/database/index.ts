@@ -2988,6 +2988,11 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
+
+    try {
+      await planSpreadService.refundPlan(store[idx].id);
+    } catch {}
+
     return store[idx];
   },
 
@@ -3009,6 +3014,24 @@ export const appointmentService = {
 
     global.__sphAppointmentsStore = store;
     saveAppointmentsToDisk(store);
+
+    try {
+      const restored = await planSpreadService.restorePlan(store[idx].id);
+      if (!restored && (Number(store[idx].totalPaid) > 0 || store[idx].isFeeCollected)) {
+        const durMonths = parseCourseDurationMonths(store[idx].medicineDuration || store[idx].packageDurationMonths);
+        const planDur = durMonths >= 1 ? Math.round(durMonths) : 1;
+        await planSpreadService.recordPlanPayment({
+          planId: store[idx].id,
+          branch: (store[idx] as any).branchName || store[idx].branch || "KPHB Branch",
+          patientId: store[idx].registrationId || store[idx].phone,
+          amount: Number(store[idx].totalPaid) || 0,
+          durationMonths: planDur,
+          paidAt: store[idx].paidAt || store[idx].appointmentDate || new Date().toISOString(),
+          isInstallment: false,
+        });
+      }
+    } catch {}
+
     return store[idx];
   },
 
@@ -7994,6 +8017,7 @@ export interface MonthSpreadResult {
   grandTotal: number;
   monthsCount: number;
   patientMonths: number;
+  avgMonthlyRevenue: number | null;
   avgPerMonth: number | null;
   avgPerPatientMonth: number | null;
 }
@@ -8369,6 +8393,64 @@ export const planSpreadService = {
   },
 
   /**
+   * Restores a previously refunded or cancelled plan.
+   */
+  async restorePlan(planId: string): Promise<boolean> {
+    const planStore = getPlanSchedulesStore();
+    const bpmStore = getBranchPlanMonthsStore();
+
+    const plan = planStore.find((p) => p.planId === planId);
+    if (!plan || !plan.isRefunded) return false;
+
+    const nowIso = new Date().toISOString();
+
+    for (let i = 1; i <= plan.months; i++) {
+      const shareVal = plan.shares[i - 1] || 0;
+      const bpmIdx = bpmStore.findIndex(
+        (b) => b.branchId === plan.branchId && b.cohortMonth === plan.cohortMonth && b.monthIndex === i
+      );
+      if (bpmIdx !== -1) {
+        bpmStore[bpmIdx].amount = Math.round((bpmStore[bpmIdx].amount + shareVal) * 100) / 100;
+        bpmStore[bpmIdx].plansCount += 1;
+        bpmStore[bpmIdx].patientMonthsTotal = (bpmStore[bpmIdx].patientMonthsTotal || 0) + plan.months;
+        bpmStore[bpmIdx].updatedAt = nowIso;
+      } else {
+        bpmStore.push({
+          id: `bpm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          branchId: plan.branchId,
+          branchName: plan.branchName,
+          cohortMonth: plan.cohortMonth,
+          monthIndex: i,
+          amount: Math.round(shareVal * 100) / 100,
+          plansCount: 1,
+          patientMonthsTotal: plan.months,
+          updatedAt: nowIso,
+        });
+      }
+    }
+
+    plan.isRefunded = false;
+    plan.updatedAt = nowIso;
+
+    global.__sphPlanSchedulesStore = planStore;
+    savePlanSchedulesToDisk(planStore);
+
+    global.__sphBranchPlanMonthsStore = bpmStore;
+    saveBranchPlanMonthsToDisk(bpmStore);
+
+    try {
+      if (prisma && (prisma as any).planSchedule) {
+        await (prisma as any).planSchedule.update({
+          where: { planId },
+          data: { isRefunded: false, updatedAt: new Date() },
+        }).catch(() => {});
+      }
+    } catch {}
+
+    return true;
+  },
+
+  /**
    * Fast Read API: computes monthly spread strictly from branch_plan_month summary table.
    * Under 100ms with zero payments-table scanning.
    */
@@ -8482,7 +8564,7 @@ export const planSpreadService = {
     const monthsCount = highestIndexWithAmount;
 
     // Averages: return null for zero denominator, never 0 or error
-    const avgPerMonth = monthsCount > 0 ? Math.round((grandTotal / monthsCount) * 100) / 100 : null;
+    const avgMonthlyRevenue = monthsCount > 0 ? Math.round((grandTotal / monthsCount) * 100) / 100 : null;
     const avgPerPatientMonth = patientMonths > 0 ? Math.round((grandTotal / patientMonths) * 100) / 100 : null;
 
     return {
@@ -8493,7 +8575,8 @@ export const planSpreadService = {
       grandTotal,
       monthsCount,
       patientMonths,
-      avgPerMonth,
+      avgMonthlyRevenue,
+      avgPerMonth: avgMonthlyRevenue,
       avgPerPatientMonth,
     };
   },

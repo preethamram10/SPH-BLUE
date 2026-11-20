@@ -32,6 +32,7 @@ export interface MonthSpreadData {
   grandTotal: number;
   monthsCount: number;
   patientMonths: number;
+  avgMonthlyRevenue?: number | null;
   avgPerMonth: number | null;
   avgPerPatientMonth: number | null;
 }
@@ -180,6 +181,20 @@ export default function MonthlyFeeSpreadPanel({
 
   useEffect(() => {
     fetchSpreadData();
+  }, [fetchSpreadData]);
+
+  useEffect(() => {
+    if (initialBranch) {
+      setSelectedBranch(initialBranch);
+    }
+  }, [initialBranch]);
+
+  useEffect(() => {
+    const handlePaymentSuccess = () => {
+      fetchSpreadData(true);
+    };
+    window.addEventListener("payment-success", handlePaymentSuccess);
+    return () => window.removeEventListener("payment-success", handlePaymentSuccess);
   }, [fetchSpreadData]);
 
   useEffect(() => {
@@ -406,17 +421,22 @@ export default function MonthlyFeeSpreadPanel({
           </div>
         </div>
 
-        {/* ADD-ON 1: Avg / Month */}
+        {/* Avg Monthly Revenue */}
         <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white rounded-xl border border-amber-200/80 p-3 flex flex-col justify-between shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-600">Avg / Month</span>
+            <span className="text-[11px] font-bold text-slate-600">Avg Monthly Revenue</span>
             <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-amber-100 text-amber-700 border border-amber-200">
               <TrendingUp className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-1">
             <div className="text-lg md:text-xl font-extrabold text-amber-900 font-mono">
-              {loading ? "–" : spreadData?.avgPerMonth !== null && spreadData?.avgPerMonth !== undefined ? formatINR(spreadData.avgPerMonth) : "–"}
+              {loading
+                ? "–"
+                : (spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth) !== null &&
+                  (spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth) !== undefined
+                ? formatINR(spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth)
+                : "–"}
             </div>
             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
               Grand total ÷ Active months ({spreadData?.monthsCount || 0})
@@ -424,17 +444,21 @@ export default function MonthlyFeeSpreadPanel({
           </div>
         </div>
 
-        {/* ADD-ON 2: Avg / Patient-Month */}
+        {/* Avg / Patient / Month */}
         <div className="bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-white rounded-xl border border-purple-200/80 p-3 flex flex-col justify-between shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-600">Avg / Patient-Month</span>
+            <span className="text-[11px] font-bold text-slate-600">Avg / Patient / Month</span>
             <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-purple-100 text-purple-700 border border-purple-200">
               <Sparkles className="w-3.5 h-3.5" />
             </div>
           </div>
           <div className="mt-1">
             <div className="text-lg md:text-xl font-extrabold text-purple-900 font-mono">
-              {loading ? "–" : spreadData?.avgPerPatientMonth !== null && spreadData?.avgPerPatientMonth !== undefined ? formatINR(spreadData.avgPerPatientMonth) : "–"}
+              {loading
+                ? "–"
+                : spreadData?.avgPerPatientMonth !== null && spreadData?.avgPerPatientMonth !== undefined
+                ? formatINR(spreadData.avgPerPatientMonth)
+                : "–"}
             </div>
             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
               Grand total ÷ Total patient-months ({spreadData?.patientMonths || 0})
@@ -529,11 +553,12 @@ export default function MonthlyFeeSpreadPanel({
               <tr className="bg-amber-50/50 text-amber-900">
                 <td className="py-2 px-3 font-bold flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Avg / Month (Grand Total ÷ {spreadData?.monthsCount || 0} active months)</span>
+                  <span>Avg Monthly Revenue (Grand Total ÷ {spreadData?.monthsCount || 0} active months)</span>
                 </td>
                 <td colSpan={2} className="py-2 px-3 text-right font-mono font-extrabold text-amber-900 text-sm">
-                  {spreadData?.avgPerMonth !== null && spreadData?.avgPerMonth !== undefined
-                    ? formatINR(spreadData.avgPerMonth)
+                  {(spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth) !== null &&
+                  (spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth) !== undefined
+                    ? formatINR(spreadData?.avgMonthlyRevenue ?? spreadData?.avgPerMonth)
                     : "–"}
                 </td>
                 <td colSpan={2} className="py-2 px-3 text-xs text-amber-700 font-medium">
@@ -543,7 +568,7 @@ export default function MonthlyFeeSpreadPanel({
               <tr className="bg-purple-50/50 text-purple-900">
                 <td className="py-2 px-3 font-bold flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-purple-700" />
-                  <span>Avg / Patient-Month (Grand Total ÷ {spreadData?.patientMonths || 0} patient-months)</span>
+                  <span>Avg / Patient / Month (Grand Total ÷ {spreadData?.patientMonths || 0} patient-months)</span>
                 </td>
                 <td colSpan={2} className="py-2 px-3 text-right font-mono font-extrabold text-purple-900 text-sm">
                   {spreadData?.avgPerPatientMonth !== null && spreadData?.avgPerPatientMonth !== undefined

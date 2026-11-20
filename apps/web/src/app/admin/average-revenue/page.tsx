@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
-import BranchRevenueQualityPanel from "@/components/BranchRevenueQualityPanel";
 import MonthlyFeeSpreadPanel from "@/components/MonthlyFeeSpreadPanel";
 import { TrendingUp, Sparkles, RefreshCw, Layers } from "lucide-react";
 
@@ -113,20 +112,12 @@ export default function AdminAverageRevenuePage() {
             </div>
           )}
 
-          {/* Revenue Quality Panel */}
-          <BranchRevenueQualityPanel
-            initialBranch="ALL"
-            allowBranchChange={true}
-            title="Clinic Revenue Quality & Unit Economics"
-            subtitle="Derived from summary tables (branch_month_totals & branch_month_patients) with zero table scans"
-          />
-
-          {/* ADD-ON: Monthly Fee Spread & Averages (Month 1..N, Avg / Month, Avg / Patient-Month) */}
+          {/* Monthly Fee Spread & Averages (Month 1..N, Avg Monthly Revenue, Avg / Patient / Month) */}
           <MonthlyFeeSpreadPanel
             initialBranch="ALL"
             allowBranchChange={true}
             title="Monthly Fee Spread & Duration Averages"
-            subtitle="Plan fees distributed equally across N course months with Avg/Month and Avg/Patient-Month metrics"
+            subtitle="Plan fees distributed equally across N course months with Avg Monthly Revenue and Avg / Patient / Month metrics"
           />
         </div>
       </main>
