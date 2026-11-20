@@ -211,7 +211,7 @@ export default function BranchRevenueQualityPanel({
   const metricCards = [
     {
       id: "treated_patients",
-      title: "Treated Patients",
+      title: "Total No. of Patients",
       subtitle: "Unique patients receiving care in period",
       value: loading ? "–" : formatPatients(metrics?.patients),
       unit: "patients",
@@ -242,7 +242,7 @@ export default function BranchRevenueQualityPanel({
     {
       id: "avg_duration",
       title: "Avg Duration",
-      subtitle: "Total Months ÷ Treated Patients",
+      subtitle: "Total Months ÷ Total Patients",
       value: loading ? "–" : metrics?.avgDuration !== null && metrics?.avgDuration !== undefined ? `${metrics.avgDuration.toFixed(1)} mos` : "–",
       unit: "per patient",
       icon: Clock,
@@ -251,8 +251,8 @@ export default function BranchRevenueQualityPanel({
     },
     {
       id: "arpu",
-      title: "ARPU (Avg Revenue)",
-      subtitle: "Total Revenue ÷ Treated Patients",
+      title: "Avg per Patient (ARPU)",
+      subtitle: "Total Revenue ÷ Total Patients",
       value: loading ? "–" : metrics?.arpu !== null && metrics?.arpu !== undefined ? formatINR(metrics.arpu) : "–",
       unit: "per patient",
       icon: TrendingUp,
@@ -261,10 +261,10 @@ export default function BranchRevenueQualityPanel({
     },
     {
       id: "monthly_rate",
-      title: "Monthly Rate",
+      title: "Average per Month",
       subtitle: "Total Revenue ÷ Total Months",
       value: loading ? "–" : metrics?.monthlyRate !== null && metrics?.monthlyRate !== undefined ? `${formatINR(metrics.monthlyRate)}/mo` : "–",
-      unit: "quality rate",
+      unit: "per month",
       icon: Sparkles,
       color: "text-rose-600 bg-rose-50 border-rose-200",
       accent: "from-rose-500/10 to-pink-500/5",
@@ -476,12 +476,12 @@ export default function BranchRevenueQualityPanel({
               <thead className="bg-slate-50/90 text-slate-600 font-bold border-b border-slate-200">
                 <tr>
                   <th className="py-2.5 px-3">Branch</th>
-                  <th className="py-2.5 px-3 text-right">Treated Patients</th>
+                  <th className="py-2.5 px-3 text-right">Total No. of Patients</th>
                   <th className="py-2.5 px-3 text-right">Total Revenue</th>
                   <th className="py-2.5 px-3 text-right">Total Months</th>
                   <th className="py-2.5 px-3 text-right">Avg Duration</th>
-                  <th className="py-2.5 px-3 text-right">ARPU</th>
-                  <th className="py-2.5 px-3 text-right">Monthly Rate</th>
+                  <th className="py-2.5 px-3 text-right">Avg per Patient (ARPU)</th>
+                  <th className="py-2.5 px-3 text-right">Average per Month</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">

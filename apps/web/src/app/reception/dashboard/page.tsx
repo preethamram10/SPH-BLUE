@@ -41,7 +41,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import ReceptionCleaningLockoutView from "@/components/cleaning/ReceptionCleaningLockoutView";
-import MonthlyFeeSpreadPanel from "@/components/MonthlyFeeSpreadPanel";
 
 const WhatsAppIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -1391,17 +1390,6 @@ export default function ReceptionDashboardPage() {
                 </table>
               </div>
             )}
-          </div>
-
-          {/* Monthly Fee Spread Panel for this branch */}
-          <div className="mt-4">
-            <MonthlyFeeSpreadPanel
-              initialBranch={branchName && branchName.toLowerCase() !== "clinic" && branchName !== "Spiritual Homeopathy Clinic" ? branchName : "KPHB Branch"}
-              allowBranchChange={false}
-              embedded={true}
-              title="Branch Monthly Fee Spread & Averages"
-              subtitle="Equal monthly spread over course duration (N months) with Avg Monthly Revenue and Avg / Patient / Month"
-            />
           </div>
 
           {/* 24-HOUR RESTORE DELETED APPOINTMENTS MODAL */}
