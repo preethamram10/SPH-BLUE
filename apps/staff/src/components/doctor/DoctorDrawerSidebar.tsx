@@ -34,7 +34,7 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
   isOpen,
   onClose,
   activeRoute,
-  doctorName = "Dr. Prashanth K Vaidya",
+  doctorName = "Dr. Prashant K Vaidya",
   isHeadDoctor: isHeadDoctorProp,
 }) => {
   const router = useRouter();

@@ -805,7 +805,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         phoneNumber: phoneNum,
         phone: phoneNum,
         registrationId: appointment.registrationId || appointment.patientId || "SPH-REC-001",
-        doctorName: appointment.doctorName || "Dr. Prashanth K Vaidya",
+        doctorName: appointment.doctorName || "Dr. Prashant K Vaidya",
         branch: appointment.branch || "KPHB Branch",
         appointmentDate: appointment.appointmentDate || nowIso.split("T")[0],
         timeSlot: appointment.timeSlot || "02:30 PM",
@@ -896,7 +896,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         invoiceId: activeInvoice.invoiceId || "INV-RECEIPT",
         patientName: activeInvoice.patientName || appointment.patientName || "Patient",
         phone: cleanPhone,
-        doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya",
+        doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashant K Vaidya",
         branch: activeInvoice.branch || appointment.branch || "KPHB Branch",
         appointmentDate: activeInvoice.appointmentDate || appointment.appointmentDate,
         timeSlot: activeInvoice.timeSlot || appointment.timeSlot,
@@ -934,7 +934,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       invoiceId: activeInvoice.invoiceId || "INV-RECEIPT",
       patientName: activeInvoice.patientName || appointment.patientName || "Patient",
       phone: cleanPhone,
-      doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya",
+      doctorName: activeInvoice.doctorName || appointment.doctorName || "Dr. Prashant K Vaidya",
       branch: activeInvoice.branch || appointment.branch || "KPHB Branch",
       appointmentDate: activeInvoice.appointmentDate || appointment.appointmentDate,
       timeSlot: activeInvoice.timeSlot || appointment.timeSlot,
@@ -1029,7 +1029,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   {currentStep === "collect_fee" ? "Appointment Payment" : "Payment Receipt & Tax Invoice"}
                 </h2>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  {currentStep === "collect_fee" ? "Review and complete payment • " : ""}{appointment.patientName} • {appointment.doctorName || "Dr. Prashanth K Vaidya"} • {appointment.appointmentDate || ""}
+                  {currentStep === "collect_fee" ? "Review and complete payment • " : ""}{appointment.patientName} • {appointment.doctorName || "Dr. Prashant K Vaidya"} • {appointment.appointmentDate || ""}
                 </p>
               </div>
             </div>
@@ -2783,7 +2783,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       <div className="pb-1.5 border-b border-slate-100">
                         <div className="text-[10px] font-extrabold uppercase text-slate-400">CONSULTANT DOCTOR</div>
                         <div className="font-extrabold text-slate-900">
-                          {activeInvoice.doctorName || "Dr. Prashanth K Vaidya"}
+                          {activeInvoice.doctorName || "Dr. Prashant K Vaidya"}
                         </div>
                       </div>
 

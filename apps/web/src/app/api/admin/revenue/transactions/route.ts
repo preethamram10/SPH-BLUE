@@ -269,7 +269,7 @@ export async function GET(req: Request) {
         patientName: a.patientName || "Patient",
         phone: a.phone || "N/A",
         branchName: a.branch || "Clinic Branch",
-        doctorName: (a.doctorName || (a as any).doctor || "Dr. Prashanth K Vaidya").trim(),
+        doctorName: (a.doctorName || (a as any).doctor || "Dr. Prashant K Vaidya").trim(),
         paymentType: pType || (isPkg ? "package" : (split === "Consultation & Medicine" ? "consult_and_med" : "consultation")),
         revenueSplit: split,
         source: (a.marketingSource || (a as any).source || (a as any).patientSource || "Walk-in").trim(),

@@ -115,7 +115,10 @@ export default function StaffManagementPage() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/employees");
+      const res = await fetch(`/api/admin/employees?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+      });
       const data = await res.json();
       if (data.success && Array.isArray(data.employees)) {
         setEmployees(data.employees);
@@ -299,6 +302,16 @@ export default function StaffManagementPage() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.employee) {
+          if (editingEmployee) {
+            setEmployees((prev) =>
+              prev.map((e) => (String(e.id) === String(data.employee.id) ? data.employee : e))
+            );
+          } else {
+            setEmployees((prev) => [data.employee, ...prev]);
+          }
+        }
         setIsAddStaffOpen(false);
         setIsAddDoctorOpen(false);
         resetForm();

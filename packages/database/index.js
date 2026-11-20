@@ -842,7 +842,7 @@ function getDefaultDoctorSchedules() {
         {
             id: "doc-1",
             doctorId: "doc-1",
-            doctorName: "Dr. Prashanth K Vaidya",
+            doctorName: "Dr. Prashant K Vaidya",
             phone: "+91 81252 60176",
             specialty: "Senior Chief Homeopath",
             branchSchedules: [

@@ -748,7 +748,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">
                           <Activity className="w-3.5 h-3.5 text-[#0284c7]" />
-                          <span>Doctor: {item.doctorName || "Dr. Prashanth K Vaidya"}</span>
+                          <span>Doctor: {item.doctorName || "Dr. Prashant K Vaidya"}</span>
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-700 font-semibold">

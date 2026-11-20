@@ -116,14 +116,14 @@ export default function TelecallerPortalScreen() {
   const [bookPatientName, setBookPatientName] = useState("");
   const [bookMobileNumber, setBookMobileNumber] = useState("");
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
-  const [bookDoctor, setBookDoctor] = useState("Dr. Prashanth K Vaidya");
+  const [bookDoctor, setBookDoctor] = useState("Dr. Prashant K Vaidya");
   const [bookDate, setBookDate] = useState(getTodayDDMMYYYY());
   const [bookSlot, setBookSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [bookNotes, setBookNotes] = useState("");
   const [bookingAppt, setBookingAppt] = useState(false);
   const [availableDoctors, setAvailableDoctors] = useState<any[]>([
-    { id: "1793864791241", name: "Dr. Prashanth K Vaidya", branchName: "All Branches" },
+    { id: "1793864791241", name: "Dr. Prashant K Vaidya", branchName: "All Branches" },
     { id: "1793864791242", name: "Dr. Jobeadh Begum", branchName: "Chandanagar Branch" },
     { id: "1793864791243", name: "Dr. Padma Priya", branchName: "KPHB Branch" },
     { id: "1793864791244", name: "Dr. Ramakrishna Chanduri", branchName: "Dilshuknagar Branch" },

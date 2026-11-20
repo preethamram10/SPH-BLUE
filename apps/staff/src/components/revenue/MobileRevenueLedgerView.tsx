@@ -285,7 +285,7 @@ export function MobileRevenueLedgerView({
   // Doctor List
   const doctorList = useMemo(() => {
     const set = new Set<string>();
-    set.add("Dr. Prashanth K Vaidya");
+    set.add("Dr. Prashant K Vaidya");
     registeredDoctors.forEach((d) => set.add(d));
     transactions.forEach((t) => {
       if (t.doctorName) set.add(t.doctorName);

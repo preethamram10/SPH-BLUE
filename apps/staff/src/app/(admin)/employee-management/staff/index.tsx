@@ -63,8 +63,9 @@ export default function AdminStaffManagementScreen() {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<BranchStaff | null>(null);
 
-  // New Staff Form
+  // Staff Form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [branch, setBranch] = useState("Kphb Branch");
@@ -92,7 +93,7 @@ export default function AdminStaffManagementScreen() {
   const fetchStaff = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await apiFetch<any>("/admin/employees");
+      const res = await apiFetch<any>(`/admin/employees?_t=${Date.now()}`);
       const list = res?.employees || [];
       const staffFiltered = list.filter(
         (e: any) => e.category === "STAFF" || e.category === "RECEPTION"
@@ -118,7 +119,29 @@ export default function AdminStaffManagementScreen() {
     fetchBranches();
   };
 
-  const handleAddStaff = async () => {
+  const handleOpenAdd = () => {
+    setEditingStaff(null);
+    setName("");
+    setPhone("");
+    setBranch(availableBranches[0] || "Kphb Branch");
+    setRole(ROLES[0]);
+    setShift("09:00 AM - 06:00 PM");
+    setSalary("20000");
+    setShowAddModal(true);
+  };
+
+  const handleOpenEdit = (item: BranchStaff) => {
+    setEditingStaff(item);
+    setName(item.name);
+    setPhone(item.phone ? item.phone.replace("+91", "").trim() : "");
+    setBranch(item.branchName || availableBranches[0] || "Kphb Branch");
+    setRole(item.category === "RECEPTION" ? ROLES[0] : ROLES[2]);
+    setShift(item.shiftHours || "09:00 AM - 06:00 PM");
+    setSalary(item.salary ? String(item.salary) : "20000");
+    setShowAddModal(true);
+  };
+
+  const handleSaveStaff = async () => {
     if (!name.trim() || !phone.trim()) {
       Alert.alert("Required", "Please provide Staff Member Name and Phone.");
       return;
@@ -126,7 +149,8 @@ export default function AdminStaffManagementScreen() {
 
     try {
       setSubmitting(true);
-      const payload = {
+      const payload: any = {
+        id: editingStaff ? editingStaff.id : undefined,
         name: name.trim(),
         phone: phone.trim().startsWith("+91") ? phone.trim() : `+91 ${phone.trim()}`,
         branchName: branch.trim() || "Kphb Branch",
@@ -137,19 +161,33 @@ export default function AdminStaffManagementScreen() {
       };
 
       const res = await apiFetch<any>("/admin/employees", {
-        method: "POST",
+        method: editingStaff ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
 
       if (res.success || res.employee) {
-        Alert.alert("Success", `${payload.name} was registered to staff directory.`);
+        const saved = res.employee || { ...payload, id: editingStaff?.id || Date.now().toString() };
+        if (editingStaff) {
+          setStaffList((prev) =>
+            prev.map((s) => (String(s.id) === String(editingStaff.id) ? { ...s, ...saved } : s))
+          );
+        } else {
+          setStaffList((prev) => [saved, ...prev]);
+        }
+        Alert.alert(
+          "Success",
+          editingStaff
+            ? `${payload.name}'s profile was updated.`
+            : `${payload.name} was registered to staff directory.`
+        );
         setShowAddModal(false);
+        setEditingStaff(null);
         setName("");
         setPhone("");
         fetchStaff();
       }
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to add staff member.");
+      Alert.alert("Error", err.message || "Failed to save staff member.");
     } finally {
       setSubmitting(false);
     }
@@ -220,7 +258,7 @@ export default function AdminStaffManagementScreen() {
 
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => setShowAddModal(true)}
+          onPress={handleOpenAdd}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={18} color={COLORS.white} />
@@ -320,6 +358,14 @@ export default function AdminStaffManagementScreen() {
                     </View>
 
                     <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => handleOpenEdit(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="pencil-outline" size={14} color={COLORS.greenDark} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
                       style={styles.deleteBtn}
                       onPress={() => handleDeleteStaff(item)}
                       activeOpacity={0.7}
@@ -350,9 +396,13 @@ export default function AdminStaffManagementScreen() {
               <View style={styles.modalSheet}>
                 <View style={styles.modalHeader}>
                   <View>
-                    <Text style={styles.modalTitle}>Register Branch Staff</Text>
+                    <Text style={styles.modalTitle}>
+                      {editingStaff ? "Edit Staff Member" : "Register Branch Staff"}
+                    </Text>
                     <Text style={styles.modalSub}>
-                      Add receptionists, clinic helpers and operations personnel
+                      {editingStaff
+                        ? "Update staff member role, branch and contact info"
+                        : "Add receptionists, clinic helpers and operations personnel"}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => setShowAddModal(false)}>
@@ -451,14 +501,16 @@ export default function AdminStaffManagementScreen() {
 
                   <TouchableOpacity
                     style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
-                    onPress={handleAddStaff}
+                    onPress={handleSaveStaff}
                     disabled={submitting}
                     activeOpacity={0.85}
                   >
                     {submitting ? (
                       <ActivityIndicator size="small" color={COLORS.white} />
                     ) : (
-                      <Text style={styles.submitBtnText}>Save Staff Record</Text>
+                      <Text style={styles.submitBtnText}>
+                        {editingStaff ? "Update Staff Record" : "Save Staff Record"}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -668,6 +720,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  editBtn: {
+    backgroundColor: COLORS.greenLight,
+    padding: 5,
+    borderRadius: 8,
   },
   deleteBtn: {
     backgroundColor: COLORS.redLight,

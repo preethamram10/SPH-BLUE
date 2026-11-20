@@ -255,7 +255,7 @@ export default function DoctorDashboardPage() {
   const handleWhatsApp = (phone?: string, patientName?: string, slot?: string) => {
     const clean = (phone || "").replace(/\D/g, "").slice(-10);
     if (!clean) return;
-    const msg = `Hello ${patientName || "Patient"}, Dr. Prashanth K Vaidya is reviewing your consultation slot (${slot || "today"}). Please be seated outside the doctor cabin.`;
+    const msg = `Hello ${patientName || "Patient"}, Dr. Prashant K Vaidya is reviewing your consultation slot (${slot || "today"}). Please be seated outside the doctor cabin.`;
     window.open(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 

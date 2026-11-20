@@ -1283,7 +1283,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       `Receipt No: ${invoiceNum}\n` +
       `Patient Name: ${completedInvoice?.patientName || appointment?.patientName}\n` +
       `Phone: +91 ${phone}\n` +
-      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashant K Vaidya"}\n` +
       `Branch: ${targetBranch}\n` +
       `Schedule: ${dateStr}${timeStr}\n` +
       `Specialty: Homeopathy\n` +
@@ -1385,7 +1385,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
       `SPIRITUAL HOMEOPATHY - PAYMENT RECEIPT\n` +
       `Receipt No: ${invoiceNum}\n` +
       `Patient: ${completedInvoice?.patientName || appointment?.patientName} (+91 ${phone})\n` +
-      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Doctor: ${completedInvoice?.doctorName || appointment?.doctorName || "Dr. Prashant K Vaidya"}\n` +
       `Branch: ${targetBranch}\n` +
       `Date: ${dateStr}\n` +
       feeBreakdownText +
@@ -1507,7 +1507,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
 
                           <View style={styles.receiptFieldGroup}>
                             <Text style={styles.receiptFieldLabel}>CONSULTANT DOCTOR</Text>
-                            <Text style={styles.receiptFieldValueBold}>{completedInvoice?.doctorName || appointment.doctorName || "Dr. Prashanth K Vaidya"}</Text>
+                            <Text style={styles.receiptFieldValueBold}>{completedInvoice?.doctorName || appointment.doctorName || "Dr. Prashant K Vaidya"}</Text>
                           </View>
                           <View style={styles.receiptDividerLine} />
 

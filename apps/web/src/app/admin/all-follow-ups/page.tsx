@@ -71,7 +71,7 @@ const STANDARD_TIME_SLOTS = [
 ];
 
 const DOCTOR_OPTIONS = [
-  { id: "1793864791241", name: "Dr. Prashanth K Vaidya" },
+  { id: "1793864791241", name: "Dr. Prashant K Vaidya" },
   { id: "doc-padma", name: "Dr. Padma Priya" },
   { id: "doc-jobeadh", name: "Dr. Jobeadh Parveej" },
   { id: "doc-ramakrishna", name: "Dr. Ramakrishna Chanduri" },
@@ -117,7 +117,7 @@ function AllFollowUpsContent() {
   // Form state for Book Appointment
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
   const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
-  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashant K Vaidya");
   const [bookDate, setBookDate] = useState("");
   const [bookTimeSlot, setBookTimeSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Video Call">("In-Clinic");
@@ -276,7 +276,7 @@ function AllFollowUpsContent() {
     setBookingItem(item);
     setBookBranch(item.branch || "KPHB Branch");
     setBookDoctorId(item.doctorId || "1793864791241");
-    setBookDoctorName(item.doctorName || "Dr. Prashanth K Vaidya");
+    setBookDoctorName(item.doctorName || "Dr. Prashant K Vaidya");
 
     // Default booking date to tomorrow or follow-up date
     const parts = (item.dueDate || "").split("-");

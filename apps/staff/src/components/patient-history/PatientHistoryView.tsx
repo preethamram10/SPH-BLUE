@@ -645,7 +645,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
                             <Ionicons name="fitness-outline" size={14} color="#0284c7" />
                             <Text style={styles.docNameText} numberOfLines={1}>
-                              {item.doctorName || "Dr. Prashanth K Vaidya"}
+                              {item.doctorName || "Dr. Prashant K Vaidya"}
                             </Text>
                           </View>
 
@@ -973,7 +973,7 @@ export const PatientHistoryView: React.FC<PatientHistoryViewProps> = ({ role, bo
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
                           <Ionicons name="fitness-outline" size={14} color="#0284c7" />
                           <Text style={styles.docNameText} numberOfLines={1}>
-                            {item.doctorName || "Dr. Prashanth K Vaidya"}
+                            {item.doctorName || "Dr. Prashant K Vaidya"}
                           </Text>
                         </View>
 

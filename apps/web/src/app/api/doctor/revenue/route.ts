@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const doctorName = searchParams.get("doctorName") || "Dr. Prashanth K Vaidya";
+    const doctorName = searchParams.get("doctorName") || "Dr. Prashant K Vaidya";
     const branch = searchParams.get("branch") || undefined;
 
     // Fetch all historical appointments for this doctor

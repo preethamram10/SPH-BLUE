@@ -852,31 +852,93 @@ export const employeeService = {
 
   async updateEmployee(id: string, updates: Partial<EmployeeRecord>): Promise<EmployeeRecord | null> {
     const store = getEmployeesStore();
-    const idx = store.findIndex((e) => e.id === id);
+    const idx = store.findIndex((e) => String(e.id) === String(id));
     if (idx === -1) return null;
+
+    const oldName = store[idx].name;
+    const oldPhone = store[idx].phone;
+
+    const newPhone = updates.phone
+      ? updates.phone.trim().startsWith("+91")
+        ? updates.phone.trim()
+        : `+91 ${updates.phone.trim()}`
+      : store[idx].phone;
+
+    const newName = updates.name ? updates.name.trim() : store[idx].name;
 
     const updated: EmployeeRecord = {
       ...store[idx],
       ...updates,
-      phone: updates.phone
-        ? updates.phone.trim().startsWith("+91")
-          ? updates.phone.trim()
-          : `+91 ${updates.phone.trim()}`
-        : store[idx].phone,
+      name: newName,
+      phone: newPhone,
       updatedAt: new Date().toISOString(),
     };
 
     store[idx] = updated;
     global.__sphEmployeesStore = store;
     saveEmployeesToDisk(store);
+
+    // Synchronize to doctor_schedules_store if this is a DOCTOR
+    if (store[idx].category === "DOCTOR" || updates.category === "DOCTOR") {
+      try {
+        const scheduleStore = getDoctorSchedulesStore();
+        const sched = scheduleStore.find(
+          (s) => String(s.doctorId) === String(id) || String(s.id) === String(id) || s.doctorName.toLowerCase().trim() === oldName.toLowerCase().trim()
+        );
+        if (sched) {
+          sched.doctorId = String(id);
+          sched.doctorName = newName;
+          sched.phone = newPhone;
+          if (updates.specialty) sched.specialty = updates.specialty;
+          sched.updatedAt = new Date().toISOString();
+          global.__sphDoctorSchedulesStore = scheduleStore;
+          saveSchedulesToDisk(scheduleStore);
+        }
+      } catch (err) {
+        console.warn("Failed to sync doctor schedule on employee update:", err);
+      }
+    }
+
+    // Synchronize doctor name across active appointments
+    if (oldName && newName && oldName !== newName) {
+      try {
+        const apptStore = getAppointmentsStore();
+        let changed = false;
+        apptStore.forEach((a) => {
+          if (String(a.doctorId) === String(id) || (a.doctorName && a.doctorName.toLowerCase().trim() === oldName.toLowerCase().trim())) {
+            a.doctorName = newName;
+            a.doctorId = String(id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          global.__sphAppointmentsStore = apptStore;
+          saveAppointmentsToDisk(apptStore);
+        }
+      } catch (err) {
+        console.warn("Failed to sync appointment doctor names on employee update:", err);
+      }
+    }
+
     return updated;
   },
 
   async deleteEmployee(id: string): Promise<boolean> {
     const store = getEmployeesStore();
-    const filtered = store.filter((e) => e.id !== id);
+    const filtered = store.filter((e) => String(e.id) !== String(id));
     global.__sphEmployeesStore = filtered;
     saveEmployeesToDisk(filtered);
+
+    // Also remove from doctor schedules if exists
+    try {
+      const scheduleStore = getDoctorSchedulesStore();
+      const schedFiltered = scheduleStore.filter((s) => String(s.doctorId) !== String(id) && String(s.id) !== String(id));
+      if (schedFiltered.length !== scheduleStore.length) {
+        global.__sphDoctorSchedulesStore = schedFiltered;
+        saveSchedulesToDisk(schedFiltered);
+      }
+    } catch {}
+
     return true;
   },
 };
@@ -1000,7 +1062,7 @@ function getDefaultDoctorSchedules(): DoctorScheduleRecord[] {
     {
       id: "doc-1",
       doctorId: "doc-1",
-      doctorName: "Dr. Prashanth K Vaidya",
+      doctorName: "Dr. Prashant K Vaidya",
       phone: "+91 81252 60176",
       specialty: "Senior Chief Homeopath",
       branchSchedules: [

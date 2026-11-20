@@ -277,7 +277,7 @@ export default function DoctorDashboard() {
       Alert.alert("No Phone", "This patient has no valid phone number.");
       return;
     }
-    const msg = `Hello ${patientName || "Patient"}, Dr. Prashanth K Vaidya is reviewing your consultation slot (${slot || "today"}). Please be seated outside the doctor cabin.`;
+    const msg = `Hello ${patientName || "Patient"}, Dr. Prashant K Vaidya is reviewing your consultation slot (${slot || "today"}). Please be seated outside the doctor cabin.`;
     Linking.openURL(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`);
   };
 

@@ -249,7 +249,7 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
   const [bookingItem, setBookingItem] = useState<FollowUpItem | null>(null);
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
   const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
-  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashant K Vaidya");
   const [bookDate, setBookDate] = useState("");
   const [bookTimeSlot, setBookTimeSlot] = useState("");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
@@ -416,7 +416,7 @@ export default function MobileAllFollowUpsScreen({ portalRole }: AdminFollowUpsP
       (selectedBranch !== "All Branches" ? selectedBranch : "KPHB Branch");
     setBookBranch(initialBranch.includes("Branch") ? initialBranch : `${initialBranch} Branch`);
     setBookDoctorId(item.doctorId || "1793864791241");
-    setBookDoctorName(item.doctorName || "Dr. Prashanth K Vaidya");
+    setBookDoctorName(item.doctorName || "Dr. Prashant K Vaidya");
     setBookDate(item.dueDate || todayStr);
     setBookTimeSlot("");
     setBookMode("In-Clinic");

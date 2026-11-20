@@ -46,12 +46,12 @@ export interface TransactionRecord {
 }
 
 export default function DoctorTotalRevenuePage() {
-  const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [doctorName, setDoctorName] = useState("Dr. Prashant K Vaidya");
   const [isHeadDoctor, setIsHeadDoctor] = useState(true);
   const [registeredDoctors, setRegisteredDoctors] = useState<string[]>([]);
 
   useEffect(() => {
-    const savedDoc = localStorage.getItem("doctor_name") || "Dr. Prashanth K Vaidya";
+    const savedDoc = localStorage.getItem("doctor_name") || "Dr. Prashant K Vaidya";
     const savedIsHead = localStorage.getItem("is_head_doctor");
     const savedCategory = localStorage.getItem("doctor_category");
     setDoctorName(savedDoc);
@@ -285,7 +285,7 @@ export default function DoctorTotalRevenuePage() {
     });
 
     if (candidates.length === 0) {
-      return ["Dr. Jobeadh Parveej", "Dr. Padma Priya", "Dr. Prashanth K Vaidya", "Dr. Ramakrishna Chanduri"];
+      return ["Dr. Jobeadh Parveej", "Dr. Padma Priya", "Dr. Prashant K Vaidya", "Dr. Ramakrishna Chanduri"];
     }
 
     candidates.forEach((raw) => {

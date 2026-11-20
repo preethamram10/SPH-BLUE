@@ -69,7 +69,7 @@ const STANDARD_TIME_SLOTS = [
 ];
 
 const DOCTOR_OPTIONS = [
-  { id: "1793864791241", name: "Dr. Prashanth K Vaidya" },
+  { id: "1793864791241", name: "Dr. Prashant K Vaidya" },
   { id: "doc-padma", name: "Dr. Padma Priya" },
   { id: "doc-jobeadh", name: "Dr. Jobeadh Parveej" },
   { id: "doc-ramakrishna", name: "Dr. Ramakrishna Chanduri" },
@@ -271,7 +271,7 @@ function ReceptionFollowUpsContent() {
   // Form state for Book Appointment
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
   const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
-  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [bookDoctorName, setBookDoctorName] = useState("Dr. Prashant K Vaidya");
   const [bookDate, setBookDate] = useState("");
   const [bookTimeSlot, setBookTimeSlot] = useState("");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
@@ -479,7 +479,7 @@ function ReceptionFollowUpsContent() {
         : "KPHB Branch");
     setBookBranch(initialBranch);
     setBookDoctorId(item.doctorId || "1793864791241");
-    setBookDoctorName(item.doctorName || "Dr. Prashanth K Vaidya");
+    setBookDoctorName(item.doctorName || "Dr. Prashant K Vaidya");
 
     // Convert DD-MM-YYYY to YYYY-MM-DD
     let initDate = "";

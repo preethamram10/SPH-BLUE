@@ -659,7 +659,7 @@ export default function ReceptionDashboard() {
       `Receipt No: ${invoiceNum}\n` +
       `Patient Name: ${appt.patientName || "Patient"}\n` +
       `Phone: +91 ${cleanPhone}\n` +
-      `Doctor: ${appt.doctorName || "Dr. Prashanth K Vaidya"}\n` +
+      `Doctor: ${appt.doctorName || "Dr. Prashant K Vaidya"}\n` +
       `Branch: ${targetBranch}\n` +
       `Schedule: ${dateStr}${timeStr}\n` +
       `Specialty: Homeopathy\n` +

@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const cleanPhone = normalizePhone(phone);
     const targetBranch = branch || "Clinic Branch";
     const targetDate = normalizeDateStr(visitDate || new Date().toISOString().slice(0, 10));
-    const targetDoctor = doctorName || "Dr. Prashanth K Vaidya";
+    const targetDoctor = doctorName || "Dr. Prashant K Vaidya";
     const targetDoctorId = doctorId || "doc-1";
     const cleanSource = (source || marketingSource || "Old Patient").trim();
     const cleanSubject = (subject || diseases || notes || "").trim();

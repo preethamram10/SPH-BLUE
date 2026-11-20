@@ -231,7 +231,7 @@ export default function AdminTotalRevenuePage() {
   const doctorOptions = useMemo(() => {
     const map = new Map<string, string>();
     if (!transactions || transactions.length === 0) {
-      return ["Dr. Jobeadh Parveej", "Dr. Padma Priya", "Dr. Prashanth K Vaidya", "Dr. Ramakrishna Chanduri"];
+      return ["Dr. Jobeadh Parveej", "Dr. Padma Priya", "Dr. Prashant K Vaidya", "Dr. Ramakrishna Chanduri"];
     }
 
     transactions.forEach((t) => {

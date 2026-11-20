@@ -257,7 +257,7 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
       map[monthKey].sourceBreakdown[src] = (map[monthKey].sourceBreakdown[src] || 0) + amt;
 
       // Doctor
-      const doc = t.doctorName || "Dr. Prashanth K Vaidya";
+      const doc = t.doctorName || "Dr. Prashant K Vaidya";
       map[monthKey].doctorBreakdown[doc] = (map[monthKey].doctorBreakdown[doc] || 0) + amt;
     });
 
@@ -643,7 +643,7 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
         if (docCustomEnd && normDate > docCustomEnd) return;
       }
 
-      const docName = (t.doctorName || "Dr. Prashanth K Vaidya").trim();
+      const docName = (t.doctorName || "Dr. Prashant K Vaidya").trim();
       const amt = Number(t.totalAmount) || 0;
 
       const bLower = (t.branchName || "").toLowerCase();

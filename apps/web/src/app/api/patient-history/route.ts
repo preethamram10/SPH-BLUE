@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
           marketingSource: "Uploaded Prescription Record",
           consultationMode: "In-Clinic",
           doctorId: "doc-1",
-          doctorName: "Dr. Prashanth K Vaidya",
+          doctorName: "Dr. Prashant K Vaidya",
           appointmentDate: new Date().toISOString().slice(0, 10),
           timeSlot: "10:00 AM - 01:00 PM",
           isReback: false,

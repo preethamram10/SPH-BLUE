@@ -98,7 +98,7 @@ export default function AdminDoctorsManagementScreen() {
   // Fetch doctors from backend
   const fetchDoctors = useCallback(async () => {
     try {
-      const res = await apiFetch<any>("/admin/employees?category=DOCTOR");
+      const res = await apiFetch<any>(`/admin/employees?category=DOCTOR&_t=${Date.now()}`);
       const list = res.employees || [];
       setDoctors(list);
     } catch (err: any) {
@@ -198,6 +198,14 @@ export default function AdminDoctorsManagementScreen() {
       });
 
       if (res.success || res.employee) {
+        const savedDoc = res.employee || { ...payload, id: editingDoctor?.id || Date.now().toString() };
+        if (editingDoctor) {
+          setDoctors((prev) =>
+            prev.map((d) => (String(d.id) === String(editingDoctor.id) ? { ...d, ...savedDoc } : d))
+          );
+        } else {
+          setDoctors((prev) => [savedDoc, ...prev]);
+        }
         Alert.alert(
           "Success",
           editingDoctor

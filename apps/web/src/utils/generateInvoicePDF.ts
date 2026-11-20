@@ -56,7 +56,7 @@ export function buildInvoicePDFBlob(inv: InvoiceReceiptPDFData): Blob {
   const cleanPhone = String(inv.phone || "").replace(/\D/g, "").slice(-10) || "On Record";
   const branchName = inv.branch || "KPHB Branch";
   const branchPhone = getBranchPhone(branchName);
-  const doctorName = inv.doctorName || "Dr. Prashanth K Vaidya";
+  const doctorName = inv.doctorName || "Dr. Prashant K Vaidya";
   const dateStr = inv.appointmentDate || new Date().toISOString().slice(0, 10);
   const timeStr = inv.timeSlot ? ` at ${inv.timeSlot}` : "";
   const paymentModeStr = formatPaymentMode(inv.paymentMode || inv.paymentMethod || "UPI");

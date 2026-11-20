@@ -169,7 +169,7 @@ export function DietPlanManager({
         </head>
         <body>
           <h1>Spiritual Homeopathy Clinics - 30-Day Diet & Regimen Chart</h1>
-          <p><strong>Patient:</strong> ${patientData.patientName || "N/A"} (${patientData.registrationId || "Reg ID N/A"}) | <strong>Doctor:</strong> ${patientData.doctorName || "Dr. Prashanth K Vaidya"}</p>
+          <p><strong>Patient:</strong> ${patientData.patientName || "N/A"} (${patientData.registrationId || "Reg ID N/A"}) | <strong>Doctor:</strong> ${patientData.doctorName || "Dr. Prashant K Vaidya"}</p>
           <pre>${planText || "No diet plan generated yet."}</pre>
           <script>
             window.onload = function() { window.print(); };

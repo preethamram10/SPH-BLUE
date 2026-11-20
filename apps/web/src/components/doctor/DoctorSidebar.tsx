@@ -20,7 +20,7 @@ interface DoctorSidebarProps {
 
 export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
   const router = useRouter();
-  const [doctorName, setDoctorName] = useState("Dr. Prashanth K Vaidya");
+  const [doctorName, setDoctorName] = useState("Dr. Prashant K Vaidya");
   const [branchName, setBranchName] = useState("KPHB Branch");
   const [isHeadDoctor, setIsHeadDoctor] = useState(false);
 

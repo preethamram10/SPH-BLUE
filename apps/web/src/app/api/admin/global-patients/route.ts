@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
           (p as any).ageGender ||
           ((latest as any)?.age ? `${(latest as any).age} / ${(latest as any).gender || "General"}` : "General"),
         registeredBranch: cleanBranch,
-        lastDoctor: String(latest?.doctorName || "Dr. Prashanth K Vaidya"),
+        lastDoctor: String(latest?.doctorName || "Dr. Prashant K Vaidya"),
         totalVisits: Math.max(matchedAppts.length, 1),
         lastVisitDate: normalizeDateStr(String(latest?.appointmentDate || p.createdAt?.slice(0, 10) || "Recent")),
         condition: String(p.diseases || (p as any).subject || latest?.diseases || latest?.diagnosisNotes || "Homeopathy Care"),
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
           phone: String(a.phone || "N/A"),
           ageGender: "General",
           registeredBranch: cleanBranch,
-          lastDoctor: String(latest.doctorName || "Dr. Prashanth K Vaidya"),
+          lastDoctor: String(latest.doctorName || "Dr. Prashant K Vaidya"),
           totalVisits: matchedAppts.length,
           lastVisitDate: normalizeDateStr(String(latest.appointmentDate || "Recent")),
           condition: String(a.diseases || a.diagnosisNotes || "General Consultation"),
