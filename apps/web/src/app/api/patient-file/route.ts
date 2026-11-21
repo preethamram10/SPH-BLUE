@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         totalPaid: totalLifetimePaid,
         activePackage: activePkg || null,
         hasPackage: !!activePkg,
-        packageName: activePkg?.packageName || (appt as any).packageName || "",
+        packageName: activePkg?.packageName || "",
         history: historyVisits.map((h) => {
           const isPaid = Boolean(h.isFeeCollected || h.paidAt || h.status === "COMPLETED");
           const consultationFee = h.consultationFee || 0;

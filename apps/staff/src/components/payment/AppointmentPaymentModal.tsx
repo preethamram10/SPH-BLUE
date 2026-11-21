@@ -153,8 +153,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   // Package Member installment state
   const isPackageMember = Boolean(
     appointment?.hasPackage ||
-    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
-    appointment?.activePackage
+    (appointment?.activePackage && (appointment?.activePackage as any)?.status === "ACTIVE")
   );
   const pkgTotal = appointment?.packageTotalAmount ?? appointment?.activePackage?.totalAmount ?? 0;
   const pkgPaid = appointment?.packagePaidAmount ?? appointment?.activePackage?.paidAmount ?? 0;
@@ -258,21 +257,21 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
         const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
           ? (a.medicines || a.medicinesList)!.map((m: any, mIdx: number) => ({
-              id: m.id || `med-${idx}-${mIdx}`,
-              name: m.name || "Prescribed Homeo Kit",
-              type: m.type || "Pills",
-              timing: m.timing || "1 - 0 - 1",
-              amount: Number(m.amount) || mFee,
-            }))
+            id: m.id || `med-${idx}-${mIdx}`,
+            name: m.name || "Prescribed Homeo Kit",
+            type: m.type || "Pills",
+            timing: m.timing || "1 - 0 - 1",
+            amount: Number(m.amount) || mFee,
+          }))
           : [
-              {
-                id: `med-${idx}-1`,
-                name: "Prescribed Homeo Kit",
-                type: "Pills",
-                timing: "1 - 0 - 1",
-                amount: mFee,
-              },
-            ];
+            {
+              id: `med-${idx}-1`,
+              name: "Prescribed Homeo Kit",
+              type: "Pills",
+              timing: "1 - 0 - 1",
+              amount: mFee,
+            },
+          ];
 
         return {
           appointmentId: a.id,
@@ -644,17 +643,17 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     try {
       const result = useCamera
         ? await safeLaunchCamera({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: false,
-            quality: 0.7,
-            base64: true,
-          })
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: false,
+          quality: 0.7,
+          base64: true,
+        })
         : await safeLaunchImageLibrary({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: false,
-            quality: 0.7,
-            base64: true,
-          });
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: false,
+          quality: 0.7,
+          base64: true,
+        });
 
       if (!result) return;
       if (result.canceled || !result.assets || result.assets.length === 0) return;
@@ -1955,153 +1954,153 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           </>
                         ) : (
                           <>
-                        {/* Package Installment */}
-                        {(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (
-                          <View style={styles.breakdownRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.breakdownRowDesc}>Package Treatment Installment</Text>
-                              <Text style={{ fontSize: 9.5, color: "#64748b" }}>{pkgName || "Care Package"}</Text>
-                            </View>
-                            <Text style={[styles.breakdownRowAmount, { color: "#0284c7" }]}>
-                              ₹{Number(displayTotal).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Regular Billing Breakdown */}
-                        {!(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (() => {
-                          const effectiveType = completedInvoice?.paymentType || paymentType;
-
-                          // 1. COMBINED: Consultation & Medicine
-                          if (effectiveType === "consult_and_med") {
-                            const combinedAmount = Number(completedInvoice?.consultationFee ?? displayTotal);
-                            return (
+                            {/* Package Installment */}
+                            {(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (
                               <View style={styles.breakdownRow}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={styles.breakdownRowDesc}>Consultation &amp; Medicine</Text>
-                                  <Text style={{ fontSize: 9.5, color: "#64748b" }}>Combined Consultation &amp; Prescribed Medicines</Text>
+                                  <Text style={styles.breakdownRowDesc}>Package Treatment Installment</Text>
+                                  <Text style={{ fontSize: 9.5, color: "#64748b" }}>{pkgName || "Care Package"}</Text>
                                 </View>
-                                <Text style={styles.breakdownRowAmount}>
-                                  ₹{combinedAmount.toFixed(2)}
+                                <Text style={[styles.breakdownRowAmount, { color: "#0284c7" }]}>
+                                  ₹{Number(displayTotal).toFixed(2)}
                                 </Text>
                               </View>
-                            );
-                          }
+                            )}
 
-                          // 2. SPLIT: Separate Consultation Fee and Medicine items / Medicine Fee
-                          if (effectiveType === "split") {
-                            const invoiceMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || [];
-                            const validMeds = Array.isArray(invoiceMeds)
-                              ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
-                              : [];
+                            {/* Regular Billing Breakdown */}
+                            {!(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (() => {
+                              const effectiveType = completedInvoice?.paymentType || paymentType;
 
-                            return (
-                              <>
-                                {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                              // 1. COMBINED: Consultation & Medicine
+                              if (effectiveType === "consult_and_med") {
+                                const combinedAmount = Number(completedInvoice?.consultationFee ?? displayTotal);
+                                return (
                                   <View style={styles.breakdownRow}>
-                                    <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
-                                    <Text style={styles.breakdownRowAmount}>
-                                      ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
-                                    </Text>
-                                  </View>
-                                )}
-                                {validMeds.length > 0 ? (
-                                  validMeds.map((m: any, idx: number) => (
-                                    <View key={idx} style={styles.breakdownRow}>
-                                      <View style={{ flex: 1, paddingRight: 8 }}>
-                                        <Text style={styles.breakdownRowDesc}>
-                                          {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")} {m.type ? `(${m.type})` : ""}
-                                        </Text>
-                                        {m.timing ? <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Timing: {m.timing}</Text> : null}
-                                      </View>
-                                      <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={styles.breakdownRowDesc}>Consultation &amp; Medicine</Text>
+                                      <Text style={{ fontSize: 9.5, color: "#64748b" }}>Combined Consultation &amp; Prescribed Medicines</Text>
                                     </View>
-                                  ))
-                                ) : Number(completedInvoice?.medicineFee ?? medicineFee) > 0 ? (
-                                  <View style={styles.breakdownRow}>
-                                    <Text style={styles.breakdownRowDesc}>
-                                      Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
-                                    </Text>
                                     <Text style={styles.breakdownRowAmount}>
-                                      ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                      ₹{combinedAmount.toFixed(2)}
                                     </Text>
                                   </View>
-                                ) : null}
-                              </>
-                            );
-                          }
+                                );
+                              }
 
-                          // 3. CONSULTATION ONLY (or default)
-                          return (
-                            <>
-                              {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
-                                <View style={styles.breakdownRow}>
-                                  <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
-                                  <Text style={styles.breakdownRowAmount}>
-                                    ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                              // 2. SPLIT: Separate Consultation Fee and Medicine items / Medicine Fee
+                              if (effectiveType === "split") {
+                                const invoiceMeds = completedInvoice?.medicines || completedInvoice?.medicinesList || appointment?.medicines || appointment?.medicinesList || [];
+                                const validMeds = Array.isArray(invoiceMeds)
+                                  ? invoiceMeds.filter((m: any) => m && ((m.name && m.name.trim().length > 0) || Number(m.amount) > 0 || m.type || m.timing))
+                                  : [];
+
+                                return (
+                                  <>
+                                    {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                                      <View style={styles.breakdownRow}>
+                                        <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
+                                        <Text style={styles.breakdownRowAmount}>
+                                          ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {validMeds.length > 0 ? (
+                                      validMeds.map((m: any, idx: number) => (
+                                        <View key={idx} style={styles.breakdownRow}>
+                                          <View style={{ flex: 1, paddingRight: 8 }}>
+                                            <Text style={styles.breakdownRowDesc}>
+                                              {m.name || (m.type?.toLowerCase() === "reserve" ? "Reserve Medicine" : "Prescribed Medicine")} {m.type ? `(${m.type})` : ""}
+                                            </Text>
+                                            {m.timing ? <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 1 }}>Timing: {m.timing}</Text> : null}
+                                          </View>
+                                          <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
+                                        </View>
+                                      ))
+                                    ) : Number(completedInvoice?.medicineFee ?? medicineFee) > 0 ? (
+                                      <View style={styles.breakdownRow}>
+                                        <Text style={styles.breakdownRowDesc}>
+                                          Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                                        </Text>
+                                        <Text style={styles.breakdownRowAmount}>
+                                          ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                        </Text>
+                                      </View>
+                                    ) : null}
+                                  </>
+                                );
+                              }
+
+                              // 3. CONSULTATION ONLY (or default)
+                              return (
+                                <>
+                                  {Number(completedInvoice?.consultationFee ?? consultationFee) > 0 && (
+                                    <View style={styles.breakdownRow}>
+                                      <Text style={styles.breakdownRowDesc}>Consultation Fee</Text>
+                                      <Text style={styles.breakdownRowAmount}>
+                                        ₹{Number(completedInvoice?.consultationFee ?? consultationFee).toFixed(2)}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {effectiveType !== "consultation" && Number(completedInvoice?.medicineFee ?? medicineFee) > 0 && (
+                                    <View style={styles.breakdownRow}>
+                                      <Text style={styles.breakdownRowDesc}>
+                                        Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
+                                      </Text>
+                                      <Text style={styles.breakdownRowAmount}>
+                                        ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </>
+                              );
+                            })()}
+
+                            {/* Diet Plan */}
+                            {Number(completedInvoice?.dietPlanFee ?? dietFee) > 0 && (
+                              <View style={styles.breakdownRow}>
+                                <Text style={styles.breakdownRowDesc}>Diet &amp; Nutrition Plan</Text>
+                                <Text style={styles.breakdownRowAmount}>
+                                  ₹{Number(completedInvoice?.dietPlanFee ?? dietFee).toFixed(2)}
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* Other Charges */}
+                            {Number(completedInvoice?.otherCharges ?? 0) > 0 && (
+                              <View style={styles.breakdownRow}>
+                                <Text style={styles.breakdownRowDesc}>Other Clinic Charges</Text>
+                                <Text style={styles.breakdownRowAmount}>
+                                  ₹{Number(completedInvoice?.otherCharges).toFixed(2)}
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* Previous Pending Balance (Cleared) - Separate Line */}
+                            {Number(completedInvoice?.previousDuePaid) > 0 && (
+                              <View style={[styles.breakdownRow, { backgroundColor: "#fff7ed" }]}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.breakdownRowDesc, { color: "#c2410c", fontWeight: "700" }]}>
+                                    Previous Pending Balance (Cleared)
                                   </Text>
+                                  <Text style={{ fontSize: 9.5, color: "#ea580c" }}>Billed &amp; settled in this visit</Text>
                                 </View>
-                              )}
-                              {effectiveType !== "consultation" && Number(completedInvoice?.medicineFee ?? medicineFee) > 0 && (
-                                <View style={styles.breakdownRow}>
-                                  <Text style={styles.breakdownRowDesc}>
-                                    Medicine Fee ({completedInvoice?.medicineDuration || medicineDuration || "1 Month"})
-                                  </Text>
-                                  <Text style={styles.breakdownRowAmount}>
-                                    ₹{Number(completedInvoice?.medicineFee ?? medicineFee).toFixed(2)}
-                                  </Text>
-                                </View>
-                              )}
-                            </>
-                          );
-                        })()}
+                                <Text style={[styles.breakdownRowAmount, { color: "#c2410c", fontWeight: "700" }]}>
+                                  + ₹{Number(completedInvoice?.previousDuePaid).toFixed(2)}
+                                </Text>
+                              </View>
+                            )}
 
-                        {/* Diet Plan */}
-                        {Number(completedInvoice?.dietPlanFee ?? dietFee) > 0 && (
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownRowDesc}>Diet &amp; Nutrition Plan</Text>
-                            <Text style={styles.breakdownRowAmount}>
-                              ₹{Number(completedInvoice?.dietPlanFee ?? dietFee).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Other Charges */}
-                        {Number(completedInvoice?.otherCharges ?? 0) > 0 && (
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownRowDesc}>Other Clinic Charges</Text>
-                            <Text style={styles.breakdownRowAmount}>
-                              ₹{Number(completedInvoice?.otherCharges).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Previous Pending Balance (Cleared) - Separate Line */}
-                        {Number(completedInvoice?.previousDuePaid) > 0 && (
-                          <View style={[styles.breakdownRow, { backgroundColor: "#fff7ed" }]}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.breakdownRowDesc, { color: "#c2410c", fontWeight: "700" }]}>
-                                Previous Pending Balance (Cleared)
-                              </Text>
-                              <Text style={{ fontSize: 9.5, color: "#ea580c" }}>Billed &amp; settled in this visit</Text>
-                            </View>
-                            <Text style={[styles.breakdownRowAmount, { color: "#c2410c", fontWeight: "700" }]}>
-                              + ₹{Number(completedInvoice?.previousDuePaid).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Discount */}
-                        {Number(completedInvoice?.discount ?? 0) > 0 && (
-                          <View style={styles.breakdownRow}>
-                            <Text style={[styles.breakdownRowDesc, { color: "#dc2626" }]}>
-                              Discount ({completedInvoice?.discountReason || "Special Waiver"})
-                            </Text>
-                            <Text style={[styles.breakdownRowAmount, { color: "#dc2626" }]}>
-                              - ₹{Number(completedInvoice?.discount).toFixed(2)}
-                            </Text>
-                          </View>
-                        )}
+                            {/* Discount */}
+                            {Number(completedInvoice?.discount ?? 0) > 0 && (
+                              <View style={styles.breakdownRow}>
+                                <Text style={[styles.breakdownRowDesc, { color: "#dc2626" }]}>
+                                  Discount ({completedInvoice?.discountReason || "Special Waiver"})
+                                </Text>
+                                <Text style={[styles.breakdownRowAmount, { color: "#dc2626" }]}>
+                                  - ₹{Number(completedInvoice?.discount).toFixed(2)}
+                                </Text>
+                              </View>
+                            )}
                           </>
                         )}
 
@@ -2502,482 +2501,298 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                     </View>
                   ) : (
                     <>
-                  {/* PREVIOUS PENDING BALANCE ALERT BOX */}
-                  {previousPendingBalance > 0 && (
-                    <View style={styles.prevDueAlertCard}>
-                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                        <Ionicons name="warning" size={22} color="#ea580c" style={{ marginTop: 2 }} />
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
-                            <Text style={styles.prevDueAlertTitle}>
-                              Previous Pending Balance: ₹{previousPendingBalance.toLocaleString()}
-                            </Text>
-                            <View style={styles.prevDueAlertBadge}>
-                              <Text style={styles.prevDueAlertBadgeText}>UNPAID DUE</Text>
-                            </View>
-                          </View>
-                          <Text style={styles.prevDueAlertSub}>
-                            This patient has an unpaid balance from a previous visit. Choose whether to add it to this bill or leave it for next visit.
-                          </Text>
-
-                          <View style={styles.prevDueOptionRow}>
-                            <TouchableOpacity
-                              style={[styles.prevDueOptionBtn, includePreviousDue && styles.prevDueOptionBtnActive]}
-                              onPress={() => setIncludePreviousDue(true)}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons
-                                name={includePreviousDue ? "checkbox" : "square-outline"}
-                                size={18}
-                                color={includePreviousDue ? "#ea580c" : "#64748b"}
-                              />
-                              <Text style={[styles.prevDueOptionText, includePreviousDue && styles.prevDueOptionTextActive]}>
-                                Add to Current Bill (+₹{previousPendingBalance})
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[styles.prevDueOptionBtn, !includePreviousDue && styles.prevDueOptionBtnActive]}
-                              onPress={() => setIncludePreviousDue(false)}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons
-                                name={!includePreviousDue ? "checkbox" : "square-outline"}
-                                size={18}
-                                color={!includePreviousDue ? "#ea580c" : "#64748b"}
-                              />
-                              <Text style={[styles.prevDueOptionText, !includePreviousDue && styles.prevDueOptionTextActive]}>
-                                Leave for Next Visit
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* 1. TARGET AMOUNT BOX (Matching Screenshot 2) */}
-                  <View style={[styles.targetCard, isPackageMode && { opacity: 0.7, backgroundColor: "#f8fafc" }]}>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <Text style={styles.targetCardTitle}>Target Amount (Consultation + Medicine):</Text>
-                        {isPackageMode && (
-                          <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4 }}>
-                            <Text style={{ fontSize: 9, fontWeight: "800", color: "#0284c7" }}>Covered Under Package</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.targetCardSub}>
-                        {isPackageMode
-                          ? "Disabled: Covered by package installment. Tap 'Regular Visit' below to activate target amount."
-                          : "Split & presets calculate strictly within this target"}
-                      </Text>
-                    </View>
-
-                    <View style={[styles.targetInputWrapper, isPackageMode && { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }]}>
-                      <Text style={styles.rupeeSymbol}>₹</Text>
-                      <TextInput
-                        style={[styles.targetTextInput, isPackageMode && { color: "#94a3b8" }]}
-                        editable={!isPackageMode}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor="#94a3b8"
-                        value={isPackageMode ? "0" : targetAmount}
-                        onChangeText={handleTargetAmountChange}
-                      />
-                    </View>
-                  </View>
-
-                  {/* 2. PAYMENT TYPE TABS (Package only available for active package members from Patient File) */}
-                  <View style={styles.typeTabsRow}>
-                    {(
-                      (isPackageMember
-                        ? [
-                            { id: "consultation", label: "Consultation" },
-                            { id: "consult_and_med", label: "Consultation & Medicine" },
-                            { id: "split", label: "Split" },
-                            { id: "package", label: "Package" },
-                          ]
-                        : [
-                            { id: "consultation", label: "Consultation" },
-                            { id: "consult_and_med", label: "Consultation & Medicine" },
-                            { id: "split", label: "Split" },
-                          ]
-                      ) as Array<{ id: "consultation" | "consult_and_med" | "split" | "package"; label: string }>
-                    ).map((t) => {
-                      const isSelected = paymentType === t.id;
-                      return (
-                        <TouchableOpacity
-                          key={t.id}
-                          style={[styles.typeTab, isSelected && styles.typeTabActive]}
-                          onPress={() => handlePaymentTypeChange(t.id)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.typeTabText, isSelected && styles.typeTabTextActive]}>
-                            {t.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {/* PACKAGE MEMBER BANNER & MODE TOGGLE */}
-                  {isPackageMember && (
-                    <View style={styles.packageBannerCard}>
-                      <View style={styles.packageHeaderRow}>
-                        <View style={styles.packageBadgeRow}>
-                          <View style={styles.packageBadgePill}>
-                            <Text style={styles.packageBadgeText}>PKG MEMBER</Text>
-                          </View>
-                          <Text style={styles.packageNameTitle} numberOfLines={1}>
-                            {pkgName}
-                          </Text>
-                        </View>
-                        <Text style={styles.packageValidityText}>
-                          Valid till: {pkgEndDate}
-                        </Text>
-                      </View>
-
-                      {/* Billing Mode Switch Pills */}
-                      <View style={styles.packageModeToggleRow}>
-                        <TouchableOpacity
-                          style={[styles.packageModeBtn, billingMode === "package" && styles.packageModeBtnActive]}
-                          onPress={() => handleSelectBillingMode("package")}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.packageModeBtnText, billingMode === "package" && styles.packageModeBtnTextActive]}>
-                            ✓ Pay Package Installment
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.packageModeBtn, billingMode === "regular" && styles.packageModeBtnActive]}
-                          onPress={() => handleSelectBillingMode("regular")}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.packageModeBtnText, billingMode === "regular" && styles.packageModeBtnTextActive]}>
-                            ⚡ Regular Visit / Extra Medicine
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Mode Description & Inputs */}
-                      {billingMode === "package" ? (
-                        <>
-                          {/* 3 Stats Boxes */}
-                          <View style={styles.packageStatsRow}>
-                            <View style={styles.packageStatBox}>
-                              <Text style={styles.packageStatLabel}>TOTAL PACKAGE</Text>
-                              <Text style={styles.packageStatValue}>₹{pkgTotal.toLocaleString()}</Text>
-                            </View>
-                            <View style={[styles.packageStatBox, { borderColor: "#bbf7d0", backgroundColor: "#f0fdf4" }]}>
-                              <Text style={[styles.packageStatLabel, { color: "#16a34a" }]}>PAID SO FAR</Text>
-                              <Text style={[styles.packageStatValue, { color: "#15803d" }]}>₹{pkgPaid.toLocaleString()}</Text>
-                            </View>
-                            <View style={[styles.packageStatBox, { borderColor: "#bae6fd", backgroundColor: "#f0f9ff" }]}>
-                              <Text style={[styles.packageStatLabel, { color: "#0284c7" }]}>REMAINING</Text>
-                              <Text style={[styles.packageStatValue, { color: "#0369a1" }]}>₹{pkgPending.toLocaleString()}</Text>
-                            </View>
-                          </View>
-
-                          {/* Installment Amount Input */}
-                          <View style={styles.packageInstallmentBox}>
-                            <Text style={styles.packageInstallmentLabel}>
-                              Pay Package Installment For This Visit (₹) <Text style={{ color: "#ef4444" }}>*</Text>
-                            </Text>
-                            <View style={styles.packageAmountInputRow}>
-                              <Text style={styles.packageRupeeIcon}>₹</Text>
-                              <TextInput
-                                style={styles.packageAmountInput}
-                                keyboardType="numeric"
-                                placeholder="Enter installment amount..."
-                                placeholderTextColor="#94a3b8"
-                                value={packageInstallmentAmount}
-                                onChangeText={setPackageInstallmentAmount}
-                              />
-                            </View>
-                            <Text style={styles.packageInstallmentHint}>
-                              Doctor consultation & medicines are covered under package. Balance after this visit: ₹{Math.max(0, pkgPending - (parseFloat(packageInstallmentAmount) || 0)).toLocaleString()}
-                            </Text>
-                          </View>
-                        </>
-                      ) : (
-                        <View style={styles.packagePausedInfoBox}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                            <Ionicons name="information-circle" size={16} color="#0369a1" />
-                            <Text style={styles.packagePausedTitle}>Package Installment Paused for this Visit</Text>
-                          </View>
-                          <Text style={styles.packagePausedSub}>
-                            Patient package ({pkgName}) remains active. Target amount is now enabled above and regular consultation & medicine charges apply below.
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {!isPackageMode && (
-                    <>
-                      {/* 3. CONSULTATION FEE CARD (or Consultation & Medicine Fee) */}
-                      <View style={[styles.feeCard, includeConsult && styles.feeCardActive]}>
-                        <View style={styles.feeCardHeaderRow}>
-                          <TouchableOpacity
-                            style={styles.feeCardCheckboxTouch}
-                            onPress={handleToggleConsult}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons
-                              name={includeConsult ? "checkmark-circle" : "ellipse-outline"}
-                              size={22}
-                              color={includeConsult ? "#0284c7" : "#cbd5e1"}
-                            />
-                            <View style={styles.feeCardTextCol}>
-                              <Text style={styles.feeCardTitle}>
-                                {paymentType === "consult_and_med" ? "Consultation & Medicine Fee" : "Consultation Fee"}
-                              </Text>
-                              <Text style={styles.feeCardSub}>
-                                {paymentType === "consult_and_med"
-                                  ? "Combined Doctor Consultation & Prescribed Remedies Fee"
-                                  : "Doctor Requested Consultation Fee"}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-
-                          <View style={styles.amountInputBox}>
-                            <Text style={styles.inputRupee}>₹</Text>
-                            <TextInput
-                              style={[
-                                styles.amountInputText,
-                                (paymentType === "consultation" || paymentType === "consult_and_med") && { color: "#64748b" },
-                              ]}
-                              keyboardType="numeric"
-                              editable={includeConsult && paymentType === "split"}
-                              placeholder="0"
-                              placeholderTextColor="#94a3b8"
-                              value={consultationFee > 0 ? String(consultationFee) : (paymentType === "consultation" || paymentType === "consult_and_med" ? (targetAmount || "0") : "")}
-                              onChangeText={handleConsultFeeChange}
-                            />
-                          </View>
-                        </View>
-
-                        {/* MEDICINES EXPANSION INSIDE CONSULTATION & MEDICINE CARD */}
-                        {paymentType === "consult_and_med" && includeConsult && (
-                          <View style={styles.medicinesExpansionSection}>
-                            <View style={[styles.itemizedHeaderRow, { marginBottom: 6 }]}>
-                              <Text style={styles.itemizedHeaderTitle}>Prescribed Medicines</Text>
-                              <TouchableOpacity
-                                style={styles.addMedicineBtn}
-                                onPress={() => {
-                                  setShowDetailedMedicines(true);
-                                  handleAddMedicine();
-                                }}
-                                activeOpacity={0.7}
-                              >
-                                <Text style={styles.addMedicineBtnText}>+ Add Medicine</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Duration selector chips */}
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                              {["15 Days", "1 Month", "2 Months", "3 Months", "6 Months"].map((dur) => (
-                                <TouchableOpacity
-                                  key={dur}
-                                  style={[styles.durationChip, medicineDuration === dur && styles.durationChipActive]}
-                                  onPress={() => setMedicineDuration(dur)}
-                                  activeOpacity={0.7}
-                                >
-                                  <Text style={[styles.durationChipText, medicineDuration === dur && styles.durationChipTextActive]}>
-                                    {dur}
-                                  </Text>
-                                </TouchableOpacity>
-                              ))}
-                            </ScrollView>
-
-                            {showDetailedMedicines ? (
-                              <View style={{ gap: 8, marginTop: 4 }}>
-                                {medicines.map((med, idx) => (
-                                  <View key={med.id} style={styles.medicineItemCard}>
-                                    <View style={styles.medRowTop}>
-                                      <View style={styles.medIndexBadge}>
-                                        <Text style={styles.medIndexBadgeText}>#{idx + 1}</Text>
-                                      </View>
-                                      <TextInput
-                                        style={styles.medNameInput}
-                                        placeholder="Enter Medicine Name (e.g. Arnica 30C)"
-                                        placeholderTextColor="#94a3b8"
-                                        value={med.name}
-                                        onChangeText={(txt) => handleUpdateMedicine(med.id, { name: txt })}
-                                      />
-                                      {medicines.length > 1 && (
-                                        <TouchableOpacity
-                                          onPress={() => handleRemoveMedicine(med.id)}
-                                          style={{ padding: 4 }}
-                                        >
-                                          <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                        </TouchableOpacity>
-                                      )}
-                                    </View>
-
-                                    <View style={styles.medRowBottom}>
-                                      <TouchableOpacity
-                                        style={styles.dropdownMiniBtn}
-                                        onPress={() => setActiveTypeMedId(med.id)}
-                                        activeOpacity={0.7}
-                                      >
-                                        <Text style={styles.dropdownMiniText} numberOfLines={1}>{med.type || "Type"}</Text>
-                                        <Ionicons name="chevron-down" size={12} color="#64748b" />
-                                      </TouchableOpacity>
-
-                                      <TouchableOpacity
-                                        style={styles.dropdownMiniBtn}
-                                        onPress={() => setActiveTimingMedId(med.id)}
-                                        activeOpacity={0.7}
-                                      >
-                                        <Text style={styles.dropdownMiniText} numberOfLines={1}>{med.timing || "Timing"}</Text>
-                                        <Ionicons name="chevron-down" size={12} color="#64748b" />
-                                      </TouchableOpacity>
-
-                                      <View style={styles.medAmountBox}>
-                                        <Text style={styles.inputRupee}>₹</Text>
-                                        <TextInput
-                                          style={styles.medAmountText}
-                                          keyboardType="numeric"
-                                          placeholder="0"
-                                          placeholderTextColor="#94a3b8"
-                                          value={med.amount !== undefined && med.amount !== 0 ? String(med.amount) : ""}
-                                          onChangeText={(txt) => {
-                                            const num = parseFloat(txt) || 0;
-                                            const target = parseFloat(targetAmount) || 0;
-                                            const otherSum = medicines.filter((m) => m.id !== med.id).reduce((acc, m) => acc + (m.amount || 0), 0);
-                                            const maxAllowed = target > 0 ? Math.max(0, target - otherSum) : num;
-                                            const effectiveVal = target > 0 ? Math.min(num, maxAllowed) : num;
-                                            handleUpdateMedicine(med.id, { amount: effectiveVal });
-                                          }}
-                                        />
-                                      </View>
-                                    </View>
-                                  </View>
-                                ))}
-
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                                  <TouchableOpacity
-                                    onPress={() => setShowDetailedMedicines(false)}
-                                    style={{ alignSelf: "flex-start" }}
-                                  >
-                                    <Text style={{ fontSize: 10, color: "#64748b", fontWeight: "600" }}>
-                                      Hide Medicine Details
-                                    </Text>
-                                  </TouchableOpacity>
-
-                                  <View style={{
-                                    backgroundColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#ecfdf5" : "#fffbeb",
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 3,
-                                    borderRadius: 6,
-                                    borderWidth: 1,
-                                    borderColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#a7f3d0" : "#fde68a"
-                                  }}>
-                                    <Text style={{
-                                      fontSize: 10,
-                                      fontWeight: "800",
-                                      color: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#047857" : "#b45309"
-                                    }}>
-                                      Total Remedies: ₹{medicines.reduce((acc, m) => acc + (m.amount || 0), 0)} / ₹{parseFloat(targetAmount) || 0}
-                                    </Text>
-                                  </View>
+                      {/* PREVIOUS PENDING BALANCE ALERT BOX */}
+                      {previousPendingBalance > 0 && (
+                        <View style={styles.prevDueAlertCard}>
+                          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                            <Ionicons name="warning" size={22} color="#ea580c" style={{ marginTop: 2 }} />
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                                <Text style={styles.prevDueAlertTitle}>
+                                  Previous Pending Balance: ₹{previousPendingBalance.toLocaleString()}
+                                </Text>
+                                <View style={styles.prevDueAlertBadge}>
+                                  <Text style={styles.prevDueAlertBadgeText}>UNPAID DUE</Text>
                                 </View>
                               </View>
-                            ) : (
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                                <Text style={{ fontSize: 11, color: "#64748b" }}>
-                                  {medicines.some((m) => m.name) ? `${medicines.filter((m) => m.name).length} medicines loaded` : "Standard prescription remedies"}
-                                </Text>
+                              <Text style={styles.prevDueAlertSub}>
+                                This patient has an unpaid balance from a previous visit. Choose whether to add it to this bill or leave it for next visit.
+                              </Text>
+
+                              <View style={styles.prevDueOptionRow}>
                                 <TouchableOpacity
-                                  onPress={() => setShowDetailedMedicines(true)}
-                                  style={{ paddingVertical: 2, paddingHorizontal: 6 }}
+                                  style={[styles.prevDueOptionBtn, includePreviousDue && styles.prevDueOptionBtnActive]}
+                                  onPress={() => setIncludePreviousDue(true)}
+                                  activeOpacity={0.7}
                                 >
-                                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7" }}>
-                                    View Details ▾
+                                  <Ionicons
+                                    name={includePreviousDue ? "checkbox" : "square-outline"}
+                                    size={18}
+                                    color={includePreviousDue ? "#ea580c" : "#64748b"}
+                                  />
+                                  <Text style={[styles.prevDueOptionText, includePreviousDue && styles.prevDueOptionTextActive]}>
+                                    Add to Current Bill (+₹{previousPendingBalance})
                                   </Text>
                                 </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={[styles.prevDueOptionBtn, !includePreviousDue && styles.prevDueOptionBtnActive]}
+                                  onPress={() => setIncludePreviousDue(false)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons
+                                    name={!includePreviousDue ? "checkbox" : "square-outline"}
+                                    size={18}
+                                    color={!includePreviousDue ? "#ea580c" : "#64748b"}
+                                  />
+                                  <Text style={[styles.prevDueOptionText, !includePreviousDue && styles.prevDueOptionTextActive]}>
+                                    Leave for Next Visit
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      )}
+
+                      {/* 1. TARGET AMOUNT BOX (Matching Screenshot 2) */}
+                      <View style={[styles.targetCard, isPackageMode && { opacity: 0.7, backgroundColor: "#f8fafc" }]}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <Text style={styles.targetCardTitle}>Target Amount (Consultation + Medicine):</Text>
+                            {isPackageMode && (
+                              <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 9, fontWeight: "800", color: "#0284c7" }}>Covered Under Package</Text>
                               </View>
                             )}
                           </View>
-                        )}
+                          <Text style={styles.targetCardSub}>
+                            {isPackageMode
+                              ? "Disabled: Covered by package installment. Tap 'Regular Visit' below to activate target amount."
+                              : "Split & presets calculate strictly within this target"}
+                          </Text>
+                        </View>
+
+                        <View style={[styles.targetInputWrapper, isPackageMode && { backgroundColor: "#f1f5f9", borderColor: "#cbd5e1" }]}>
+                          <Text style={styles.rupeeSymbol}>₹</Text>
+                          <TextInput
+                            style={[styles.targetTextInput, isPackageMode && { color: "#94a3b8" }]}
+                            editable={!isPackageMode}
+                            keyboardType="numeric"
+                            placeholder="0"
+                            placeholderTextColor="#94a3b8"
+                            value={isPackageMode ? "0" : targetAmount}
+                            onChangeText={handleTargetAmountChange}
+                          />
+                        </View>
                       </View>
 
-                      {/* 4. PRESCRIBED MEDICINES CARD (Shown for Split & Consultation modes) */}
-                      {paymentType !== "consult_and_med" && (
-                        <View
-                          style={[
-                            styles.feeCard,
-                            includeMedicine && styles.feeCardActive,
-                          ]}
-                        >
-                          <View style={styles.feeCardHeaderRow}>
+                      {/* 2. PAYMENT TYPE TABS (Package only available for active package members from Patient File) */}
+                      <View style={styles.typeTabsRow}>
+                        {(
+                          (isPackageMember
+                            ? [
+                              { id: "consultation", label: "Consultation" },
+                              { id: "consult_and_med", label: "Consultation & Medicine" },
+                              { id: "split", label: "Split" },
+                              { id: "package", label: "Package" },
+                            ]
+                            : [
+                              { id: "consultation", label: "Consultation" },
+                              { id: "consult_and_med", label: "Consultation & Medicine" },
+                              { id: "split", label: "Split" },
+                            ]
+                          ) as Array<{ id: "consultation" | "consult_and_med" | "split" | "package"; label: string }>
+                        ).map((t) => {
+                          const isSelected = paymentType === t.id;
+                          return (
                             <TouchableOpacity
-                              style={styles.feeCardCheckboxTouch}
-                              onPress={() => {
-                                if (paymentType !== "consultation") handleToggleMedicine();
-                              }}
-                              disabled={paymentType === "consultation"}
+                              key={t.id}
+                              style={[styles.typeTab, isSelected && styles.typeTabActive]}
+                              onPress={() => handlePaymentTypeChange(t.id)}
                               activeOpacity={0.7}
                             >
-                              <Ionicons
-                                name={includeMedicine && paymentType !== "consultation" ? "checkmark-circle" : "ellipse-outline"}
-                                size={22}
-                                color={includeMedicine && paymentType !== "consultation" ? "#0284c7" : "#cbd5e1"}
-                              />
-                              <View style={styles.feeCardTextCol}>
-                                <Text style={[styles.feeCardTitle, paymentType === "consultation" && { color: "#94a3b8" }]}>Prescribed Medicines</Text>
-                                <Text style={styles.feeCardSub}>
-                                  {paymentType === "consultation" ? "Disabled in Consultation Only mode" : "Prescribed Remedies / Pharmacy Fee"}
-                                </Text>
-                              </View>
+                              <Text style={[styles.typeTabText, isSelected && styles.typeTabTextActive]}>
+                                {t.label}
+                              </Text>
                             </TouchableOpacity>
+                          );
+                        })}
+                      </View>
 
-                            <View style={styles.amountInputBox}>
-                              <Text style={styles.inputRupee}>₹</Text>
-                              <TextInput
-                                style={styles.amountInputText}
-                                keyboardType="numeric"
-                                editable={includeMedicine && paymentType === "split"}
-                                value={String(medicineFee)}
-                                onChangeText={(val) => {
-                                  const num = parseFloat(val) || 0;
-                                  const target = parseFloat(targetAmount) || 0;
-                                  if (paymentType === "split") {
-                                    const clampedMed = Math.max(0, Math.min(num, target));
-                                    setMedicineFee(clampedMed);
-                                    const remainingConsult = Math.max(0, target - clampedMed);
-                                    setConsultationFee(remainingConsult);
-                                    if (medicines.length <= 1) {
-                                      setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: clampedMed }]);
-                                    }
-                                    return;
-                                  }
-                                  const effectiveVal = target > 0 ? Math.min(num, target) : num;
-                                  setMedicineFee(effectiveVal);
-                                  if (medicines.length === 1) {
-                                    setMedicines([{ ...medicines[0], amount: effectiveVal }]);
-                                  }
-                                }}
-                              />
+                      {/* PACKAGE MEMBER BANNER & MODE TOGGLE */}
+                      {isPackageMember && (
+                        <View style={styles.packageBannerCard}>
+                          <View style={styles.packageHeaderRow}>
+                            <View style={styles.packageBadgeRow}>
+                              <View style={styles.packageBadgePill}>
+                                <Text style={styles.packageBadgeText}>PKG MEMBER</Text>
+                              </View>
+                              <Text style={styles.packageNameTitle} numberOfLines={1}>
+                                {pkgName}
+                              </Text>
                             </View>
+                            <Text style={styles.packageValidityText}>
+                              Valid till: {pkgEndDate}
+                            </Text>
                           </View>
 
-                          {/* PRESCRIBED MEDICINES ITEMS */}
-                          {includeMedicine && (
-                            <View style={styles.medicinesExpansionSection}>
-                              {showDetailedMedicines ? (
-                                <>
-                                  <View style={styles.itemizedHeaderRow}>
-                                    <Text style={styles.itemizedHeaderTitle}>Prescribed Medicine Items ({medicines.length})</Text>
-                                    <TouchableOpacity style={styles.addMedicineBtn} onPress={handleAddMedicine} activeOpacity={0.7}>
-                                      <Text style={styles.addMedicineBtnText}>+ Add Medicine</Text>
-                                    </TouchableOpacity>
-                                  </View>
+                          {/* Billing Mode Switch Pills */}
+                          <View style={styles.packageModeToggleRow}>
+                            <TouchableOpacity
+                              style={[styles.packageModeBtn, billingMode === "package" && styles.packageModeBtnActive]}
+                              onPress={() => handleSelectBillingMode("package")}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.packageModeBtnText, billingMode === "package" && styles.packageModeBtnTextActive]}>
+                                ✓ Pay Package Installment
+                              </Text>
+                            </TouchableOpacity>
 
-                                  <View style={{ gap: 8, marginTop: 8 }}>
+                            <TouchableOpacity
+                              style={[styles.packageModeBtn, billingMode === "regular" && styles.packageModeBtnActive]}
+                              onPress={() => handleSelectBillingMode("regular")}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.packageModeBtnText, billingMode === "regular" && styles.packageModeBtnTextActive]}>
+                                ⚡ Regular Visit / Extra Medicine
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {/* Mode Description & Inputs */}
+                          {billingMode === "package" ? (
+                            <>
+                              {/* 3 Stats Boxes */}
+                              <View style={styles.packageStatsRow}>
+                                <View style={styles.packageStatBox}>
+                                  <Text style={styles.packageStatLabel}>TOTAL PACKAGE</Text>
+                                  <Text style={styles.packageStatValue}>₹{pkgTotal.toLocaleString()}</Text>
+                                </View>
+                                <View style={[styles.packageStatBox, { borderColor: "#bbf7d0", backgroundColor: "#f0fdf4" }]}>
+                                  <Text style={[styles.packageStatLabel, { color: "#16a34a" }]}>PAID SO FAR</Text>
+                                  <Text style={[styles.packageStatValue, { color: "#15803d" }]}>₹{pkgPaid.toLocaleString()}</Text>
+                                </View>
+                                <View style={[styles.packageStatBox, { borderColor: "#bae6fd", backgroundColor: "#f0f9ff" }]}>
+                                  <Text style={[styles.packageStatLabel, { color: "#0284c7" }]}>REMAINING</Text>
+                                  <Text style={[styles.packageStatValue, { color: "#0369a1" }]}>₹{pkgPending.toLocaleString()}</Text>
+                                </View>
+                              </View>
+
+                              {/* Installment Amount Input */}
+                              <View style={styles.packageInstallmentBox}>
+                                <Text style={styles.packageInstallmentLabel}>
+                                  Pay Package Installment For This Visit (₹) <Text style={{ color: "#ef4444" }}>*</Text>
+                                </Text>
+                                <View style={styles.packageAmountInputRow}>
+                                  <Text style={styles.packageRupeeIcon}>₹</Text>
+                                  <TextInput
+                                    style={styles.packageAmountInput}
+                                    keyboardType="numeric"
+                                    placeholder="Enter installment amount..."
+                                    placeholderTextColor="#94a3b8"
+                                    value={packageInstallmentAmount}
+                                    onChangeText={setPackageInstallmentAmount}
+                                  />
+                                </View>
+                                <Text style={styles.packageInstallmentHint}>
+                                  Doctor consultation & medicines are covered under package. Balance after this visit: ₹{Math.max(0, pkgPending - (parseFloat(packageInstallmentAmount) || 0)).toLocaleString()}
+                                </Text>
+                              </View>
+                            </>
+                          ) : (
+                            <View style={styles.packagePausedInfoBox}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                <Ionicons name="information-circle" size={16} color="#0369a1" />
+                                <Text style={styles.packagePausedTitle}>Package Installment Paused for this Visit</Text>
+                              </View>
+                              <Text style={styles.packagePausedSub}>
+                                Patient package ({pkgName}) remains active. Target amount is now enabled above and regular consultation & medicine charges apply below.
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {!isPackageMode && (
+                        <>
+                          {/* 3. CONSULTATION FEE CARD (or Consultation & Medicine Fee) */}
+                          <View style={[styles.feeCard, includeConsult && styles.feeCardActive]}>
+                            <View style={styles.feeCardHeaderRow}>
+                              <TouchableOpacity
+                                style={styles.feeCardCheckboxTouch}
+                                onPress={handleToggleConsult}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons
+                                  name={includeConsult ? "checkmark-circle" : "ellipse-outline"}
+                                  size={22}
+                                  color={includeConsult ? "#0284c7" : "#cbd5e1"}
+                                />
+                                <View style={styles.feeCardTextCol}>
+                                  <Text style={styles.feeCardTitle}>
+                                    {paymentType === "consult_and_med" ? "Consultation & Medicine Fee" : "Consultation Fee"}
+                                  </Text>
+                                  <Text style={styles.feeCardSub}>
+                                    {paymentType === "consult_and_med"
+                                      ? "Combined Doctor Consultation & Prescribed Remedies Fee"
+                                      : "Doctor Requested Consultation Fee"}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              <View style={styles.amountInputBox}>
+                                <Text style={styles.inputRupee}>₹</Text>
+                                <TextInput
+                                  style={[
+                                    styles.amountInputText,
+                                    (paymentType === "consultation" || paymentType === "consult_and_med") && { color: "#64748b" },
+                                  ]}
+                                  keyboardType="numeric"
+                                  editable={includeConsult && paymentType === "split"}
+                                  placeholder="0"
+                                  placeholderTextColor="#94a3b8"
+                                  value={consultationFee > 0 ? String(consultationFee) : (paymentType === "consultation" || paymentType === "consult_and_med" ? (targetAmount || "0") : "")}
+                                  onChangeText={handleConsultFeeChange}
+                                />
+                              </View>
+                            </View>
+
+                            {/* MEDICINES EXPANSION INSIDE CONSULTATION & MEDICINE CARD */}
+                            {paymentType === "consult_and_med" && includeConsult && (
+                              <View style={styles.medicinesExpansionSection}>
+                                <View style={[styles.itemizedHeaderRow, { marginBottom: 6 }]}>
+                                  <Text style={styles.itemizedHeaderTitle}>Prescribed Medicines</Text>
+                                  <TouchableOpacity
+                                    style={styles.addMedicineBtn}
+                                    onPress={() => {
+                                      setShowDetailedMedicines(true);
+                                      handleAddMedicine();
+                                    }}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Text style={styles.addMedicineBtnText}>+ Add Medicine</Text>
+                                  </TouchableOpacity>
+                                </View>
+
+                                {/* Duration selector chips */}
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                                  {["15 Days", "1 Month", "2 Months", "3 Months", "6 Months"].map((dur) => (
+                                    <TouchableOpacity
+                                      key={dur}
+                                      style={[styles.durationChip, medicineDuration === dur && styles.durationChipActive]}
+                                      onPress={() => setMedicineDuration(dur)}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={[styles.durationChipText, medicineDuration === dur && styles.durationChipTextActive]}>
+                                        {dur}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </ScrollView>
+
+                                {showDetailedMedicines ? (
+                                  <View style={{ gap: 8, marginTop: 4 }}>
                                     {medicines.map((med, idx) => (
                                       <View key={med.id} style={styles.medicineItemCard}>
                                         <View style={styles.medRowTop}>
@@ -3002,7 +2817,6 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         </View>
 
                                         <View style={styles.medRowBottom}>
-                                          {/* Type Selector Pop-up Pill */}
                                           <TouchableOpacity
                                             style={styles.dropdownMiniBtn}
                                             onPress={() => setActiveTypeMedId(med.id)}
@@ -3012,7 +2826,6 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                             <Ionicons name="chevron-down" size={12} color="#64748b" />
                                           </TouchableOpacity>
 
-                                          {/* Timing Selector Pop-up Pill */}
                                           <TouchableOpacity
                                             style={styles.dropdownMiniBtn}
                                             onPress={() => setActiveTimingMedId(med.id)}
@@ -3022,7 +2835,6 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                             <Ionicons name="chevron-down" size={12} color="#64748b" />
                                           </TouchableOpacity>
 
-                                          {/* Amount */}
                                           <View style={styles.medAmountBox}>
                                             <Text style={styles.inputRupee}>₹</Text>
                                             <TextInput
@@ -3034,1236 +2846,1423 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                               onChangeText={(txt) => {
                                                 const num = parseFloat(txt) || 0;
                                                 const target = parseFloat(targetAmount) || 0;
-                                                const maxAllowed = target > 0
-                                                  ? (paymentType === "split" && includeConsult ? Math.max(0, target - consultationFee) : target)
-                                                  : num;
                                                 const otherSum = medicines.filter((m) => m.id !== med.id).reduce((acc, m) => acc + (m.amount || 0), 0);
-                                                const effectiveVal = target > 0 ? Math.min(num, Math.max(0, maxAllowed - otherSum)) : num;
+                                                const maxAllowed = target > 0 ? Math.max(0, target - otherSum) : num;
+                                                const effectiveVal = target > 0 ? Math.min(num, maxAllowed) : num;
                                                 handleUpdateMedicine(med.id, { amount: effectiveVal });
-                                                const nextMeds = medicines.map((m) => (m.id === med.id ? { ...m, amount: effectiveVal } : m));
-                                                const nextSum = nextMeds.reduce((acc, m) => acc + (m.amount || 0), 0);
-                                                if (nextSum > 0) setMedicineFee(nextSum);
                                               }}
                                             />
                                           </View>
                                         </View>
                                       </View>
                                     ))}
+
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                                      <TouchableOpacity
+                                        onPress={() => setShowDetailedMedicines(false)}
+                                        style={{ alignSelf: "flex-start" }}
+                                      >
+                                        <Text style={{ fontSize: 10, color: "#64748b", fontWeight: "600" }}>
+                                          Hide Medicine Details
+                                        </Text>
+                                      </TouchableOpacity>
+
+                                      <View style={{
+                                        backgroundColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#ecfdf5" : "#fffbeb",
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 3,
+                                        borderRadius: 6,
+                                        borderWidth: 1,
+                                        borderColor: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#a7f3d0" : "#fde68a"
+                                      }}>
+                                        <Text style={{
+                                          fontSize: 10,
+                                          fontWeight: "800",
+                                          color: medicines.reduce((acc, m) => acc + (m.amount || 0), 0) === (parseFloat(targetAmount) || 0) ? "#047857" : "#b45309"
+                                        }}>
+                                          Total Remedies: ₹{medicines.reduce((acc, m) => acc + (m.amount || 0), 0)} / ₹{parseFloat(targetAmount) || 0}
+                                        </Text>
+                                      </View>
+                                    </View>
                                   </View>
-                                </>
-                              ) : (
-                                <View style={{ alignItems: "flex-end", marginTop: 4 }}>
-                                  <TouchableOpacity
-                                    style={styles.addMedicineBtn}
-                                    onPress={() => {
-                                      setShowDetailedMedicines(true);
-                                      if (medicines.length === 0 || (medicines.length === 1 && !medicines[0].name)) {
-                                        setMedicines([
-                                          {
-                                            id: `med-${Date.now()}`,
-                                            name: "",
-                                            type: "Pills",
-                                            timing: "M - N - N",
-                                            amount: medicineFee,
-                                          },
-                                        ]);
-                                      }
-                                    }}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Text style={styles.addMedicineBtnText}>+ Add Medicine Details</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              )}
-                            </View>
-                          )}
-                        </View>
-                      )}
-
-                      {/* 5. DIET PLAN FEE CARD */}
-                      <View
-                        style={[
-                          styles.feeCard,
-                          (!canChargeDiet || isPackageMode) && { opacity: 0.5, backgroundColor: "#f8fafc" },
-                          includeDiet && canChargeDiet && !isPackageMode && styles.feeCardActive,
-                        ]}
-                      >
-                        <View style={styles.feeCardHeaderRow}>
-                          <TouchableOpacity
-                            style={styles.feeCardCheckboxTouch}
-                            disabled={!canChargeDiet || isPackageMode}
-                            onPress={() => {
-                              if (!canChargeDiet || isPackageMode) return;
-                              const next = !includeDiet;
-                              setIncludeDiet(next);
-                              if (next) {
-                                setDietFee(rawDietFee);
-                              }
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons
-                              name={includeDiet && canChargeDiet && !isPackageMode ? "checkmark-circle" : "ellipse-outline"}
-                              size={22}
-                              color={includeDiet && canChargeDiet && !isPackageMode ? "#0284c7" : "#cbd5e1"}
-                            />
-                            <View style={styles.feeCardTextCol}>
-                              <Text style={styles.feeCardTitle}>Diet Plan Fee</Text>
-                              <Text style={styles.feeCardSub}>
-                                {canChargeDiet
-                                  ? "Prescribed in Patient File"
-                                  : "Disabled (Must prescribe in Patient File)"}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-
-                          <View style={styles.amountInputBox}>
-                            <Text style={styles.inputRupee}>₹</Text>
-                            <TextInput
-                              style={[
-                                styles.amountInputText,
-                                (!canChargeDiet || !includeDiet || isPackageMode) && {
-                                  backgroundColor: "#f1f5f9",
-                                  color: "#94a3b8",
-                                },
-                              ]}
-                              keyboardType="numeric"
-                              editable={false}
-                              value={canChargeDiet && includeDiet && !isPackageMode ? String(dietFee) : "0"}
-                            />
-                          </View>
-                        </View>
-                      </View>
-
-                      {/* 6. MEDICINE DISCOUNT STATUS (Matching Screenshot 1 & 2) */}
-                      <View style={styles.discountCard}>
-                        <View style={styles.discountHeaderRow}>
-                          <View>
-                            <Text style={styles.discountTitle}>Medicine Discount Status</Text>
-                            <Text style={styles.discountSub}>
-                              {discountStatus === "NONE" && "HR Approval Required • Locked until approved"}
-                              {discountStatus === "PENDING" && "⏳ Pending HR/Admin Approval"}
-                              {discountStatus === "APPROVED" && `✓ Approved by HR: -₹${discountApprovedAmount}`}
-                              {discountStatus === "REJECTED" && "✕ Discount Request Rejected by HR"}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {discountStatus === "NONE" ? (
-                          <TouchableOpacity
-                            style={styles.requestDiscountBtn}
-                            onPress={() => setIsDiscountModalOpen(true)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.requestDiscountBtnText}>Request Discount</Text>
-                          </TouchableOpacity>
-                        ) : discountStatus === "APPROVED" ? (
-                          <View style={styles.discountAppliedTag}>
-                            <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
-                            <Text style={styles.discountAppliedTagText}>₹{discountApprovedAmount} Discount Applied to Bill</Text>
-                          </View>
-                        ) : discountStatus === "PENDING" ? (
-                          <View style={styles.discountPendingTag}>
-                            <Ionicons name="time" size={14} color="#b45309" />
-                            <Text style={styles.discountPendingTagText}>Locked until HR/Admin responds</Text>
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            style={styles.requestDiscountBtn}
-                            onPress={() => setIsDiscountModalOpen(true)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.requestDiscountBtnText}>Request Again</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </>
-                  )}
-
-                  {/* 7. MANDATORY PRESCRIPTION CHECK & UPLOAD BANNER */}
-                  {!hasPrescription ? (
-                    <View style={styles.rxWarningBanner}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          onClose();
-                          if (onOpenPatientFile) onOpenPatientFile();
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Ionicons name="warning" size={16} color="#ffffff" />
-                          <Text style={styles.rxWarningTitle}>UPLOAD PRESCRIPTION REQUIRED</Text>
-                        </View>
-                        <Text style={styles.rxWarningSub}>Tap here to open Patient File & upload →</Text>
-                      </TouchableOpacity>
-
-                      <View style={{ flexDirection: "row", gap: 8, marginTop: 8, alignSelf: "flex-end" }}>
-                        <TouchableOpacity
-                          style={styles.rxQuickUploadBtn}
-                          onPress={() => handlePickImage(true)}
-                          disabled={isUploadingRx}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="camera" size={13} color="#78350f" />
-                          <Text style={styles.rxQuickUploadBtnText}>
-                            {isUploadingRx ? "Uploading..." : "Camera"}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.rxQuickUploadBtn}
-                          onPress={() => handlePickImage(false)}
-                          disabled={isUploadingRx}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="image" size={13} color="#78350f" />
-                          <Text style={styles.rxQuickUploadBtnText}>Gallery</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.rxAttachedCard}>
-                      <View style={styles.rxAttachedHeader}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
-                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                          <Text style={styles.rxSuccessText}>
-                            Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})
-                          </Text>
-                        </View>
-
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <TouchableOpacity
-                            style={styles.rxSmallActionBtn}
-                            onPress={() => handlePickImage(true)}
-                            disabled={isUploadingRx}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons name="camera" size={12} color="#065f46" />
-                            <Text style={styles.rxSmallActionBtnText}>
-                              {isUploadingRx ? "..." : "+ Camera"}
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.rxSmallActionBtn}
-                            onPress={() => handlePickImage(false)}
-                            disabled={isUploadingRx}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons name="image" size={12} color="#065f46" />
-                            <Text style={styles.rxSmallActionBtnText}>
-                              {isUploadingRx ? "..." : "+ Gallery"}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {/* Attached Image Thumbnails with View & Delete Options */}
-                      {rxImages.length > 0 && (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={styles.rxThumbList}
-                        >
-                          {rxImages.map((imgUri: string, idx: number) => (
-                            <View key={`rx-thumb-${idx}`} style={styles.rxThumbCard}>
-                              <TouchableOpacity
-                                activeOpacity={0.85}
-                                onPress={() => {
-                                  setViewerInitialIndex(idx);
-                                  setIsViewerOpen(true);
-                                }}
-                                style={styles.rxThumbTouch}
-                              >
-                                <ExpoImage
-                                  source={resolvePrescriptionImageUrl(imgUri)}
-                                  style={styles.rxThumbImage}
-                                  contentFit="cover"
-                                />
-                                <View style={styles.rxThumbOverlay}>
-                                  <Ionicons name="eye" size={10} color="#ffffff" />
-                                  <Text style={styles.rxThumbOverlayText}>View</Text>
-                                </View>
-                              </TouchableOpacity>
-
-                              {/* Delete button */}
-                              <TouchableOpacity
-                                style={styles.rxThumbDeleteBtn}
-                                onPress={() => handleDeleteRxImage(idx)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                activeOpacity={0.7}
-                              >
-                                <Ionicons name="trash" size={11} color="#ef4444" />
-                              </TouchableOpacity>
-                            </View>
-                          ))}
-                        </ScrollView>
-                      )}
-                    </View>
-                  )}
-
-                  {/* PAY LATER COMPACT BUTTON & SUMMARY */}
-                  <View style={[styles.payLaterCompactCard, isPayLater && styles.payLaterCompactCardActive]}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                      <View style={[styles.payLaterIconBadge, isPayLater && { backgroundColor: "#ea580c" }]}>
-                        <Ionicons name="time" size={16} color="#ffffff" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Text style={styles.payLaterCompactTitle}>Pay Later / Partial Payment</Text>
-                          {isPayLater && (
-                            <View style={styles.payLaterActivePill}>
-                              <Text style={styles.payLaterActivePillText}>Due: ₹{calculatedPayLater.toLocaleString()}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={styles.payLaterCompactSub}>
-                          {isPayLater
-                            ? `Paying ₹${effectivePaidToday.toLocaleString()} today • Balance ₹${calculatedPayLater.toLocaleString()}`
-                            : "Allow patient to pay partially today and carry balance"}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[styles.payLaterSmallBtn, isPayLater && styles.payLaterSmallBtnActive]}
-                      onPress={() => {
-                        if (!isPayLater && !amountPaidNow) {
-                          setAmountPaidNow(String(Math.round(totalAmountDue / 2)));
-                        }
-                        setIsPayLaterModalOpen(true);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name={isPayLater ? "create-outline" : "add-circle-outline"} size={14} color="#ffffff" />
-                      <Text style={styles.payLaterSmallBtnText}>{isPayLater ? "Edit" : "+ Pay Later"}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* 8. SELECT PAYMENT METHOD (Matching Screenshot 1) */}
-                  <View style={styles.methodsSection}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Text style={styles.methodsTitle}>Select Payment Method</Text>
-                      <Text style={styles.mandatoryStar}>* (Mandatory)</Text>
-                    </View>
-                    <Text style={styles.methodsHelper}>⚠️ Please tap an option below to select how the patient is paying:</Text>
-
-                    <View style={styles.methodsGrid}>
-                      {(
-                        [
-                          "Counter UPI",
-                          "UPI / QR Code",
-                          "Cash",
-                          "Card",
-                          "Split",
-                          "Send Pay to app",
-                        ] as PaymentMethod[]
-                      ).map((method) => {
-                        const isMethodSelected = selectedMethod === method;
-                        return (
-                          <TouchableOpacity
-                            key={method}
-                            style={[styles.methodBtn, isMethodSelected && styles.methodBtnSelected]}
-                            onPress={() => {
-                              setSelectedMethod(method);
-                              const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                              if (method === "Split" && splitUpi === 0 && splitCash === 0 && splitCard === 0) {
-                                const half = Math.round(targetToPay / 2);
-                                setSplitUpi(half);
-                                setSplitCash(targetToPay - half);
-                                setSplitCard(0);
-                              }
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[styles.methodBtnText, isMethodSelected && styles.methodBtnTextSelected]}>
-                              {method}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-
-                    {/* RAZORPAY UPI QR CODE CARD (MOBILE APP) - ONLY FOR UPI / QR CODE */}
-                    {selectedMethod === "UPI / QR Code" && (
-                      <View style={{ marginTop: 14, backgroundColor: "#f0f9ff", borderWidth: 2, borderColor: "#38bdf8", borderRadius: 20, padding: 14, alignItems: "center" }}>
-                        {/* Header */}
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 10 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
-                              <Ionicons name="qr-code" size={18} color="#ffffff" />
-                            </View>
-                            <View>
-                              <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay UPI QR Code</Text>
-                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Spiritual Homeopathy • Auto-Detect</Text>
-                            </View>
-                          </View>
-                          <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                            <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1" }}>LIVE QR</Text>
-                          </View>
-                        </View>
-
-                        {/* Amount Due Pill */}
-                        <View style={{ backgroundColor: "#dcfce7", borderWidth: 1, borderColor: "#86efac", borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, marginBottom: 12, alignItems: "center", width: "100%" }}>
-                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                            {isPayLater ? "Amount to Pay Today (Partial)" : "Amount Due to Pay"}
-                          </Text>
-                          <Text style={{ fontSize: 24, fontWeight: "900", color: "#14532d" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
-                          <Text style={{ fontSize: 9.5, fontWeight: "600", color: "#15803d" }}>VPA: sseomni9k9v0j291124pos@mairtel</Text>
-                        </View>
-
-                        {/* Dynamic QR Code Image */}
-                        <View style={{ backgroundColor: "#ffffff", padding: 12, borderRadius: 18, borderWidth: 1.5, borderColor: "#cbd5e1", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 6, elevation: 2, marginBottom: 12 }}>
-                          <Image
-                            source={{
-                              uri: `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
-                                `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${(isPayLater ? effectivePaidToday : totalAmountDue).toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
-                              )}`,
-                            }}
-                            style={{ width: 220, height: 220, borderRadius: 8 }}
-                            resizeMode="contain"
-                          />
-                        </View>
-
-                        {/* Status indicator */}
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, backgroundColor: "#e0f2fe", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 }}>
-                          <ActivityIndicator size="small" color="#0284c7" />
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#0369a1" }}>
-                            Waiting for patient scan • Auto-detecting...
-                          </Text>
-                        </View>
-
-                        {/* Action Buttons */}
-                        <View style={{ width: "100%", gap: 8 }}>
-                          <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
-                            <TouchableOpacity
-                              onPress={() => handleCheckUpiStatus(true)}
-                              disabled={isVerifyingUpi}
-                              style={{ flex: 1, backgroundColor: "#0f172a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                            >
-                              {isVerifyingUpi ? (
-                                <ActivityIndicator size="small" color="#ffffff" />
-                              ) : (
-                                <Ionicons name="refresh" size={15} color="#ffffff" />
-                              )}
-                              <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>
-                                {isVerifyingUpi ? "Checking..." : "Verify Status"}
-                              </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              onPress={() => {
-                                const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
-                                const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${(isPayLater ? effectivePaidToday : totalAmountDue).toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
-                                const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${isPayLater ? effectivePaidToday : totalAmountDue} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
-                                Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`).catch(() => {
-                                  Alert.alert("Unable to open WhatsApp", "Please make sure WhatsApp is installed.");
-                                });
-                              }}
-                              style={{ flex: 1, backgroundColor: "#16a34a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                            >
-                              <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
-                              <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>WhatsApp Link</Text>
-                            </TouchableOpacity>
-                          </View>
-
-                          {/* Direct Confirmation Button */}
-                          <TouchableOpacity
-                            onPress={handleManualConfirmUpi}
-                            disabled={isVerifyingUpi}
-                            style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                          >
-                            <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
-                            <Text style={{ color: "#166534", fontWeight: "900", fontSize: 12 }}>Patient Paid / Confirm Receipt</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-
-                    {/* COUNTER UPI (CLINIC DESK QR - SAME AS CASH) */}
-                    {selectedMethod === "Counter UPI" && (
-                      <View style={{ marginTop: 14, backgroundColor: "#f8fafc", borderWidth: 1.5, borderColor: "#cbd5e1", borderRadius: 18, padding: 14 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center" }}>
-                            <Ionicons name="storefront-outline" size={20} color="#ffffff" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>Counter UPI (Clinic Desk QR)</Text>
-                            <Text style={{ fontSize: 11, color: "#64748b" }}>Handled same as Cash • Direct counter collection</Text>
-                          </View>
-                          <View style={{ backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                            <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338ca" }}>MANUAL DESK</Text>
-                          </View>
-                        </View>
-                        <View style={{ backgroundColor: "#eef2ff", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#c7d2fe" }}>
-                          <Text style={{ fontSize: 11.5, color: "#3730a3", fontWeight: "600", lineHeight: 18 }}>
-                            • Patient scans the clinic counter printed QR code directly.
-                            {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#1e1b4b" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
-                            {"\n"}• Tap "Complete Consultation & Collect Payment" below to record this payment.
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {/* CARD PAYMENT DETAILS (RAZORPAY CARD / POS) */}
-                    {selectedMethod === "Card" && (
-                      <View style={{ marginTop: 14, backgroundColor: "#fdf4ff", borderWidth: 1.5, borderColor: "#f0abfc", borderRadius: 18, padding: 14 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#c026d3", alignItems: "center", justifyContent: "center" }}>
-                              <Ionicons name="card-outline" size={18} color="#ffffff" />
-                            </View>
-                            <View>
-                              <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay Card / POS Payment</Text>
-                              <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Enter card details or swipe on POS terminal</Text>
-                            </View>
-                          </View>
-                          <View style={{ backgroundColor: "#fae8ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                            <Text style={{ fontSize: 10, fontWeight: "800", color: "#a21caf" }}>CARD</Text>
-                          </View>
-                        </View>
-
-                        {/* Card Inputs */}
-                        <View style={{ gap: 8, marginBottom: 12 }}>
-                          <View>
-                            <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Card Number</Text>
-                            <TextInput
-                              value={cardNumber}
-                              onChangeText={(val) => {
-                                const clean = val.replace(/\D/g, "").slice(0, 16);
-                                const formatted = clean.match(/.{1,4}/g)?.join(" ") || clean;
-                                setCardNumber(formatted);
-                              }}
-                              placeholder="4532 •••• •••• ••••"
-                              placeholderTextColor="#94a3b8"
-                              keyboardType="numeric"
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
-                            />
-                          </View>
-                          <View style={{ flexDirection: "row", gap: 8 }}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Expiry (MM/YY)</Text>
-                              <TextInput
-                                value={cardExpiry}
-                                onChangeText={(val) => {
-                                  const clean = val.replace(/\D/g, "").slice(0, 4);
-                                  const formatted = clean.length > 2 ? `${clean.slice(0, 2)}/${clean.slice(2)}` : clean;
-                                  setCardExpiry(formatted);
-                                }}
-                                placeholder="MM/YY"
-                                placeholderTextColor="#94a3b8"
-                                keyboardType="numeric"
-                                style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
-                              />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>CVV</Text>
-                              <TextInput
-                                value={cardCvv}
-                                onChangeText={(val) => setCardCvv(val.replace(/\D/g, "").slice(0, 4))}
-                                placeholder="CVV"
-                                placeholderTextColor="#94a3b8"
-                                keyboardType="numeric"
-                                secureTextEntry
-                                style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
-                              />
-                            </View>
-                          </View>
-                        </View>
-
-                        {/* Card Action Buttons */}
-                        <View style={{ width: "100%", gap: 8, marginTop: 4 }}>
-                          {/* Open Razorpay Card Gateway Button */}
-                          <TouchableOpacity
-                            onPress={async () => {
-                              try {
-                                const amountToCharge = isPayLater ? effectivePaidToday : totalAmountDue;
-                                const res = await apiFetch<any>("/reception/razorpay/create-order", {
-                                  method: "POST",
-                                  body: JSON.stringify({
-                                    appointmentId: appointment?.id,
-                                    amount: amountToCharge,
-                                    patientName: appointment?.patientName,
-                                    phone: appointment?.phoneNumber || appointment?.phone,
-                                    description: `Card Payment for ${appointment?.patientName || "Patient"}`
-                                  })
-                                });
-                                if (res?.paymentLinkUrl) {
-                                  Linking.openURL(res.paymentLinkUrl);
-                                } else {
-                                  Alert.alert("Razorpay Card Gateway", `Card charge order created for ₹${amountToCharge}. Enter card details above or swipe on clinic POS machine and tap Complete Payment.`);
-                                }
-                              } catch (e: any) {
-                                Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above and tap Complete Consultation.");
-                              }
-                            }}
-                            style={{ backgroundColor: "#c026d3", borderRadius: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
-                          >
-                            <Ionicons name="card" size={15} color="#ffffff" />
-                            <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>Open Razorpay Card Gateway</Text>
-                          </TouchableOpacity>
-
-                          {/* Instant Card Payment Confirmation Button */}
-                          <TouchableOpacity
-                            onPress={handleManualConfirmCard}
-                            disabled={isSubmitting}
-                            style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                          >
-                            {isSubmitting ? (
-                              <ActivityIndicator size="small" color="#16a34a" />
-                            ) : (
-                              <Ionicons name="checkmark-circle" size={17} color="#16a34a" />
+                                ) : (
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                                    <Text style={{ fontSize: 11, color: "#64748b" }}>
+                                      {medicines.some((m) => m.name) ? `${medicines.filter((m) => m.name).length} medicines loaded` : "Standard prescription remedies"}
+                                    </Text>
+                                    <TouchableOpacity
+                                      onPress={() => setShowDetailedMedicines(true)}
+                                      style={{ paddingVertical: 2, paddingHorizontal: 6 }}
+                                    >
+                                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7" }}>
+                                        View Details ▾
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+                              </View>
                             )}
-                            <Text style={{ color: "#166534", fontWeight: "900", fontSize: 13 }}>
-                              {isSubmitting ? "Completing Consultation..." : "Card Paid / Complete Appointment"}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        <Text style={{ fontSize: 10, color: "#86198f", textAlign: "center", fontWeight: "600", marginTop: 6 }}>
-                          Enter card details above or pay via Gateway/POS terminal, then tap Complete Appointment.
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* SPLIT PAYMENT BREAKDOWN (MOBILE APP) */}
-                    {selectedMethod === "Split" && (
-                      <View style={{ marginTop: 12, backgroundColor: "#f0f9ff", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 16, padding: 12 }}>
-                        {/* Header & Presets */}
-                        <View style={{ marginBottom: 10 }}>
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                              <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
-                                <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>⚡</Text>
-                              </View>
-                              <View>
-                                <Text style={{ fontSize: 12, fontWeight: "800", color: "#0f172a" }}>Split Payment Allocation</Text>
-                                <Text style={{ fontSize: 10, color: "#64748b" }}>
-                                  {isPayLater ? `Paid Today: ₹${effectivePaidToday.toLocaleString()}` : `Total Due: ₹${totalAmountDue.toLocaleString()}`}
-                                </Text>
-                              </View>
-                            </View>
                           </View>
 
-                          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setOptedSplitModes(["cash", "upi"]);
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                const half = Math.round(targetToPay / 2);
-                                setSplitUpi(half);
-                                setSplitCash(targetToPay - half);
-                                setSplitCounterUpi(0);
-                                setSplitCard(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                          {/* 4. PRESCRIBED MEDICINES CARD (Shown for Split & Consultation modes) */}
+                          {paymentType !== "consult_and_med" && (
+                            <View
+                              style={[
+                                styles.feeCard,
+                                includeMedicine && styles.feeCardActive,
+                              ]}
                             >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + UPI</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setOptedSplitModes(["cash", "card"]);
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                const half = Math.round(targetToPay / 2);
-                                setSplitCard(half);
-                                setSplitCash(targetToPay - half);
-                                setSplitUpi(0);
-                                setSplitCounterUpi(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
-                            >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Card</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setOptedSplitModes(["cash", "counterUpi"]);
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                const half = Math.round(targetToPay / 2);
-                                setSplitCounterUpi(half);
-                                setSplitCash(targetToPay - half);
-                                setSplitUpi(0);
-                                setSplitCard(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
-                            >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Counter UPI</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setOptedSplitModes(["cash", "counterUpi", "upi", "card"]);
-                                const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                const quarter = Math.round(targetToPay / 4);
-                                setSplitCash(quarter);
-                                setSplitCounterUpi(quarter);
-                                setSplitUpi(quarter);
-                                setSplitCard(targetToPay - (quarter * 3));
-                              }}
-                              style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
-                            >
-                              <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All 4 Options</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-
-                        {/* Step 1: Opt-in Toggles */}
-                        <View style={{ backgroundColor: "#ffffff", borderRadius: 12, padding: 8, borderWidth: 1, borderColor: "#bae6fd", marginBottom: 8 }}>
-                          <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1", marginBottom: 6 }}>
-                            Step 1: Tap to Choose Split Modes
-                          </Text>
-                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                            {[
-                              { id: "cash", label: "Cash", icon: "cash-outline" },
-                              { id: "counterUpi", label: "Counter UPI", icon: "storefront-outline" },
-                              { id: "upi", label: "Online UPI (QR)", icon: "qr-code-outline" },
-                              { id: "card", label: "Card / POS", icon: "card-outline" },
-                            ].map((opt) => {
-                              const isOpted = optedSplitModes.includes(opt.id);
-                              return (
+                              <View style={styles.feeCardHeaderRow}>
                                 <TouchableOpacity
-                                  key={opt.id}
+                                  style={styles.feeCardCheckboxTouch}
                                   onPress={() => {
-                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                    if (isOpted) {
-                                      if (optedSplitModes.length === 1) {
-                                        Alert.alert("Split Modes", "At least one payment mode must be selected in Split.");
+                                    if (paymentType !== "consultation") handleToggleMedicine();
+                                  }}
+                                  disabled={paymentType === "consultation"}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons
+                                    name={includeMedicine && paymentType !== "consultation" ? "checkmark-circle" : "ellipse-outline"}
+                                    size={22}
+                                    color={includeMedicine && paymentType !== "consultation" ? "#0284c7" : "#cbd5e1"}
+                                  />
+                                  <View style={styles.feeCardTextCol}>
+                                    <Text style={[styles.feeCardTitle, paymentType === "consultation" && { color: "#94a3b8" }]}>Prescribed Medicines</Text>
+                                    <Text style={styles.feeCardSub}>
+                                      {paymentType === "consultation" ? "Disabled in Consultation Only mode" : "Prescribed Remedies / Pharmacy Fee"}
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+
+                                <View style={styles.amountInputBox}>
+                                  <Text style={styles.inputRupee}>₹</Text>
+                                  <TextInput
+                                    style={styles.amountInputText}
+                                    keyboardType="numeric"
+                                    editable={includeMedicine && paymentType === "split"}
+                                    value={String(medicineFee)}
+                                    onChangeText={(val) => {
+                                      const num = parseFloat(val) || 0;
+                                      const target = parseFloat(targetAmount) || 0;
+                                      if (paymentType === "split") {
+                                        const clampedMed = Math.max(0, Math.min(num, target));
+                                        setMedicineFee(clampedMed);
+                                        const remainingConsult = Math.max(0, target - clampedMed);
+                                        setConsultationFee(remainingConsult);
+                                        if (medicines.length <= 1) {
+                                          setMedicines([{ ...(medicines[0] || { id: `med-${Date.now()}`, name: "", type: "Pills", timing: "M - N - N" }), amount: clampedMed }]);
+                                        }
                                         return;
                                       }
-                                      setOptedSplitModes(optedSplitModes.filter((m) => m !== opt.id));
-                                      if (opt.id === "cash") setSplitCash(0);
-                                      if (opt.id === "counterUpi") setSplitCounterUpi(0);
-                                      if (opt.id === "upi") { setSplitUpi(0); setIsSplitUpiPaid(false); setSplitUpiRef(""); }
-                                      if (opt.id === "card") { setSplitCard(0); setIsSplitCardPaid(false); setSplitCardRef(""); }
-                                    } else {
-                                      const newOpted = [...optedSplitModes, opt.id];
-                                      setOptedSplitModes(newOpted);
-                                      const currentSum =
-                                        (newOpted.includes("cash") ? splitCash : 0) +
-                                        (newOpted.includes("counterUpi") ? splitCounterUpi : 0) +
-                                        (newOpted.includes("upi") ? splitUpi : 0) +
-                                        (newOpted.includes("card") ? splitCard : 0);
-                                      const rem = Math.max(0, targetToPay - currentSum);
-                                      if (rem > 0) {
-                                        if (opt.id === "cash") setSplitCash(rem);
-                                        else if (opt.id === "counterUpi") setSplitCounterUpi(rem);
-                                        else if (opt.id === "upi") setSplitUpi(rem);
-                                        else if (opt.id === "card") setSplitCard(rem);
+                                      const effectiveVal = target > 0 ? Math.min(num, target) : num;
+                                      setMedicineFee(effectiveVal);
+                                      if (medicines.length === 1) {
+                                        setMedicines([{ ...medicines[0], amount: effectiveVal }]);
                                       }
-                                    }
-                                  }}
-                                  style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: 5,
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 5,
-                                    borderRadius: 8,
-                                    backgroundColor: isOpted ? "#e0f2fe" : "#f8fafc",
-                                    borderWidth: 1,
-                                    borderColor: isOpted ? "#0284c7" : "#e2e8f0",
-                                  }}
-                                >
-                                  <Ionicons name={opt.icon as any} size={12} color={isOpted ? "#0284c7" : "#64748b"} />
-                                  <Text style={{ fontSize: 10, fontWeight: "800", color: isOpted ? "#0369a1" : "#64748b" }}>
-                                    {opt.label}
-                                  </Text>
-                                  {isOpted && <Text style={{ fontSize: 10, fontWeight: "900", color: "#0284c7" }}>✓</Text>}
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </View>
-
-                        {/* Step 2: Opted Inputs */}
-                        <View style={{ gap: 8 }}>
-                          {/* 1. Cash (if opted) */}
-                          {optedSplitModes.includes("cash") && (
-                            <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                  <Ionicons name="cash-outline" size={14} color="#16a34a" />
-                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Cash Amount (₹)</Text>
+                                    }}
+                                  />
                                 </View>
-                                {(() => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                  return targetToPay - currentTotal !== 0 && (
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const rem = targetToPay - splitUpi - splitCard - splitCounterUpi;
-                                        setSplitCash(Math.max(0, rem));
-                                      }}
-                                    >
-                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })()}
-                              </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
-                                <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
-                                <TextInput
-                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
-                                  keyboardType="numeric"
-                                  placeholder="0"
-                                  value={splitCash > 0 ? String(splitCash) : ""}
-                                  onChangeText={(txt) => {
-                                    const raw = parseFloat(txt) || 0;
-                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                    const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
-                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                    const maxAllowed = Math.max(0, targetToPay - other);
-                                    setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
-                                  }}
-                                />
-                              </View>
-                              <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Physical cash collected at counter desk</Text>
-                            </View>
-                          )}
-
-                          {/* 2. Counter UPI (if opted) */}
-                          {optedSplitModes.includes("counterUpi") && (
-                            <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                  <Ionicons name="storefront-outline" size={14} color="#4f46e5" />
-                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Counter UPI (Desk QR) (₹)</Text>
-                                </View>
-                                {(() => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                  return targetToPay - currentTotal !== 0 && (
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const rem = targetToPay - splitUpi - splitCard - splitCash;
-                                        setSplitCounterUpi(Math.max(0, rem));
-                                      }}
-                                    >
-                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })()}
-                              </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
-                                <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
-                                <TextInput
-                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
-                                  keyboardType="numeric"
-                                  placeholder="0"
-                                  value={splitCounterUpi > 0 ? String(splitCounterUpi) : ""}
-                                  onChangeText={(txt) => {
-                                    const raw = parseFloat(txt) || 0;
-                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
-                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                    const maxAllowed = Math.max(0, targetToPay - other);
-                                    setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
-                                  }}
-                                />
-                              </View>
-                              <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Patient scans printed counter QR directly (Same as Cash)</Text>
-                            </View>
-                          )}
-
-                          {/* 3. Online UPI / QR Code (if opted) */}
-                          {optedSplitModes.includes("upi") && (
-                            <View style={{ backgroundColor: isSplitUpiPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitUpiPaid ? "#86efac" : "#bae6fd", padding: 8 }}>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                  <Ionicons name="qr-code" size={14} color="#0284c7" />
-                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#0369a1" }}>Online UPI (Razorpay QR) (₹)</Text>
-                                </View>
-                                {!isSplitUpiPaid && (() => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                  return targetToPay - currentTotal !== 0 && (
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const rem = targetToPay - splitCash - splitCard - splitCounterUpi;
-                                        setSplitUpi(Math.max(0, rem));
-                                      }}
-                                    >
-                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })()}
                               </View>
 
-                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f0f9ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#bae6fd" }}>
-                                <Text style={{ fontWeight: "700", color: "#0284c7", marginRight: 4 }}>₹</Text>
-                                <TextInput
-                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0369a1" }}
-                                  keyboardType="numeric"
-                                  placeholder="0"
-                                  editable={!isSplitUpiPaid}
-                                  value={splitUpi > 0 ? String(splitUpi) : ""}
-                                  onChangeText={(txt) => {
-                                    const raw = parseFloat(txt) || 0;
-                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                                  (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                                  (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                    const maxAllowed = Math.max(0, targetToPay - other);
-                                    setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
-                                  }}
-                                />
-                              </View>
+                              {/* PRESCRIBED MEDICINES ITEMS */}
+                              {includeMedicine && (
+                                <View style={styles.medicinesExpansionSection}>
+                                  {showDetailedMedicines ? (
+                                    <>
+                                      <View style={styles.itemizedHeaderRow}>
+                                        <Text style={styles.itemizedHeaderTitle}>Prescribed Medicine Items ({medicines.length})</Text>
+                                        <TouchableOpacity style={styles.addMedicineBtn} onPress={handleAddMedicine} activeOpacity={0.7}>
+                                          <Text style={styles.addMedicineBtnText}>+ Add Medicine</Text>
+                                        </TouchableOpacity>
+                                      </View>
 
-                              {/* Status / Actions for Online UPI */}
-                              {isSplitUpiPaid ? (
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
-                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                    <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
-                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
-                                      ✓ ₹{splitUpi} UPI Paid {splitUpiRef ? `(${splitUpiRef.slice(-6)})` : ""}
-                                    </Text>
-                                  </View>
-                                  <TouchableOpacity
-                                    onPress={() => { setIsSplitUpiPaid(false); setSplitUpiRef(""); }}
-                                  >
-                                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ) : splitUpi > 0 ? (
-                                <View style={{ gap: 6, marginTop: 6 }}>
-                                  <TouchableOpacity
-                                    onPress={() => setShowSplitRazorpayQr(!showSplitRazorpayQr)}
-                                    style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                                  >
-                                    <Ionicons name="qr-code" size={14} color="#ffffff" />
-                                    <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
-                                      {showSplitRazorpayQr ? "Hide Razorpay QR" : `Show Razorpay QR for ₹${splitUpi.toLocaleString()}`}
-                                    </Text>
-                                  </TouchableOpacity>
+                                      <View style={{ gap: 8, marginTop: 8 }}>
+                                        {medicines.map((med, idx) => (
+                                          <View key={med.id} style={styles.medicineItemCard}>
+                                            <View style={styles.medRowTop}>
+                                              <View style={styles.medIndexBadge}>
+                                                <Text style={styles.medIndexBadgeText}>#{idx + 1}</Text>
+                                              </View>
+                                              <TextInput
+                                                style={styles.medNameInput}
+                                                placeholder="Enter Medicine Name (e.g. Arnica 30C)"
+                                                placeholderTextColor="#94a3b8"
+                                                value={med.name}
+                                                onChangeText={(txt) => handleUpdateMedicine(med.id, { name: txt })}
+                                              />
+                                              {medicines.length > 1 && (
+                                                <TouchableOpacity
+                                                  onPress={() => handleRemoveMedicine(med.id)}
+                                                  style={{ padding: 4 }}
+                                                >
+                                                  <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                                </TouchableOpacity>
+                                              )}
+                                            </View>
 
-                                  <View style={{ flexDirection: "row", gap: 6 }}>
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        setIsSplitUpiPaid(true);
-                                        setSplitUpiRef(`MANUAL-${Date.now().toString().slice(-4)}`);
-                                        Alert.alert("Marked Paid", `Online UPI of ₹${splitUpi} marked as paid.`);
-                                      }}
-                                      style={{ flex: 1, backgroundColor: "#f1f5f9", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
-                                    >
-                                      <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155" }}>Mark Paid ✓</Text>
-                                    </TouchableOpacity>
+                                            <View style={styles.medRowBottom}>
+                                              {/* Type Selector Pop-up Pill */}
+                                              <TouchableOpacity
+                                                style={styles.dropdownMiniBtn}
+                                                onPress={() => setActiveTypeMedId(med.id)}
+                                                activeOpacity={0.7}
+                                              >
+                                                <Text style={styles.dropdownMiniText} numberOfLines={1}>{med.type || "Type"}</Text>
+                                                <Ionicons name="chevron-down" size={12} color="#64748b" />
+                                              </TouchableOpacity>
 
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
-                                        const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`;
-                                        const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},
-Please pay ₹${splitUpi} (Split UPI portion) using this link:
-${upiUri}`);
-                                        Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`);
-                                      }}
-                                      style={{ backgroundColor: "#16a34a", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 5 }}
-                                    >
-                                      <Ionicons name="logo-whatsapp" size={13} color="#ffffff" />
-                                      <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>WA Link</Text>
-                                    </TouchableOpacity>
-                                  </View>
+                                              {/* Timing Selector Pop-up Pill */}
+                                              <TouchableOpacity
+                                                style={styles.dropdownMiniBtn}
+                                                onPress={() => setActiveTimingMedId(med.id)}
+                                                activeOpacity={0.7}
+                                              >
+                                                <Text style={styles.dropdownMiniText} numberOfLines={1}>{med.timing || "Timing"}</Text>
+                                                <Ionicons name="chevron-down" size={12} color="#64748b" />
+                                              </TouchableOpacity>
 
-                                  {showSplitRazorpayQr && (
-                                    <View style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12, padding: 10, alignItems: "center", marginTop: 4 }}>
-                                      <Image
-                                        source={{
-                                          uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=6&data=${encodeURIComponent(
-                                            `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`
-                                          )}`,
-                                        }}
-                                        style={{ width: 170, height: 170, borderRadius: 6, marginBottom: 8 }}
-                                        resizeMode="contain"
-                                      />
-                                      <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1", marginBottom: 6 }}>
-                                        Auto-Detecting ₹{splitUpi.toLocaleString()} via Razorpay...
-                                      </Text>
+                                              {/* Amount */}
+                                              <View style={styles.medAmountBox}>
+                                                <Text style={styles.inputRupee}>₹</Text>
+                                                <TextInput
+                                                  style={styles.medAmountText}
+                                                  keyboardType="numeric"
+                                                  placeholder="0"
+                                                  placeholderTextColor="#94a3b8"
+                                                  value={med.amount !== undefined && med.amount !== 0 ? String(med.amount) : ""}
+                                                  onChangeText={(txt) => {
+                                                    const num = parseFloat(txt) || 0;
+                                                    const target = parseFloat(targetAmount) || 0;
+                                                    const maxAllowed = target > 0
+                                                      ? (paymentType === "split" && includeConsult ? Math.max(0, target - consultationFee) : target)
+                                                      : num;
+                                                    const otherSum = medicines.filter((m) => m.id !== med.id).reduce((acc, m) => acc + (m.amount || 0), 0);
+                                                    const effectiveVal = target > 0 ? Math.min(num, Math.max(0, maxAllowed - otherSum)) : num;
+                                                    handleUpdateMedicine(med.id, { amount: effectiveVal });
+                                                    const nextMeds = medicines.map((m) => (m.id === med.id ? { ...m, amount: effectiveVal } : m));
+                                                    const nextSum = nextMeds.reduce((acc, m) => acc + (m.amount || 0), 0);
+                                                    if (nextSum > 0) setMedicineFee(nextSum);
+                                                  }}
+                                                />
+                                              </View>
+                                            </View>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    </>
+                                  ) : (
+                                    <View style={{ alignItems: "flex-end", marginTop: 4 }}>
                                       <TouchableOpacity
-                                        onPress={() => handleCheckUpiStatus(true)}
-                                        style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+                                        style={styles.addMedicineBtn}
+                                        onPress={() => {
+                                          setShowDetailedMedicines(true);
+                                          if (medicines.length === 0 || (medicines.length === 1 && !medicines[0].name)) {
+                                            setMedicines([
+                                              {
+                                                id: `med-${Date.now()}`,
+                                                name: "",
+                                                type: "Pills",
+                                                timing: "M - N - N",
+                                                amount: medicineFee,
+                                              },
+                                            ]);
+                                          }
+                                        }}
+                                        activeOpacity={0.7}
                                       >
-                                        <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 10.5 }}>Check Status Now ⚡</Text>
+                                        <Text style={styles.addMedicineBtnText}>+ Add Medicine Details</Text>
                                       </TouchableOpacity>
                                     </View>
                                   )}
                                 </View>
-                              ) : null}
-                            </View>
-                          )}
-
-                          {/* 4. Card / POS (if opted) */}
-                          {optedSplitModes.includes("card") && (
-                            <View style={{ backgroundColor: isSplitCardPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitCardPaid ? "#86efac" : "#f0abfc", padding: 8 }}>
-                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                  <Ionicons name="card-outline" size={14} color="#c026d3" />
-                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#a21caf" }}>Card / POS (Razorpay) (₹)</Text>
-                                </View>
-                                {!isSplitCardPaid && (() => {
-                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                  const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                  return targetToPay - currentTotal !== 0 && (
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const rem = targetToPay - splitCash - splitUpi - splitCounterUpi;
-                                        setSplitCard(Math.max(0, rem));
-                                      }}
-                                    >
-                                      <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#c026d3" }}>Fill Remaining</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })()}
-                              </View>
-                              <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#fdf4ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#f0abfc" }}>
-                                <Text style={{ fontWeight: "700", color: "#a21caf", marginRight: 4 }}>₹</Text>
-                                <TextInput
-                                  style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#701a75" }}
-                                  keyboardType="numeric"
-                                  placeholder="0"
-                                  editable={!isSplitCardPaid}
-                                  value={splitCard > 0 ? String(splitCard) : ""}
-                                  onChangeText={(txt) => {
-                                    const raw = parseFloat(txt) || 0;
-                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                                    const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                                  (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                                  (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
-                                    const maxAllowed = Math.max(0, targetToPay - other);
-                                    setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
-                                  }}
-                                />
-                              </View>
-
-                              {/* Status / Actions for Card */}
-                              {isSplitCardPaid ? (
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
-                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                    <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
-                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
-                                      ✓ ₹{splitCard} Card Paid / Swiped {splitCardRef ? `(${splitCardRef.slice(-6)})` : ""}
-                                    </Text>
-                                  </View>
-                                  <TouchableOpacity
-                                    onPress={() => { setIsSplitCardPaid(false); setSplitCardRef(""); }}
-                                  >
-                                    <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ) : splitCard > 0 ? (
-                                <View style={{ gap: 6, marginTop: 6 }}>
-                                  <TouchableOpacity
-                                    onPress={async () => {
-                                      try {
-                                        const res = await apiFetch<any>("/reception/razorpay/create-order", {
-                                          method: "POST",
-                                          body: JSON.stringify({
-                                            appointmentId: appointment?.id,
-                                            amount: splitCard,
-                                            patientName: appointment?.patientName,
-                                            phone: appointment?.phoneNumber || appointment?.phone,
-                                            description: `Split Card Payment (₹${splitCard}) for ${appointment?.patientName || "Patient"}`
-                                          })
-                                        });
-                                        if (res?.paymentLinkUrl) {
-                                          Linking.openURL(res?.paymentLinkUrl);
-                                        } else {
-                                          Alert.alert("Razorpay Card Gateway", `Card charge order of ₹${splitCard} created. Enter card details or swipe on POS terminal.`);
-                                        }
-                                      } catch (e: any) {
-                                        Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above.");
-                                      }
-                                    }}
-                                    style={{ backgroundColor: "#c026d3", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                                  >
-                                    <Ionicons name="card" size={14} color="#ffffff" />
-                                    <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
-                                      Pay ₹{splitCard.toLocaleString()} via Razorpay Card Gateway
-                                    </Text>
-                                  </TouchableOpacity>
-
-                                  <TouchableOpacity
-                                    onPress={() => {
-                                      setIsSplitCardPaid(true);
-                                      setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
-                                      Alert.alert("Card Confirmed", `Split Card payment of ₹${splitCard} marked as paid.`);
-                                    }}
-                                    style={{ backgroundColor: "#fdf4ff", borderWidth: 1, borderColor: "#f0abfc", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
-                                  >
-                                    <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#a21caf" }}>Swipe on POS / Mark Card Paid ✓</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ) : null}
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Status Bar & Completion Button */}
-                        {(() => {
-                          const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
-                          const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
-                          const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
-                          const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
-                          const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
-                          const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
-                          const isMatch = allocated === targetToPay;
-                          const diff = targetToPay - allocated;
-
-                          const isUpiSatisfied = !optedSplitModes.includes("upi") || activeUpi === 0 || isSplitUpiPaid;
-                          const isCardSatisfied = !optedSplitModes.includes("card") || activeCard === 0 || isSplitCardPaid;
-                          const canComplete = isMatch && isUpiSatisfied && isCardSatisfied;
-
-                          const parts: string[] = [];
-                          if (activeCash > 0) parts.push(`Cash ₹${activeCash}`);
-                          if (activeCounterUpi > 0) parts.push(`Counter UPI ₹${activeCounterUpi}`);
-                          if (activeUpi > 0) parts.push(`Online UPI ₹${activeUpi}${isSplitUpiPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
-                          if (activeCard > 0) parts.push(`Card ₹${activeCard}${isSplitCardPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
-
-                          return (
-                            <View style={{ marginTop: 10 }}>
-                              <View
-                                style={{
-                                  padding: 8,
-                                  borderRadius: 8,
-                                  backgroundColor: isMatch ? "#ecfdf5" : diff > 0 ? "#fffbeb" : "#fff1f2",
-                                  borderWidth: 1,
-                                  borderColor: isMatch ? "#a7f3d0" : diff > 0 ? "#fde68a" : "#fecdd3",
-                                  flexDirection: "row",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  marginBottom: isMatch ? 8 : 0,
-                                }}
-                              >
-                                <Text
-                                  style={{
-                                    fontSize: 10.5,
-                                    fontWeight: "700",
-                                    color: isMatch ? "#065f46" : diff > 0 ? "#92400e" : "#9f1239",
-                                    flex: 1,
-                                  }}
-                                >
-                                  {isMatch
-                                    ? `✓ Split Matched: ${parts.join(" + ")}`
-                                    : diff > 0
-                                      ? `⚠️ ₹${diff} remaining to allocate (Allocated: ₹${allocated} / ₹${targetToPay})`
-                                      : `⚠️ Exceeds total by ₹${Math.abs(diff)}`}
-                                </Text>
-                                {!isMatch && (
-                                  <TouchableOpacity
-                                    onPress={() => {
-                                      const firstMode = optedSplitModes[0] || "cash";
-                                      if (firstMode === "cash") {
-                                        const rem = targetToPay - activeCounterUpi - activeUpi - activeCard;
-                                        setSplitCash(Math.max(0, rem));
-                                      } else if (firstMode === "counterUpi") {
-                                        const rem = targetToPay - activeCash - activeUpi - activeCard;
-                                        setSplitCounterUpi(Math.max(0, rem));
-                                      } else if (firstMode === "upi") {
-                                        const rem = targetToPay - activeCash - activeCounterUpi - activeCard;
-                                        setSplitUpi(Math.max(0, rem));
-                                      } else if (firstMode === "card") {
-                                        const rem = targetToPay - activeCash - activeCounterUpi - activeUpi;
-                                        setSplitCard(Math.max(0, rem));
-                                      }
-                                    }}
-                                    style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}
-                                  >
-                                    <Text style={{ fontSize: 9, fontWeight: "800", color: "#78350f" }}>Auto-Balance</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-
-                              {/* Direct Complete Split Consultation Button */}
-                              {isMatch && (
-                                <TouchableOpacity
-                                  onPress={handleConfirmPayment}
-                                  disabled={isSubmitting || !canComplete}
-                                  style={{
-                                    backgroundColor: canComplete ? "#16a34a" : "#f59e0b",
-                                    borderRadius: 10,
-                                    paddingVertical: 10,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexDirection: "row",
-                                    gap: 6,
-                                    opacity: canComplete ? 1 : 0.8,
-                                  }}
-                                >
-                                  {isSubmitting ? (
-                                    <ActivityIndicator size="small" color="#ffffff" />
-                                  ) : (
-                                    <Ionicons name={canComplete ? "checkmark-circle" : "time-outline"} size={16} color="#ffffff" />
-                                  )}
-                                  <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 12 }}>
-                                    {isSubmitting
-                                      ? "Completing..."
-                                      : !isUpiSatisfied
-                                      ? `Awaiting Online UPI (Pay ₹${activeUpi} via QR)`
-                                      : !isCardSatisfied
-                                      ? `Awaiting Card (Pay ₹${activeCard} or Swipe POS)`
-                                      : "Complete Consultation & Record Split ✓"}
-                                  </Text>
-                                </TouchableOpacity>
                               )}
                             </View>
-                          );
-                        })()}
+                          )}
+
+                          {/* 5. DIET PLAN FEE CARD */}
+                          <View
+                            style={[
+                              styles.feeCard,
+                              (!canChargeDiet || isPackageMode) && { opacity: 0.5, backgroundColor: "#f8fafc" },
+                              includeDiet && canChargeDiet && !isPackageMode && styles.feeCardActive,
+                            ]}
+                          >
+                            <View style={styles.feeCardHeaderRow}>
+                              <TouchableOpacity
+                                style={styles.feeCardCheckboxTouch}
+                                disabled={!canChargeDiet || isPackageMode}
+                                onPress={() => {
+                                  if (!canChargeDiet || isPackageMode) return;
+                                  const next = !includeDiet;
+                                  setIncludeDiet(next);
+                                  if (next) {
+                                    setDietFee(rawDietFee);
+                                  }
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons
+                                  name={includeDiet && canChargeDiet && !isPackageMode ? "checkmark-circle" : "ellipse-outline"}
+                                  size={22}
+                                  color={includeDiet && canChargeDiet && !isPackageMode ? "#0284c7" : "#cbd5e1"}
+                                />
+                                <View style={styles.feeCardTextCol}>
+                                  <Text style={styles.feeCardTitle}>Diet Plan Fee</Text>
+                                  <Text style={styles.feeCardSub}>
+                                    {canChargeDiet
+                                      ? "Prescribed in Patient File"
+                                      : "Disabled (Must prescribe in Patient File)"}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              <View style={styles.amountInputBox}>
+                                <Text style={styles.inputRupee}>₹</Text>
+                                <TextInput
+                                  style={[
+                                    styles.amountInputText,
+                                    (!canChargeDiet || !includeDiet || isPackageMode) && {
+                                      backgroundColor: "#f1f5f9",
+                                      color: "#94a3b8",
+                                    },
+                                  ]}
+                                  keyboardType="numeric"
+                                  editable={false}
+                                  value={canChargeDiet && includeDiet && !isPackageMode ? String(dietFee) : "0"}
+                                />
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* 6. MEDICINE DISCOUNT STATUS (Matching Screenshot 1 & 2) */}
+                          <View style={styles.discountCard}>
+                            <View style={styles.discountHeaderRow}>
+                              <View>
+                                <Text style={styles.discountTitle}>Medicine Discount Status</Text>
+                                <Text style={styles.discountSub}>
+                                  {discountStatus === "NONE" && "HR Approval Required • Locked until approved"}
+                                  {discountStatus === "PENDING" && "⏳ Pending HR/Admin Approval"}
+                                  {discountStatus === "APPROVED" && `✓ Approved by HR: -₹${discountApprovedAmount}`}
+                                  {discountStatus === "REJECTED" && "✕ Discount Request Rejected by HR"}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {discountStatus === "NONE" ? (
+                              <TouchableOpacity
+                                style={styles.requestDiscountBtn}
+                                onPress={() => setIsDiscountModalOpen(true)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.requestDiscountBtnText}>Request Discount</Text>
+                              </TouchableOpacity>
+                            ) : discountStatus === "APPROVED" ? (
+                              <View style={styles.discountAppliedTag}>
+                                <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
+                                <Text style={styles.discountAppliedTagText}>₹{discountApprovedAmount} Discount Applied to Bill</Text>
+                              </View>
+                            ) : discountStatus === "PENDING" ? (
+                              <View style={styles.discountPendingTag}>
+                                <Ionicons name="time" size={14} color="#b45309" />
+                                <Text style={styles.discountPendingTagText}>Locked until HR/Admin responds</Text>
+                              </View>
+                            ) : (
+                              <TouchableOpacity
+                                style={styles.requestDiscountBtn}
+                                onPress={() => setIsDiscountModalOpen(true)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.requestDiscountBtnText}>Request Again</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </>
+                      )}
+
+                      {/* 7. MANDATORY PRESCRIPTION CHECK & UPLOAD BANNER */}
+                      {!hasPrescription ? (
+                        <View style={styles.rxWarningBanner}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              onClose();
+                              if (onOpenPatientFile) onOpenPatientFile();
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Ionicons name="warning" size={16} color="#ffffff" />
+                              <Text style={styles.rxWarningTitle}>UPLOAD PRESCRIPTION REQUIRED</Text>
+                            </View>
+                            <Text style={styles.rxWarningSub}>Tap here to open Patient File & upload →</Text>
+                          </TouchableOpacity>
+
+                          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, alignSelf: "flex-end" }}>
+                            <TouchableOpacity
+                              style={styles.rxQuickUploadBtn}
+                              onPress={() => handlePickImage(true)}
+                              disabled={isUploadingRx}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="camera" size={13} color="#78350f" />
+                              <Text style={styles.rxQuickUploadBtnText}>
+                                {isUploadingRx ? "Uploading..." : "Camera"}
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.rxQuickUploadBtn}
+                              onPress={() => handlePickImage(false)}
+                              disabled={isUploadingRx}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="image" size={13} color="#78350f" />
+                              <Text style={styles.rxQuickUploadBtnText}>Gallery</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.rxAttachedCard}>
+                          <View style={styles.rxAttachedHeader}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                              <Text style={styles.rxSuccessText}>
+                                Prescription Attached ({rxImages.length} image{rxImages.length > 1 ? "s" : ""})
+                              </Text>
+                            </View>
+
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <TouchableOpacity
+                                style={styles.rxSmallActionBtn}
+                                onPress={() => handlePickImage(true)}
+                                disabled={isUploadingRx}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="camera" size={12} color="#065f46" />
+                                <Text style={styles.rxSmallActionBtnText}>
+                                  {isUploadingRx ? "..." : "+ Camera"}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={styles.rxSmallActionBtn}
+                                onPress={() => handlePickImage(false)}
+                                disabled={isUploadingRx}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons name="image" size={12} color="#065f46" />
+                                <Text style={styles.rxSmallActionBtnText}>
+                                  {isUploadingRx ? "..." : "+ Gallery"}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+
+                          {/* Attached Image Thumbnails with View & Delete Options */}
+                          {rxImages.length > 0 && (
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.rxThumbList}
+                            >
+                              {rxImages.map((imgUri: string, idx: number) => (
+                                <View key={`rx-thumb-${idx}`} style={styles.rxThumbCard}>
+                                  <TouchableOpacity
+                                    activeOpacity={0.85}
+                                    onPress={() => {
+                                      setViewerInitialIndex(idx);
+                                      setIsViewerOpen(true);
+                                    }}
+                                    style={styles.rxThumbTouch}
+                                  >
+                                    <ExpoImage
+                                      source={resolvePrescriptionImageUrl(imgUri)}
+                                      style={styles.rxThumbImage}
+                                      contentFit="cover"
+                                    />
+                                    <View style={styles.rxThumbOverlay}>
+                                      <Ionicons name="eye" size={10} color="#ffffff" />
+                                      <Text style={styles.rxThumbOverlayText}>View</Text>
+                                    </View>
+                                  </TouchableOpacity>
+
+                                  {/* Delete button */}
+                                  <TouchableOpacity
+                                    style={styles.rxThumbDeleteBtn}
+                                    onPress={() => handleDeleteRxImage(idx)}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Ionicons name="trash" size={11} color="#ef4444" />
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </ScrollView>
+                          )}
+                        </View>
+                      )}
+
+                      {/* PAY LATER COMPACT BUTTON & SUMMARY */}
+                      <View style={[styles.payLaterCompactCard, isPayLater && styles.payLaterCompactCardActive]}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                          <View style={[styles.payLaterIconBadge, isPayLater && { backgroundColor: "#ea580c" }]}>
+                            <Ionicons name="time" size={16} color="#ffffff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={styles.payLaterCompactTitle}>Pay Later / Partial Payment</Text>
+                              {isPayLater && (
+                                <View style={styles.payLaterActivePill}>
+                                  <Text style={styles.payLaterActivePillText}>Due: ₹{calculatedPayLater.toLocaleString()}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.payLaterCompactSub}>
+                              {isPayLater
+                                ? `Paying ₹${effectivePaidToday.toLocaleString()} today • Balance ₹${calculatedPayLater.toLocaleString()}`
+                                : "Allow patient to pay partially today and carry balance"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.payLaterSmallBtn, isPayLater && styles.payLaterSmallBtnActive]}
+                          onPress={() => {
+                            if (!isPayLater && !amountPaidNow) {
+                              setAmountPaidNow(String(Math.round(totalAmountDue / 2)));
+                            }
+                            setIsPayLaterModalOpen(true);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name={isPayLater ? "create-outline" : "add-circle-outline"} size={14} color="#ffffff" />
+                          <Text style={styles.payLaterSmallBtnText}>{isPayLater ? "Edit" : "+ Pay Later"}</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
-                  </View>
 
-                  {/* 9. SUMMARY TOTAL CARD (Matching Screenshot 1) */}
-                  <View style={styles.summaryCard}>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Target Amount (Consult + Med):</Text>
-                      <Text style={styles.summaryTarget}>₹ {parseFloat(targetAmount) || 0}</Text>
-                    </View>
+                      {/* 8. SELECT PAYMENT METHOD (Matching Screenshot 1) */}
+                      <View style={styles.methodsSection}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={styles.methodsTitle}>Select Payment Method</Text>
+                          <Text style={styles.mandatoryStar}>* (Mandatory)</Text>
+                        </View>
+                        <Text style={styles.methodsHelper}>⚠️ Please tap an option below to select how the patient is paying:</Text>
 
-                    {discountStatus === "APPROVED" && discountApprovedAmount > 0 && (
-                      <View style={styles.summaryRow}>
-                        <Text style={[styles.summaryLabel, { color: "#16a34a" }]}>HR Approved Discount:</Text>
-                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#16a34a" }}>
-                          - ₹ {discountApprovedAmount}
-                        </Text>
+                        <View style={styles.methodsGrid}>
+                          {(
+                            [
+                              "Counter UPI",
+                              "UPI / QR Code",
+                              "Cash",
+                              "Card",
+                              "Split",
+                              "Send Pay to app",
+                            ] as PaymentMethod[]
+                          ).map((method) => {
+                            const isMethodSelected = selectedMethod === method;
+                            return (
+                              <TouchableOpacity
+                                key={method}
+                                style={[styles.methodBtn, isMethodSelected && styles.methodBtnSelected]}
+                                onPress={() => {
+                                  setSelectedMethod(method);
+                                  const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                  if (method === "Split" && splitUpi === 0 && splitCash === 0 && splitCard === 0) {
+                                    const half = Math.round(targetToPay / 2);
+                                    setSplitUpi(half);
+                                    setSplitCash(targetToPay - half);
+                                    setSplitCard(0);
+                                  }
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.methodBtnText, isMethodSelected && styles.methodBtnTextSelected]}>
+                                  {method}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        {/* RAZORPAY UPI QR CODE CARD (MOBILE APP) - ONLY FOR UPI / QR CODE */}
+                        {selectedMethod === "UPI / QR Code" && (
+                          <View style={{ marginTop: 14, backgroundColor: "#f0f9ff", borderWidth: 2, borderColor: "#38bdf8", borderRadius: 20, padding: 14, alignItems: "center" }}>
+                            {/* Header */}
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 10 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                                  <Ionicons name="qr-code" size={18} color="#ffffff" />
+                                </View>
+                                <View>
+                                  <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay UPI QR Code</Text>
+                                  <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Spiritual Homeopathy • Auto-Detect</Text>
+                                </View>
+                              </View>
+                              <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1" }}>LIVE QR</Text>
+                              </View>
+                            </View>
+
+                            {/* Amount Due Pill */}
+                            <View style={{ backgroundColor: "#dcfce7", borderWidth: 1, borderColor: "#86efac", borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, marginBottom: 12, alignItems: "center", width: "100%" }}>
+                              <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                                {isPayLater ? "Amount to Pay Today (Partial)" : "Amount Due to Pay"}
+                              </Text>
+                              <Text style={{ fontSize: 24, fontWeight: "900", color: "#14532d" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
+                              <Text style={{ fontSize: 9.5, fontWeight: "600", color: "#15803d" }}>VPA: sseomni9k9v0j291124pos@mairtel</Text>
+                            </View>
+
+                            {/* Dynamic QR Code Image */}
+                            <View style={{ backgroundColor: "#ffffff", padding: 12, borderRadius: 18, borderWidth: 1.5, borderColor: "#cbd5e1", shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 6, elevation: 2, marginBottom: 12 }}>
+                              <Image
+                                source={{
+                                  uri: `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(
+                                    `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${(isPayLater ? effectivePaidToday : totalAmountDue).toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
+                                  )}`,
+                                }}
+                                style={{ width: 220, height: 220, borderRadius: 8 }}
+                                resizeMode="contain"
+                              />
+                            </View>
+
+                            {/* Status indicator */}
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, backgroundColor: "#e0f2fe", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 }}>
+                              <ActivityIndicator size="small" color="#0284c7" />
+                              <Text style={{ fontSize: 11, fontWeight: "700", color: "#0369a1" }}>
+                                Waiting for patient scan • Auto-detecting...
+                              </Text>
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={{ width: "100%", gap: 8 }}>
+                              <View style={{ flexDirection: "row", gap: 8, width: "100%" }}>
+                                <TouchableOpacity
+                                  onPress={() => handleCheckUpiStatus(true)}
+                                  disabled={isVerifyingUpi}
+                                  style={{ flex: 1, backgroundColor: "#0f172a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                >
+                                  {isVerifyingUpi ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                  ) : (
+                                    <Ionicons name="refresh" size={15} color="#ffffff" />
+                                  )}
+                                  <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>
+                                    {isVerifyingUpi ? "Checking..." : "Verify Status"}
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                                    const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${(isPayLater ? effectivePaidToday : totalAmountDue).toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                                    const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${isPayLater ? effectivePaidToday : totalAmountDue} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
+                                    Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`).catch(() => {
+                                      Alert.alert("Unable to open WhatsApp", "Please make sure WhatsApp is installed.");
+                                    });
+                                  }}
+                                  style={{ flex: 1, backgroundColor: "#16a34a", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={15} color="#ffffff" />
+                                  <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>WhatsApp Link</Text>
+                                </TouchableOpacity>
+                              </View>
+
+                              {/* Direct Confirmation Button */}
+                              <TouchableOpacity
+                                onPress={handleManualConfirmUpi}
+                                disabled={isVerifyingUpi}
+                                style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                              >
+                                <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                                <Text style={{ color: "#166534", fontWeight: "900", fontSize: 12 }}>Patient Paid / Confirm Receipt</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+
+                        {/* COUNTER UPI (CLINIC DESK QR - SAME AS CASH) */}
+                        {selectedMethod === "Counter UPI" && (
+                          <View style={{ marginTop: 14, backgroundColor: "#f8fafc", borderWidth: 1.5, borderColor: "#cbd5e1", borderRadius: 18, padding: 14 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center" }}>
+                                <Ionicons name="storefront-outline" size={20} color="#ffffff" />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>Counter UPI (Clinic Desk QR)</Text>
+                                <Text style={{ fontSize: 11, color: "#64748b" }}>Handled same as Cash • Direct counter collection</Text>
+                              </View>
+                              <View style={{ backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338ca" }}>MANUAL DESK</Text>
+                              </View>
+                            </View>
+                            <View style={{ backgroundColor: "#eef2ff", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#c7d2fe" }}>
+                              <Text style={{ fontSize: 11.5, color: "#3730a3", fontWeight: "600", lineHeight: 18 }}>
+                                • Patient scans the clinic counter printed QR code directly.
+                                {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#1e1b4b" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
+                                {"\n"}• Tap "Complete Consultation & Collect Payment" below to record this payment.
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+
+                        {/* CARD PAYMENT DETAILS (RAZORPAY CARD / POS) */}
+                        {selectedMethod === "Card" && (
+                          <View style={{ marginTop: 14, backgroundColor: "#fdf4ff", borderWidth: 1.5, borderColor: "#f0abfc", borderRadius: 18, padding: 14 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#c026d3", alignItems: "center", justifyContent: "center" }}>
+                                  <Ionicons name="card-outline" size={18} color="#ffffff" />
+                                </View>
+                                <View>
+                                  <Text style={{ fontSize: 13, fontWeight: "900", color: "#0f172a" }}>Razorpay Card / POS Payment</Text>
+                                  <Text style={{ fontSize: 10, fontWeight: "600", color: "#64748b" }}>Enter card details or swipe on POS terminal</Text>
+                                </View>
+                              </View>
+                              <View style={{ backgroundColor: "#fae8ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#a21caf" }}>CARD</Text>
+                              </View>
+                            </View>
+
+                            {/* Card Inputs */}
+                            <View style={{ gap: 8, marginBottom: 12 }}>
+                              <View>
+                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Card Number</Text>
+                                <TextInput
+                                  value={cardNumber}
+                                  onChangeText={(val) => {
+                                    const clean = val.replace(/\D/g, "").slice(0, 16);
+                                    const formatted = clean.match(/.{1,4}/g)?.join(" ") || clean;
+                                    setCardNumber(formatted);
+                                  }}
+                                  placeholder="4532 •••• •••• ••••"
+                                  placeholderTextColor="#94a3b8"
+                                  keyboardType="numeric"
+                                  style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                                />
+                              </View>
+                              <View style={{ flexDirection: "row", gap: 8 }}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>Expiry (MM/YY)</Text>
+                                  <TextInput
+                                    value={cardExpiry}
+                                    onChangeText={(val) => {
+                                      const clean = val.replace(/\D/g, "").slice(0, 4);
+                                      const formatted = clean.length > 2 ? `${clean.slice(0, 2)}/${clean.slice(2)}` : clean;
+                                      setCardExpiry(formatted);
+                                    }}
+                                    placeholder="MM/YY"
+                                    placeholderTextColor="#94a3b8"
+                                    keyboardType="numeric"
+                                    style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                                  />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569", marginBottom: 3 }}>CVV</Text>
+                                  <TextInput
+                                    value={cardCvv}
+                                    onChangeText={(val) => setCardCvv(val.replace(/\D/g, "").slice(0, 4))}
+                                    placeholder="CVV"
+                                    placeholderTextColor="#94a3b8"
+                                    keyboardType="numeric"
+                                    secureTextEntry
+                                    style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontWeight: "700", color: "#0f172a" }}
+                                  />
+                                </View>
+                              </View>
+                            </View>
+
+                            {/* Card Action Buttons */}
+                            <View style={{ width: "100%", gap: 8, marginTop: 4 }}>
+                              {/* Open Razorpay Card Gateway Button */}
+                              <TouchableOpacity
+                                onPress={async () => {
+                                  try {
+                                    const amountToCharge = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const res = await apiFetch<any>("/reception/razorpay/create-order", {
+                                      method: "POST",
+                                      body: JSON.stringify({
+                                        appointmentId: appointment?.id,
+                                        amount: amountToCharge,
+                                        patientName: appointment?.patientName,
+                                        phone: appointment?.phoneNumber || appointment?.phone,
+                                        description: `Card Payment for ${appointment?.patientName || "Patient"}`
+                                      })
+                                    });
+                                    if (res?.paymentLinkUrl) {
+                                      Linking.openURL(res.paymentLinkUrl);
+                                    } else {
+                                      Alert.alert("Razorpay Card Gateway", `Card charge order created for ₹${amountToCharge}. Enter card details above or swipe on clinic POS machine and tap Complete Payment.`);
+                                    }
+                                  } catch (e: any) {
+                                    Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above and tap Complete Consultation.");
+                                  }
+                                }}
+                                style={{ backgroundColor: "#c026d3", borderRadius: 12, paddingVertical: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+                              >
+                                <Ionicons name="card" size={15} color="#ffffff" />
+                                <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 12 }}>Open Razorpay Card Gateway</Text>
+                              </TouchableOpacity>
+
+                              {/* Instant Card Payment Confirmation Button */}
+                              <TouchableOpacity
+                                onPress={handleManualConfirmCard}
+                                disabled={isSubmitting}
+                                style={{ backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#86efac", borderRadius: 12, paddingVertical: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                              >
+                                {isSubmitting ? (
+                                  <ActivityIndicator size="small" color="#16a34a" />
+                                ) : (
+                                  <Ionicons name="checkmark-circle" size={17} color="#16a34a" />
+                                )}
+                                <Text style={{ color: "#166534", fontWeight: "900", fontSize: 13 }}>
+                                  {isSubmitting ? "Completing Consultation..." : "Card Paid / Complete Appointment"}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            <Text style={{ fontSize: 10, color: "#86198f", textAlign: "center", fontWeight: "600", marginTop: 6 }}>
+                              Enter card details above or pay via Gateway/POS terminal, then tap Complete Appointment.
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* SPLIT PAYMENT BREAKDOWN (MOBILE APP) */}
+                        {selectedMethod === "Split" && (
+                          <View style={{ marginTop: 12, backgroundColor: "#f0f9ff", borderWidth: 1.5, borderColor: "#38bdf8", borderRadius: 16, padding: 12 }}>
+                            {/* Header & Presets */}
+                            <View style={{ marginBottom: 10 }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <View style={{ width: 22, height: 22, borderRadius: 6, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
+                                    <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 11 }}>⚡</Text>
+                                  </View>
+                                  <View>
+                                    <Text style={{ fontSize: 12, fontWeight: "800", color: "#0f172a" }}>Split Payment Allocation</Text>
+                                    <Text style={{ fontSize: 10, color: "#64748b" }}>
+                                      {isPayLater ? `Paid Today: ₹${effectivePaidToday.toLocaleString()}` : `Total Due: ₹${totalAmountDue.toLocaleString()}`}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+
+                              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setOptedSplitModes(["cash", "upi"]);
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const half = Math.round(targetToPay / 2);
+                                    setSplitUpi(half);
+                                    setSplitCash(targetToPay - half);
+                                    setSplitCounterUpi(0);
+                                    setSplitCard(0);
+                                    setIsSplitUpiPaid(false);
+                                    setIsSplitCardPaid(false);
+                                  }}
+                                  style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                                >
+                                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + UPI</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setOptedSplitModes(["cash", "card"]);
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const half = Math.round(targetToPay / 2);
+                                    setSplitCard(half);
+                                    setSplitCash(targetToPay - half);
+                                    setSplitUpi(0);
+                                    setSplitCounterUpi(0);
+                                    setIsSplitUpiPaid(false);
+                                    setIsSplitCardPaid(false);
+                                  }}
+                                  style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                                >
+                                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Card</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setOptedSplitModes(["cash", "counterUpi"]);
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const half = Math.round(targetToPay / 2);
+                                    setSplitCounterUpi(half);
+                                    setSplitCash(targetToPay - half);
+                                    setSplitUpi(0);
+                                    setSplitCard(0);
+                                    setIsSplitUpiPaid(false);
+                                    setIsSplitCardPaid(false);
+                                  }}
+                                  style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                                >
+                                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>Cash + Counter UPI</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    setOptedSplitModes(["cash", "counterUpi", "upi", "card"]);
+                                    const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                    const quarter = Math.round(targetToPay / 4);
+                                    setSplitCash(quarter);
+                                    setSplitCounterUpi(quarter);
+                                    setSplitUpi(quarter);
+                                    setSplitCard(targetToPay - (quarter * 3));
+                                  }}
+                                  style={{ backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 }}
+                                >
+                                  <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0369a1" }}>All 4 Options</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {/* Step 1: Opt-in Toggles */}
+                            <View style={{ backgroundColor: "#ffffff", borderRadius: 12, padding: 8, borderWidth: 1, borderColor: "#bae6fd", marginBottom: 8 }}>
+                              <Text style={{ fontSize: 10, fontWeight: "800", color: "#0369a1", marginBottom: 6 }}>
+                                Step 1: Tap to Choose Split Modes
+                              </Text>
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {[
+                                  { id: "cash", label: "Cash", icon: "cash-outline" },
+                                  { id: "counterUpi", label: "Counter UPI", icon: "storefront-outline" },
+                                  { id: "upi", label: "Online UPI (QR)", icon: "qr-code-outline" },
+                                  { id: "card", label: "Card / POS", icon: "card-outline" },
+                                ].map((opt) => {
+                                  const isOpted = optedSplitModes.includes(opt.id);
+                                  return (
+                                    <TouchableOpacity
+                                      key={opt.id}
+                                      onPress={() => {
+                                        const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                        if (isOpted) {
+                                          if (optedSplitModes.length === 1) {
+                                            Alert.alert("Split Modes", "At least one payment mode must be selected in Split.");
+                                            return;
+                                          }
+                                          setOptedSplitModes(optedSplitModes.filter((m) => m !== opt.id));
+                                          if (opt.id === "cash") setSplitCash(0);
+                                          if (opt.id === "counterUpi") setSplitCounterUpi(0);
+                                          if (opt.id === "upi") { setSplitUpi(0); setIsSplitUpiPaid(false); setSplitUpiRef(""); }
+                                          if (opt.id === "card") { setSplitCard(0); setIsSplitCardPaid(false); setSplitCardRef(""); }
+                                        } else {
+                                          const newOpted = [...optedSplitModes, opt.id];
+                                          setOptedSplitModes(newOpted);
+                                          const currentSum =
+                                            (newOpted.includes("cash") ? splitCash : 0) +
+                                            (newOpted.includes("counterUpi") ? splitCounterUpi : 0) +
+                                            (newOpted.includes("upi") ? splitUpi : 0) +
+                                            (newOpted.includes("card") ? splitCard : 0);
+                                          const rem = Math.max(0, targetToPay - currentSum);
+                                          if (rem > 0) {
+                                            if (opt.id === "cash") setSplitCash(rem);
+                                            else if (opt.id === "counterUpi") setSplitCounterUpi(rem);
+                                            else if (opt.id === "upi") setSplitUpi(rem);
+                                            else if (opt.id === "card") setSplitCard(rem);
+                                          }
+                                        }
+                                      }}
+                                      style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 5,
+                                        borderRadius: 8,
+                                        backgroundColor: isOpted ? "#e0f2fe" : "#f8fafc",
+                                        borderWidth: 1,
+                                        borderColor: isOpted ? "#0284c7" : "#e2e8f0",
+                                      }}
+                                    >
+                                      <Ionicons name={opt.icon as any} size={12} color={isOpted ? "#0284c7" : "#64748b"} />
+                                      <Text style={{ fontSize: 10, fontWeight: "800", color: isOpted ? "#0369a1" : "#64748b" }}>
+                                        {opt.label}
+                                      </Text>
+                                      {isOpted && <Text style={{ fontSize: 10, fontWeight: "900", color: "#0284c7" }}>✓</Text>}
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+
+                            {/* Step 2: Opted Inputs */}
+                            <View style={{ gap: 8 }}>
+                              {/* 1. Cash (if opted) */}
+                              {optedSplitModes.includes("cash") && (
+                                <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <Ionicons name="cash-outline" size={14} color="#16a34a" />
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Cash Amount (₹)</Text>
+                                    </View>
+                                    {(() => {
+                                      const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                      const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                      return targetToPay - currentTotal !== 0 && (
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const rem = targetToPay - splitUpi - splitCard - splitCounterUpi;
+                                            setSplitCash(Math.max(0, rem));
+                                          }}
+                                        >
+                                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })()}
+                                  </View>
+                                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                                    <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                                    <TextInput
+                                      style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      value={splitCash > 0 ? String(splitCash) : ""}
+                                      onChangeText={(txt) => {
+                                        const raw = parseFloat(txt) || 0;
+                                        const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                        const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                          (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                          (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                        const maxAllowed = Math.max(0, targetToPay - other);
+                                        setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
+                                      }}
+                                    />
+                                  </View>
+                                  <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Physical cash collected at counter desk</Text>
+                                </View>
+                              )}
+
+                              {/* 2. Counter UPI (if opted) */}
+                              {optedSplitModes.includes("counterUpi") && (
+                                <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <Ionicons name="storefront-outline" size={14} color="#4f46e5" />
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Counter UPI (Desk QR) (₹)</Text>
+                                    </View>
+                                    {(() => {
+                                      const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                      const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                      return targetToPay - currentTotal !== 0 && (
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const rem = targetToPay - splitUpi - splitCard - splitCash;
+                                            setSplitCounterUpi(Math.max(0, rem));
+                                          }}
+                                        >
+                                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })()}
+                                  </View>
+                                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#cbd5e1" }}>
+                                    <Text style={{ fontWeight: "700", color: "#64748b", marginRight: 4 }}>₹</Text>
+                                    <TextInput
+                                      style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0f172a" }}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      value={splitCounterUpi > 0 ? String(splitCounterUpi) : ""}
+                                      onChangeText={(txt) => {
+                                        const raw = parseFloat(txt) || 0;
+                                        const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                        const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                          (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                          (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                        const maxAllowed = Math.max(0, targetToPay - other);
+                                        setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                      }}
+                                    />
+                                  </View>
+                                  <Text style={{ fontSize: 9.5, color: "#64748b", marginTop: 3 }}>Patient scans printed counter QR directly (Same as Cash)</Text>
+                                </View>
+                              )}
+
+                              {/* 3. Online UPI / QR Code (if opted) */}
+                              {optedSplitModes.includes("upi") && (
+                                <View style={{ backgroundColor: isSplitUpiPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitUpiPaid ? "#86efac" : "#bae6fd", padding: 8 }}>
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <Ionicons name="qr-code" size={14} color="#0284c7" />
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#0369a1" }}>Online UPI (Razorpay QR) (₹)</Text>
+                                    </View>
+                                    {!isSplitUpiPaid && (() => {
+                                      const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                      const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                      return targetToPay - currentTotal !== 0 && (
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const rem = targetToPay - splitCash - splitCard - splitCounterUpi;
+                                            setSplitUpi(Math.max(0, rem));
+                                          }}
+                                        >
+                                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284c7" }}>Fill Remaining</Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })()}
+                                  </View>
+
+                                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#f0f9ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#bae6fd" }}>
+                                    <Text style={{ fontWeight: "700", color: "#0284c7", marginRight: 4 }}>₹</Text>
+                                    <TextInput
+                                      style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#0369a1" }}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      editable={!isSplitUpiPaid}
+                                      value={splitUpi > 0 ? String(splitUpi) : ""}
+                                      onChangeText={(txt) => {
+                                        const raw = parseFloat(txt) || 0;
+                                        const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                        const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                          (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                          (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                        const maxAllowed = Math.max(0, targetToPay - other);
+                                        setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                      }}
+                                    />
+                                  </View>
+
+                                  {/* Status / Actions for Online UPI */}
+                                  {isSplitUpiPaid ? (
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
+                                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                        <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
+                                        <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
+                                          ✓ ₹{splitUpi} UPI Paid {splitUpiRef ? `(${splitUpiRef.slice(-6)})` : ""}
+                                        </Text>
+                                      </View>
+                                      <TouchableOpacity
+                                        onPress={() => { setIsSplitUpiPaid(false); setSplitUpiRef(""); }}
+                                      >
+                                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ) : splitUpi > 0 ? (
+                                    <View style={{ gap: 6, marginTop: 6 }}>
+                                      <TouchableOpacity
+                                        onPress={() => setShowSplitRazorpayQr(!showSplitRazorpayQr)}
+                                        style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                      >
+                                        <Ionicons name="qr-code" size={14} color="#ffffff" />
+                                        <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
+                                          {showSplitRazorpayQr ? "Hide Razorpay QR" : `Show Razorpay QR for ₹${splitUpi.toLocaleString()}`}
+                                        </Text>
+                                      </TouchableOpacity>
+
+                                      <View style={{ flexDirection: "row", gap: 6 }}>
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            setIsSplitUpiPaid(true);
+                                            setSplitUpiRef(`MANUAL-${Date.now().toString().slice(-4)}`);
+                                            Alert.alert("Marked Paid", `Online UPI of ₹${splitUpi} marked as paid.`);
+                                          }}
+                                          style={{ flex: 1, backgroundColor: "#f1f5f9", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
+                                        >
+                                          <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#334155" }}>Mark Paid ✓</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                                            const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                                            const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},
+Please pay ₹${splitUpi} (Split UPI portion) using this link:
+${upiUri}`);
+                                            Linking.openURL(`https://wa.me/91${cleanPh}?text=${msg}`);
+                                          }}
+                                          style={{ backgroundColor: "#16a34a", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 5 }}
+                                        >
+                                          <Ionicons name="logo-whatsapp" size={13} color="#ffffff" />
+                                          <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>WA Link</Text>
+                                        </TouchableOpacity>
+                                      </View>
+
+                                      {showSplitRazorpayQr && (
+                                        <View style={{ backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 12, padding: 10, alignItems: "center", marginTop: 4 }}>
+                                          <Image
+                                            source={{
+                                              uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=6&data=${encodeURIComponent(
+                                                `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${splitUpi.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Split Payment for ' + (appointment?.patientName || 'Patient'))}`
+                                              )}`,
+                                            }}
+                                            style={{ width: 170, height: 170, borderRadius: 6, marginBottom: 8 }}
+                                            resizeMode="contain"
+                                          />
+                                          <Text style={{ fontSize: 10, fontWeight: "700", color: "#0369a1", marginBottom: 6 }}>
+                                            Auto-Detecting ₹{splitUpi.toLocaleString()} via Razorpay...
+                                          </Text>
+                                          <TouchableOpacity
+                                            onPress={() => handleCheckUpiStatus(true)}
+                                            style={{ backgroundColor: "#0284c7", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 }}
+                                          >
+                                            <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 10.5 }}>Check Status Now ⚡</Text>
+                                          </TouchableOpacity>
+                                        </View>
+                                      )}
+                                    </View>
+                                  ) : null}
+                                </View>
+                              )}
+
+                              {/* 4. Card / POS (if opted) */}
+                              {optedSplitModes.includes("card") && (
+                                <View style={{ backgroundColor: isSplitCardPaid ? "#f0fdf4" : "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: isSplitCardPaid ? "#86efac" : "#f0abfc", padding: 8 }}>
+                                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <Ionicons name="card-outline" size={14} color="#c026d3" />
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#a21caf" }}>Card / POS (Razorpay) (₹)</Text>
+                                    </View>
+                                    {!isSplitCardPaid && (() => {
+                                      const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                      const currentTotal = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                      return targetToPay - currentTotal !== 0 && (
+                                        <TouchableOpacity
+                                          onPress={() => {
+                                            const rem = targetToPay - splitCash - splitUpi - splitCounterUpi;
+                                            setSplitCard(Math.max(0, rem));
+                                          }}
+                                        >
+                                          <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#c026d3" }}>Fill Remaining</Text>
+                                        </TouchableOpacity>
+                                      );
+                                    })()}
+                                  </View>
+                                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#fdf4ff", borderRadius: 8, paddingHorizontal: 8, borderWidth: 1, borderColor: "#f0abfc" }}>
+                                    <Text style={{ fontWeight: "700", color: "#a21caf", marginRight: 4 }}>₹</Text>
+                                    <TextInput
+                                      style={{ flex: 1, height: 36, fontSize: 13, fontWeight: "800", color: "#701a75" }}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      editable={!isSplitCardPaid}
+                                      value={splitCard > 0 ? String(splitCard) : ""}
+                                      onChangeText={(txt) => {
+                                        const raw = parseFloat(txt) || 0;
+                                        const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                                        const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                          (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                          (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
+                                        const maxAllowed = Math.max(0, targetToPay - other);
+                                        setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
+                                      }}
+                                    />
+                                  </View>
+
+                                  {/* Status / Actions for Card */}
+                                  {isSplitCardPaid ? (
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#dcfce7", borderRadius: 8, padding: 8, marginTop: 6, borderWidth: 1, borderColor: "#86efac" }}>
+                                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                        <Ionicons name="checkmark-circle" size={15} color="#16a34a" />
+                                        <Text style={{ fontSize: 11, fontWeight: "800", color: "#166534" }}>
+                                          ✓ ₹{splitCard} Card Paid / Swiped {splitCardRef ? `(${splitCardRef.slice(-6)})` : ""}
+                                        </Text>
+                                      </View>
+                                      <TouchableOpacity
+                                        onPress={() => { setIsSplitCardPaid(false); setSplitCardRef(""); }}
+                                      >
+                                        <Text style={{ fontSize: 10, fontWeight: "800", color: "#166534", textDecorationLine: "underline" }}>Reset</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ) : splitCard > 0 ? (
+                                    <View style={{ gap: 6, marginTop: 6 }}>
+                                      <TouchableOpacity
+                                        onPress={async () => {
+                                          try {
+                                            const res = await apiFetch<any>("/reception/razorpay/create-order", {
+                                              method: "POST",
+                                              body: JSON.stringify({
+                                                appointmentId: appointment?.id,
+                                                amount: splitCard,
+                                                patientName: appointment?.patientName,
+                                                phone: appointment?.phoneNumber || appointment?.phone,
+                                                description: `Split Card Payment (₹${splitCard}) for ${appointment?.patientName || "Patient"}`
+                                              })
+                                            });
+                                            if (res?.paymentLinkUrl) {
+                                              Linking.openURL(res?.paymentLinkUrl);
+                                            } else {
+                                              Alert.alert("Razorpay Card Gateway", `Card charge order of ₹${splitCard} created. Enter card details or swipe on POS terminal.`);
+                                            }
+                                          } catch (e: any) {
+                                            Alert.alert("Card Payment", "Swipe card on POS terminal or enter details above.");
+                                          }
+                                        }}
+                                        style={{ backgroundColor: "#c026d3", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                                      >
+                                        <Ionicons name="card" size={14} color="#ffffff" />
+                                        <Text style={{ color: "#ffffff", fontWeight: "800", fontSize: 11 }}>
+                                          Pay ₹{splitCard.toLocaleString()} via Razorpay Card Gateway
+                                        </Text>
+                                      </TouchableOpacity>
+
+                                      <TouchableOpacity
+                                        onPress={() => {
+                                          setIsSplitCardPaid(true);
+                                          setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
+                                          Alert.alert("Card Confirmed", `Split Card payment of ₹${splitCard} marked as paid.`);
+                                        }}
+                                        style={{ backgroundColor: "#fdf4ff", borderWidth: 1, borderColor: "#f0abfc", borderRadius: 8, paddingVertical: 6, alignItems: "center", justifyContent: "center" }}
+                                      >
+                                        <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#a21caf" }}>Swipe on POS / Mark Card Paid ✓</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              )}
+                            </View>
+
+                            {/* Status Bar & Completion Button */}
+                            {(() => {
+                              const targetToPay = isPayLater ? effectivePaidToday : totalAmountDue;
+                              const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
+                              const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
+                              const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
+                              const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
+                              const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
+                              const isMatch = allocated === targetToPay;
+                              const diff = targetToPay - allocated;
+
+                              const isUpiSatisfied = !optedSplitModes.includes("upi") || activeUpi === 0 || isSplitUpiPaid;
+                              const isCardSatisfied = !optedSplitModes.includes("card") || activeCard === 0 || isSplitCardPaid;
+                              const canComplete = isMatch && isUpiSatisfied && isCardSatisfied;
+
+                              const parts: string[] = [];
+                              if (activeCash > 0) parts.push(`Cash ₹${activeCash}`);
+                              if (activeCounterUpi > 0) parts.push(`Counter UPI ₹${activeCounterUpi}`);
+                              if (activeUpi > 0) parts.push(`Online UPI ₹${activeUpi}${isSplitUpiPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+                              if (activeCard > 0) parts.push(`Card ₹${activeCard}${isSplitCardPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+
+                              return (
+                                <View style={{ marginTop: 10 }}>
+                                  <View
+                                    style={{
+                                      padding: 8,
+                                      borderRadius: 8,
+                                      backgroundColor: isMatch ? "#ecfdf5" : diff > 0 ? "#fffbeb" : "#fff1f2",
+                                      borderWidth: 1,
+                                      borderColor: isMatch ? "#a7f3d0" : diff > 0 ? "#fde68a" : "#fecdd3",
+                                      flexDirection: "row",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      marginBottom: isMatch ? 8 : 0,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontSize: 10.5,
+                                        fontWeight: "700",
+                                        color: isMatch ? "#065f46" : diff > 0 ? "#92400e" : "#9f1239",
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {isMatch
+                                        ? `✓ Split Matched: ${parts.join(" + ")}`
+                                        : diff > 0
+                                          ? `⚠️ ₹${diff} remaining to allocate (Allocated: ₹${allocated} / ₹${targetToPay})`
+                                          : `⚠️ Exceeds total by ₹${Math.abs(diff)}`}
+                                    </Text>
+                                    {!isMatch && (
+                                      <TouchableOpacity
+                                        onPress={() => {
+                                          const firstMode = optedSplitModes[0] || "cash";
+                                          if (firstMode === "cash") {
+                                            const rem = targetToPay - activeCounterUpi - activeUpi - activeCard;
+                                            setSplitCash(Math.max(0, rem));
+                                          } else if (firstMode === "counterUpi") {
+                                            const rem = targetToPay - activeCash - activeUpi - activeCard;
+                                            setSplitCounterUpi(Math.max(0, rem));
+                                          } else if (firstMode === "upi") {
+                                            const rem = targetToPay - activeCash - activeCounterUpi - activeCard;
+                                            setSplitUpi(Math.max(0, rem));
+                                          } else if (firstMode === "card") {
+                                            const rem = targetToPay - activeCash - activeCounterUpi - activeUpi;
+                                            setSplitCard(Math.max(0, rem));
+                                          }
+                                        }}
+                                        style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}
+                                      >
+                                        <Text style={{ fontSize: 9, fontWeight: "800", color: "#78350f" }}>Auto-Balance</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+
+                                  {/* Direct Complete Split Consultation Button */}
+                                  {isMatch && (
+                                    <TouchableOpacity
+                                      onPress={handleConfirmPayment}
+                                      disabled={isSubmitting || !canComplete}
+                                      style={{
+                                        backgroundColor: canComplete ? "#16a34a" : "#f59e0b",
+                                        borderRadius: 10,
+                                        paddingVertical: 10,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        flexDirection: "row",
+                                        gap: 6,
+                                        opacity: canComplete ? 1 : 0.8,
+                                      }}
+                                    >
+                                      {isSubmitting ? (
+                                        <ActivityIndicator size="small" color="#ffffff" />
+                                      ) : (
+                                        <Ionicons name={canComplete ? "checkmark-circle" : "time-outline"} size={16} color="#ffffff" />
+                                      )}
+                                      <Text style={{ color: "#ffffff", fontWeight: "900", fontSize: 12 }}>
+                                        {isSubmitting
+                                          ? "Completing..."
+                                          : !isUpiSatisfied
+                                            ? `Awaiting Online UPI (Pay ₹${activeUpi} via QR)`
+                                            : !isCardSatisfied
+                                              ? `Awaiting Card (Pay ₹${activeCard} or Swipe POS)`
+                                              : "Complete Consultation & Record Split ✓"}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                              );
+                            })()}
+                          </View>
+                        )}
                       </View>
-                    )}
 
-                    {includePreviousDue && previousPendingBalance > 0 && (
-                      <View style={styles.summaryRow}>
-                        <Text style={[styles.summaryLabel, { color: "#ea580c" }]}>Previous Due Added:</Text>
-                        <Text style={{ fontSize: 13, fontWeight: "800", color: "#ea580c" }}>
-                          + ₹ {previousPendingBalance}
-                        </Text>
-                      </View>
-                    )}
-
-                    <View style={[styles.summaryRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#e2e8f0" }]}>
-                      <Text style={styles.totalDueLabel}>TOTAL BILL AMOUNT:</Text>
-                      <Text style={styles.totalDueValue}>₹ {totalAmountDue}</Text>
-                    </View>
-
-                    {isPayLater && (
-                      <>
+                      {/* 9. SUMMARY TOTAL CARD (Matching Screenshot 1) */}
+                      <View style={styles.summaryCard}>
                         <View style={styles.summaryRow}>
-                          <Text style={[styles.summaryLabel, { color: "#16a34a" }]}>AMOUNT PAID TODAY:</Text>
-                          <Text style={{ fontSize: 14, fontWeight: "900", color: "#16a34a" }}>
-                            ₹ {effectivePaidToday}
-                          </Text>
+                          <Text style={styles.summaryLabel}>Target Amount (Consult + Med):</Text>
+                          <Text style={styles.summaryTarget}>₹ {parseFloat(targetAmount) || 0}</Text>
                         </View>
-                        <View style={[styles.summaryRow, { backgroundColor: "#fff7ed", padding: 6, borderRadius: 6, marginTop: 4 }]}>
-                          <Text style={[styles.totalDueLabel, { color: "#ea580c" }]}>REMAINING NEED TO PAY (PAY LATER):</Text>
-                          <Text style={[styles.totalDueValue, { color: "#ea580c" }]}>
-                            ₹ {calculatedPayLater}
-                          </Text>
+
+                        {discountStatus === "APPROVED" && discountApprovedAmount > 0 && (
+                          <View style={styles.summaryRow}>
+                            <Text style={[styles.summaryLabel, { color: "#16a34a" }]}>HR Approved Discount:</Text>
+                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#16a34a" }}>
+                              - ₹ {discountApprovedAmount}
+                            </Text>
+                          </View>
+                        )}
+
+                        {includePreviousDue && previousPendingBalance > 0 && (
+                          <View style={styles.summaryRow}>
+                            <Text style={[styles.summaryLabel, { color: "#ea580c" }]}>Previous Due Added:</Text>
+                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#ea580c" }}>
+                              + ₹ {previousPendingBalance}
+                            </Text>
+                          </View>
+                        )}
+
+                        <View style={[styles.summaryRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#e2e8f0" }]}>
+                          <Text style={styles.totalDueLabel}>TOTAL BILL AMOUNT:</Text>
+                          <Text style={styles.totalDueValue}>₹ {totalAmountDue}</Text>
                         </View>
-                      </>
-                    )}
-                  </View>
+
+                        {isPayLater && (
+                          <>
+                            <View style={styles.summaryRow}>
+                              <Text style={[styles.summaryLabel, { color: "#16a34a" }]}>AMOUNT PAID TODAY:</Text>
+                              <Text style={{ fontSize: 14, fontWeight: "900", color: "#16a34a" }}>
+                                ₹ {effectivePaidToday}
+                              </Text>
+                            </View>
+                            <View style={[styles.summaryRow, { backgroundColor: "#fff7ed", padding: 6, borderRadius: 6, marginTop: 4 }]}>
+                              <Text style={[styles.totalDueLabel, { color: "#ea580c" }]}>REMAINING NEED TO PAY (PAY LATER):</Text>
+                              <Text style={[styles.totalDueValue, { color: "#ea580c" }]}>
+                                ₹ {calculatedPayLater}
+                              </Text>
+                            </View>
+                          </>
+                        )}
+                      </View>
 
                     </>
                   )}
@@ -4290,7 +4289,7 @@ ${upiUri}`);
                           styles.confirmFooterBtn,
                           { flex: 1, backgroundColor: "#059669" },
                           (isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0) &&
-                            styles.confirmFooterBtnDisabled,
+                          styles.confirmFooterBtnDisabled,
                         ]}
                         onPress={handleConfirmMultiPayment}
                         disabled={isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0}
@@ -4315,7 +4314,7 @@ ${upiUri}`);
                         style={[
                           styles.confirmFooterBtn,
                           (!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod) &&
-                            styles.confirmFooterBtnDisabled,
+                          styles.confirmFooterBtnDisabled,
                         ]}
                         onPress={handleConfirmPayment}
                         disabled={!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod}

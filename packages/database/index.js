@@ -1229,24 +1229,52 @@ function normalizeDateStr(dt) {
     }
     return cleaned;
 }
+function normalizePatientName(raw) {
+    if (!raw) return "";
+    let s = String(raw).toLowerCase().trim();
+    s = s.replace(/^(mr|mrs|ms|miss|dr|smt|sri|mast|master)\.?\s+/gi, "");
+    s = s.replace(/^(baby\s+of|b\/o|s\/o|d\/o|w\/o|c\/o)\.?\s+/gi, "");
+    s = s.replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+    return s;
+}
+exports.normalizePatientName = normalizePatientName;
+function isExplicitRegId(reg) {
+    if (!reg) return false;
+    const clean = String(reg).trim().toUpperCase();
+    if (clean.length < 3) return false;
+    if (["NEW", "N/A", "NA", "PENDING", "NONE", "NULL", "UNDEFINED"].includes(clean)) return false;
+    if (/^\d{10}$/.test(clean)) return false;
+    return true;
+}
+exports.isExplicitRegId = isExplicitRegId;
 function matchPatientProfile(appt, patient) {
-    const apptReg = (appt.registrationId || appt.regId || appt.patientId || "").trim().toUpperCase();
-    const patReg = (patient.regId || patient.registrationId || patient.patientId || "").trim().toUpperCase();
-    // 1. If both records have registration IDs, they MUST be identical:
-    if (apptReg && patReg && apptReg.length >= 3 && patReg.length >= 3) {
+    if (!appt || !patient) return false;
+    const apptReg = ((appt.registrationId || appt.regId || appt.patientId || "") + "").trim().toUpperCase();
+    const patReg = ((patient.regId || patient.registrationId || patient.patientId || "") + "").trim().toUpperCase();
+    const hasApptReg = isExplicitRegId(apptReg);
+    const hasPatReg = isExplicitRegId(patReg);
+
+    if (hasApptReg && hasPatReg) {
         return apptReg === patReg;
     }
-    // 2. Otherwise match by matching 10-digit phone AND matching name:
+
     const apptPhone = normalizePhone(appt.phone || appt.phoneNumber || "");
     const patPhone = normalizePhone(patient.phone || patient.phoneNumber || "");
     if (!apptPhone || !patPhone || apptPhone.length < 10 || patPhone.length < 10)
         return false;
     if (apptPhone.slice(-10) !== patPhone.slice(-10))
         return false;
-    const apptName = (appt.patientName || appt.name || "").trim().toLowerCase();
-    const patName = (patient.name || patient.patientName || "").trim().toLowerCase();
-    if (apptName && patName) {
-        return apptName === patName || apptName.includes(patName) || patName.includes(apptName);
+    const apptName = normalizePatientName(appt.patientName || appt.name || "");
+    const patName = normalizePatientName(patient.name || patient.patientName || "");
+    if (!apptName || !patName || apptName.length < 2 || patName.length < 2)
+        return false;
+    if (apptName === patName) return true;
+    const apptWords = apptName.split(" ").filter(Boolean);
+    const patWords = patName.split(" ").filter(Boolean);
+    if (apptWords.length === patWords.length && apptWords.length > 1) {
+        const sortedA = [...apptWords].sort().join(" ");
+        const sortedB = [...patWords].sort().join(" ");
+        if (sortedA === sortedB) return true;
     }
     return false;
 }
@@ -1681,9 +1709,20 @@ exports.patientService = {
      */
     async upsertPatient(data) {
         const store = getPatientsStore();
-        const cleanReg = data.regId.trim().toUpperCase();
+        const cleanReg = data.regId ? data.regId.trim().toUpperCase() : "";
         const cleanPhone = normalizePhone(data.phone);
-        const existingIdx = store.findIndex((p) => p.regId.trim().toUpperCase() === cleanReg);
+        const hasExplicitReg = isExplicitRegId(cleanReg);
+        const normName = normalizePatientName(data.name);
+
+        const existingIdx = store.findIndex((p) => {
+            if (hasExplicitReg && isExplicitRegId(p.regId)) {
+                return p.regId.trim().toUpperCase() === cleanReg;
+            }
+            if (cleanPhone && cleanPhone.length >= 10 && normName) {
+                return normalizePhone(p.phone).slice(-10) === cleanPhone.slice(-10) && normalizePatientName(p.name) === normName;
+            }
+            return false;
+        });
         if (existingIdx >= 0) {
             const updated = {
                 ...store[existingIdx],
@@ -2199,13 +2238,13 @@ function decorateAppointmentWithVisitInfo(a, allStore, patientsStore, pkgStore) 
         activeFollowUpDate: activeFollowUp,
         followUpStartDate: followUpStartDate || a.followUpStartDate,
         hasPackage: !!activePkg,
-        packageId: activePkg?.id || a.packageId,
-        packageName: activePkg?.packageName || a.packageName,
-        packageTotalAmount: activePkg?.totalAmount || a.packageTotalAmount,
-        packagePaidAmount: activePkg?.paidAmount || a.packagePaidAmount,
-        packagePendingAmount: activePkg?.pendingAmount || a.packagePendingAmount,
-        packageDurationMonths: activePkg?.durationMonths || a.packageDurationMonths,
-        packageEndDate: activePkg?.endDate || a.packageEndDate,
+        packageId: activePkg ? activePkg.id : undefined,
+        packageName: activePkg ? activePkg.packageName : undefined,
+        packageTotalAmount: activePkg ? activePkg.totalAmount : undefined,
+        packagePaidAmount: activePkg ? activePkg.paidAmount : undefined,
+        packagePendingAmount: activePkg ? activePkg.pendingAmount : undefined,
+        packageDurationMonths: activePkg ? activePkg.durationMonths : undefined,
+        packageEndDate: activePkg ? activePkg.endDate : undefined,
     };
 }
 exports.appointmentService = {
@@ -2560,8 +2599,8 @@ exports.appointmentService = {
         if (prevDuePaid > 0) {
             await exports.payLaterService.settleBalance(appt.registrationId || appt.phone, prevDuePaid, appt.invoiceId, appt.id);
         }
-        // Auto-update package installment if patient has active package and this visit is marked for package installment
-        const shouldRecordPackagePayment = data.hasPackage !== false &&
+        // Auto-update package installment if patient has active package and this visit is explicitly marked for package installment
+        const shouldRecordPackagePayment = (Boolean(data.hasPackage) || data.paymentType === "package" || data.packageInstallmentPaid !== undefined) &&
             !data.skipPackagePayment &&
             !data.isRegularBilling;
         if (shouldRecordPackagePayment) {
@@ -2784,6 +2823,15 @@ exports.appointmentService = {
             appt.packagePendingAmount = activePkg.pendingAmount;
             appt.packageDurationMonths = activePkg.durationMonths;
             appt.packageEndDate = activePkg.endDate;
+        } else {
+            appt.hasPackage = false;
+            delete appt.packageId;
+            delete appt.packageName;
+            delete appt.packageTotalAmount;
+            delete appt.packagePaidAmount;
+            delete appt.packagePendingAmount;
+            delete appt.packageDurationMonths;
+            delete appt.packageEndDate;
         }
         global.__sphAppointmentsStore = store;
         saveAppointmentsToDisk(store);
@@ -4417,23 +4465,29 @@ exports.packageService = {
     },
     async getPackageByProfile(regIdOrPhone, patientName) {
         const store = getPackageMembersStore();
-        const cleanReg = (regIdOrPhone || "").trim().toUpperCase();
+        const isPhone = /^\d{10}$/.test(normalizePhone(regIdOrPhone));
+        const cleanReg = !isPhone && isExplicitRegId(regIdOrPhone) ? regIdOrPhone.trim().toUpperCase() : "";
         const cleanPhone = normalizePhone(regIdOrPhone);
-        const cleanName = (patientName || "").trim().toLowerCase();
-        if (cleanReg && cleanReg.length >= 3) {
-            const found = store.find((p) => (p.registrationId || "").trim().toUpperCase() === cleanReg);
+        const normName = normalizePatientName(patientName || "");
+
+        // 1. If valid explicit registration ID is provided, match by registration ID:
+        if (cleanReg) {
+            const found = store.find((p) => isExplicitRegId(p.registrationId) && (p.registrationId || "").trim().toUpperCase() === cleanReg);
             if (found)
                 return found;
         }
-        if (cleanPhone && cleanPhone.length >= 10 && cleanName) {
-            const found = store.find((p) => normalizePhone(p.phone) === cleanPhone && (p.patientName || "").trim().toLowerCase() === cleanName);
+
+        // 2. If phone is provided, we MUST match BOTH phone AND exact patient name!
+        if (cleanPhone.length >= 10 && normName) {
+            const found = store.find((p) => {
+                const pPhone = normalizePhone(p.phone);
+                if (pPhone.slice(-10) !== cleanPhone.slice(-10)) return false;
+                return matchPatientProfile({ phone: cleanPhone, patientName }, p);
+            });
             if (found)
                 return found;
         }
-        // Comprehensive fallback matching by profile
-        const foundByProfile = store.find((p) => matchPatientProfile({ registrationId: cleanReg, phone: cleanPhone, patientName: cleanName }, p));
-        if (foundByProfile)
-            return foundByProfile;
+
         return null;
     },
     async registerPackage(data) {

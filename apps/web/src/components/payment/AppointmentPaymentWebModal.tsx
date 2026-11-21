@@ -55,8 +55,7 @@ export function AppointmentPaymentWebModal({
   const rxImages = appointment?.prescriptionImages || [];
   const isPkg = Boolean(
     appointment?.hasPackage ||
-    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
-    appointment?.activePackage
+    (appointment?.activePackage && (appointment?.activePackage as any)?.status === "ACTIVE")
   );
   const hasPrescription =
     rxImages.length > 0 ||
@@ -100,8 +99,7 @@ export function AppointmentPaymentWebModal({
   // Package member installment state
   const isPackageMember = Boolean(
     appointment?.hasPackage ||
-    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
-    appointment?.activePackage
+    (appointment?.activePackage && (appointment?.activePackage as any)?.status === "ACTIVE")
   );
   const pkgTotal = appointment?.packageTotalAmount ?? appointment?.activePackage?.totalAmount ?? 0;
   const pkgPaid = appointment?.packagePaidAmount ?? appointment?.activePackage?.paidAmount ?? 0;

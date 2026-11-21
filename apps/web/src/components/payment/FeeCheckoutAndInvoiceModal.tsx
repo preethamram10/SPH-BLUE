@@ -193,8 +193,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   // Package member installment state - strictly based on Patient File registration
   const isPackageMember = Boolean(
     appointment?.hasPackage ||
-    (appointment?.packageTotalAmount && appointment.packageTotalAmount > 0) ||
-    (appointment as any)?.activePackage
+    ((appointment as any)?.activePackage && (appointment as any)?.activePackage?.status === "ACTIVE")
   );
   const pkgTotal = appointment?.packageTotalAmount ?? (appointment as any)?.activePackage?.totalAmount ?? 0;
   const pkgPaid = appointment?.packagePaidAmount ?? (appointment as any)?.activePackage?.paidAmount ?? 0;
