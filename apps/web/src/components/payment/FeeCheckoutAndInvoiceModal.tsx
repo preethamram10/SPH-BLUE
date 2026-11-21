@@ -109,6 +109,8 @@ export interface MultiPayMember {
   token: string;
   doctorName: string;
   selected: boolean;
+  targetAmount: number;
+  paymentType: "consultation" | "consult_and_med" | "split";
   consultationFee: number;
   includeConsultFee: boolean;
   medicineFee: number;
@@ -302,6 +304,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             ? existingMeds.reduce((sum, mi) => sum + (Number(mi.amount) || 0), 0)
             : 0;
 
+          const target = cFee + (hasPrescribedMeds ? mFee : 0);
+
           return {
             appointmentId: a.id,
             patientName: a.patientName || (a as any).name || `Family Member ${idx + 1}`,
@@ -310,6 +314,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             token: (a as any).token || (a as any).tokenNumber || `#A-${idx + 1}`,
             doctorName: a.doctorName || "Consultant Doctor",
             selected: true,
+            targetAmount: target,
+            paymentType: (hasPrescribedMeds && mFee > 0 ? "split" : "consult_and_med") as "consultation" | "consult_and_med" | "split",
             consultationFee: cFee,
             includeConsultFee: true, // Target amount
             medicineFee: mFee,
@@ -318,7 +324,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             medicineItems: existingMeds,
             otherCharges: 0,
             discount: 0,
-            subtotal: cFee + (hasPrescribedMeds ? mFee : 0), // Strictly ONLY Target Amount (cFee) by default!
+            subtotal: target,
             isExpanded: isCurrent || idx === 0,
           };
         });
@@ -345,6 +351,126 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const handleToggleMemberExpand = (appointmentId: string) => {
     setMultiPayMembers((prev) =>
       prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
+    );
+  };
+
+  const handleMemberTargetAmountChange = (appointmentId: string, val: number) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const target = Math.max(0, val);
+        let consult = m.consultationFee;
+        let incConsult = m.includeConsultFee;
+        let medFee = m.medicineFee;
+        let incMed = m.includeMedicineFee;
+        let items = [...m.medicineItems];
+
+        if (m.paymentType === "consultation") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (m.paymentType === "consult_and_med") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (m.paymentType === "split") {
+          const half = Math.round(target / 2);
+          consult = half;
+          incConsult = true;
+          medFee = target - half;
+          incMed = true;
+          if (items.length <= 1) {
+            items = [
+              {
+                id: (items[0] && items[0].id) || `med-${appointmentId}-split`,
+                name: (items[0] && items[0].name) || "Prescribed Homeo Kit",
+                type: (items[0] && items[0].type) || "Pills",
+                timing: (items[0] && items[0].timing) || "Morning & Night",
+                amount: target - half,
+              },
+            ];
+          } else {
+            const diff = (target - half) - items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            items[0] = { ...items[0], amount: Math.max(0, (Number(items[0].amount) || 0) + diff) };
+          }
+        }
+
+        const cVal = incConsult ? consult : 0;
+        const mVal = incMed ? (items.length > 0 ? items.reduce((s, i) => s + (Number(i.amount) || 0), 0) : medFee) : 0;
+        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
+
+        return {
+          ...m,
+          targetAmount: target,
+          consultationFee: consult,
+          includeConsultFee: incConsult,
+          medicineFee: mVal,
+          includeMedicineFee: incMed,
+          medicineItems: items,
+          subtotal,
+        };
+      })
+    );
+  };
+
+  const handleMemberPaymentTypeChange = (
+    appointmentId: string,
+    type: "consultation" | "consult_and_med" | "split"
+  ) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const target = Number(m.targetAmount) || 0;
+        let consult = m.consultationFee;
+        let incConsult = true;
+        let medFee = 0;
+        let incMed = false;
+        let items = [...m.medicineItems];
+
+        if (type === "consultation") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (type === "consult_and_med") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (type === "split") {
+          const half = Math.round(target / 2);
+          consult = half;
+          incConsult = true;
+          medFee = target - half;
+          incMed = true;
+          items = [
+            {
+              id: (items[0] && items[0].id) || `med-${appointmentId}-split`,
+              name: (items[0] && items[0].name) || "Prescribed Homeo Kit",
+              type: (items[0] && items[0].type) || "Pills",
+              timing: (items[0] && items[0].timing) || "Morning & Night",
+              amount: target - half,
+            },
+          ];
+        }
+
+        const cVal = incConsult ? consult : 0;
+        const mVal = incMed ? medFee : 0;
+        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
+
+        return {
+          ...m,
+          paymentType: type,
+          consultationFee: consult,
+          includeConsultFee: incConsult,
+          medicineFee: mVal,
+          includeMedicineFee: incMed,
+          medicineItems: items,
+          subtotal,
+        };
+      })
     );
   };
 
@@ -481,6 +607,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           registrationId: m.registrationId,
           token: m.token,
           doctorName: m.doctorName,
+          paymentType: m.paymentType || "consult_and_med",
+          targetAmount: m.targetAmount || 0,
           consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
           medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
           medicineDuration: m.medicineDuration,
@@ -1513,6 +1641,50 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           {/* EXPANDED CONTENT: CUSTOMIZE CONSULTATION, DURATION & MEDICINE ITEMS */}
                           {member.isExpanded && isSelected && (
                             <div className="p-4 space-y-4 bg-white">
+                              {/* TARGET AMOUNT & PAYMENT TYPE TABS FOR THIS PROFILE */}
+                              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 space-y-2.5">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div>
+                                    <span className="text-xs font-black text-sky-950 block">Target Amount ({member.patientName}):</span>
+                                    <span className="text-[10.5px] text-sky-700 font-medium">Split or presets calculate strictly within this target</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl border border-sky-400 bg-white shadow-2xs">
+                                    <span className="text-sm font-black text-sky-600">₹</span>
+                                    <input
+                                      type="number"
+                                      value={member.targetAmount || ""}
+                                      onChange={(e) => handleMemberTargetAmountChange(member.appointmentId, Number(e.target.value) || 0)}
+                                      placeholder="0"
+                                      className="w-20 text-right text-sm font-black text-slate-800 bg-transparent focus:outline-none"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* 3 PAYMENT TYPE TABS: Consultation | Consultation & Med | Split */}
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[
+                                    { id: "consultation", label: "Consultation" },
+                                    { id: "consult_and_med", label: "Consultation & Med" },
+                                    { id: "split", label: "Split" },
+                                  ].map((t) => {
+                                    const isSelectedTab = member.paymentType === t.id;
+                                    return (
+                                      <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => handleMemberPaymentTypeChange(member.appointmentId, t.id as any)}
+                                        className={`min-h-[34px] px-2 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer border flex items-center justify-center text-center ${isSelectedTab
+                                            ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                                          }`}
+                                      >
+                                        {t.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
                               {/* 1. CONSULTATION FEE */}
                               <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-2">
                                 <div className="flex items-center justify-between">

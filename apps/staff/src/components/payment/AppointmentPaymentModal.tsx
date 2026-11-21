@@ -73,6 +73,8 @@ export interface MultiPayMember {
   token: string;
   doctorName: string;
   selected: boolean;
+  targetAmount: number;
+  paymentType: "consultation" | "consult_and_med" | "split";
   consultationFee: number;
   includeConsultFee: boolean;
   medicineFee: number;
@@ -285,6 +287,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             ? existingMeds.reduce((sum: number, mi: any) => sum + (Number(mi.amount) || 0), 0)
             : 0;
 
+          const target = cFee + (hasPrescribedMeds ? mFee : 0);
+
           return {
             appointmentId: a.id,
             patientName: a.patientName || a.name || `Family Member ${idx + 1}`,
@@ -293,6 +297,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             token: a.token || a.tokenNumber || `#A-${idx + 1}`,
             doctorName: a.doctorName || "Consultant Doctor",
             selected: true,
+            targetAmount: target,
+            paymentType: (hasPrescribedMeds && mFee > 0 ? "split" : "consult_and_med") as "consultation" | "consult_and_med" | "split",
             consultationFee: cFee,
             includeConsultFee: true, // Target amount
             medicineFee: mFee,
@@ -301,7 +307,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             medicineItems: existingMeds,
             otherCharges: 0,
             discount: 0,
-            subtotal: cFee + (hasPrescribedMeds ? mFee : 0), // Strictly ONLY Target Amount (cFee) by default!
+            subtotal: target,
             isExpanded: isCurrent || idx === 0,
           };
         });
@@ -328,6 +334,126 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const handleToggleMemberExpand = (appointmentId: string) => {
     setMultiPayMembers((prev) =>
       prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
+    );
+  };
+
+  const handleMemberTargetAmountChange = (appointmentId: string, val: number) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const target = Math.max(0, val);
+        let consult = m.consultationFee;
+        let incConsult = m.includeConsultFee;
+        let medFee = m.medicineFee;
+        let incMed = m.includeMedicineFee;
+        let items = [...m.medicineItems];
+
+        if (m.paymentType === "consultation") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (m.paymentType === "consult_and_med") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (m.paymentType === "split") {
+          const half = Math.round(target / 2);
+          consult = half;
+          incConsult = true;
+          medFee = target - half;
+          incMed = true;
+          if (items.length <= 1) {
+            items = [
+              {
+                id: (items[0] && items[0].id) || `med-${appointmentId}-split`,
+                name: (items[0] && items[0].name) || "Prescribed Homeo Kit",
+                type: (items[0] && items[0].type) || "Pills",
+                timing: (items[0] && items[0].timing) || "1 - 0 - 1",
+                amount: target - half,
+              },
+            ];
+          } else {
+            const diff = (target - half) - items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            items[0] = { ...items[0], amount: Math.max(0, (Number(items[0].amount) || 0) + diff) };
+          }
+        }
+
+        const cVal = incConsult ? consult : 0;
+        const mVal = incMed ? (items.length > 0 ? items.reduce((s, i) => s + (Number(i.amount) || 0), 0) : medFee) : 0;
+        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
+
+        return {
+          ...m,
+          targetAmount: target,
+          consultationFee: consult,
+          includeConsultFee: incConsult,
+          medicineFee: mVal,
+          includeMedicineFee: incMed,
+          medicineItems: items,
+          subtotal,
+        };
+      })
+    );
+  };
+
+  const handleMemberPaymentTypeChange = (
+    appointmentId: string,
+    type: "consultation" | "consult_and_med" | "split"
+  ) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const target = Number(m.targetAmount) || 0;
+        let consult = m.consultationFee;
+        let incConsult = true;
+        let medFee = 0;
+        let incMed = false;
+        let items = [...m.medicineItems];
+
+        if (type === "consultation") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (type === "consult_and_med") {
+          consult = target;
+          incConsult = true;
+          medFee = 0;
+          incMed = false;
+        } else if (type === "split") {
+          const half = Math.round(target / 2);
+          consult = half;
+          incConsult = true;
+          medFee = target - half;
+          incMed = true;
+          items = [
+            {
+              id: (items[0] && items[0].id) || `med-${appointmentId}-split`,
+              name: (items[0] && items[0].name) || "Prescribed Homeo Kit",
+              type: (items[0] && items[0].type) || "Pills",
+              timing: (items[0] && items[0].timing) || "1 - 0 - 1",
+              amount: target - half,
+            },
+          ];
+        }
+
+        const cVal = incConsult ? consult : 0;
+        const mVal = incMed ? medFee : 0;
+        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
+
+        return {
+          ...m,
+          paymentType: type,
+          consultationFee: consult,
+          includeConsultFee: incConsult,
+          medicineFee: mVal,
+          includeMedicineFee: incMed,
+          medicineItems: items,
+          subtotal,
+        };
+      })
     );
   };
 
@@ -465,6 +591,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           registrationId: m.registrationId,
           token: m.token,
           doctorName: m.doctorName,
+          paymentType: m.paymentType || "consult_and_med",
+          targetAmount: m.targetAmount || 0,
           consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
           medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
           medicineDuration: m.medicineDuration,
@@ -2324,6 +2452,47 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                             {/* Member Expanded Content */}
                             {member.isExpanded && isSelected && (
                               <View style={styles.multiPayMemberBody}>
+                                {/* Target Amount & Payment Type Tabs (Consultation | Consultation & Med | Split) */}
+                                <View style={styles.multiPayMemberTargetBox}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.multiPayMemberTargetTitle}>Target Amount ({member.patientName})</Text>
+                                    <Text style={styles.multiPayMemberTargetSub}>Split consultation &amp; medicine within target</Text>
+                                  </View>
+                                  <View style={styles.multiPayMemberTargetInputWrap}>
+                                    <Text style={{ fontSize: 13, fontWeight: "900", color: "#0284c7" }}>₹</Text>
+                                    <TextInput
+                                      style={styles.multiPayMemberTargetInput}
+                                      keyboardType="numeric"
+                                      value={member.targetAmount ? String(member.targetAmount) : ""}
+                                      onChangeText={(txt) => handleMemberTargetAmountChange(member.appointmentId, Number(txt) || 0)}
+                                      placeholder="0"
+                                    />
+                                  </View>
+                                </View>
+
+                                {/* 3 Tabs */}
+                                <View style={styles.multiPayTypeTabRow}>
+                                  {[
+                                    { id: "consultation", label: "Consultation" },
+                                    { id: "consult_and_med", label: "Consult & Med" },
+                                    { id: "split", label: "Split" },
+                                  ].map((t) => {
+                                    const isSel = member.paymentType === t.id;
+                                    return (
+                                      <TouchableOpacity
+                                        key={t.id}
+                                        style={[styles.multiPayTypeTab, isSel && styles.multiPayTypeTabActive]}
+                                        onPress={() => handleMemberPaymentTypeChange(member.appointmentId, t.id as any)}
+                                        activeOpacity={0.7}
+                                      >
+                                        <Text style={[styles.multiPayTypeTabText, isSel && styles.multiPayTypeTabTextActive]}>
+                                          {t.label}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+
                                 {/* Consultation Fee Toggle */}
                                 <View style={styles.multiPaySectionRow}>
                                   <TouchableOpacity
@@ -6488,6 +6657,70 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
     backgroundColor: "#ffffff",
+  },
+  multiPayMemberTargetBox: {
+    backgroundColor: "#f0f9ff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  multiPayMemberTargetTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0369a1",
+  },
+  multiPayMemberTargetSub: {
+    fontSize: 9.5,
+    color: "#64748b",
+  },
+  multiPayMemberTargetInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#38bdf8",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  multiPayMemberTargetInput: {
+    width: 60,
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0f172a",
+    textAlign: "right",
+    padding: 0,
+  },
+  multiPayTypeTabRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  multiPayTypeTab: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  multiPayTypeTabActive: {
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
+  },
+  multiPayTypeTabText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  multiPayTypeTabTextActive: {
+    color: "#ffffff",
+    fontWeight: "900",
   },
   multiPaySectionRow: {
     flexDirection: "row",
