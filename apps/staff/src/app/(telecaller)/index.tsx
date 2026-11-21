@@ -91,7 +91,7 @@ export default function TelecallerPortalScreen() {
   const [refreshingFollowUps, setRefreshingFollowUps] = useState(false);
   const [followUpSearch, setFollowUpSearch] = useState("");
   const [followUpBranch, setFollowUpBranch] = useState("All Branches");
-  const [followUpPeriod, setFollowUpPeriod] = useState("all");
+  const [followUpPeriod, setFollowUpPeriod] = useState("due_today");
   const [bookingBranches, setBookingBranches] = useState<string[]>(DEFAULT_BOOKING_BRANCHES);
   const allBranches = useMemo(() => ["All Branches", ...bookingBranches], [bookingBranches]);
 
@@ -250,14 +250,14 @@ export default function TelecallerPortalScreen() {
     })();
   }, []);
 
-  // Fetch Follow-Ups
+  // Fetch Follow-Ups (Synced with Reception Follow-ups)
   const fetchFollowUps = useCallback(async () => {
     try {
       setLoadingFollowUps(true);
       let branchQuery = followUpBranch;
       if (branchQuery === "All Branches") branchQuery = "";
 
-      const url = `${API_BASE_URL}/admin/all-follow-ups?branch=${encodeURIComponent(
+      const url = `${API_BASE_URL}/reception/follow-ups?branch=${encodeURIComponent(
         branchQuery
       )}&search=${encodeURIComponent(followUpSearch)}&period=${encodeURIComponent(
         followUpPeriod
@@ -334,18 +334,17 @@ export default function TelecallerPortalScreen() {
     setRescheduleModalVisible(true);
   };
 
-  // Submit reschedule
+  // Submit reschedule (Synced with Reception PATCH endpoint)
   const handleConfirmReschedule = async () => {
     if (!selectedFollowUp) return;
     try {
       setRescheduling(true);
-      const res = await fetch(`${API_BASE_URL}/admin/all-follow-ups`, {
-        method: "PUT",
+      const res = await fetch(`${API_BASE_URL}/reception/follow-ups`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           appointmentId: selectedFollowUp.appointmentId || selectedFollowUp.id,
-          rescheduleDate,
-          rescheduleTimeSlot: rescheduleSlot,
+          newFollowUpDate: rescheduleDate,
           notes: rescheduleNotes,
         }),
       });
@@ -454,10 +453,11 @@ export default function TelecallerPortalScreen() {
       setBookingAppt(true);
       const matchedDoctor = availableDoctors.find((d) => d.name === bookDoctor) || availableDoctors[0];
 
-      const res = await fetch(`${API_BASE_URL}/admin/all-follow-ups`, {
+      const res = await fetch(`${API_BASE_URL}/reception/follow-ups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          appointmentId: bookFollowUpId,
           followUpAppointmentId: bookFollowUpId,
           patientName: bookPatientName.trim(),
           phoneNumber: cleanPhone,
@@ -467,9 +467,8 @@ export default function TelecallerPortalScreen() {
           appointmentDate: bookDate,
           selectedTimeSlot: bookSlot,
           consultationMode: bookMode,
+          diseases: "Follow-up Booking",
           notes: bookNotes.trim() || "Booked by telecaller desk",
-          bookedByTelecallerId: telecallerProfile.telecallerId,
-          bookedByTelecallerName: telecallerProfile.name,
         }),
       });
 
@@ -595,28 +594,32 @@ export default function TelecallerPortalScreen() {
             </ScrollView>
           </View>
 
-          {/* Period Filter Pills (Reception Style: All, Today, Week, Month) */}
+          {/* Period Filter Pills (Exact Reception Sync: Today, Tomorrow, This Month, Next Month, Overdue, All) */}
           <View style={styles.periodFilterBar}>
-            {[
-              { id: "all", label: "All" },
-              { id: "today", label: "Today" },
-              { id: "week", label: "This Week" },
-              { id: "month", label: "This Month" },
-            ].map((p) => {
-              const isSel = followUpPeriod === p.id;
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.periodChip, isSel && styles.periodChipActive]}
-                  onPress={() => setFollowUpPeriod(p.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.periodChipText, isSel && styles.periodChipTextActive]}>
-                    {p.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {[
+                { id: "due_today", label: "Today" },
+                { id: "due_tomorrow", label: "Tomorrow" },
+                { id: "this_month", label: "This Month" },
+                { id: "next_month", label: "Next Month" },
+                { id: "overdue", label: "Overdue" },
+                { id: "all", label: "All Follow-Ups" },
+              ].map((p) => {
+                const isSel = followUpPeriod === p.id;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.periodChip, isSel && styles.periodChipActive]}
+                    onPress={() => setFollowUpPeriod(p.id)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.periodChipText, isSel && styles.periodChipTextActive]}>
+                      {p.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
           {/* Search Bar */}

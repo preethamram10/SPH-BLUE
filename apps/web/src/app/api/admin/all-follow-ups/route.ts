@@ -144,8 +144,8 @@ export async function GET(req: NextRequest) {
           return false;
         }
 
-        // Must have an explicit follow-up date/interval or be a completed clinical consultation
-        if (!a.followUpDate && !a.followUpInterval && a.status !== "COMPLETED") {
+        // Must have an explicit follow-up date or interval
+        if (!a.followUpDate && !a.followUpInterval) {
           return false;
         }
 
@@ -435,11 +435,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PATCH: Reschedule Follow-Up Date & Details
+// PATCH / PUT: Reschedule Follow-Up Date & Details
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { appointmentId, newFollowUpDate, newInterval, notes } = body;
+    const appointmentId = body.appointmentId || body.id;
+    const newFollowUpDate = body.newFollowUpDate || body.rescheduleDate || body.dueDate;
+    const newInterval = body.newInterval || body.interval || "1 Month";
+    const notes = body.notes || body.rescheduleNotes || "";
 
     if (!appointmentId || !newFollowUpDate) {
       return NextResponse.json(
@@ -475,6 +478,10 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function PUT(req: NextRequest) {
+  return PATCH(req);
 }
 
 // POST: Book a Follow-Up Appointment Directly

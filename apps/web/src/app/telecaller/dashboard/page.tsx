@@ -261,8 +261,19 @@ function TelecallerDashboardContent() {
     completed: 0,
   });
 
-  // Load clinic branches
+  // Load clinic branches & initial assigned branch
   useEffect(() => {
+    try {
+      const saved =
+        localStorage.getItem("user_assigned_branch") ||
+        localStorage.getItem("user_branch") ||
+        localStorage.getItem("branch_name");
+      if (saved && saved !== "Spiritual Homeopathy Clinic" && saved !== "All Branches") {
+        setSelectedBranch(saved);
+        setBookBranch(saved);
+      }
+    } catch {}
+
     fetch("/api/branches")
       .then((r) => r.json())
       .then((d) => {
