@@ -685,6 +685,11 @@ export default function ReceptionDashboardPage() {
   };
 
   const handleDeleteAppointment = async (id: string, token: string, patientName: string) => {
+    const target = appointments.find((a) => a.id === id);
+    if (target && (target.status === "COMPLETED" || !!target.isFeeCollected)) {
+      alert("Completed appointments cannot be deleted.");
+      return;
+    }
     if (!confirm(`Cancel/Delete appointment ${token} for ${patientName}? It can be restored within 24 hours.`)) {
       return;
     }
@@ -1372,15 +1377,17 @@ export default function ReceptionDashboardPage() {
                                 <CalendarRange className="w-3.5 h-3.5" />
                               </button>
 
-                              {/* Delete / Cancel Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 transition-all cursor-pointer"
-                                title="Cancel / Delete Appointment (24h Restore available)"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                              {/* Delete / Cancel Button (Removed for Completed Appointments) */}
+                              {!isCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAppointment(appt.id, appt.token, appt.patientName)}
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-md text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 transition-all cursor-pointer"
+                                  title="Cancel / Delete Appointment (24h Restore available)"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

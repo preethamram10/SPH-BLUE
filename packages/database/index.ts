@@ -3040,6 +3040,11 @@ export const appointmentService = {
     const idx = store.findIndex((a) => a.id === id || a.token === id);
     if (idx === -1) return null;
 
+    const target = store[idx];
+    if (role === "RECEPTION" && (target.status === "COMPLETED" || !!target.isFeeCollected)) {
+      throw new Error("Completed appointments cannot be deleted by Reception.");
+    }
+
     store[idx].isDeleted = true;
     store[idx].deletedAt = new Date().toISOString();
     store[idx].updatedAt = new Date().toISOString();

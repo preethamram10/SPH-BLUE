@@ -109,7 +109,7 @@ export default function TelecallerUpdatesPage() {
           setBranchOptions(["All Branches", ...Array.from(new Set(names))]);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Reset to page 1 on search or filter change
@@ -496,11 +496,10 @@ export default function TelecallerUpdatesPage() {
                           )}
                           <button
                             onClick={() => setCurrentPage(p)}
-                            className={`w-7 h-7 rounded-lg text-xs font-extrabold transition-colors ${
-                              currentPage === p
+                            className={`w-7 h-7 rounded-lg text-xs font-extrabold transition-colors ${currentPage === p
                                 ? "bg-[#0284c7] text-white shadow-xs"
                                 : "text-slate-600 hover:bg-slate-200/60"
-                            }`}
+                              }`}
                           >
                             {p}
                           </button>
