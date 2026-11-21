@@ -34,6 +34,7 @@ import {
   ClipboardList,
   Sparkles,
   Users,
+  Trash2,
 } from "lucide-react";
 
 export interface FollowUpItem {
@@ -313,6 +314,13 @@ function TelecallerDashboardContent() {
   const [logPatientName, setLogPatientName] = useState("");
   const [logPhone, setLogPhone] = useState("");
   const [logBranch, setLogBranch] = useState("KPHB Branch");
+  const [logSuggestions, setLogSuggestions] = useState<PatientSuggestion[]>([]);
+  const [showLogSuggestions, setShowLogSuggestions] = useState(false);
+  const logSearchDebounceRef = useRef<any>(null);
+
+  // Recent call activity logs for viewing and deletion
+  const [recentCallLogs, setRecentCallLogs] = useState<any[]>([]);
+  const [loadingRecentLogs, setLoadingRecentLogs] = useState(false);
 
   // Dynamic doctors, no-shows & booked appointments
   const [bookingAvailableDoctors, setBookingAvailableDoctors] = useState<DoctorOption[]>([]);
@@ -640,6 +648,8 @@ function TelecallerDashboardContent() {
         setLogPatientName("");
         setLogPhone("");
         setCallRemarks("");
+        // Redirect to main Follow-Up Calling Roster
+        router.push("/telecaller/dashboard");
       } else {
         alert(data.error || "Failed to save call log");
       }
@@ -647,6 +657,88 @@ function TelecallerDashboardContent() {
       alert(err.message || "Error saving call log");
     } finally {
       setSavingCallLog(false);
+    }
+  };
+
+  // Debounced patient autocomplete search for Log Call Desk
+  const handleLogPatientNameChange = (val: string) => {
+    setLogPatientName(val);
+    if (logSearchDebounceRef.current) clearTimeout(logSearchDebounceRef.current);
+    if (!val || val.trim().length < 2) {
+      setLogSuggestions([]);
+      setShowLogSuggestions(false);
+      return;
+    }
+    logSearchDebounceRef.current = setTimeout(async () => {
+      try {
+        const cleanB = logBranch.replace(/Spiritual Homeopathy/gi, "").trim();
+        const res = await fetch(
+          `/api/reception/patients?query=${encodeURIComponent(val.trim())}&branch=${encodeURIComponent(cleanB)}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.patients)) {
+            setLogSuggestions(data.patients.slice(0, 8));
+            setShowLogSuggestions(true);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 250);
+  };
+
+  const handleSelectLogSuggestion = (p: PatientSuggestion) => {
+    setLogPatientName(p.name);
+    setLogPhone((p.phone || "").replace(/\D/g, ""));
+    if (p.branch) {
+      const bNorm = p.branch.includes("Branch") ? p.branch : `${p.branch} Branch`;
+      setLogBranch(bNorm);
+    }
+    setShowLogSuggestions(false);
+  };
+
+  // Fetch recent call activity logs
+  const fetchRecentLogs = useCallback(async () => {
+    setLoadingRecentLogs(true);
+    try {
+      const res = await fetch("/api/telecaller/call-logs");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.logs)) {
+        setRecentCallLogs(data.logs);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingRecentLogs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "log_call") {
+      fetchRecentLogs();
+    }
+  }, [activeTab, fetchRecentLogs]);
+
+  // Delete Call Log Update
+  const handleDeleteCallLog = async (logId: string, patientName: string) => {
+    if (!confirm(`Are you sure you want to delete the call log update for "${patientName}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/telecaller/call-logs?id=${encodeURIComponent(logId)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRecentCallLogs((prev) => prev.filter((l) => l.id !== logId));
+        setActionMessage(`Call log for ${patientName} deleted successfully.`);
+        setTimeout(() => setActionMessage(null), 4000);
+      } else {
+        alert(data.error || "Failed to delete call log update.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Error deleting call log update.");
     }
   };
 
@@ -2171,122 +2263,325 @@ function TelecallerDashboardContent() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 3: STANDALONE CALL LOGS DESK (FORM ONLY - RECENT TABLE REMOVED)       */}
+        {/* TAB 3: STANDALONE CALL LOGS DESK WITH PATIENT SEARCH & DELETE OPTION       */}
         {/* ========================================================================= */}
         {activeTab === "log_call" && (
-          <div className="p-6 max-w-3xl mx-auto space-y-6">
+          <div className="p-6 max-w-5xl mx-auto space-y-6">
+            {/* Top Form Card */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4 text-white flex items-center justify-between">
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-4 text-white flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shadow-inner">
                     <PhoneCall className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm">Log Patient Call &amp; Outcome</h2>
-                    <p className="text-[11px] text-emerald-100">
-                      Record telecaller calling outcome, feedback, and notes
+                    <h2 className="font-extrabold text-sm tracking-tight">Log Patient Call &amp; Discussion Outcome</h2>
+                    <p className="text-[11.5px] text-emerald-100 font-medium">
+                      Record telecalling feedback, notes &amp; disposition. Saves and returns to Follow-Ups roster.
                     </p>
                   </div>
                 </div>
+
+                <Link
+                  href="/telecaller/dashboard"
+                  className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/20"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Back to Follow-Ups</span>
+                </Link>
               </div>
 
-              <form onSubmit={handleStandaloneCallLog} className="p-6 space-y-4 text-xs font-medium text-slate-700">
+              <form onSubmit={handleStandaloneCallLog} className="p-6 space-y-5 text-xs font-medium text-slate-700">
+                {/* Patient Search & Phone & Branch */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Patient Name <span className="text-rose-500">*</span>
+                  {/* Patient Name with Auto-Search */}
+                  <div className="relative">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Patient Full Name <span className="text-rose-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter patient full name"
-                      value={logPatientName}
-                      onChange={(e) => setLogPatientName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Type name (auto-searches roster)"
+                        value={logPatientName}
+                        onChange={(e) => handleLogPatientNameChange(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Mobile Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      maxLength={10}
-                      placeholder="10-digit phone"
-                      value={logPhone}
-                      onChange={(e) => setLogPhone(e.target.value.replace(/\D/g, ""))}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Hospital Branch
-                    </label>
-                    <select
-                      value={logBranch}
-                      onChange={(e) => setLogBranch(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                    >
-                      {branches
-                        .filter((b) => b !== "All Branches")
-                        .map((b) => (
-                          <option key={b} value={b}>
-                            📍 {b}
-                          </option>
+                    {/* Autocomplete suggestions */}
+                    {showLogSuggestions && logSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-2 max-h-56 overflow-y-auto space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1 text-[10px] font-extrabold uppercase text-slate-400 border-b border-slate-100">
+                          <span>Matching Patients ({logSuggestions.length})</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowLogSuggestions(false)}
+                            className="hover:text-slate-700 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {logSuggestions.map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={() => handleSelectLogSuggestion(p)}
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-emerald-50 cursor-pointer transition text-xs"
+                          >
+                            <div>
+                              <div className="font-extrabold text-slate-900">{p.name}</div>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                📞 {p.phone} {p.diseases ? `• ${p.diseases}` : ""}
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
+                              {p.regId}
+                            </span>
+                          </div>
                         ))}
-                    </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile Number */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Mobile Number (+91) <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        placeholder="10-digit mobile number"
+                        value={logPhone}
+                        onChange={(e) => setLogPhone(e.target.value.replace(/\D/g, ""))}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Hospital Branch */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Clinic Branch <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <select
+                        value={logBranch}
+                        onChange={(e) => setLogBranch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        {branches
+                          .filter((b) => b !== "All Branches")
+                          .map((b) => (
+                            <option key={b} value={b}>
+                              📍 {b}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
+                {/* Call Outcome Selector */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-2">
-                    Call Outcome <span className="text-rose-500">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Call Outcome / Disposition <span className="text-rose-500">*</span>
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                    {CALL_OUTCOMES.map((oc) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                    {CALL_OUTCOMES.map((oc) => {
+                      const isSelected = callOutcome === oc.id;
+                      return (
+                        <button
+                          key={oc.id}
+                          type="button"
+                          onClick={() => setCallOutcome(oc.id)}
+                          className={`p-2.5 rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? `${oc.color} ring-2 ring-emerald-500 shadow-2xs font-extrabold scale-[1.02]`
+                              : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          <span className="text-xs">{oc.label}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-current shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quick Remarks Chips */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-tight mb-1.5">
+                    Quick Suggestions (Click to append):
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      "Requested callback tomorrow",
+                      "Medicine running, will visit next week",
+                      "Out of station, traveling",
+                      "Wants Sunday appointment",
+                      "Not answering phone",
+                      "Interested in online consult",
+                    ].map((chip) => (
                       <button
-                        key={oc.id}
+                        key={chip}
                         type="button"
-                        onClick={() => setCallOutcome(oc.id)}
-                        className={`p-2 rounded-lg border text-left font-bold transition flex items-center justify-between cursor-pointer ${
-                          callOutcome === oc.id
-                            ? `${oc.color} ring-2 ring-emerald-500 shadow-2xs`
-                            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                        }`}
+                        onClick={() => {
+                          setCallRemarks((prev) => (prev ? `${prev} • ${chip}` : chip));
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200 border border-slate-200 text-[11px] font-semibold text-slate-600 transition cursor-pointer"
                       >
-                        <span className="text-xs">{oc.label}</span>
-                        {callOutcome === oc.id && <Check className="w-3.5 h-3.5" />}
+                        + {chip}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {/* Discussion Remarks */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     Call Discussion &amp; Outcome Notes
                   </label>
                   <textarea
                     value={callRemarks}
                     onChange={(e) => setCallRemarks(e.target.value)}
                     rows={3}
-                    placeholder="Patient traveling, requested Saturday slot, medicine still running..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Enter discussion notes: patient condition, requested callback time, medicine status..."
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   />
                 </div>
 
-                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                {/* Actions */}
+                <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
+                  <Link
+                    href="/telecaller/dashboard"
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition cursor-pointer"
+                  >
+                    Cancel &amp; Return
+                  </Link>
                   <button
                     type="submit"
                     disabled={savingCallLog}
-                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50 cursor-pointer"
                   >
-                    {savingCallLog ? "Saving..." : "Save Call Log"}
+                    {savingCallLog ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Saving Update...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Save Call Log &amp; Return to Roster</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
+            </div>
+
+            {/* Bottom Card: Logged Call Updates List with DELETE Option */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-emerald-700" />
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    Logged Call Updates ({recentCallLogs.length})
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    Live Records
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchRecentLogs}
+                  disabled={loadingRecentLogs}
+                  className="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecentLogs ? "animate-spin text-emerald-600" : ""}`} />
+                  <span>Refresh Logs</span>
+                </button>
+              </div>
+
+              {loadingRecentLogs ? (
+                <div className="p-8 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span>Loading call log records...</span>
+                </div>
+              ) : recentCallLogs.length === 0 ? (
+                <div className="p-10 text-center text-slate-400 space-y-2">
+                  <PhoneCall className="w-8 h-8 mx-auto text-slate-300" />
+                  <p className="text-xs font-bold text-slate-500">No call log updates recorded yet</p>
+                  <p className="text-[11px] text-slate-400">Use the form above to log patient call outcomes.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50/90 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                        <th className="py-2.5 px-4">Patient Info</th>
+                        <th className="py-2.5 px-3">Branch</th>
+                        <th className="py-2.5 px-3">Call Outcome</th>
+                        <th className="py-2.5 px-4">Notes &amp; Discussion</th>
+                        <th className="py-2.5 px-3">Logged Date / Agent</th>
+                        <th className="py-2.5 px-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {recentCallLogs.map((log: any) => {
+                        const ocObj = CALL_OUTCOMES.find((o) => o.id === log.callOutcome);
+                        const badgeColor = ocObj ? ocObj.color : "text-slate-700 bg-slate-100 border-slate-300";
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4 font-semibold text-slate-900">
+                              <div className="font-extrabold text-slate-900">{log.patientName}</div>
+                              <div className="text-[11px] text-slate-500 font-mono">📞 {log.phone}</div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 font-medium">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10.5px] font-bold">
+                                {log.branch || "Clinic"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold border ${badgeColor}`}
+                              >
+                                {log.callOutcome}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 max-w-xs text-slate-600 text-[11px] break-words">
+                              {log.notes || "—"}
+                            </td>
+                            <td className="py-3 px-3 text-[11px] text-slate-500 whitespace-nowrap">
+                              <div className="font-medium text-slate-700">
+                                {log.dateTime ? new Date(log.dateTime).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                              </div>
+                              <div className="text-[10px] text-slate-400 font-mono">{log.agentName || "Telecaller"}</div>
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCallLog(log.id, log.patientName)}
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                                title="Delete this call log update"
+                              >
+                                <Trash2 className="w-3 h-3 text-rose-600" />
+                                <span>Delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}

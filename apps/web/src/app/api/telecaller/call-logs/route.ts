@@ -85,3 +85,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Call log ID is required for deletion." },
+        { status: 400 }
+      );
+    }
+    const success = await telecallerCallLogService.deleteLog(id);
+    return NextResponse.json({
+      success,
+      message: success ? "Call log deleted successfully" : "Call log not found",
+    });
+  } catch (error: any) {
+    console.error("DELETE telecaller call log error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete call log" },
+      { status: 500 }
+    );
+  }
+}
+

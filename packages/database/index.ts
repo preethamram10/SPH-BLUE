@@ -7142,6 +7142,16 @@ export const telecallerCallLogService = {
     return newRecord;
   },
 
+  async deleteLog(id: string): Promise<boolean> {
+    const store = getCallLogsStore();
+    const idx = store.findIndex((l) => l.id === id);
+    if (idx === -1) return false;
+    store.splice(idx, 1);
+    global.__sphCallLogsStore = store;
+    saveCallLogsToDisk(store);
+    return true;
+  },
+
   async getStats() {
     const store = getCallLogsStore();
     return {
