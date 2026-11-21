@@ -1396,10 +1396,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
               {/* FAMILY MULTI-PAY DETECTION BANNER */}
               {isMultiPayApplicable && (
-                <div className="rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-sm animate-in fade-in duration-200">
+                <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 shadow-xs animate-in fade-in duration-200">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-xs">
+                      <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold shadow-xs">
                         <Users className="w-5 h-5" />
                       </div>
                       <div>
@@ -1407,7 +1407,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
                             Family Group Detected
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-black text-slate-900 border border-slate-300">
+                          <span className="px-2 py-0.5 rounded-full bg-sky-100 text-[10px] font-black text-sky-800 border border-sky-200">
                             {samePhoneFamilyAppts.length} Appointments Today
                           </span>
                         </div>
@@ -1420,9 +1420,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsMultiPayEnabled(!isMultiPayEnabled)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2 shadow-xs ${isMultiPayEnabled
-                          ? "bg-slate-900 text-white hover:bg-black"
-                          : "bg-white text-slate-900 border-2 border-slate-900 hover:bg-slate-100"
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 shadow-xs ${isMultiPayEnabled
+                          ? "bg-sky-600 text-white hover:bg-sky-700"
+                          : "bg-white text-sky-700 border border-sky-300 hover:bg-sky-50"
                         }`}
                     >
                       <Sparkles size={14} />
@@ -1436,7 +1436,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 /* MULTI-PAY FAMILY INTERFACE */
                 <div className="space-y-5">
                   {/* HEADER / QUICK SUMMARY */}
-                  <div className="bg-slate-100 border border-slate-300 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2">
                     <div className="text-xs text-slate-900">
                       <span className="font-extrabold">Family Group Billing: </span>
                       <span className="font-medium text-slate-600">
@@ -1445,7 +1445,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-600">Selected:</span>
-                      <span className="px-2.5 py-0.5 rounded bg-slate-900 text-white text-xs font-black">
+                      <span className="px-2.5 py-0.5 rounded bg-sky-100 text-sky-800 text-xs font-black border border-sky-200">
                         {multiPayMembers.filter((m) => m.selected).length} of {multiPayMembers.length} Members
                       </span>
                     </div>
@@ -1458,17 +1458,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       return (
                         <div
                           key={member.appointmentId}
-                          className={`rounded-2xl border-2 transition-all overflow-hidden ${isSelected ? "border-slate-900 bg-white shadow-xs" : "border-slate-200 bg-slate-50 opacity-60"
+                          className={`rounded-2xl border transition-all overflow-hidden ${isSelected ? "border-sky-300 bg-white shadow-xs" : "border-slate-200 bg-slate-50/60 opacity-60"
                             }`}
                         >
                           {/* CARD TOP BAR */}
-                          <div className="p-3.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-3">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => handleToggleMemberSelect(member.appointmentId)}
-                                className="w-4 h-4 rounded text-slate-900 accent-slate-900 focus:ring-slate-900 cursor-pointer"
+                                className="w-4 h-4 rounded text-sky-600 accent-sky-600 focus:ring-sky-500 cursor-pointer"
                                 title="Include this member in bill"
                               />
                               <div>
@@ -1478,7 +1478,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     {member.registrationId}
                                   </span>
                                   {member.token && (
-                                    <span className="text-[10.5px] px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">
+                                    <span className="text-[10.5px] px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-bold border border-sky-200">
                                       {member.token}
                                     </span>
                                   )}
@@ -1523,7 +1523,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       onChange={(e) =>
                                         handleUpdateMemberField(member.appointmentId, "includeConsultFee", e.target.checked)
                                       }
-                                      className="w-4 h-4 rounded text-slate-900 accent-slate-900 cursor-pointer"
+                                      className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
                                     />
                                     <span className="text-xs font-black text-slate-900">Include Consultation Fee</span>
                                   </label>
@@ -1540,7 +1540,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                             Math.max(0, Number(e.target.value) || 0)
                                           )
                                         }
-                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-slate-900 text-right"
+                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
                                         placeholder="Amount"
                                       />
                                     </div>
@@ -1555,8 +1555,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                         type="button"
                                         onClick={() => handleUpdateMemberField(member.appointmentId, "consultationFee", amt)}
                                         className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${member.consultationFee === amt
-                                            ? "bg-slate-900 text-white border-slate-900"
-                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                            ? "bg-sky-600 text-white border-sky-600"
+                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                                           }`}
                                       >
                                         ₹{amt}
@@ -1576,7 +1576,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       onChange={(e) =>
                                         handleUpdateMemberField(member.appointmentId, "includeMedicineFee", e.target.checked)
                                       }
-                                      className="w-4 h-4 rounded text-slate-900 accent-slate-900 cursor-pointer"
+                                      className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
                                     />
                                     <span className="text-xs font-black text-slate-900">Prescribed Medicines</span>
                                   </label>
@@ -1590,8 +1590,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                           type="button"
                                           onClick={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
                                           className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${member.medicineDuration === dur
-                                              ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
-                                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                              ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                                             }`}
                                         >
                                           {dur}
@@ -1623,7 +1623,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                             handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
                                           }
                                           placeholder="Remedy / Medicine Name"
-                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-slate-900"
+                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-sky-500"
                                         />
 
                                         {/* Type */}
@@ -1671,7 +1671,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                                 Math.max(0, Number(e.target.value) || 0)
                                               )
                                             }
-                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-slate-900 text-right"
+                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
                                             placeholder="₹"
                                           />
                                         </div>
@@ -1692,7 +1692,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleAddMedicineToMember(member.appointmentId)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-slate-400 bg-slate-50 hover:bg-slate-100 text-slate-900 text-xs font-bold transition cursor-pointer"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 hover:bg-sky-100/70 text-sky-700 text-xs font-bold transition cursor-pointer"
                                     >
                                       <Plus size={13} />
                                       <span>Add Medicine for {member.patientName}</span>
@@ -1778,11 +1778,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               }
                             }}
                             className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${active
-                                ? "border-slate-900 bg-slate-900 text-white shadow-xs"
-                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                ? "border-sky-600 bg-sky-50 text-sky-800 shadow-xs ring-2 ring-sky-500"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                               }`}
                           >
-                            <Icon size={17} className={active ? "text-white" : "text-slate-400"} />
+                            <Icon size={17} className={active ? "text-sky-600" : "text-slate-400"} />
                             <span>{m.label}</span>
                           </button>
                         );
@@ -1813,12 +1813,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   </div>
 
                   {/* MULTI-PAY FINAL ACTION BAR */}
-                  <div className="sticky bottom-0 bg-slate-900 rounded-2xl p-4 text-white flex items-center justify-between flex-wrap gap-3 shadow-xl">
+                  <div className="sticky bottom-0 bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3 shadow-lg">
                     <div>
-                      <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                         COMBINED GRAND TOTAL ({multiPayMembers.filter((m) => m.selected).length} Family Members)
                       </div>
-                      <div className="text-2xl font-black text-emerald-400">
+                      <div className="text-2xl font-black text-emerald-600">
                         ₹{multiPayGrandTotal.toLocaleString()}
                       </div>
                     </div>
@@ -1827,7 +1827,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       type="button"
                       onClick={handleConfirmMultiPayment}
                       disabled={isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0}
-                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm transition shadow-lg shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       <CheckCircle2 size={18} />
                       <span>{isSubmitting ? "Processing Family Checkout..." : `Pay Family Total (₹${multiPayGrandTotal.toLocaleString()})`}</span>
@@ -2743,10 +2743,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                     {/* COUNTER UPI (SAME AS CASH) */}
                     {paymentMode === "Counter UPI" && (
-                      <div className="mt-3 bg-slate-50 border-2 border-slate-300 rounded-2xl p-4 shadow-sm space-y-2.5 animate-in fade-in duration-200">
+                      <div className="mt-3 bg-sky-50/60 border border-sky-200 rounded-2xl p-4 shadow-xs space-y-2.5 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
+                            <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
                               <Smartphone className="w-5 h-5" />
                             </div>
                             <div>
@@ -2758,12 +2758,12 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               </span>
                             </div>
                           </div>
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-900 border border-slate-300">
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-sky-100 text-sky-800 border border-sky-200">
                             DIRECT DESK
                           </span>
                         </div>
-                        <div className="bg-slate-100 rounded-xl p-3 border border-slate-200 text-xs text-slate-800 font-medium leading-relaxed">
-                          • Patient scans clinic counter static QR code directly. Collect <strong>₹{effectivePaidToday.toLocaleString()}</strong> at reception.
+                        <div className="bg-white rounded-xl p-3 border border-sky-200/80 text-xs text-slate-700 font-medium leading-relaxed">
+                          • Patient scans clinic counter static QR code directly. Collect <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> at reception.
                           <br />
                           • Click <strong>&quot;Complete &amp; Print Bill&quot;</strong> below to confirm (No online gateway popup).
                         </div>

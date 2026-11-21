@@ -2253,7 +2253,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           <Ionicons
                             name={isMultiPayEnabled ? "checkmark-circle" : "sparkles"}
                             size={14}
-                            color={isMultiPayEnabled ? "#ffffff" : "#0f172a"}
+                            color={isMultiPayEnabled ? "#ffffff" : "#0284c7"}
                           />
                           <Text
                             style={[
@@ -2291,7 +2291,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                 <Ionicons
                                   name={isSelected ? "checkbox" : "square-outline"}
                                   size={20}
-                                  color={isSelected ? "#0f172a" : "#94a3b8"}
+                                  color={isSelected ? "#0284c7" : "#94a3b8"}
                                 />
                                 <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -2336,7 +2336,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                     <Ionicons
                                       name={member.includeConsultFee ? "checkbox" : "square-outline"}
                                       size={18}
-                                      color={member.includeConsultFee ? "#0f172a" : "#94a3b8"}
+                                      color={member.includeConsultFee ? "#0284c7" : "#94a3b8"}
                                     />
                                     <Text style={styles.multiPaySectionTitle}>Consultation Fee</Text>
                                   </TouchableOpacity>
@@ -2367,7 +2367,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                       <Ionicons
                                         name={member.includeMedicineFee ? "checkbox" : "square-outline"}
                                         size={18}
-                                        color={member.includeMedicineFee ? "#0f172a" : "#94a3b8"}
+                                        color={member.includeMedicineFee ? "#0284c7" : "#94a3b8"}
                                       />
                                       <Text style={styles.multiPaySectionTitle}>Prescribed Medicines</Text>
                                     </TouchableOpacity>
@@ -2444,7 +2444,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         onPress={() => handleAddMedicineToMember(member.appointmentId)}
                                         activeOpacity={0.7}
                                       >
-                                        <Ionicons name="add-circle-outline" size={14} color="#0f172a" />
+                                        <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
                                         <Text style={styles.multiPayAddMedBtnText}>+ Add Medicine Item</Text>
                                       </TouchableOpacity>
                                     </View>
@@ -3505,23 +3505,23 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
 
                         {/* COUNTER UPI (CLINIC DESK QR - SAME AS CASH) */}
                         {selectedMethod === "Counter UPI" && (
-                          <View style={{ marginTop: 14, backgroundColor: "#f8fafc", borderWidth: 1.5, borderColor: "#cbd5e1", borderRadius: 18, padding: 14 }}>
+                          <View style={{ marginTop: 14, backgroundColor: "#f0f9ff", borderWidth: 1, borderColor: "#bae6fd", borderRadius: 18, padding: 14 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#0284c7", alignItems: "center", justifyContent: "center" }}>
                                 <Ionicons name="storefront-outline" size={20} color="#ffffff" />
                               </View>
                               <View style={{ flex: 1 }}>
                                 <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>Counter UPI (Clinic Desk QR)</Text>
                                 <Text style={{ fontSize: 11, color: "#64748b" }}>Handled same as Cash • Direct counter collection</Text>
                               </View>
-                              <View style={{ backgroundColor: "#f1f5f9", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0" }}>
-                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#0f172a" }}>MANUAL DESK</Text>
+                              <View style={{ backgroundColor: "#e0f2fe", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#0284c7" }}>MANUAL DESK</Text>
                               </View>
                             </View>
-                            <View style={{ backgroundColor: "#f1f5f9", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#e2e8f0" }}>
+                            <View style={{ backgroundColor: "#ffffff", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#e0f2fe" }}>
                               <Text style={{ fontSize: 11.5, color: "#334155", fontWeight: "600", lineHeight: 18 }}>
                                 • Patient scans the clinic counter printed QR code directly.
-                                {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#0f172a" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
+                                {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#0284c7" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
                                 {"\n"}• Tap "Complete Consultation & Collect Payment" below to record this payment.
                               </Text>
                             </View>
@@ -3854,7 +3854,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                 <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
                                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                      <Ionicons name="storefront-outline" size={14} color="#0f172a" />
+                                      <Ionicons name="storefront-outline" size={14} color="#0284c7" />
                                       <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Counter UPI (Desk QR) (₹)</Text>
                                     </View>
                                     {(() => {
@@ -6366,9 +6366,9 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   multiPayBanner: {
-    backgroundColor: "#f8fafc",
-    borderWidth: 1.5,
-    borderColor: "#e2e8f0",
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
@@ -6377,31 +6377,31 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#0284c7",
     alignItems: "center",
     justifyContent: "center",
   },
   multiPayTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#0f172a",
+    color: "#0369a1",
   },
   multiPayBadge: {
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "#e0f2fe",
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#bae6fd",
   },
   multiPayBadgeText: {
     fontSize: 9.5,
     fontWeight: "800",
-    color: "#0f172a",
+    color: "#0284c7",
   },
   multiPaySubtitle: {
     fontSize: 10,
-    color: "#475569",
+    color: "#64748b",
     marginTop: 2,
   },
   multiPayToggleBtn: {
@@ -6413,16 +6413,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#0f172a",
+    borderColor: "#bae6fd",
   },
   multiPayToggleBtnActive: {
-    backgroundColor: "#0f172a",
-    borderColor: "#0f172a",
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
   },
   multiPayToggleBtnText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#0f172a",
+    color: "#0284c7",
   },
   multiPayToggleBtnTextActive: {
     color: "#ffffff",
@@ -6430,8 +6430,8 @@ const styles = StyleSheet.create({
   multiPayMemberCard: {
     backgroundColor: "#ffffff",
     borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#cbd5e1",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     overflow: "hidden",
     marginBottom: 10,
   },
@@ -6577,16 +6577,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
     paddingVertical: 6,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f0f9ff",
     borderRadius: 6,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#cbd5e1",
+    borderColor: "#bae6fd",
   },
   multiPayAddMedBtnText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#0f172a",
+    color: "#0284c7",
   },
   multiPaySmallBox: {
     flex: 1,
@@ -6635,8 +6635,8 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   multiPayMethodChipActive: {
-    backgroundColor: "#0f172a",
-    borderColor: "#0f172a",
+    backgroundColor: "#0284c7",
+    borderColor: "#0284c7",
   },
   multiPayMethodChipText: {
     fontSize: 11,
