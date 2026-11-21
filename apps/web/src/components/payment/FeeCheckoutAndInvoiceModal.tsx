@@ -1396,22 +1396,22 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
               {/* FAMILY MULTI-PAY DETECTION BANNER */}
               {isMultiPayApplicable && (
-                <div className="rounded-2xl border-2 border-indigo-200 bg-linear-to-r from-indigo-50 via-sky-50 to-indigo-50 p-4 shadow-xs animate-in fade-in duration-200">
+                <div className="rounded-2xl border-2 border-slate-900 bg-white p-4 shadow-sm animate-in fade-in duration-200">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
+                      <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-xs">
                         <Users className="w-5 h-5" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-black text-indigo-950 uppercase tracking-wide">
+                          <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
                             Family Group Detected
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-[10px] font-black text-indigo-700">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-black text-slate-900 border border-slate-300">
                             {samePhoneFamilyAppts.length} Appointments Today
                           </span>
                         </div>
-                        <p className="text-xs text-indigo-900/80 mt-0.5">
+                        <p className="text-xs text-slate-600 mt-0.5">
                           Same contact number (<strong>+91 {cleanPhone}</strong>). Combine &amp; pay once for all family members.
                         </p>
                       </div>
@@ -1421,8 +1421,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       type="button"
                       onClick={() => setIsMultiPayEnabled(!isMultiPayEnabled)}
                       className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2 shadow-xs ${isMultiPayEnabled
-                          ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                          : "bg-white text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-50"
+                          ? "bg-slate-900 text-white hover:bg-black"
+                          : "bg-white text-slate-900 border-2 border-slate-900 hover:bg-slate-100"
                         }`}
                     >
                       <Sparkles size={14} />
@@ -1436,8 +1436,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 /* MULTI-PAY FAMILY INTERFACE */
                 <div className="space-y-5">
                   {/* HEADER / QUICK SUMMARY */}
-                  <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2">
-                    <div className="text-xs text-indigo-950">
+                  <div className="bg-slate-100 border border-slate-300 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-xs text-slate-900">
                       <span className="font-extrabold">Family Group Billing: </span>
                       <span className="font-medium text-slate-600">
                         Customize consultation, medicines &amp; duration for each person. Single payment will complete all selected visits.
@@ -1445,7 +1445,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-slate-600">Selected:</span>
-                      <span className="px-2.5 py-0.5 rounded bg-indigo-600 text-white text-xs font-black">
+                      <span className="px-2.5 py-0.5 rounded bg-slate-900 text-white text-xs font-black">
                         {multiPayMembers.filter((m) => m.selected).length} of {multiPayMembers.length} Members
                       </span>
                     </div>
@@ -1458,17 +1458,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       return (
                         <div
                           key={member.appointmentId}
-                          className={`rounded-2xl border-2 transition-all overflow-hidden ${isSelected ? "border-indigo-300 bg-white shadow-xs" : "border-slate-200 bg-slate-50 opacity-60"
+                          className={`rounded-2xl border-2 transition-all overflow-hidden ${isSelected ? "border-slate-900 bg-white shadow-xs" : "border-slate-200 bg-slate-50 opacity-60"
                             }`}
                         >
                           {/* CARD TOP BAR */}
-                          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                          <div className="p-3.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-3">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => handleToggleMemberSelect(member.appointmentId)}
-                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                className="w-4 h-4 rounded text-slate-900 accent-slate-900 focus:ring-slate-900 cursor-pointer"
                                 title="Include this member in bill"
                               />
                               <div>
@@ -1478,7 +1478,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     {member.registrationId}
                                   </span>
                                   {member.token && (
-                                    <span className="text-[10.5px] px-2 py-0.5 rounded bg-sky-100 text-sky-700 font-bold">
+                                    <span className="text-[10.5px] px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">
                                       {member.token}
                                     </span>
                                   )}
@@ -1494,7 +1494,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 <div className="text-[10px] uppercase font-black tracking-wide text-slate-400">
                                   MEMBER SHARE
                                 </div>
-                                <div className="text-base font-black text-emerald-600">
+                                <div className="text-base font-black text-slate-900">
                                   ₹{Number(member.subtotal || 0).toLocaleString()}
                                 </div>
                               </div>
@@ -1523,7 +1523,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       onChange={(e) =>
                                         handleUpdateMemberField(member.appointmentId, "includeConsultFee", e.target.checked)
                                       }
-                                      className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                                      className="w-4 h-4 rounded text-slate-900 accent-slate-900 cursor-pointer"
                                     />
                                     <span className="text-xs font-black text-slate-900">Include Consultation Fee</span>
                                   </label>
@@ -1540,7 +1540,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                             Math.max(0, Number(e.target.value) || 0)
                                           )
                                         }
-                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-slate-900 text-right"
                                         placeholder="Amount"
                                       />
                                     </div>
@@ -1555,7 +1555,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                         type="button"
                                         onClick={() => handleUpdateMemberField(member.appointmentId, "consultationFee", amt)}
                                         className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${member.consultationFee === amt
-                                            ? "bg-indigo-600 text-white border-indigo-600"
+                                            ? "bg-slate-900 text-white border-slate-900"
                                             : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                                           }`}
                                       >
@@ -1576,7 +1576,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       onChange={(e) =>
                                         handleUpdateMemberField(member.appointmentId, "includeMedicineFee", e.target.checked)
                                       }
-                                      className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                                      className="w-4 h-4 rounded text-slate-900 accent-slate-900 cursor-pointer"
                                     />
                                     <span className="text-xs font-black text-slate-900">Prescribed Medicines</span>
                                   </label>
@@ -1590,7 +1590,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                           type="button"
                                           onClick={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
                                           className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${member.medicineDuration === dur
-                                              ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                                              ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
                                               : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                                             }`}
                                         >
@@ -1605,7 +1605,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                   <div className="space-y-2 pt-1">
                                     <div className="text-[10px] font-black uppercase text-slate-400 flex items-center justify-between">
                                       <span>Medicine Items ({member.medicineItems.length})</span>
-                                      <span className="text-emerald-700 font-extrabold">
+                                      <span className="text-slate-900 font-extrabold">
                                         Total Medicine: ₹{member.medicineFee}
                                       </span>
                                     </div>
@@ -1623,7 +1623,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                             handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
                                           }
                                           placeholder="Remedy / Medicine Name"
-                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-indigo-500"
+                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-slate-900"
                                         />
 
                                         {/* Type */}
@@ -1671,7 +1671,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                                 Math.max(0, Number(e.target.value) || 0)
                                               )
                                             }
-                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-slate-900 text-right"
                                             placeholder="₹"
                                           />
                                         </div>
@@ -1692,7 +1692,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleAddMedicineToMember(member.appointmentId)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-100/50 text-indigo-700 text-xs font-bold transition cursor-pointer"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-slate-400 bg-slate-50 hover:bg-slate-100 text-slate-900 text-xs font-bold transition cursor-pointer"
                                     >
                                       <Plus size={13} />
                                       <span>Add Medicine for {member.patientName}</span>
@@ -1778,11 +1778,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               }
                             }}
                             className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${active
-                                ? "border-indigo-600 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500 shadow-xs"
+                                ? "border-slate-900 bg-slate-900 text-white shadow-xs"
                                 : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
                               }`}
                           >
-                            <Icon size={17} className={active ? "text-indigo-600" : "text-slate-400"} />
+                            <Icon size={17} className={active ? "text-white" : "text-slate-400"} />
                             <span>{m.label}</span>
                           </button>
                         );
@@ -2746,7 +2746,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       <div className="mt-3 bg-slate-50 border-2 border-slate-300 rounded-2xl p-4 shadow-sm space-y-2.5 animate-in fade-in duration-200">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
                               <Smartphone className="w-5 h-5" />
                             </div>
                             <div>
@@ -2758,11 +2758,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               </span>
                             </div>
                           </div>
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-900 border border-slate-300">
                             DIRECT DESK
                           </span>
                         </div>
-                        <div className="bg-indigo-50/70 rounded-xl p-3 border border-indigo-100 text-xs text-indigo-900 font-medium leading-relaxed">
+                        <div className="bg-slate-100 rounded-xl p-3 border border-slate-200 text-xs text-slate-800 font-medium leading-relaxed">
                           • Patient scans clinic counter static QR code directly. Collect <strong>₹{effectivePaidToday.toLocaleString()}</strong> at reception.
                           <br />
                           • Click <strong>&quot;Complete &amp; Print Bill&quot;</strong> below to confirm (No online gateway popup).
@@ -3089,7 +3089,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1.5">
                                 <div className="flex items-center justify-between">
                                   <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
-                                    <Smartphone className="w-3.5 h-3.5 text-indigo-600" /> Counter UPI
+                                    <Smartphone className="w-3.5 h-3.5 text-slate-800" /> Counter UPI
                                   </label>
                                   {(() => {
                                     const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
@@ -3513,14 +3513,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   </div>
 
                   {(activeInvoice as any)?.isMultiPay && (activeInvoice as any)?.familyMembers?.length > 0 ? (
-                    <div className="space-y-3 mb-2 bg-indigo-50/40 p-3.5 rounded-xl border border-indigo-100">
-                      <div className="text-[10.5px] font-black uppercase tracking-wider text-indigo-900 flex items-center justify-between flex-wrap gap-2">
+                    <div className="space-y-3 mb-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                      <div className="text-[10.5px] font-black uppercase tracking-wider text-slate-900 flex items-center justify-between flex-wrap gap-2">
                         <span>Family Members ({(activeInvoice as any).familyMembers.length} Patients Paid Together)</span>
                         <span className="text-slate-600 font-bold">Contact: +91 {cleanPhone}</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                         {(activeInvoice as any).familyMembers.map((fm: any, idx: number) => (
-                          <div key={idx} className="bg-white p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs text-xs space-y-1">
+                          <div key={idx} className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs text-xs space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="font-extrabold text-slate-900">{fm.patientName}</span>
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -3537,7 +3537,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                           </div>
                         ))}
                       </div>
-                      <div className="text-[11px] text-slate-500 pt-1 flex items-center justify-between border-t border-indigo-100">
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center justify-between border-t border-slate-200">
                         <span>Clinic Branch: <strong className="text-slate-800">{activeInvoice.branch || "KPHB Branch"}</strong></span>
                         <span>Date: <strong className="text-slate-800">{activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10)}</strong></span>
                       </div>
@@ -3673,13 +3673,13 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               const medList = fm.medicinesList || [];
                               return (
                                 <React.Fragment key={idx}>
-                                  <tr className="bg-indigo-50/70 border-t-2 border-indigo-200">
-                                    <td className="py-2 px-2 font-black text-xs text-indigo-950 uppercase tracking-wide">
+                                  <tr className="bg-slate-100 border-t-2 border-slate-300">
+                                    <td className="py-2 px-2 font-black text-xs text-slate-900 uppercase tracking-wide">
                                       <span>👤 {fm.patientName}</span>
-                                      <span className="text-[10px] text-indigo-600 font-bold ml-2">({fm.registrationId || "SPH-GEN"})</span>
-                                      {fm.token && <span className="text-[10px] text-sky-700 font-bold ml-1">• {fm.token}</span>}
+                                      <span className="text-[10px] text-slate-600 font-bold ml-2">({fm.registrationId || "SPH-GEN"})</span>
+                                      {fm.token && <span className="text-[10px] text-slate-700 font-bold ml-1">• {fm.token}</span>}
                                     </td>
-                                    <td className="py-2 px-2 text-right font-black text-xs text-indigo-900">
+                                    <td className="py-2 px-2 text-right font-black text-xs text-slate-900">
                                       Subtotal: ₹{Number(fm.totalPaid || 0).toFixed(2)}
                                     </td>
                                   </tr>
@@ -4016,7 +4016,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-amber-50/70 text-amber-950">Breakfast (08:30 AM)</th>
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-sky-50/70 text-sky-950">Lunch (01:15 PM)</th>
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-emerald-50/70 text-emerald-950">Snacks (05:00 PM)</th>
-                                <th className="p-1.5 w-[24%] bg-indigo-50/70 text-indigo-950">Dinner (07:45 PM)</th>
+                                <th className="p-1.5 w-[24%] bg-slate-100 text-slate-900">Dinner (07:45 PM)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -4073,7 +4073,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-amber-50/70 text-amber-950">Breakfast (08:30 AM)</th>
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-sky-50/70 text-sky-950">Lunch (01:15 PM)</th>
                                 <th className="p-1.5 border-r border-slate-300 w-[24%] bg-emerald-50/70 text-emerald-950">Snacks (05:00 PM)</th>
-                                <th className="p-1.5 w-[24%] bg-indigo-50/70 text-indigo-950">Dinner (07:45 PM)</th>
+                                <th className="p-1.5 w-[24%] bg-slate-100 text-slate-900">Dinner (07:45 PM)</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">

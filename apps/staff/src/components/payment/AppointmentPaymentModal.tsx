@@ -1800,7 +1800,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                       {completedInvoice?.isMultiPay && completedInvoice?.familyMembers?.length > 0 ? (
                         <View style={{ backgroundColor: "#f8fafc", padding: 10, borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", gap: 8 }}>
                           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                            <Text style={{ fontSize: 10, fontWeight: "900", color: "#312e81" }}>
+                            <Text style={{ fontSize: 10, fontWeight: "900", color: "#0f172a" }}>
                               {completedInvoice.familyMembers.length} Patients Paid Together
                             </Text>
                             <Text style={{ fontSize: 10, fontWeight: "700", color: "#64748b" }}>
@@ -1926,14 +1926,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                               const medList = fm.medicinesList || [];
                               return (
                                 <View key={idx} style={{ borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: "#e2e8f0", paddingTop: 6, marginTop: 6 }}>
-                                  <View style={[styles.breakdownRow, { backgroundColor: "#f1f5f9", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }]}>
-                                    <Text style={[styles.breakdownRowDesc, { fontWeight: "900", color: "#1e1b4b" }]}>
-                                      👤 {fm.patientName} ({fm.registrationId || "SPH-GEN"})
-                                    </Text>
-                                    <Text style={[styles.breakdownRowAmount, { color: "#4338ca", fontWeight: "900" }]}>
-                                      ₹{Number(fm.totalPaid || 0).toFixed(2)}
-                                    </Text>
-                                  </View>
+                                    <View style={[styles.breakdownRow, { backgroundColor: "#f1f5f9", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }]}>
+                                      <Text style={[styles.breakdownRowDesc, { fontWeight: "900", color: "#0f172a" }]}>
+                                        👤 {fm.patientName} ({fm.registrationId || "SPH-GEN"})
+                                      </Text>
+                                      <Text style={[styles.breakdownRowAmount, { color: "#0f172a", fontWeight: "900" }]}>
+                                        ₹{Number(fm.totalPaid || 0).toFixed(2)}
+                                      </Text>
+                                    </View>
 
                                   {Number(fm.consultationFee) > 0 && (
                                     <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
@@ -2253,7 +2253,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           <Ionicons
                             name={isMultiPayEnabled ? "checkmark-circle" : "sparkles"}
                             size={14}
-                            color={isMultiPayEnabled ? "#ffffff" : "#4f46e5"}
+                            color={isMultiPayEnabled ? "#ffffff" : "#0f172a"}
                           />
                           <Text
                             style={[
@@ -2291,7 +2291,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                 <Ionicons
                                   name={isSelected ? "checkbox" : "square-outline"}
                                   size={20}
-                                  color={isSelected ? "#4f46e5" : "#94a3b8"}
+                                  color={isSelected ? "#0f172a" : "#94a3b8"}
                                 />
                                 <View style={{ flex: 1 }}>
                                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -2336,7 +2336,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                     <Ionicons
                                       name={member.includeConsultFee ? "checkbox" : "square-outline"}
                                       size={18}
-                                      color={member.includeConsultFee ? "#4f46e5" : "#94a3b8"}
+                                      color={member.includeConsultFee ? "#0f172a" : "#94a3b8"}
                                     />
                                     <Text style={styles.multiPaySectionTitle}>Consultation Fee</Text>
                                   </TouchableOpacity>
@@ -2367,7 +2367,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                       <Ionicons
                                         name={member.includeMedicineFee ? "checkbox" : "square-outline"}
                                         size={18}
-                                        color={member.includeMedicineFee ? "#4f46e5" : "#94a3b8"}
+                                        color={member.includeMedicineFee ? "#0f172a" : "#94a3b8"}
                                       />
                                       <Text style={styles.multiPaySectionTitle}>Prescribed Medicines</Text>
                                     </TouchableOpacity>
@@ -2444,7 +2444,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         onPress={() => handleAddMedicineToMember(member.appointmentId)}
                                         activeOpacity={0.7}
                                       >
-                                        <Ionicons name="add-circle-outline" size={14} color="#4f46e5" />
+                                        <Ionicons name="add-circle-outline" size={14} color="#0f172a" />
                                         <Text style={styles.multiPayAddMedBtnText}>+ Add Medicine Item</Text>
                                       </TouchableOpacity>
                                     </View>
@@ -3507,21 +3507,21 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                         {selectedMethod === "Counter UPI" && (
                           <View style={{ marginTop: 14, backgroundColor: "#f8fafc", borderWidth: 1.5, borderColor: "#cbd5e1", borderRadius: 18, padding: 14 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center" }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" }}>
                                 <Ionicons name="storefront-outline" size={20} color="#ffffff" />
                               </View>
                               <View style={{ flex: 1 }}>
                                 <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>Counter UPI (Clinic Desk QR)</Text>
                                 <Text style={{ fontSize: 11, color: "#64748b" }}>Handled same as Cash • Direct counter collection</Text>
                               </View>
-                              <View style={{ backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#4338ca" }}>MANUAL DESK</Text>
+                              <View style={{ backgroundColor: "#f1f5f9", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0" }}>
+                                <Text style={{ fontSize: 10, fontWeight: "800", color: "#0f172a" }}>MANUAL DESK</Text>
                               </View>
                             </View>
-                            <View style={{ backgroundColor: "#eef2ff", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#c7d2fe" }}>
-                              <Text style={{ fontSize: 11.5, color: "#3730a3", fontWeight: "600", lineHeight: 18 }}>
+                            <View style={{ backgroundColor: "#f1f5f9", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#e2e8f0" }}>
+                              <Text style={{ fontSize: 11.5, color: "#334155", fontWeight: "600", lineHeight: 18 }}>
                                 • Patient scans the clinic counter printed QR code directly.
-                                {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#1e1b4b" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
+                                {"\n"}• Amount to Collect: <Text style={{ fontWeight: "900", color: "#0f172a" }}>₹{(isPayLater ? effectivePaidToday : totalAmountDue).toLocaleString()}</Text>
                                 {"\n"}• Tap "Complete Consultation & Collect Payment" below to record this payment.
                               </Text>
                             </View>
@@ -3854,7 +3854,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                 <View style={{ backgroundColor: "#ffffff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 }}>
                                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                                      <Ionicons name="storefront-outline" size={14} color="#4f46e5" />
+                                      <Ionicons name="storefront-outline" size={14} color="#0f172a" />
                                       <Text style={{ fontSize: 11, fontWeight: "800", color: "#334155" }}>Counter UPI (Desk QR) (₹)</Text>
                                     </View>
                                     {(() => {
@@ -6366,9 +6366,9 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   multiPayBanner: {
-    backgroundColor: "#eef2ff",
+    backgroundColor: "#f8fafc",
     borderWidth: 1.5,
-    borderColor: "#c7d2fe",
+    borderColor: "#e2e8f0",
     borderRadius: 14,
     padding: 12,
     marginBottom: 12,
@@ -6377,25 +6377,27 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: "#4f46e5",
+    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
   },
   multiPayTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#312e81",
+    color: "#0f172a",
   },
   multiPayBadge: {
-    backgroundColor: "#e0e7ff",
+    backgroundColor: "#f1f5f9",
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
   multiPayBadgeText: {
     fontSize: 9.5,
     fontWeight: "800",
-    color: "#4338ca",
+    color: "#0f172a",
   },
   multiPaySubtitle: {
     fontSize: 10,
@@ -6411,16 +6413,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#c7d2fe",
+    borderColor: "#0f172a",
   },
   multiPayToggleBtnActive: {
-    backgroundColor: "#4f46e5",
-    borderColor: "#4f46e5",
+    backgroundColor: "#0f172a",
+    borderColor: "#0f172a",
   },
   multiPayToggleBtnText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#4f46e5",
+    color: "#0f172a",
   },
   multiPayToggleBtnTextActive: {
     color: "#ffffff",
@@ -6429,7 +6431,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: "#c7d2fe",
+    borderColor: "#cbd5e1",
     overflow: "hidden",
     marginBottom: 10,
   },
@@ -6575,16 +6577,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
     paddingVertical: 6,
-    backgroundColor: "#eef2ff",
+    backgroundColor: "#f8fafc",
     borderRadius: 6,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#c7d2fe",
+    borderColor: "#cbd5e1",
   },
   multiPayAddMedBtnText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#4f46e5",
+    color: "#0f172a",
   },
   multiPaySmallBox: {
     flex: 1,
@@ -6633,8 +6635,8 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   multiPayMethodChipActive: {
-    backgroundColor: "#eef2ff",
-    borderColor: "#4f46e5",
+    backgroundColor: "#0f172a",
+    borderColor: "#0f172a",
   },
   multiPayMethodChipText: {
     fontSize: 11,
@@ -6642,7 +6644,7 @@ const styles = StyleSheet.create({
     color: "#475569",
   },
   multiPayMethodChipTextActive: {
-    color: "#4f46e5",
+    color: "#ffffff",
     fontWeight: "900",
   },
 });
