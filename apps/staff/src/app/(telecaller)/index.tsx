@@ -507,7 +507,8 @@ export default function TelecallerPortalScreen() {
     }
   };
 
-  const isRestrictedBranch = telecallerProfile.assignedBranch !== "All Branches";
+  // Telecallers have multi-branch access to call and book across all hospital branches
+  const isRestrictedBranch = false;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
