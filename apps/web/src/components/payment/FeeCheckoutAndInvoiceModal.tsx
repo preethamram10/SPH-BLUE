@@ -30,6 +30,10 @@ import {
   Camera,
   Download,
   Eye,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
@@ -97,9 +101,30 @@ export interface PatientAppointment {
   dietPlan?: string;
 }
 
+export interface MultiPayMember {
+  appointmentId: string;
+  patientName: string;
+  phone: string;
+  registrationId: string;
+  token: string;
+  doctorName: string;
+  selected: boolean;
+  consultationFee: number;
+  includeConsultFee: boolean;
+  medicineFee: number;
+  includeMedicineFee: boolean;
+  medicineDuration: string;
+  medicineItems: MedicineItem[];
+  otherCharges: number;
+  discount: number;
+  subtotal: number;
+  isExpanded?: boolean;
+}
+
 export interface FeeCheckoutModalProps {
   isOpen: boolean;
   appointment: PatientAppointment | null;
+  allAppointments?: PatientAppointment[];
   onClose: () => void;
   onSubmitPayment?: (invoiceData: any) => Promise<{ success: boolean; invoiceId?: string; appointment?: any }>;
   onOpenPatientFile?: () => void;
@@ -108,6 +133,7 @@ export interface FeeCheckoutModalProps {
 export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   isOpen,
   appointment,
+  allAppointments = [],
   onClose,
   onSubmitPayment,
   onOpenPatientFile,
@@ -218,6 +244,267 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
   // Completed Invoice State for Receipt View
   const [completedInvoice, setCompletedInvoice] = useState<PatientAppointment | null>(appointment);
+  const [sharingPdf, setSharingPdf] = useState<boolean>(false);
+
+  // --- FAMILY MULTI-PAY STATE & DETECTION ---
+  const cleanPhone = useMemo(() => {
+    return (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+  }, [appointment]);
+
+  const samePhoneFamilyAppts = useMemo(() => {
+    if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return [];
+    return allAppointments.filter((a) => {
+      const p = (a.phoneNumber || a.phone || "").replace(/\D/g, "").slice(-10);
+      return (
+        p === cleanPhone &&
+        !(a as any).isDeleted &&
+        a.status !== "CANCELLED"
+      );
+    });
+  }, [cleanPhone, allAppointments]);
+
+  const isMultiPayApplicable = samePhoneFamilyAppts.length > 1;
+  const [isMultiPayEnabled, setIsMultiPayEnabled] = useState<boolean>(false);
+  const [multiPayMembers, setMultiPayMembers] = useState<MultiPayMember[]>([]);
+
+  useEffect(() => {
+    if (samePhoneFamilyAppts.length > 1) {
+      const init: MultiPayMember[] = samePhoneFamilyAppts.map((a, idx) => {
+        const isCurrent = a.id === appointment?.id;
+        const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
+        const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
+        const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
+          ? (a.medicines || a.medicinesList)!.map((m, mIdx) => ({
+              id: m.id || `med-${idx}-${mIdx}`,
+              name: m.name || "Prescribed Homeo Kit",
+              type: m.type || "Pills",
+              timing: m.timing || "Morning & Night",
+              amount: Number(m.amount) || mFee,
+            }))
+          : [
+              {
+                id: `med-${idx}-1`,
+                name: "Prescribed Homeo Kit",
+                type: "Pills",
+                timing: "Morning & Night",
+                amount: mFee,
+              },
+            ];
+
+        return {
+          appointmentId: a.id,
+          patientName: a.patientName || (a as any).name || `Family Member ${idx + 1}`,
+          phone: cleanPhone,
+          registrationId: a.registrationId || a.patientId || "SPH-GEN",
+          token: (a as any).token || (a as any).tokenNumber || `#A-${idx + 1}`,
+          doctorName: a.doctorName || "Consultant Doctor",
+          selected: true,
+          consultationFee: cFee,
+          includeConsultFee: cFee > 0,
+          medicineFee: mFee,
+          includeMedicineFee: true,
+          medicineDuration: a.medicineDuration || "1 Month",
+          medicineItems: meds,
+          otherCharges: 0,
+          discount: 0,
+          subtotal: (cFee > 0 ? cFee : 0) + mFee,
+          isExpanded: isCurrent || idx === 0,
+        };
+      });
+      setMultiPayMembers(init);
+    } else {
+      setMultiPayMembers([]);
+      setIsMultiPayEnabled(false);
+    }
+  }, [samePhoneFamilyAppts, appointment, cleanPhone]);
+
+  const multiPayGrandTotal = useMemo(() => {
+    if (!isMultiPayEnabled) return 0;
+    return multiPayMembers
+      .filter((m) => m.selected)
+      .reduce((sum, m) => sum + (Number(m.subtotal) || 0), 0);
+  }, [isMultiPayEnabled, multiPayMembers]);
+
+  const handleToggleMemberSelect = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, selected: !m.selected } : m))
+    );
+  };
+
+  const handleToggleMemberExpand = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
+    );
+  };
+
+  const handleUpdateMemberField = (appointmentId: string, field: keyof MultiPayMember, value: any) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updated = { ...m, [field]: value };
+        const consult = updated.includeConsultFee ? Number(updated.consultationFee) || 0 : 0;
+        const med = updated.includeMedicineFee
+          ? updated.medicineItems.length > 0
+            ? updated.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+            : Number(updated.medicineFee) || 0
+          : 0;
+        const other = Number(updated.otherCharges) || 0;
+        const disc = Number(updated.discount) || 0;
+        updated.subtotal = Math.max(0, consult + med + other - disc);
+        return updated;
+      })
+    );
+  };
+
+  const handleAddMedicineToMember = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const newItem: MedicineItem = {
+          id: `med-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          name: "Homeo Remedy",
+          type: "Pills",
+          timing: "Morning & Night",
+          amount: 500,
+        };
+        const updatedItems = [...m.medicineItems, newItem];
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleRemoveMedicineFromMember = (appointmentId: string, medId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updatedItems = m.medicineItems.filter((mi) => mi.id !== medId);
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleUpdateMedicineInMember = (
+    appointmentId: string,
+    medId: string,
+    field: keyof MedicineItem,
+    val: any
+  ) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updatedItems = m.medicineItems.map((mi) =>
+          mi.id === medId ? { ...mi, [field]: val } : mi
+        );
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleConfirmMultiPayment = async () => {
+    const selected = multiPayMembers.filter((m) => m.selected);
+    if (selected.length === 0) {
+      alert("Please select at least one family member to pay.");
+      return;
+    }
+    if (multiPayGrandTotal <= 0) {
+      alert("Total payment amount cannot be zero.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const generatedMasterInvoiceId = `INV-FAM-${Date.now().toString().slice(-6)}`;
+      const payload = {
+        masterInvoiceId: generatedMasterInvoiceId,
+        paymentMethod: paymentMode,
+        paymentMode,
+        totalGrandPaid: multiPayGrandTotal,
+        splitDetails: (paymentMode === "Split" || paymentMode === "Split Payment") ? {
+          cash: splitCash,
+          upi: splitUpi,
+          card: splitCard,
+          counterUpi: splitCounterUpi,
+        } : undefined,
+        members: selected.map((m) => ({
+          appointmentId: m.appointmentId,
+          patientName: m.patientName,
+          registrationId: m.registrationId,
+          token: m.token,
+          doctorName: m.doctorName,
+          consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
+          medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
+          medicineDuration: m.medicineDuration,
+          medicinesList: m.includeMedicineFee ? m.medicineItems : [],
+          otherCharges: Number(m.otherCharges) || 0,
+          discount: Number(m.discount) || 0,
+          totalPaid: Number(m.subtotal) || 0,
+        })),
+      };
+
+      const res = await fetch("/api/reception/multi-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to process Multi-Payment");
+      }
+
+      if (onSubmitPayment) {
+        try {
+          await onSubmitPayment({ isMultiPay: true, masterInvoiceId: generatedMasterInvoiceId });
+        } catch {}
+      }
+
+      setCompletedInvoice({
+        ...appointment!,
+        isMultiPay: true,
+        masterInvoiceId: data.masterInvoiceId || generatedMasterInvoiceId,
+        totalPaid: multiPayGrandTotal,
+        totalAmountDue: multiPayGrandTotal,
+        paymentMode,
+        paymentMethod: paymentMode,
+        paidAt: new Date().toISOString(),
+        familyMembers: payload.members,
+      } as any);
+
+      setCurrentStep("invoice_receipt");
+    } catch (err: any) {
+      console.error("Multi-Payment checkout error:", err);
+      alert(err.message || "Failed to record Multi-Payment. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && appointment) {
@@ -882,11 +1169,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     return null;
   }
 
-  const rawPhone = appointment.phoneNumber || appointment.phone || "";
-  const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
   const activeInvoice = completedInvoice || appointment;
-
-  const [sharingPdf, setSharingPdf] = useState(false);
 
   // --- SHARE OFFICIAL INVOICE RECEIPT PDF ATTACHMENT (NO PLAIN TEXT) ---
   const handleShareWhatsApp = async () => {
@@ -1088,6 +1371,453 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           {currentStep === "collect_fee" && (
             <div className="p-6 space-y-5 max-h-[82vh] overflow-y-auto">
 
+              {/* FAMILY MULTI-PAY DETECTION BANNER */}
+              {isMultiPayApplicable && (
+                <div className="rounded-2xl border-2 border-indigo-200 bg-linear-to-r from-indigo-50 via-sky-50 to-indigo-50 p-4 shadow-xs animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-indigo-950 uppercase tracking-wide">
+                            Family Group Detected
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-[10px] font-black text-indigo-700">
+                            {samePhoneFamilyAppts.length} Appointments Today
+                          </span>
+                        </div>
+                        <p className="text-xs text-indigo-900/80 mt-0.5">
+                          Same contact number (<strong>+91 {cleanPhone}</strong>). Combine &amp; pay once for all family members.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsMultiPayEnabled(!isMultiPayEnabled)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-2 shadow-xs ${
+                        isMultiPayEnabled
+                          ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                          : "bg-white text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-50"
+                      }`}
+                    >
+                      <Sparkles size={14} />
+                      <span>{isMultiPayEnabled ? "✓ Multi-Pay Enabled" : "Enable Multi-Pay"}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isMultiPayEnabled ? (
+                /* MULTI-PAY FAMILY INTERFACE */
+                <div className="space-y-5">
+                  {/* HEADER / QUICK SUMMARY */}
+                  <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2">
+                    <div className="text-xs text-indigo-950">
+                      <span className="font-extrabold">Family Group Billing: </span>
+                      <span className="font-medium text-slate-600">
+                        Customize consultation, medicines &amp; duration for each person. Single payment will complete all selected visits.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-600">Selected:</span>
+                      <span className="px-2.5 py-0.5 rounded bg-indigo-600 text-white text-xs font-black">
+                        {multiPayMembers.filter((m) => m.selected).length} of {multiPayMembers.length} Members
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* FAMILY MEMBERS LIST */}
+                  <div className="space-y-4">
+                    {multiPayMembers.map((member) => {
+                      const isSelected = member.selected;
+                      return (
+                        <div
+                          key={member.appointmentId}
+                          className={`rounded-2xl border-2 transition-all overflow-hidden ${
+                            isSelected ? "border-indigo-300 bg-white shadow-xs" : "border-slate-200 bg-slate-50 opacity-60"
+                          }`}
+                        >
+                          {/* CARD TOP BAR */}
+                          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleToggleMemberSelect(member.appointmentId)}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                title="Include this member in bill"
+                              />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-black text-slate-900 text-sm">{member.patientName}</span>
+                                  <span className="text-[10.5px] px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
+                                    {member.registrationId}
+                                  </span>
+                                  {member.token && (
+                                    <span className="text-[10.5px] px-2 py-0.5 rounded bg-sky-100 text-sky-700 font-bold">
+                                      {member.token}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Doctor: <span className="font-bold text-slate-700">{member.doctorName}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="text-[10px] uppercase font-black tracking-wide text-slate-400">
+                                  MEMBER SHARE
+                                </div>
+                                <div className="text-base font-black text-emerald-600">
+                                  ₹{Number(member.subtotal || 0).toLocaleString()}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMemberExpand(member.appointmentId)}
+                                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition cursor-pointer"
+                                title={member.isExpanded ? "Collapse" : "Expand"}
+                              >
+                                {member.isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* EXPANDED CONTENT: CUSTOMIZE CONSULTATION, DURATION & MEDICINE ITEMS */}
+                          {member.isExpanded && isSelected && (
+                            <div className="p-4 space-y-4 bg-white">
+                              {/* 1. CONSULTATION FEE */}
+                              <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={member.includeConsultFee}
+                                      onChange={(e) =>
+                                        handleUpdateMemberField(member.appointmentId, "includeConsultFee", e.target.checked)
+                                      }
+                                      className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-black text-slate-900">Include Consultation Fee</span>
+                                  </label>
+                                  {member.includeConsultFee && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-bold text-slate-500">₹</span>
+                                      <input
+                                        type="number"
+                                        value={member.consultationFee}
+                                        onChange={(e) =>
+                                          handleUpdateMemberField(
+                                            member.appointmentId,
+                                            "consultationFee",
+                                            Math.max(0, Number(e.target.value) || 0)
+                                          )
+                                        }
+                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                                        placeholder="Amount"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                                {member.includeConsultFee && (
+                                  <div className="flex items-center gap-1.5 pt-1">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">Presets:</span>
+                                    {[0, 300, 500, 700].map((amt) => (
+                                      <button
+                                        key={amt}
+                                        type="button"
+                                        onClick={() => handleUpdateMemberField(member.appointmentId, "consultationFee", amt)}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                                          member.consultationFee === amt
+                                            ? "bg-indigo-600 text-white border-indigo-600"
+                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        ₹{amt}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 2. MEDICINE SECTION & ITEMS */}
+                              <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-3">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={member.includeMedicineFee}
+                                      onChange={(e) =>
+                                        handleUpdateMemberField(member.appointmentId, "includeMedicineFee", e.target.checked)
+                                      }
+                                      className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-black text-slate-900">Prescribed Medicines</span>
+                                  </label>
+
+                                  {member.includeMedicineFee && (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10.5px] font-bold text-slate-500 mr-1">Duration:</span>
+                                      {["15 Days", "1 Month", "2 Months", "3 Months"].map((dur) => (
+                                        <button
+                                          key={dur}
+                                          type="button"
+                                          onClick={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
+                                          className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${
+                                            member.medicineDuration === dur
+                                              ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                          }`}
+                                        >
+                                          {dur}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {member.includeMedicineFee && (
+                                  <div className="space-y-2 pt-1">
+                                    <div className="text-[10px] font-black uppercase text-slate-400 flex items-center justify-between">
+                                      <span>Medicine Items ({member.medicineItems.length})</span>
+                                      <span className="text-emerald-700 font-extrabold">
+                                        Total Medicine: ₹{member.medicineFee}
+                                      </span>
+                                    </div>
+
+                                    {member.medicineItems.map((med, mIdx) => (
+                                      <div
+                                        key={med.id || mIdx}
+                                        className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs"
+                                      >
+                                        {/* Remedy Name */}
+                                        <input
+                                          type="text"
+                                          value={med.name}
+                                          onChange={(e) =>
+                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
+                                          }
+                                          placeholder="Remedy / Medicine Name"
+                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-indigo-500"
+                                        />
+
+                                        {/* Type */}
+                                        <select
+                                          value={med.type || "Pills"}
+                                          onChange={(e) =>
+                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "type", e.target.value)
+                                          }
+                                          className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                        >
+                                          <option value="Pills">Pills</option>
+                                          <option value="Drops">Drops</option>
+                                          <option value="Dilution">Dilution</option>
+                                          <option value="Tincture">Tincture</option>
+                                          <option value="Syrup">Syrup</option>
+                                          <option value="Kit">Kit</option>
+                                        </select>
+
+                                        {/* Timing */}
+                                        <select
+                                          value={med.timing || "Morning & Night"}
+                                          onChange={(e) =>
+                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "timing", e.target.value)
+                                          }
+                                          className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                        >
+                                          <option value="Morning & Night">Morning &amp; Night</option>
+                                          <option value="BD (Twice daily)">BD (Twice)</option>
+                                          <option value="TDS (Thrice daily)">TDS (Thrice)</option>
+                                          <option value="OD (Once daily)">OD (Once)</option>
+                                          <option value="SOS (As needed)">SOS (As needed)</option>
+                                        </select>
+
+                                        {/* Amount */}
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-xs font-bold text-slate-400">₹</span>
+                                          <input
+                                            type="number"
+                                            value={med.amount}
+                                            onChange={(e) =>
+                                              handleUpdateMedicineInMember(
+                                                member.appointmentId,
+                                                med.id,
+                                                "amount",
+                                                Math.max(0, Number(e.target.value) || 0)
+                                              )
+                                            }
+                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                                            placeholder="₹"
+                                          />
+                                        </div>
+
+                                        {/* Delete Item */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                          title="Remove medicine"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    ))}
+
+                                    {/* Add Medicine Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddMedicineToMember(member.appointmentId)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 hover:bg-indigo-100/50 text-indigo-700 text-xs font-bold transition cursor-pointer"
+                                    >
+                                      <Plus size={13} />
+                                      <span>Add Medicine for {member.patientName}</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 3. OTHER CHARGES & DISCOUNT */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/50">
+                                  <span className="text-[11px] font-bold text-slate-600">Other Charges:</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs font-bold text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      value={member.otherCharges || ""}
+                                      onChange={(e) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "otherCharges",
+                                          Math.max(0, Number(e.target.value) || 0)
+                                        )
+                                      }
+                                      placeholder="0"
+                                      className="w-16 px-1.5 py-0.5 rounded border border-slate-300 text-xs font-bold text-slate-900 text-right"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/50">
+                                  <span className="text-[11px] font-bold text-slate-600">Discount:</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs font-bold text-slate-400">₹</span>
+                                    <input
+                                      type="number"
+                                      value={member.discount || ""}
+                                      onChange={(e) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "discount",
+                                          Math.max(0, Number(e.target.value) || 0)
+                                        )
+                                      }
+                                      placeholder="0"
+                                      className="w-16 px-1.5 py-0.5 rounded border border-slate-300 text-xs font-bold text-slate-900 text-right"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* PAYMENT METHOD SECTION */}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <div className="text-xs font-black uppercase text-slate-700 tracking-wider">
+                      SELECT PAYMENT METHOD
+                    </div>
+
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {[
+                        { id: "Counter UPI", label: "Counter UPI", icon: Smartphone },
+                        { id: "UPI / QR Code", label: "UPI QR", icon: QrCode },
+                        { id: "Cash", label: "Cash", icon: Banknote },
+                        { id: "Card", label: "Card / POS", icon: CreditCard },
+                        { id: "Split", label: "Split", icon: Layers },
+                      ].map((m) => {
+                        const Icon = m.icon;
+                        const active = paymentMode === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setPaymentMode(m.id);
+                              if (m.id === "UPI / QR Code") {
+                                setRazorpayQRAmount(multiPayGrandTotal);
+                                setIsRazorpayQROpen(true);
+                              }
+                            }}
+                            className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                              active
+                                ? "border-indigo-600 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-500 shadow-xs"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <Icon size={17} className={active ? "text-indigo-600" : "text-slate-400"} />
+                            <span>{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* RAZORPAY DYNAMIC QR CODE DISPLAY FOR MULTI-PAY */}
+                    {paymentMode === "UPI / QR Code" && (
+                      <div className="bg-sky-50 border-2 border-sky-400 rounded-xl p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <QrCode className="w-5 h-5 text-sky-600" />
+                          <span className="text-xs font-bold text-sky-950">
+                            Razorpay Dynamic QR for Family Total: <strong>₹{multiPayGrandTotal.toLocaleString()}</strong>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRazorpayQRAmount(multiPayGrandTotal);
+                            setIsRazorpayQROpen(true);
+                          }}
+                          className="px-3 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs cursor-pointer"
+                        >
+                          Show Dynamic QR
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* MULTI-PAY FINAL ACTION BAR */}
+                  <div className="sticky bottom-0 bg-slate-900 rounded-2xl p-4 text-white flex items-center justify-between flex-wrap gap-3 shadow-xl">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        COMBINED GRAND TOTAL ({multiPayMembers.filter((m) => m.selected).length} Family Members)
+                      </div>
+                      <div className="text-2xl font-black text-emerald-400">
+                        ₹{multiPayGrandTotal.toLocaleString()}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleConfirmMultiPayment}
+                      disabled={isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0}
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm transition shadow-lg shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <CheckCircle2 size={18} />
+                      <span>{isSubmitting ? "Processing Family Checkout..." : `Pay Family Total (₹${multiPayGrandTotal.toLocaleString()})`}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* PREVIOUS PENDING BALANCE ALERT (Orange Box) */}
               {previousPendingBalance > 0 && (
                 <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 shadow-xs space-y-3 animate-in fade-in duration-200">
@@ -2716,6 +3446,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                   </span>
                 </button>
               </div>
+                </>
+              )}
 
             </div>
           )}
@@ -2767,59 +3499,91 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 {/* 4. PATIENT DETAILS SECTION */}
                 <div className="mb-5">
                   <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">
-                    PATIENT DETAILS
+                    {(activeInvoice as any)?.isMultiPay ? "FAMILY GROUP DETAILS" : "PATIENT DETAILS"}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-x-8 text-xs">
-                    {/* Left Column */}
-                    <div className="space-y-2">
-                      <div className="pb-1.5 border-b border-slate-100">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">PATIENT NAME</div>
-                        <div className="font-extrabold text-slate-900 text-sm capitalize">
-                          {activeInvoice.patientName}
+                  {(activeInvoice as any)?.isMultiPay && (activeInvoice as any)?.familyMembers?.length > 0 ? (
+                    <div className="space-y-3 mb-2 bg-indigo-50/40 p-3.5 rounded-xl border border-indigo-100">
+                      <div className="text-[10.5px] font-black uppercase tracking-wider text-indigo-900 flex items-center justify-between flex-wrap gap-2">
+                        <span>Family Members ({(activeInvoice as any).familyMembers.length} Patients Paid Together)</span>
+                        <span className="text-slate-600 font-bold">Contact: +91 {cleanPhone}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        {(activeInvoice as any).familyMembers.map((fm: any, idx: number) => (
+                          <div key={idx} className="bg-white p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-slate-900">{fm.patientName}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                {fm.registrationId || "SPH-GEN"}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              Dr. {fm.doctorName || "Consultant"} {fm.token ? `• Token: ${fm.token}` : ""}
+                            </div>
+                            <div className="text-xs font-black text-emerald-600 pt-0.5 flex items-center justify-between border-t border-slate-100">
+                              <span>Patient Share:</span>
+                              <span>₹{Number(fm.totalPaid || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-[11px] text-slate-500 pt-1 flex items-center justify-between border-t border-indigo-100">
+                        <span>Clinic Branch: <strong className="text-slate-800">{activeInvoice.branch || "KPHB Branch"}</strong></span>
+                        <span>Date: <strong className="text-slate-800">{activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10)}</strong></span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-x-8 text-xs">
+                      {/* Left Column */}
+                      <div className="space-y-2">
+                        <div className="pb-1.5 border-b border-slate-100">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">PATIENT NAME</div>
+                          <div className="font-extrabold text-slate-900 text-sm capitalize">
+                            {activeInvoice.patientName}
+                          </div>
+                        </div>
+
+                        <div className="pb-1.5 border-b border-slate-100">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">CONSULTANT DOCTOR</div>
+                          <div className="font-extrabold text-slate-900">
+                            {activeInvoice.doctorName || "Dr. Prashant K Vaidya"}
+                          </div>
+                        </div>
+
+                        <div className="pb-1">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">APPOINTMENT SCHEDULE</div>
+                          <div className="font-extrabold text-slate-900">
+                            {activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10)}
+                            {activeInvoice.timeSlot ? ` at ${activeInvoice.timeSlot}` : " at 02:30 PM"}
+                          </div>
                         </div>
                       </div>
 
-                      <div className="pb-1.5 border-b border-slate-100">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">CONSULTANT DOCTOR</div>
-                        <div className="font-extrabold text-slate-900">
-                          {activeInvoice.doctorName || "Dr. Prashant K Vaidya"}
+                      {/* Right Column */}
+                      <div className="space-y-2">
+                        <div className="pb-1.5 border-b border-slate-100">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">PHONE NUMBER</div>
+                          <div className="font-extrabold text-slate-900">
+                            +91 {cleanPhone || "9248868597"}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="pb-1">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">APPOINTMENT SCHEDULE</div>
-                        <div className="font-extrabold text-slate-900">
-                          {activeInvoice.appointmentDate || new Date().toISOString().slice(0, 10)}
-                          {activeInvoice.timeSlot ? ` at ${activeInvoice.timeSlot}` : " at 02:30 PM"}
+                        <div className="pb-1.5 border-b border-slate-100">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">CLINIC BRANCH</div>
+                          <div className="font-extrabold text-slate-900">
+                            {activeInvoice.branch || "KPHB Branch"}
+                          </div>
+                        </div>
+
+                        <div className="pb-1">
+                          <div className="text-[10px] font-extrabold uppercase text-slate-400">SPECIALTY</div>
+                          <div className="font-extrabold text-slate-900">
+                            Homeopathy
+                          </div>
                         </div>
                       </div>
                     </div>
-
-                    {/* Right Column */}
-                    <div className="space-y-2">
-                      <div className="pb-1.5 border-b border-slate-100">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">PHONE NUMBER</div>
-                        <div className="font-extrabold text-slate-900">
-                          +91 {cleanPhone || "9248868597"}
-                        </div>
-                      </div>
-
-                      <div className="pb-1.5 border-b border-slate-100">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">CLINIC BRANCH</div>
-                        <div className="font-extrabold text-slate-900">
-                          {activeInvoice.branch || "KPHB Branch"}
-                        </div>
-                      </div>
-
-                      <div className="pb-1">
-                        <div className="text-[10px] font-extrabold uppercase text-slate-400">SPECIALTY</div>
-                        <div className="font-extrabold text-slate-900">
-                          Homeopathy
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* 5. PAYMENT INFORMATION BOX (Dashed border, light green or orange background) */}
@@ -2892,6 +3656,78 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                        {/* Family Multi-Pay Breakdown */}
+                        {(activeInvoice as any)?.isMultiPay && (activeInvoice as any)?.familyMembers?.length > 0 ? (
+                          <>
+                            {(activeInvoice as any).familyMembers.map((fm: any, idx: number) => {
+                              const medList = fm.medicinesList || [];
+                              return (
+                                <React.Fragment key={idx}>
+                                  <tr className="bg-indigo-50/70 border-t-2 border-indigo-200">
+                                    <td className="py-2 px-2 font-black text-xs text-indigo-950 uppercase tracking-wide">
+                                      <span>👤 {fm.patientName}</span>
+                                      <span className="text-[10px] text-indigo-600 font-bold ml-2">({fm.registrationId || "SPH-GEN"})</span>
+                                      {fm.token && <span className="text-[10px] text-sky-700 font-bold ml-1">• {fm.token}</span>}
+                                    </td>
+                                    <td className="py-2 px-2 text-right font-black text-xs text-indigo-900">
+                                      Subtotal: ₹{Number(fm.totalPaid || 0).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                  {Number(fm.consultationFee) > 0 && (
+                                    <tr>
+                                      <td className="py-1.5 pl-4 text-slate-700 font-semibold text-xs">
+                                        • Consultation Fee ({fm.doctorName || "Doctor"})
+                                      </td>
+                                      <td className="py-1.5 text-right font-bold text-slate-900 text-xs">
+                                        ₹{Number(fm.consultationFee).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  {medList.length > 0 ? (
+                                    medList.map((m: any, mIdx: number) => (
+                                      <tr key={mIdx}>
+                                        <td className="py-1.5 pl-4 text-slate-700 text-xs">
+                                          <span className="font-semibold">• {m.name || "Homeo Remedy"}</span>
+                                          {m.type && <span className="text-[11px] text-slate-500 font-normal ml-1">({m.type})</span>}
+                                          {m.timing && <span className="text-[11px] text-slate-400 font-normal ml-1">• {m.timing}</span>}
+                                        </td>
+                                        <td className="py-1.5 text-right font-bold text-slate-900 text-xs">
+                                          ₹{Number(m.amount || 0).toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  ) : Number(fm.medicineFee) > 0 ? (
+                                    <tr>
+                                      <td className="py-1.5 pl-4 text-slate-700 text-xs">
+                                        • Prescribed Medicines {fm.medicineDuration ? `(${fm.medicineDuration})` : ""}
+                                      </td>
+                                      <td className="py-1.5 text-right font-bold text-slate-900 text-xs">
+                                        ₹{Number(fm.medicineFee).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ) : null}
+                                  {Number(fm.otherCharges) > 0 && (
+                                    <tr>
+                                      <td className="py-1 pl-4 text-slate-600 text-xs">• Other Charges</td>
+                                      <td className="py-1 text-right font-bold text-slate-900 text-xs">
+                                        ₹{Number(fm.otherCharges).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  {Number(fm.discount) > 0 && (
+                                    <tr className="text-rose-600">
+                                      <td className="py-1 pl-4 text-xs">• Member Discount</td>
+                                      <td className="py-1 text-right font-bold text-xs">
+                                        -₹{Number(fm.discount).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <>
                         {/* Package installment if package member */}
                         {(activeInvoice.hasPackage || isPackageMode || activeInvoice.paymentType === "package") && (
                           <tr>
@@ -3041,6 +3877,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               - ₹{Number(activeInvoice.discount).toFixed(2)}
                             </td>
                           </tr>
+                        )}
+                          </>
                         )}
 
                         {/* TOTAL PAID ROWS (Supports Pay Later & Full Payment) */}

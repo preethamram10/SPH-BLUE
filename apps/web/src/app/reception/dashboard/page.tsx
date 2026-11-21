@@ -1695,11 +1695,20 @@ export default function ReceptionDashboardPage() {
             <FeeCheckoutAndInvoiceModal
               isOpen={isPaymentModalOpen}
               appointment={selectedPaymentAppt}
+              allAppointments={appointments}
               onClose={() => {
                 setIsPaymentModalOpen(false);
                 setSelectedPaymentAppt(null);
               }}
               onSubmitPayment={async (invoiceData) => {
+                if (invoiceData?.isMultiPay) {
+                  fetchAppointments(branchName, selectedDate);
+                  fetchBranchTarget(branchName);
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("payment-success"));
+                  }
+                  return { success: true };
+                }
                 const res = await fetch("/api/reception/payment", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
