@@ -543,6 +543,24 @@ export default function TelecallerPortalScreen() {
       {/* ========================================================================= */}
       {activeTab === "followups" && (
         <View style={{ flex: 1 }}>
+          {/* Patient Follow-Up Calling Roster Header Card */}
+          <View style={styles.rosterHeaderCard}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                <View style={styles.rosterIconBox}>
+                  <Ionicons name="calendar-outline" size={17} color="#0284c7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rosterTitle} numberOfLines={1}>Patient Follow-Up Calling Roster</Text>
+                  <Text style={styles.rosterSub} numberOfLines={1}>Live calling queue for branch reviews & bookings</Text>
+                </View>
+              </View>
+              <View style={styles.rosterCountBadge}>
+                <Text style={styles.rosterCountText}>{followUps.length} Patients</Text>
+              </View>
+            </View>
+          </View>
+
           {/* Branch Filter Pills */}
           <View style={styles.filterBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
@@ -650,7 +668,7 @@ export default function TelecallerPortalScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.patientName}>{item.patientName}</Text>
                       <Text style={styles.regText}>
-                        ID: {item.registrationId || "SPH-GEN"} • {item.branch}
+                        ID: {item.mrn || item.registrationId || item.regId || "—"} • {item.branch || "All Branches"}
                       </Text>
                     </View>
 
@@ -1364,6 +1382,52 @@ const styles = StyleSheet.create({
   },
   navText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
   navTextActive: { color: "#0284c7", fontWeight: "800" },
+  rosterHeaderCard: {
+    backgroundColor: "#ffffff",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  rosterIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#f0f9ff",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e0f2fe",
+  },
+  rosterTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0f172a",
+    letterSpacing: -0.2,
+  },
+  rosterSub: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    color: "#64748b",
+    marginTop: 1,
+  },
+  rosterCountBadge: {
+    backgroundColor: "#f0f9ff",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  rosterCountText: {
+    fontSize: 10.5,
+    fontWeight: "900",
+    color: "#0284c7",
+  },
   filterBar: { paddingHorizontal: 16, paddingVertical: 10 },
   branchFilterChip: {
     paddingHorizontal: 12,

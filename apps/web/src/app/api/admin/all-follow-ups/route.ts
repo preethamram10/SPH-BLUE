@@ -266,17 +266,18 @@ export async function GET(req: NextRequest) {
           computedStatus = "Scheduled";
         }
 
-        const mrn = String(a.registrationId || `SPH-${String(a.token || a.id).slice(-5).toUpperCase()}`);
-        const notes = String(a.diagnosisNotes || a.notes || a.diseases || "Routine chronic homeopathic review");
+        const mrn = String(a.registrationId || (a as any).regId || "");
+        const notes = String(a.diagnosisNotes || a.notes || a.diseases || "");
 
         return {
           id: String(a.id || `FU-${idx + 1}`),
           appointmentId: String(a.id),
           mrn,
-          patientName: String(a.patientName || "Patient"),
-          phone: String(a.phone || "N/A"),
-          doctorName: String(a.doctorName || "Dr. Prashant K Vaidya"),
-          doctorId: String(a.doctorId || "doc-1"),
+          registrationId: mrn,
+          patientName: String(a.patientName || ""),
+          phone: String(a.phone || (a as any).mobileNumber || ""),
+          doctorName: a.doctorName ? String(a.doctorName) : "",
+          doctorId: a.doctorId ? String(a.doctorId) : "",
           branch: cleanBranch,
           dueDate,
           dueTime,

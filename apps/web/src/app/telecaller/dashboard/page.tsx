@@ -767,7 +767,7 @@ function TelecallerDashboardContent() {
                               <td className="py-3 px-4">
                                 <div className="font-extrabold text-slate-900 text-xs">{p.patientName}</div>
                                 <div className="text-[10px] font-mono font-bold text-[#0284c7]">
-                                  {p.registrationId || p.regId || "SPH-PAT"}
+                                  {p.mrn || p.registrationId || p.regId || "—"}
                                 </div>
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">

@@ -259,16 +259,18 @@ interface FollowUpRecordItem {
         if (!interval || interval === "Custom Date" || interval === "No Follow-up") {
           interval = normFollowUp || "1 Month";
         }
-        const notes = a.diagnosisNotes || a.notes || a.diseases || "General follow-up consultation";
+        const mrn = a.registrationId || (a as any).regId || "";
+        const notes = a.diagnosisNotes || a.notes || a.diseases || "";
 
         return {
           id: a.id,
           appointmentId: a.id,
-          mrn: a.registrationId || "SPH-REG",
-          patientName: a.patientName || "Patient",
-          phone: a.phone || "",
-          doctorName: a.doctorName || "Dr. Prashant K Vaidya",
-          doctorId: a.doctorId || "1793864791241",
+          mrn,
+          registrationId: mrn,
+          patientName: a.patientName || "",
+          phone: a.phone || (a as any).mobileNumber || "",
+          doctorName: a.doctorName || "",
+          doctorId: a.doctorId || "",
           branch: branchName,
           dueDate: normFollowUp,
           dueTime,
