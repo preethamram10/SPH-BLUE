@@ -1718,27 +1718,9 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     </div>
                                   )}
                                 </div>
-                                {member.includeConsultFee && (
-                                  <div className="flex items-center gap-1.5 pt-1">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase">Presets:</span>
-                                    {[0, 300, 500, 700].map((amt) => (
-                                      <button
-                                        key={amt}
-                                        type="button"
-                                        onClick={() => handleUpdateMemberField(member.appointmentId, "consultationFee", amt)}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${member.consultationFee === amt
-                                            ? "bg-sky-600 text-white border-sky-600"
-                                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                                          }`}
-                                      >
-                                        ₹{amt}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
 
-                              {/* 2. MEDICINE SECTION & ITEMS */}
+                              {/* 2. MEDICAL REQUEST (PRESCRIBED REMEDIES) */}
                               <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-3">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1750,7 +1732,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       }
                                       className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
                                     />
-                                    <span className="text-xs font-black text-slate-900">Prescribed Medicines</span>
+                                    <span className="text-xs font-black text-slate-900">Medical Request (Prescribed Remedies)</span>
                                   </label>
 
                                   {member.includeMedicineFee && (
@@ -1772,6 +1754,19 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                     </div>
                                   )}
                                 </div>
+
+                                {!member.includeMedicineFee && (
+                                  <div className="pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateMemberField(member.appointmentId, "includeMedicineFee", true)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-400 bg-sky-50/70 hover:bg-sky-100 text-sky-800 text-xs font-bold transition cursor-pointer"
+                                    >
+                                      <Plus size={13} />
+                                      <span>+ Add Medical Request ({member.patientName})</span>
+                                    </button>
+                                  </div>
+                                )}
 
                                 {member.includeMedicineFee && (
                                   <div className="space-y-2 pt-1">
@@ -1867,53 +1862,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 hover:bg-sky-100/70 text-sky-700 text-xs font-bold transition cursor-pointer"
                                     >
                                       <Plus size={13} />
-                                      <span>Add Medicine for {member.patientName}</span>
+                                      <span>+ Add Remedy to Medical Request</span>
                                     </button>
                                   </div>
                                 )}
-                              </div>
-
-                              {/* 3. OTHER CHARGES & DISCOUNT */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/50">
-                                  <span className="text-[11px] font-bold text-slate-600">Other Charges:</span>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-xs font-bold text-slate-400">₹</span>
-                                    <input
-                                      type="number"
-                                      value={member.otherCharges || ""}
-                                      onChange={(e) =>
-                                        handleUpdateMemberField(
-                                          member.appointmentId,
-                                          "otherCharges",
-                                          Math.max(0, Number(e.target.value) || 0)
-                                        )
-                                      }
-                                      placeholder="0"
-                                      className="w-16 px-1.5 py-0.5 rounded border border-slate-300 text-xs font-bold text-slate-900 text-right"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/50">
-                                  <span className="text-[11px] font-bold text-slate-600">Discount:</span>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-xs font-bold text-slate-400">₹</span>
-                                    <input
-                                      type="number"
-                                      value={member.discount || ""}
-                                      onChange={(e) =>
-                                        handleUpdateMemberField(
-                                          member.appointmentId,
-                                          "discount",
-                                          Math.max(0, Number(e.target.value) || 0)
-                                        )
-                                      }
-                                      placeholder="0"
-                                      className="w-16 px-1.5 py-0.5 rounded border border-slate-300 text-xs font-bold text-slate-900 text-right"
-                                    />
-                                  </div>
-                                </div>
                               </div>
                             </div>
                           )}

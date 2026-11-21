@@ -2523,7 +2523,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   )}
                                 </View>
 
-                                {/* Prescribed Medicines Toggle */}
+                                {/* Medical Request (Prescribed Remedies) Toggle */}
                                 <View style={styles.multiPaySectionBox}>
                                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                                     <TouchableOpacity
@@ -2538,13 +2538,24 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         size={18}
                                         color={member.includeMedicineFee ? "#0284c7" : "#94a3b8"}
                                       />
-                                      <Text style={styles.multiPaySectionTitle}>Prescribed Medicines</Text>
+                                      <Text style={styles.multiPaySectionTitle}>Medical Request (Medicines)</Text>
                                     </TouchableOpacity>
 
                                     <Text style={{ fontSize: 11, fontWeight: "800", color: "#059669" }}>
                                       ₹{Number(member.medicineFee || 0).toLocaleString()}
                                     </Text>
                                   </View>
+
+                                  {!member.includeMedicineFee && (
+                                    <TouchableOpacity
+                                      style={[styles.multiPayAddMedBtn, { marginTop: 6 }]}
+                                      onPress={() => handleUpdateMemberField(member.appointmentId, "includeMedicineFee", true)}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
+                                      <Text style={styles.multiPayAddMedBtnText}>+ Add Medical Request ({member.patientName})</Text>
+                                    </TouchableOpacity>
+                                  )}
 
                                   {member.includeMedicineFee && (
                                     <View style={{ marginTop: 8, gap: 8 }}>
@@ -2614,47 +2625,10 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         activeOpacity={0.7}
                                       >
                                         <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
-                                        <Text style={styles.multiPayAddMedBtnText}>+ Add Medicine Item</Text>
+                                        <Text style={styles.multiPayAddMedBtnText}>+ Add Remedy to Medical Request</Text>
                                       </TouchableOpacity>
                                     </View>
                                   )}
-                                </View>
-
-                                {/* Other Charges & Discount */}
-                                <View style={{ flexDirection: "row", gap: 10 }}>
-                                  <View style={styles.multiPaySmallBox}>
-                                    <Text style={styles.multiPaySmallLabel}>Other Charges:</Text>
-                                    <TextInput
-                                      style={styles.multiPaySmallInput}
-                                      keyboardType="numeric"
-                                      placeholder="0"
-                                      value={member.otherCharges ? String(member.otherCharges) : ""}
-                                      onChangeText={(txt) =>
-                                        handleUpdateMemberField(
-                                          member.appointmentId,
-                                          "otherCharges",
-                                          Math.max(0, Number(txt) || 0)
-                                        )
-                                      }
-                                    />
-                                  </View>
-
-                                  <View style={styles.multiPaySmallBox}>
-                                    <Text style={styles.multiPaySmallLabel}>Discount:</Text>
-                                    <TextInput
-                                      style={styles.multiPaySmallInput}
-                                      keyboardType="numeric"
-                                      placeholder="0"
-                                      value={member.discount ? String(member.discount) : ""}
-                                      onChangeText={(txt) =>
-                                        handleUpdateMemberField(
-                                          member.appointmentId,
-                                          "discount",
-                                          Math.max(0, Number(txt) || 0)
-                                        )
-                                      }
-                                    />
-                                  </View>
                                 </View>
                               </View>
                             )}
