@@ -65,9 +65,30 @@ interface MedicineItem {
   amount: number;
 }
 
-interface AppointmentPaymentModalProps {
+export interface MultiPayMember {
+  appointmentId: string;
+  patientName: string;
+  phone: string;
+  registrationId: string;
+  token: string;
+  doctorName: string;
+  selected: boolean;
+  consultationFee: number;
+  includeConsultFee: boolean;
+  medicineFee: number;
+  includeMedicineFee: boolean;
+  medicineDuration: string;
+  medicineItems: MedicineItem[];
+  otherCharges: number;
+  discount: number;
+  subtotal: number;
+  isExpanded?: boolean;
+}
+
+export interface AppointmentPaymentModalProps {
   visible: boolean;
   appointment: any;
+  allAppointments?: any[];
   onClose: () => void;
   onPaymentSuccess: (updatedAppt: any) => void;
   onOpenPatientFile?: () => void;
@@ -78,6 +99,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = ({
   visible,
   appointment,
+  allAppointments = [],
   onClose,
   onPaymentSuccess,
   onOpenPatientFile,
@@ -208,6 +230,261 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   // View state: 'collect_fee' vs 'invoice_receipt'
   const [currentView, setCurrentView] = useState<"collect_fee" | "invoice_receipt">("collect_fee");
   const [completedInvoice, setCompletedInvoice] = useState<any>(appointment);
+
+  // --- FAMILY MULTI-PAY STATE & DETECTION ---
+  const cleanPhone = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+
+  const samePhoneFamilyAppts = React.useMemo(() => {
+    if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return [];
+    return allAppointments.filter((a: any) => {
+      const p = (a.phoneNumber || a.phone || "").replace(/\D/g, "").slice(-10);
+      return (
+        p === cleanPhone &&
+        !a.isDeleted &&
+        a.status !== "CANCELLED"
+      );
+    });
+  }, [cleanPhone, allAppointments]);
+
+  const isMultiPayApplicable = samePhoneFamilyAppts.length > 1;
+  const [isMultiPayEnabled, setIsMultiPayEnabled] = useState<boolean>(false);
+  const [multiPayMembers, setMultiPayMembers] = useState<MultiPayMember[]>([]);
+
+  useEffect(() => {
+    if (samePhoneFamilyAppts.length > 1) {
+      const init: MultiPayMember[] = samePhoneFamilyAppts.map((a: any, idx: number) => {
+        const isCurrent = a.id === appointment?.id;
+        const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
+        const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
+        const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
+          ? (a.medicines || a.medicinesList)!.map((m: any, mIdx: number) => ({
+              id: m.id || `med-${idx}-${mIdx}`,
+              name: m.name || "Prescribed Homeo Kit",
+              type: m.type || "Pills",
+              timing: m.timing || "1 - 0 - 1",
+              amount: Number(m.amount) || mFee,
+            }))
+          : [
+              {
+                id: `med-${idx}-1`,
+                name: "Prescribed Homeo Kit",
+                type: "Pills",
+                timing: "1 - 0 - 1",
+                amount: mFee,
+              },
+            ];
+
+        return {
+          appointmentId: a.id,
+          patientName: a.patientName || a.name || `Family Member ${idx + 1}`,
+          phone: cleanPhone,
+          registrationId: a.registrationId || a.patientId || "SPH-GEN",
+          token: a.token || a.tokenNumber || `#A-${idx + 1}`,
+          doctorName: a.doctorName || "Consultant Doctor",
+          selected: true,
+          consultationFee: cFee,
+          includeConsultFee: cFee > 0,
+          medicineFee: mFee,
+          includeMedicineFee: true,
+          medicineDuration: a.medicineDuration || "1 Month",
+          medicineItems: meds,
+          otherCharges: 0,
+          discount: 0,
+          subtotal: (cFee > 0 ? cFee : 0) + mFee,
+          isExpanded: isCurrent || idx === 0,
+        };
+      });
+      setMultiPayMembers(init);
+    } else {
+      setMultiPayMembers([]);
+      setIsMultiPayEnabled(false);
+    }
+  }, [samePhoneFamilyAppts, appointment, cleanPhone]);
+
+  const multiPayGrandTotal = React.useMemo(() => {
+    if (!isMultiPayEnabled) return 0;
+    return multiPayMembers
+      .filter((m) => m.selected)
+      .reduce((sum, m) => sum + (Number(m.subtotal) || 0), 0);
+  }, [isMultiPayEnabled, multiPayMembers]);
+
+  const handleToggleMemberSelect = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, selected: !m.selected } : m))
+    );
+  };
+
+  const handleToggleMemberExpand = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
+    );
+  };
+
+  const handleUpdateMemberField = (appointmentId: string, field: keyof MultiPayMember, value: any) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updated = { ...m, [field]: value };
+        const consult = updated.includeConsultFee ? Number(updated.consultationFee) || 0 : 0;
+        const med = updated.includeMedicineFee
+          ? updated.medicineItems.length > 0
+            ? updated.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+            : Number(updated.medicineFee) || 0
+          : 0;
+        const other = Number(updated.otherCharges) || 0;
+        const disc = Number(updated.discount) || 0;
+        updated.subtotal = Math.max(0, consult + med + other - disc);
+        return updated;
+      })
+    );
+  };
+
+  const handleAddMedicineToMember = (appointmentId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const newItem: MedicineItem = {
+          id: `med-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          name: "Homeo Remedy",
+          type: "Pills",
+          timing: "1 - 0 - 1",
+          amount: 500,
+        };
+        const updatedItems = [...m.medicineItems, newItem];
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleRemoveMedicineFromMember = (appointmentId: string, medId: string) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updatedItems = m.medicineItems.filter((mi) => mi.id !== medId);
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleUpdateMedicineInMember = (
+    appointmentId: string,
+    medId: string,
+    field: keyof MedicineItem,
+    val: any
+  ) => {
+    setMultiPayMembers((prev) =>
+      prev.map((m) => {
+        if (m.appointmentId !== appointmentId) return m;
+        const updatedItems = m.medicineItems.map((mi) =>
+          mi.id === medId ? { ...mi, [field]: val } : mi
+        );
+        const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
+        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+        const other = Number(m.otherCharges) || 0;
+        const disc = Number(m.discount) || 0;
+        return {
+          ...m,
+          medicineItems: updatedItems,
+          medicineFee: medSum,
+          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+      })
+    );
+  };
+
+  const handleConfirmMultiPayment = async () => {
+    const selected = multiPayMembers.filter((m) => m.selected);
+    if (selected.length === 0) {
+      Alert.alert("Selection Required", "Please select at least one family member to pay.");
+      return;
+    }
+    if (multiPayGrandTotal <= 0) {
+      Alert.alert("Invalid Amount", "Total payment amount cannot be zero.");
+      return;
+    }
+
+    const method = selectedMethod || "Counter UPI";
+    setIsSubmitting(true);
+    try {
+      const generatedMasterInvoiceId = `INV-FAM-${Date.now().toString().slice(-6)}`;
+      const payload = {
+        masterInvoiceId: generatedMasterInvoiceId,
+        paymentMethod: method,
+        paymentMode: method,
+        totalGrandPaid: multiPayGrandTotal,
+        splitDetails: (method === "Split") ? {
+          cash: optedSplitModes.includes("cash") ? splitCash : 0,
+          upi: optedSplitModes.includes("upi") ? splitUpi : 0,
+          card: optedSplitModes.includes("card") ? splitCard : 0,
+          counterUpi: optedSplitModes.includes("counterUpi") ? splitCounterUpi : 0,
+        } : undefined,
+        members: selected.map((m) => ({
+          appointmentId: m.appointmentId,
+          patientName: m.patientName,
+          registrationId: m.registrationId,
+          token: m.token,
+          doctorName: m.doctorName,
+          consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
+          medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
+          medicineDuration: m.medicineDuration,
+          medicinesList: m.includeMedicineFee ? m.medicineItems : [],
+          otherCharges: Number(m.otherCharges) || 0,
+          discount: Number(m.discount) || 0,
+          totalPaid: Number(m.subtotal) || 0,
+        })),
+      };
+
+      const res = await apiFetch<any>("/reception/multi-payment", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      if (!res || !res.success) {
+        throw new Error(res?.error || "Failed to process Multi-Payment");
+      }
+
+      const updated = {
+        ...appointment,
+        isMultiPay: true,
+        masterInvoiceId: res.masterInvoiceId || generatedMasterInvoiceId,
+        totalPaid: multiPayGrandTotal,
+        totalAmountDue: multiPayGrandTotal,
+        paymentMode: method,
+        paymentMethod: method,
+        paidAt: new Date().toISOString(),
+        familyMembers: payload.members,
+      };
+
+      setCompletedInvoice(updated);
+      setCurrentView("invoice_receipt");
+      if (onPaymentSuccess) {
+        onPaymentSuccess(updated);
+      }
+    } catch (err: any) {
+      console.error("Multi-Payment checkout error:", err);
+      Alert.alert("Checkout Error", err.message || "Failed to record Multi-Payment. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Initialize on modal open
   useEffect(() => {
@@ -1409,7 +1686,6 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   }
 
   const rawPhone = completedInvoice?.phoneNumber || completedInvoice?.phone || appointment?.phoneNumber || appointment?.phone || "";
-  const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
   const displayTotal = Number(
     completedInvoice?.totalPaid ?? completedInvoice?.totalAmountDue ?? totalAmountDue
   ).toFixed(2);
@@ -1494,52 +1770,80 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
 
                     {/* 4. Patient Details Grid */}
                     <View style={styles.receiptSectionBox}>
-                      <Text style={styles.receiptSectionHeader}>PATIENT DETAILS</Text>
+                      <Text style={styles.receiptSectionHeader}>
+                        {completedInvoice?.isMultiPay ? "FAMILY GROUP DETAILS" : "PATIENT DETAILS"}
+                      </Text>
 
-                      <View style={styles.receiptGridRow}>
-                        {/* Left Column */}
-                        <View style={styles.receiptGridCol}>
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>PATIENT NAME</Text>
-                            <Text style={styles.receiptFieldValueBold}>{completedInvoice?.patientName || appointment.patientName}</Text>
-                          </View>
-                          <View style={styles.receiptDividerLine} />
-
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>CONSULTANT DOCTOR</Text>
-                            <Text style={styles.receiptFieldValueBold}>{completedInvoice?.doctorName || appointment.doctorName || "Dr. Prashant K Vaidya"}</Text>
-                          </View>
-                          <View style={styles.receiptDividerLine} />
-
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>APPOINTMENT SCHEDULE</Text>
-                            <Text style={styles.receiptFieldValueBold}>
-                              {completedInvoice?.appointmentDate || appointment.appointmentDate || new Date().toISOString().slice(0, 10)}
-                              {completedInvoice?.timeSlot ? ` at ${completedInvoice.timeSlot}` : " at 02:30 PM"}
+                      {completedInvoice?.isMultiPay && completedInvoice?.familyMembers?.length > 0 ? (
+                        <View style={{ backgroundColor: "#f8fafc", padding: 10, borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", gap: 8 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                            <Text style={{ fontSize: 10, fontWeight: "900", color: "#312e81" }}>
+                              {completedInvoice.familyMembers.length} Patients Paid Together
+                            </Text>
+                            <Text style={{ fontSize: 10, fontWeight: "700", color: "#64748b" }}>
+                              Contact: +91 {cleanPhone}
                             </Text>
                           </View>
-                        </View>
-
-                        {/* Right Column */}
-                        <View style={styles.receiptGridCol}>
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>PHONE NUMBER</Text>
-                            <Text style={styles.receiptFieldValueBold}>+91 {cleanPhone || "9248868597"}</Text>
-                          </View>
-                          <View style={styles.receiptDividerLine} />
-
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>CLINIC BRANCH</Text>
-                            <Text style={styles.receiptFieldValueBold}>{completedInvoice?.branch || appointment.branch || "KPHB Branch"}</Text>
-                          </View>
-                          <View style={styles.receiptDividerLine} />
-
-                          <View style={styles.receiptFieldGroup}>
-                            <Text style={styles.receiptFieldLabel}>SPECIALTY</Text>
-                            <Text style={styles.receiptFieldValueBold}>Homeopathy</Text>
+                          <View style={{ gap: 6 }}>
+                            {completedInvoice.familyMembers.map((fm: any, idx: number) => (
+                              <View key={idx} style={{ backgroundColor: "#ffffff", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#e2e8f0" }}>
+                                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                                  <Text style={{ fontSize: 12, fontWeight: "900", color: "#0f172a" }}>{fm.patientName}</Text>
+                                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#059669" }}>₹{Number(fm.totalPaid || 0).toLocaleString()}</Text>
+                                </View>
+                                <Text style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                                  Reg: {fm.registrationId || "SPH-GEN"} • Dr. {fm.doctorName || "Consultant"}
+                                </Text>
+                              </View>
+                            ))}
                           </View>
                         </View>
-                      </View>
+                      ) : (
+                        <View style={styles.receiptGridRow}>
+                          {/* Left Column */}
+                          <View style={styles.receiptGridCol}>
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>PATIENT NAME</Text>
+                              <Text style={styles.receiptFieldValueBold}>{completedInvoice?.patientName || appointment.patientName}</Text>
+                            </View>
+                            <View style={styles.receiptDividerLine} />
+
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>CONSULTANT DOCTOR</Text>
+                              <Text style={styles.receiptFieldValueBold}>{completedInvoice?.doctorName || appointment.doctorName || "Dr. Prashant K Vaidya"}</Text>
+                            </View>
+                            <View style={styles.receiptDividerLine} />
+
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>APPOINTMENT SCHEDULE</Text>
+                              <Text style={styles.receiptFieldValueBold}>
+                                {completedInvoice?.appointmentDate || appointment.appointmentDate || new Date().toISOString().slice(0, 10)}
+                                {completedInvoice?.timeSlot ? ` at ${completedInvoice.timeSlot}` : " at 02:30 PM"}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Right Column */}
+                          <View style={styles.receiptGridCol}>
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>PHONE NUMBER</Text>
+                              <Text style={styles.receiptFieldValueBold}>+91 {cleanPhone || "9248868597"}</Text>
+                            </View>
+                            <View style={styles.receiptDividerLine} />
+
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>CLINIC BRANCH</Text>
+                              <Text style={styles.receiptFieldValueBold}>{completedInvoice?.branch || appointment.branch || "KPHB Branch"}</Text>
+                            </View>
+                            <View style={styles.receiptDividerLine} />
+
+                            <View style={styles.receiptFieldGroup}>
+                              <Text style={styles.receiptFieldLabel}>SPECIALTY</Text>
+                              <Text style={styles.receiptFieldValueBold}>Homeopathy</Text>
+                            </View>
+                          </View>
+                        </View>
+                      )}
                     </View>
 
                     {/* 5. Payment Information Dashed Box */}
@@ -1592,6 +1896,65 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                           <Text style={styles.breakdownHeadAmount}>AMOUNT (₹)</Text>
                         </View>
 
+                        {/* Family Multi-Pay Breakdown */}
+                        {completedInvoice?.isMultiPay && completedInvoice?.familyMembers?.length > 0 ? (
+                          <>
+                            {completedInvoice.familyMembers.map((fm: any, idx: number) => {
+                              const medList = fm.medicinesList || [];
+                              return (
+                                <View key={idx} style={{ borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: "#e2e8f0", paddingTop: 6, marginTop: 6 }}>
+                                  <View style={[styles.breakdownRow, { backgroundColor: "#f1f5f9", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }]}>
+                                    <Text style={[styles.breakdownRowDesc, { fontWeight: "900", color: "#1e1b4b" }]}>
+                                      👤 {fm.patientName} ({fm.registrationId || "SPH-GEN"})
+                                    </Text>
+                                    <Text style={[styles.breakdownRowAmount, { color: "#4338ca", fontWeight: "900" }]}>
+                                      ₹{Number(fm.totalPaid || 0).toFixed(2)}
+                                    </Text>
+                                  </View>
+
+                                  {Number(fm.consultationFee) > 0 && (
+                                    <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
+                                      <Text style={styles.breakdownRowDesc}>• Consultation Fee</Text>
+                                      <Text style={styles.breakdownRowAmount}>₹{Number(fm.consultationFee).toFixed(2)}</Text>
+                                    </View>
+                                  )}
+
+                                  {medList.length > 0 ? (
+                                    medList.map((m: any, mIdx: number) => (
+                                      <View key={mIdx} style={[styles.breakdownRow, { paddingLeft: 8 }]}>
+                                        <View style={{ flex: 1 }}>
+                                          <Text style={styles.breakdownRowDesc}>• {m.name || "Homeo Remedy"}</Text>
+                                          {m.timing ? <Text style={{ fontSize: 9, color: "#64748b" }}>{m.timing}</Text> : null}
+                                        </View>
+                                        <Text style={styles.breakdownRowAmount}>₹{Number(m.amount || 0).toFixed(2)}</Text>
+                                      </View>
+                                    ))
+                                  ) : Number(fm.medicineFee) > 0 ? (
+                                    <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
+                                      <Text style={styles.breakdownRowDesc}>• Prescribed Medicines ({fm.medicineDuration || "1 Month"})</Text>
+                                      <Text style={styles.breakdownRowAmount}>₹{Number(fm.medicineFee).toFixed(2)}</Text>
+                                    </View>
+                                  ) : null}
+
+                                  {Number(fm.otherCharges) > 0 && (
+                                    <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
+                                      <Text style={styles.breakdownRowDesc}>• Other Charges</Text>
+                                      <Text style={styles.breakdownRowAmount}>₹{Number(fm.otherCharges).toFixed(2)}</Text>
+                                    </View>
+                                  )}
+
+                                  {Number(fm.discount) > 0 && (
+                                    <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
+                                      <Text style={[styles.breakdownRowDesc, { color: "#dc2626" }]}>• Member Discount</Text>
+                                      <Text style={[styles.breakdownRowAmount, { color: "#dc2626" }]}>-₹{Number(fm.discount).toFixed(2)}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <>
                         {/* Package Installment */}
                         {(isPackageMode || completedInvoice?.hasPackage || completedInvoice?.paymentType === "package") && (
                           <View style={styles.breakdownRow}>
@@ -1739,6 +2102,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                             </Text>
                           </View>
                         )}
+                          </>
+                        )}
 
                         {/* TOTAL PAID / PAY LATER BREAKDOWN */}
                         {Number(completedInvoice?.payLaterAmount) > 0 ? (
@@ -1834,6 +2199,309 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                   keyboardShouldPersistTaps="handled"
                   keyboardDismissMode="on-drag"
                 >
+                  {/* FAMILY MULTI-PAY DETECTION BANNER */}
+                  {isMultiPayApplicable && (
+                    <View style={styles.multiPayBanner}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                          <View style={styles.multiPayIconBox}>
+                            <Ionicons name="people" size={18} color="#ffffff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              <Text style={styles.multiPayTitle}>Family Group Detected</Text>
+                              <View style={styles.multiPayBadge}>
+                                <Text style={styles.multiPayBadgeText}>
+                                  {samePhoneFamilyAppts.length} Appointments Today
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={styles.multiPaySubtitle}>
+                              Same phone (+91 {cleanPhone}). Pay once for family.
+                            </Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.multiPayToggleBtn, isMultiPayEnabled && styles.multiPayToggleBtnActive]}
+                          onPress={() => setIsMultiPayEnabled(!isMultiPayEnabled)}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons
+                            name={isMultiPayEnabled ? "checkmark-circle" : "sparkles"}
+                            size={14}
+                            color={isMultiPayEnabled ? "#ffffff" : "#4f46e5"}
+                          />
+                          <Text
+                            style={[
+                              styles.multiPayToggleBtnText,
+                              isMultiPayEnabled && styles.multiPayToggleBtnTextActive,
+                            ]}
+                          >
+                            {isMultiPayEnabled ? "Multi-Pay Enabled" : "Enable Multi-Pay"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {isMultiPayEnabled ? (
+                    <View style={{ gap: 12 }}>
+                      {/* Family members list */}
+                      {multiPayMembers.map((member) => {
+                        const isSelected = member.selected;
+                        return (
+                          <View
+                            key={member.appointmentId}
+                            style={[
+                              styles.multiPayMemberCard,
+                              !isSelected && styles.multiPayMemberCardDimmed,
+                            ]}
+                          >
+                            {/* Member Card Header */}
+                            <View style={styles.multiPayMemberHeader}>
+                              <TouchableOpacity
+                                style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}
+                                onPress={() => handleToggleMemberSelect(member.appointmentId)}
+                                activeOpacity={0.7}
+                              >
+                                <Ionicons
+                                  name={isSelected ? "checkbox" : "square-outline"}
+                                  size={20}
+                                  color={isSelected ? "#4f46e5" : "#94a3b8"}
+                                />
+                                <View style={{ flex: 1 }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <Text style={styles.multiPayMemberName}>{member.patientName}</Text>
+                                    <Text style={styles.multiPayMemberReg}>{member.registrationId}</Text>
+                                    {member.token ? (
+                                      <Text style={styles.multiPayMemberToken}>{member.token}</Text>
+                                    ) : null}
+                                  </View>
+                                  <Text style={styles.multiPayMemberDoctor}>Dr. {member.doctorName}</Text>
+                                </View>
+                              </TouchableOpacity>
+
+                              <View style={{ alignItems: "flex-end", gap: 4 }}>
+                                <Text style={styles.multiPayMemberSubtotal}>₹{Number(member.subtotal || 0).toLocaleString()}</Text>
+                                <TouchableOpacity
+                                  onPress={() => handleToggleMemberExpand(member.appointmentId)}
+                                  style={styles.multiPayExpandBtn}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons
+                                    name={member.isExpanded ? "chevron-up" : "chevron-down"}
+                                    size={16}
+                                    color="#64748b"
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {/* Member Expanded Content */}
+                            {member.isExpanded && isSelected && (
+                              <View style={styles.multiPayMemberBody}>
+                                {/* Consultation Fee Toggle */}
+                                <View style={styles.multiPaySectionRow}>
+                                  <TouchableOpacity
+                                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                                    onPress={() =>
+                                      handleUpdateMemberField(member.appointmentId, "includeConsultFee", !member.includeConsultFee)
+                                    }
+                                    activeOpacity={0.7}
+                                  >
+                                    <Ionicons
+                                      name={member.includeConsultFee ? "checkbox" : "square-outline"}
+                                      size={18}
+                                      color={member.includeConsultFee ? "#4f46e5" : "#94a3b8"}
+                                    />
+                                    <Text style={styles.multiPaySectionTitle}>Consultation Fee</Text>
+                                  </TouchableOpacity>
+
+                                  {member.includeConsultFee && (
+                                    <TextInput
+                                      style={styles.multiPayFeeInput}
+                                      keyboardType="numeric"
+                                      value={String(member.consultationFee || 0)}
+                                      onChangeText={(txt) =>
+                                        handleUpdateMemberField(member.appointmentId, "consultationFee", Math.max(0, Number(txt) || 0))
+                                      }
+                                      placeholder="₹0"
+                                    />
+                                  )}
+                                </View>
+
+                                {/* Prescribed Medicines Toggle */}
+                                <View style={styles.multiPaySectionBox}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                    <TouchableOpacity
+                                      style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                                      onPress={() =>
+                                        handleUpdateMemberField(member.appointmentId, "includeMedicineFee", !member.includeMedicineFee)
+                                      }
+                                      activeOpacity={0.7}
+                                    >
+                                      <Ionicons
+                                        name={member.includeMedicineFee ? "checkbox" : "square-outline"}
+                                        size={18}
+                                        color={member.includeMedicineFee ? "#4f46e5" : "#94a3b8"}
+                                      />
+                                      <Text style={styles.multiPaySectionTitle}>Prescribed Medicines</Text>
+                                    </TouchableOpacity>
+
+                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#059669" }}>
+                                      ₹{Number(member.medicineFee || 0).toLocaleString()}
+                                    </Text>
+                                  </View>
+
+                                  {member.includeMedicineFee && (
+                                    <View style={{ marginTop: 8, gap: 8 }}>
+                                      {/* Duration Pills */}
+                                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                                        {["15 Days", "1 Month", "2 Months", "3 Months"].map((dur) => (
+                                          <TouchableOpacity
+                                            key={dur}
+                                            style={[
+                                              styles.multiPayDurationChip,
+                                              member.medicineDuration === dur && styles.multiPayDurationChipActive,
+                                            ]}
+                                            onPress={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
+                                            activeOpacity={0.7}
+                                          >
+                                            <Text
+                                              style={[
+                                                styles.multiPayDurationText,
+                                                member.medicineDuration === dur && styles.multiPayDurationTextActive,
+                                              ]}
+                                            >
+                                              {dur}
+                                            </Text>
+                                          </TouchableOpacity>
+                                        ))}
+                                      </ScrollView>
+
+                                      {/* Medicine Items List */}
+                                      {member.medicineItems.map((med) => (
+                                        <View key={med.id} style={styles.multiPayMedRow}>
+                                          <TextInput
+                                            style={styles.multiPayMedNameInput}
+                                            placeholder="Remedy name"
+                                            value={med.name}
+                                            onChangeText={(txt) =>
+                                              handleUpdateMedicineInMember(member.appointmentId, med.id, "name", txt)
+                                            }
+                                          />
+                                          <TextInput
+                                            style={styles.multiPayMedAmtInput}
+                                            keyboardType="numeric"
+                                            placeholder="₹"
+                                            value={String(med.amount || "")}
+                                            onChangeText={(txt) =>
+                                              handleUpdateMedicineInMember(
+                                                member.appointmentId,
+                                                med.id,
+                                                "amount",
+                                                Math.max(0, Number(txt) || 0)
+                                              )
+                                            }
+                                          />
+                                          <TouchableOpacity
+                                            onPress={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                            style={{ padding: 4 }}
+                                            activeOpacity={0.7}
+                                          >
+                                            <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                          </TouchableOpacity>
+                                        </View>
+                                      ))}
+
+                                      {/* Add Medicine Button */}
+                                      <TouchableOpacity
+                                        style={styles.multiPayAddMedBtn}
+                                        onPress={() => handleAddMedicineToMember(member.appointmentId)}
+                                        activeOpacity={0.7}
+                                      >
+                                        <Ionicons name="add-circle-outline" size={14} color="#4f46e5" />
+                                        <Text style={styles.multiPayAddMedBtnText}>+ Add Medicine Item</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
+                                </View>
+
+                                {/* Other Charges & Discount */}
+                                <View style={{ flexDirection: "row", gap: 10 }}>
+                                  <View style={styles.multiPaySmallBox}>
+                                    <Text style={styles.multiPaySmallLabel}>Other Charges:</Text>
+                                    <TextInput
+                                      style={styles.multiPaySmallInput}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      value={member.otherCharges ? String(member.otherCharges) : ""}
+                                      onChangeText={(txt) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "otherCharges",
+                                          Math.max(0, Number(txt) || 0)
+                                        )
+                                      }
+                                    />
+                                  </View>
+
+                                  <View style={styles.multiPaySmallBox}>
+                                    <Text style={styles.multiPaySmallLabel}>Discount:</Text>
+                                    <TextInput
+                                      style={styles.multiPaySmallInput}
+                                      keyboardType="numeric"
+                                      placeholder="0"
+                                      value={member.discount ? String(member.discount) : ""}
+                                      onChangeText={(txt) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "discount",
+                                          Math.max(0, Number(txt) || 0)
+                                        )
+                                      }
+                                    />
+                                  </View>
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+
+                      {/* Payment Method Selector */}
+                      <View style={styles.multiPayMethodSection}>
+                        <Text style={styles.multiPayMethodSectionTitle}>SELECT PAYMENT METHOD</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {(["Counter UPI", "Cash", "Card", "UPI / QR Code", "Split"] as PaymentMethod[]).map((m) => {
+                            const isAct = selectedMethod === m;
+                            return (
+                              <TouchableOpacity
+                                key={m}
+                                style={[
+                                  styles.multiPayMethodChip,
+                                  isAct && styles.multiPayMethodChipActive,
+                                ]}
+                                onPress={() => setSelectedMethod(m)}
+                                activeOpacity={0.8}
+                              >
+                                <Text
+                                  style={[
+                                    styles.multiPayMethodChipText,
+                                    isAct && styles.multiPayMethodChipTextActive,
+                                  ]}
+                                >
+                                  {m}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
+                    <>
                   {/* PREVIOUS PENDING BALANCE ALERT BOX */}
                   {previousPendingBalance > 0 && (
                     <View style={styles.prevDueAlertCard}>
@@ -3597,34 +4265,72 @@ ${upiUri}`);
                     )}
                   </View>
 
+                    </>
+                  )}
+
                   {/* Bottom Spacing */}
                   <View style={{ height: 20 }} />
                 </ScrollView>
 
-                {/* BOTTOM ACTION BUTTONS (Matching Screenshot) */}
+                {/* BOTTOM ACTION BUTTONS */}
                 <View style={styles.footerBar}>
-                  <TouchableOpacity style={styles.cancelFooterBtn} onPress={onClose} activeOpacity={0.7}>
-                    <Text style={styles.cancelFooterText}>Cancel</Text>
-                  </TouchableOpacity>
+                  {isMultiPayEnabled ? (
+                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <View>
+                        <Text style={{ fontSize: 9.5, fontWeight: "900", color: "#64748b", textTransform: "uppercase" }}>
+                          FAMILY TOTAL ({multiPayMembers.filter((m) => m.selected).length} Members)
+                        </Text>
+                        <Text style={{ fontSize: 16, fontWeight: "900", color: "#059669" }}>
+                          ₹{multiPayGrandTotal.toLocaleString()}
+                        </Text>
+                      </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmFooterBtn,
-                      (!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod) &&
-                      styles.confirmFooterBtnDisabled,
-                    ]}
-                    onPress={handleConfirmPayment}
-                    disabled={!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod}
-                    activeOpacity={0.8}
-                  >
-                    {isSubmitting ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Text style={styles.confirmFooterText}>
-                        {!hasPrescription ? "Prescription Required" : "Confirm Payment & Generate Invoice ✓"}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.confirmFooterBtn,
+                          { flex: 1, backgroundColor: "#059669" },
+                          (isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0) &&
+                            styles.confirmFooterBtnDisabled,
+                        ]}
+                        onPress={handleConfirmMultiPayment}
+                        disabled={isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0}
+                        activeOpacity={0.8}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <Text style={styles.confirmFooterText}>
+                            Pay Family Total (₹{multiPayGrandTotal.toLocaleString()}) ✓
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity style={styles.cancelFooterBtn} onPress={onClose} activeOpacity={0.7}>
+                        <Text style={styles.cancelFooterText}>Cancel</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.confirmFooterBtn,
+                          (!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod) &&
+                            styles.confirmFooterBtnDisabled,
+                        ]}
+                        onPress={handleConfirmPayment}
+                        disabled={!hasPrescription || isSubmitting || !isMedicineTotalMatching || !selectedMethod}
+                        activeOpacity={0.8}
+                      >
+                        {isSubmitting ? (
+                          <ActivityIndicator size="small" color="#ffffff" />
+                        ) : (
+                          <Text style={styles.confirmFooterText}>
+                            {!hasPrescription ? "Prescription Required" : "Confirm Payment & Generate Invoice ✓"}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
 
                 {/* DISCOUNT REQUEST SUB-MODAL */}
@@ -5635,6 +6341,286 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     color: "#ffffff",
+  },
+  multiPayBanner: {
+    backgroundColor: "#eef2ff",
+    borderWidth: 1.5,
+    borderColor: "#c7d2fe",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  multiPayIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#4f46e5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  multiPayTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#312e81",
+  },
+  multiPayBadge: {
+    backgroundColor: "#e0e7ff",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  multiPayBadgeText: {
+    fontSize: 9.5,
+    fontWeight: "800",
+    color: "#4338ca",
+  },
+  multiPaySubtitle: {
+    fontSize: 10,
+    color: "#475569",
+    marginTop: 2,
+  },
+  multiPayToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#c7d2fe",
+  },
+  multiPayToggleBtnActive: {
+    backgroundColor: "#4f46e5",
+    borderColor: "#4f46e5",
+  },
+  multiPayToggleBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#4f46e5",
+  },
+  multiPayToggleBtnTextActive: {
+    color: "#ffffff",
+  },
+  multiPayMemberCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#c7d2fe",
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  multiPayMemberCardDimmed: {
+    opacity: 0.6,
+    borderColor: "#e2e8f0",
+  },
+  multiPayMemberHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    backgroundColor: "#f8fafc",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  multiPayMemberName: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0f172a",
+  },
+  multiPayMemberReg: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+    backgroundColor: "#e2e8f0",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  multiPayMemberToken: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0284c7",
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  multiPayMemberDoctor: {
+    fontSize: 10.5,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  multiPayMemberSubtotal: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#059669",
+  },
+  multiPayExpandBtn: {
+    padding: 2,
+  },
+  multiPayMemberBody: {
+    padding: 12,
+    gap: 10,
+    backgroundColor: "#ffffff",
+  },
+  multiPaySectionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  multiPaySectionBox: {
+    backgroundColor: "#f8fafc",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  multiPaySectionTitle: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#1e293b",
+  },
+  multiPayFeeInput: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#0f172a",
+    width: 70,
+    textAlign: "right",
+  },
+  multiPayDurationChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginRight: 6,
+  },
+  multiPayDurationChipActive: {
+    backgroundColor: "#059669",
+    borderColor: "#059669",
+  },
+  multiPayDurationText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  multiPayDurationTextActive: {
+    color: "#ffffff",
+  },
+  multiPayMedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ffffff",
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  multiPayMedNameInput: {
+    flex: 1,
+    fontSize: 11,
+    color: "#0f172a",
+    paddingVertical: 2,
+  },
+  multiPayMedAmtInput: {
+    width: 60,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0f172a",
+    textAlign: "right",
+    paddingVertical: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: "#cbd5e1",
+  },
+  multiPayAddMedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 6,
+    backgroundColor: "#eef2ff",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#c7d2fe",
+  },
+  multiPayAddMedBtnText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#4f46e5",
+  },
+  multiPaySmallBox: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+  },
+  multiPaySmallLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  multiPaySmallInput: {
+    width: 45,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#0f172a",
+    textAlign: "right",
+    paddingVertical: 1,
+  },
+  multiPayMethodSection: {
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 8,
+  },
+  multiPayMethodSectionTitle: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#64748b",
+    letterSpacing: 0.5,
+  },
+  multiPayMethodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  multiPayMethodChipActive: {
+    backgroundColor: "#eef2ff",
+    borderColor: "#4f46e5",
+  },
+  multiPayMethodChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  multiPayMethodChipTextActive: {
+    color: "#4f46e5",
+    fontWeight: "900",
   },
 });
 

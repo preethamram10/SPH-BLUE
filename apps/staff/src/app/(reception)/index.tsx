@@ -2187,6 +2187,7 @@ export default function ReceptionDashboard() {
       <AppointmentPaymentModal
         visible={paymentModalVisible}
         appointment={selectedPaymentAppt}
+        allAppointments={appointments}
         onClose={() => {
           setPaymentModalVisible(false);
           setSelectedPaymentAppt(null);
