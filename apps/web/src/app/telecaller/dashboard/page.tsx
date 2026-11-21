@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import TelecallerSidebar from "@/components/telecaller/TelecallerSidebar";
@@ -20,6 +20,7 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   MessageSquare,
   X,
@@ -32,7 +33,7 @@ import {
   Check,
   ClipboardList,
   Sparkles,
-  ArrowRight,
+  Users,
 } from "lucide-react";
 
 export interface FollowUpItem {
@@ -60,9 +61,40 @@ export interface FollowUpItem {
   prescriptionImages?: string[];
 }
 
+export interface DoctorOption {
+  id: string;
+  doctorId?: string;
+  name: string;
+  specialty?: string;
+  phone?: string;
+  color?: string;
+  slots?: any[];
+}
+
+export interface PatientSuggestion {
+  id: string;
+  name: string;
+  phone: string;
+  regId: string;
+  branch?: string;
+  diseases?: string;
+}
+
 const CONSULTATION_MODES = [
-  { id: "In-Clinic", label: "In-Clinic Consultation" },
-  { id: "Online", label: "Online Consultation" },
+  { id: "In-Clinic", label: "In-Clinic" },
+  { id: "Online", label: "Online" },
+];
+
+const MARKETING_SOURCES = [
+  "Old Patient",
+  "Referral",
+  "Google",
+  "Youtube",
+  "Walk-in",
+  "Practo",
+  "Facebook",
+  "Instagram",
+  "Other",
 ];
 
 const CALL_OUTCOMES = [
@@ -112,6 +144,20 @@ function minutesToTimeString(minutes: number): string {
   const hStr = String(h).padStart(2, "0");
   const mStr = String(m).padStart(2, "0");
   return `${hStr}:${mStr} ${ap}`;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+function toDDMMYYYY(dt: string): string {
+  if (!dt) return "";
+  const parts = dt.trim().split("-");
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return dt;
 }
 
 function isDateInPast(dateStr: string): boolean {
@@ -196,7 +242,7 @@ function TelecallerDashboardContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Modals state
+  // Modals state for Follow-up Roster
   const [rescheduleItem, setRescheduleItem] = useState<FollowUpItem | null>(null);
   const [bookingItem, setBookingItem] = useState<FollowUpItem | null>(null);
   const [logCallItem, setLogCallItem] = useState<FollowUpItem | null>(null);
@@ -207,7 +253,7 @@ function TelecallerDashboardContent() {
   const [rescheduleNotes, setRescheduleNotes] = useState("");
   const [savingReschedule, setSavingReschedule] = useState(false);
 
-  // Form state for Book Appointment (Modal & Standalone Desk)
+  // Form state for Book Appointment (Modal & Desk)
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
   const [bookDoctorId, setBookDoctorId] = useState("");
   const [bookDoctorName, setBookDoctorName] = useState("");
@@ -218,24 +264,58 @@ function TelecallerDashboardContent() {
   const [bookNotes, setBookNotes] = useState("");
   const [savingBooking, setSavingBooking] = useState(false);
 
-  // Standalone Booking Extra Fields
-  const [standalonePatientName, setStandalonePatientName] = useState("");
-  const [standalonePhone, setStandalonePhone] = useState("");
+  // =========================================================================
+  // APPOINTMENT BOOKING DESK (SAME AS RECEPTION + EXTRA BRANCH DROPDOWN)
+  // =========================================================================
+  const [deskPatientName, setDeskPatientName] = useState("");
+  const [deskPhone, setDeskPhone] = useState("");
+  const [deskDiseases, setDeskDiseases] = useState("");
+  const [deskSource, setDeskSource] = useState("Referral");
+  const [deskBranch, setDeskBranch] = useState("KPHB Branch");
+  const [deskRegId, setDeskRegId] = useState("");
+  const [patientSuggestions, setPatientSuggestions] = useState<PatientSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchDebounceRef = useRef<any>(null);
+
+  // Success Confirmation Modal
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [bookedSuccessDetails, setBookedSuccessDetails] = useState<any>(null);
+
+  // Interactive Web Calendar State for Book Appointment (Desk & Modal)
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const daysInMonth = useMemo(() => new Date(calYear, calMonth + 1, 0).getDate(), [calYear, calMonth]);
+  const firstDayOffset = useMemo(() => new Date(calYear, calMonth, 1).getDay(), [calYear, calMonth]);
+
+  // Keep calMonth and calYear synced with bookDate
+  useEffect(() => {
+    if (bookDate) {
+      const parts = bookDate.split("-");
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          setCalYear(parseInt(parts[0], 10));
+          setCalMonth(parseInt(parts[1], 10) - 1);
+        } else {
+          setCalYear(parseInt(parts[2], 10));
+          setCalMonth(parseInt(parts[1], 10) - 1);
+        }
+      }
+    }
+  }, [bookDate]);
 
   // Form state for Log Call Outcome
   const [callOutcome, setCallOutcome] = useState("Interested");
   const [callRemarks, setCallRemarks] = useState("");
   const [savingCallLog, setSavingCallLog] = useState(false);
 
-  // Standalone Call Logs tab state
-  const [callLogsList, setCallLogsList] = useState<any[]>([]);
-  const [loadingCallLogs, setLoadingCallLogs] = useState(false);
+  // Standalone Call Logs Form state
   const [logPatientName, setLogPatientName] = useState("");
   const [logPhone, setLogPhone] = useState("");
   const [logBranch, setLogBranch] = useState("KPHB Branch");
 
-  // Dynamic doctors, no-shows & booked appointments for booking modal
-  const [bookingAvailableDoctors, setBookingAvailableDoctors] = useState<any[]>([]);
+  // Dynamic doctors, no-shows & booked appointments
+  const [bookingAvailableDoctors, setBookingAvailableDoctors] = useState<DoctorOption[]>([]);
   const [bookedAppointments, setBookedAppointments] = useState<any[]>([]);
   const [loadingBookingDoctors, setLoadingBookingDoctors] = useState(false);
   const [activeBookingNoShows, setActiveBookingNoShows] = useState<any[]>([]);
@@ -269,6 +349,7 @@ function TelecallerDashboardContent() {
       if (saved && saved !== "Spiritual Homeopathy Clinic" && saved !== "All Branches") {
         setSelectedBranch(saved);
         setBookBranch(saved);
+        setDeskBranch(saved);
         setLogBranch(saved);
       }
     } catch {}
@@ -285,7 +366,7 @@ function TelecallerDashboardContent() {
       .catch(() => {});
   }, []);
 
-  // Fetch follow-ups from database (Unlocked across All Branches or selected branch)
+  // Fetch follow-ups from database (Synced across All Branches or selected branch)
   const fetchFollowUps = useCallback(
     async (isManualRefresh = false) => {
       if (isManualRefresh) setRefreshing(true);
@@ -342,29 +423,42 @@ function TelecallerDashboardContent() {
     fetchFollowUps();
   }, [fetchFollowUps]);
 
-  // Fetch Call Logs when on Call Logs tab
-  const fetchCallLogs = useCallback(async () => {
-    try {
-      setLoadingCallLogs(true);
-      const res = await fetch("/api/telecaller/call-logs");
-      const data = await res.json();
-      if (data.success && Array.isArray(data.logs)) {
-        setCallLogsList(data.logs);
-      }
-    } catch (e) {
-      console.warn("Failed fetching call logs:", e);
-    } finally {
-      setLoadingCallLogs(false);
+  // Debounced patient autocomplete search for Book Appointment Desk
+  const handleDeskPatientNameChange = (val: string) => {
+    setDeskPatientName(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (!val || val.trim().length < 2) {
+      setPatientSuggestions([]);
+      setShowSuggestions(false);
+      return;
     }
-  }, []);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const cleanB = deskBranch.replace(/Spiritual Homeopathy/gi, "").trim();
+        const res = await fetch(`/api/reception/patients?query=${encodeURIComponent(val.trim())}&branch=${encodeURIComponent(cleanB)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.patients)) {
+            setPatientSuggestions(data.patients.slice(0, 8));
+            setShowSuggestions(data.patients.length > 0);
+          }
+        }
+      } catch {}
+    }, 280);
+  };
 
-  useEffect(() => {
-    if (activeTab === "log_call") {
-      fetchCallLogs();
+  const handleSelectSuggestion = (p: PatientSuggestion) => {
+    setDeskPatientName(p.name);
+    setDeskPhone(p.phone || "");
+    setDeskRegId(p.regId || "");
+    if (p.diseases) setDeskDiseases(p.diseases);
+    if (p.branch && branches.includes(p.branch)) {
+      setDeskBranch(p.branch);
+      setBookBranch(p.branch);
     }
-  }, [activeTab, fetchCallLogs]);
+    setShowSuggestions(false);
+  };
 
-  // Debounced search handling
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
     setCurrentPage(1);
@@ -546,7 +640,6 @@ function TelecallerDashboardContent() {
         setLogPatientName("");
         setLogPhone("");
         setCallRemarks("");
-        fetchCallLogs();
       } else {
         alert(data.error || "Failed to save call log");
       }
@@ -556,6 +649,9 @@ function TelecallerDashboardContent() {
       setSavingCallLog(false);
     }
   };
+
+  // Active target branch for doctor loading (works for both modal & standalone desk)
+  const activeTargetBranch = activeTab === "book_appointment" ? deskBranch : bookBranch;
 
   // Fetch doctors and active no-shows for Book Appointment based on branch, date, and mode
   useEffect(() => {
@@ -570,11 +666,10 @@ function TelecallerDashboardContent() {
         .then((data) => {
           if (!isMounted) return;
           const docList = Array.isArray(data.employees) ? data.employees : [];
-          const mapped = docList.map((d: any) => ({
+          const mapped: DoctorOption[] = docList.map((d: any) => ({
             id: d.id,
             doctorId: d.id,
             name: d.name,
-            doctorName: d.name,
             specialty: d.designation || d.specialty || "Homeopathic Consultant",
             slots: [],
           }));
@@ -603,7 +698,7 @@ function TelecallerDashboardContent() {
 
     // In-Clinic mode: Fetch branch doctors and active no-shows for this date
     const day = getDayOfWeekAbbr(bookDate);
-    const cleanBranch = bookBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+    const cleanBranch = activeTargetBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
 
     let dtFormatted = bookDate;
     if (bookDate.includes("-")) {
@@ -630,7 +725,7 @@ function TelecallerDashboardContent() {
           doctors = timingsData.doctors;
         }
 
-        const availableDocs = doctors.map((d: any) => ({
+        const availableDocs: DoctorOption[] = doctors.map((d: any) => ({
           ...d,
           id: d.doctorId || d.id,
           doctorId: d.doctorId || d.id,
@@ -641,13 +736,13 @@ function TelecallerDashboardContent() {
         setBookingAvailableDoctors(availableDocs);
 
         const currentDocMatch = availableDocs.find(
-          (d: any) => d.doctorId === bookDoctorId || d.id === bookDoctorId || d.doctorName === bookDoctorName
+          (d: any) => d.doctorId === bookDoctorId || d.id === bookDoctorId || d.name === bookDoctorName
         );
         const activeDoc = currentDocMatch || availableDocs[0] || null;
 
         if (activeDoc) {
           setBookDoctorId(activeDoc.doctorId || activeDoc.id);
-          setBookDoctorName(activeDoc.doctorName || activeDoc.name);
+          setBookDoctorName(activeDoc.name);
         } else {
           setBookDoctorId("");
           setBookDoctorName("");
@@ -668,7 +763,7 @@ function TelecallerDashboardContent() {
     return () => {
       isMounted = false;
     };
-  }, [bookBranch, bookDate, bookMode]);
+  }, [activeTargetBranch, bookDate, bookMode]);
 
   // Fetch booked appointments for live slot capacity calculation (In-Clinic mode)
   useEffect(() => {
@@ -685,7 +780,7 @@ function TelecallerDashboardContent() {
         dtFormatted = `${p[2]}-${p[1]}-${p[0]}`;
       }
     }
-    const cleanBranch = bookBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
+    const cleanBranch = activeTargetBranch.replace(/Spiritual Homeopathy/gi, "").trim() || "KPHB";
 
     fetch(
       `/api/reception/appointments?branch=${encodeURIComponent(cleanBranch)}&date=${encodeURIComponent(dtFormatted)}&doctorId=${encodeURIComponent(bookDoctorId)}`
@@ -706,7 +801,7 @@ function TelecallerDashboardContent() {
     return () => {
       isMounted = false;
     };
-  }, [bookMode, bookBranch, bookDate, bookDoctorId]);
+  }, [bookMode, activeTargetBranch, bookDate, bookDoctorId]);
 
   // Compute 15-minute slot sessions with 3-capacity per slot for In-Clinic mode
   const bookingSlotSessions = useMemo(() => {
@@ -719,24 +814,17 @@ function TelecallerDashboardContent() {
 
     let ranges = Array.isArray(selectedDoc.slots) ? selectedDoc.slots : [];
     if (ranges.length === 0) {
-      if (selectedDoc.shift1Start && selectedDoc.shift1End) {
-        ranges = [{ displayText: `${selectedDoc.shift1Start} - ${selectedDoc.shift1End}` }];
-      } else if (selectedDoc.shiftHours && selectedDoc.shiftHours.includes("-")) {
-        ranges = [{ displayText: selectedDoc.shiftHours }];
-      } else {
-        ranges = [
-          { displayText: "10:00 AM - 01:00 PM" },
-          { displayText: "05:00 PM - 09:00 PM" },
-        ];
-      }
+      ranges = [
+        { displayText: "10:00 AM - 01:00 PM" },
+        { displayText: "05:00 PM - 09:00 PM" },
+      ];
     }
 
     const doctorNoShow = activeBookingNoShows.find(
       (ns) =>
         ns.doctorId === selectedDoc.doctorId ||
         ns.doctorId === selectedDoc.id ||
-        ns.doctorName === selectedDoc.name ||
-        ns.doctorName === selectedDoc.doctorName
+        ns.doctorName === selectedDoc.name
     );
 
     const checkIsSlotNoShow = (curMin: number): boolean => {
@@ -822,22 +910,80 @@ function TelecallerDashboardContent() {
     });
   }, [bookMode, bookDoctorId, bookingAvailableDoctors, activeBookingNoShows, bookedAppointments, bookDate]);
 
-  // Handle Confirm Booking (Works for Modal & Standalone Tab)
-  const handleConfirmBooking = async (isStandalone = false) => {
-    const targetPatientName = isStandalone ? standalonePatientName : bookingItem?.patientName;
-    const targetPhone = isStandalone ? standalonePhone : bookingItem?.phone;
-
-    if (!targetPatientName || !targetPhone) {
-      alert("Please enter patient name and mobile number");
+  // Handle Confirm Booking from Modal
+  const handleConfirmModalBooking = async () => {
+    if (!bookingItem || !bookDate || !bookTimeSlot) {
+      alert("Please choose appointment date and an available time slot");
       return;
     }
-    const cleanPhone = targetPhone.replace(/\D/g, "");
+    setSavingBooking(true);
+    try {
+      let dtFormatted = bookDate;
+      if (bookDate.includes("-")) {
+        const p = bookDate.split("-");
+        if (p[0].length === 4) {
+          dtFormatted = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+      }
+
+      const res = await fetch("/api/reception/follow-ups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: bookingItem.appointmentId,
+          patientName: bookingItem.patientName,
+          phoneNumber: bookingItem.phone,
+          branch: bookMode === "Online" ? "Online Consultation" : bookBranch,
+          doctorId: bookDoctorId,
+          doctorName: bookDoctorName,
+          appointmentDate: dtFormatted,
+          selectedTimeSlot: bookTimeSlot,
+          consultationMode: bookMode,
+          diseases: bookReason || "Follow-up Booking",
+          notes: bookNotes || "Booked from telecaller portal",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFollowUps((prev) =>
+          prev.filter(
+            (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
+          )
+        );
+        setActionMessage(
+          `Appointment successfully booked for ${bookingItem.patientName} at ${bookBranch} on ${dtFormatted} (${bookTimeSlot})!`
+        );
+        setTimeout(() => setActionMessage(null), 4500);
+        setBookingItem(null);
+        fetchFollowUps(true);
+      } else {
+        alert(data.error || "Failed to book appointment");
+      }
+    } catch (err: any) {
+      alert(err.message || "Error booking appointment");
+    } finally {
+      setSavingBooking(false);
+    }
+  };
+
+  // Handle Confirm Booking from Standalone Desk (Reception Mirror)
+  const handleDeskBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deskPatientName.trim()) {
+      alert("Please enter patient name.");
+      return;
+    }
+    const cleanPhone = deskPhone.replace(/\D/g, "");
     if (cleanPhone.length < 10) {
-      alert("Please enter a valid 10-digit mobile number");
+      alert("Please enter a valid 10-digit mobile number.");
       return;
     }
     if (!bookDate || !bookTimeSlot) {
-      alert("Please choose appointment date and an available time slot");
+      alert("Please choose appointment date and an available time slot.");
+      return;
+    }
+    if (!bookDoctorId) {
+      alert("Please select a consultant doctor.");
       return;
     }
 
@@ -851,53 +997,50 @@ function TelecallerDashboardContent() {
         }
       }
 
-      const sourceApptId = bookingItem?.appointmentId || undefined;
-
-      const res = await fetch("/api/reception/follow-ups", {
+      const res = await fetch("/api/reception/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          appointmentId: sourceApptId,
-          patientName: targetPatientName.trim(),
+          patientName: deskPatientName.trim(),
           phoneNumber: cleanPhone,
-          branch: bookMode === "Online" ? "Online Consultation" : bookBranch,
+          diseases: deskDiseases.trim() || "Consultation",
+          marketingSource: deskSource,
+          consultationMode: bookMode,
+          branch: bookMode === "Online" ? "Online Consultation" : deskBranch,
           doctorId: bookDoctorId,
           doctorName: bookDoctorName,
           appointmentDate: dtFormatted,
           selectedTimeSlot: bookTimeSlot,
-          consultationMode: bookMode,
-          diseases: bookReason || "Follow-up Booking",
-          notes: bookNotes || "Booked from telecaller portal",
+          notes: bookNotes || "Booked from telecaller appointment desk",
+          registrationId: deskRegId || undefined,
         }),
       });
+
       const data = await res.json();
-      if (data.success) {
-        if (bookingItem) {
-          setFollowUps((prev) =>
-            prev.filter(
-              (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
-            )
-          );
-        }
-        setActionMessage(
-          `Appointment successfully booked for ${targetPatientName} at ${bookBranch} on ${dtFormatted} (${bookTimeSlot})!`
-        );
-        setTimeout(() => setActionMessage(null), 4500);
-        setBookingItem(null);
-        if (isStandalone) {
-          setStandalonePatientName("");
-          setStandalonePhone("");
-          setBookReason("");
-          setBookNotes("");
-          setBookTimeSlot("");
-          router.push("/telecaller/dashboard");
-        }
+      if (res.ok && data.success) {
+        setBookedSuccessDetails({
+          token: data.token || `#A-${Math.floor(1000 + Math.random() * 9000)}`,
+          regId: data.registrationId || deskRegId || "SPH-GEN",
+          name: deskPatientName,
+          doctor: bookDoctorName,
+          date: dtFormatted,
+          time: bookTimeSlot,
+          branch: deskBranch,
+        });
+        setShowSuccessModal(true);
+        // Reset form
+        setDeskPatientName("");
+        setDeskPhone("");
+        setDeskDiseases("");
+        setDeskRegId("");
+        setBookTimeSlot("");
+        setBookNotes("");
         fetchFollowUps(true);
       } else {
-        alert(data.error || "Failed to book appointment");
+        alert(data.error || "Failed to schedule appointment. Please try again.");
       }
     } catch (err: any) {
-      alert(err.message || "Error booking appointment");
+      alert(err.message || "Failed to book appointment");
     } finally {
       setSavingBooking(false);
     }
@@ -1006,7 +1149,7 @@ function TelecallerDashboardContent() {
                   {activeTab === "book_appointment"
                     ? "Book Patient Appointment"
                     : activeTab === "log_call"
-                    ? "Call Logs & Patient Updates"
+                    ? "Log Patient Call Update"
                     : "Patient Follow-Up Calling Roster"}
                 </h1>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1014,7 +1157,11 @@ function TelecallerDashboardContent() {
                 </span>
               </div>
               <p className="text-[11.5px] text-slate-500 mt-0.5">
-                {selectedBranch} • Multi-branch telecaller desk with live status, slot booking & rescheduling
+                {activeTab === "book_appointment"
+                  ? `${deskBranch} • Direct registration & slot booking with multi-branch selection`
+                  : activeTab === "log_call"
+                  ? `${logBranch} • Record patient call outcomes & discussion updates`
+                  : `${selectedBranch} • Multi-branch telecaller roster with live status, slot booking & rescheduling`}
               </p>
             </div>
 
@@ -1056,7 +1203,7 @@ function TelecallerDashboardContent() {
                 }`}
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                <span>Call Logs</span>
+                <span>Log Call</span>
               </Link>
             </div>
 
@@ -1626,157 +1773,267 @@ function TelecallerDashboardContent() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: STANDALONE DIRECT APPOINTMENT BOOKING DESK                        */}
+        {/* TAB 2: BOOK APPOINTMENT DESK (SAME AS RECEPTION + EXTRA BRANCH DROPDOWN)  */}
         {/* ========================================================================= */}
         {activeTab === "book_appointment" && (
-          <div className="p-6 max-w-4xl mx-auto space-y-5">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                    <CalendarPlus className="w-4 h-4 text-white" />
+          <div className="p-6 max-w-4xl mx-auto space-y-6">
+            <form onSubmit={handleDeskBookingSubmit} className="space-y-6">
+              {/* CARD 1: PATIENT DETAILS */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-[#0284c7] text-white flex items-center justify-center text-xs font-extrabold shadow-2xs">
+                      1
+                    </div>
+                    <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                      Patient Details
+                    </h2>
                   </div>
+                  {(deskPatientName || deskPhone || deskDiseases) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeskPatientName("");
+                        setDeskPhone("");
+                        setDeskDiseases("");
+                        setDeskRegId("");
+                      }}
+                      className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Clear Details
+                    </button>
+                  )}
+                </div>
+
+                {/* Patient Full Name with live suggestions */}
+                <div className="relative">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Patient Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Type patient full name (auto-searches existing roster)"
+                      value={deskPatientName}
+                      onChange={(e) => handleDeskPatientNameChange(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                    />
+                  </div>
+
+                  {/* Suggestions Dropdown */}
+                  {showSuggestions && patientSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-2 max-h-56 overflow-y-auto space-y-1">
+                      <div className="flex items-center justify-between px-2 py-1 text-[10px] font-extrabold uppercase text-slate-400 border-b border-slate-100">
+                        <span>Matching Patients ({patientSuggestions.length})</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowSuggestions(false)}
+                          className="hover:text-slate-700 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                      {patientSuggestions.map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={() => handleSelectSuggestion(p)}
+                          className="flex items-center justify-between p-2 rounded-lg hover:bg-sky-50 cursor-pointer transition text-xs"
+                        >
+                          <div>
+                            <div className="font-extrabold text-slate-900">{p.name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              📞 {p.phone} {p.diseases ? `• ${p.diseases}` : ""}
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-mono font-bold text-[10px]">
+                            {p.regId}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Phone & Diseases */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <h2 className="font-extrabold text-sm">Direct Clinical Appointment Booking</h2>
-                    <p className="text-[11px] text-sky-100">
-                      Book an appointment for any patient across all clinic branches or online
-                    </p>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Phone (+91) <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        placeholder="10-digit mobile number"
+                        value={deskPhone}
+                        onChange={(e) => setDeskPhone(e.target.value.replace(/\D/g, ""))}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Diseases / Symptoms / Complaints
+                    </label>
+                    <div className="relative">
+                      <Stethoscope className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="e.g. Migraine, Allergy, Chronic Cough, Joint Pain"
+                        value={deskDiseases}
+                        onChange={(e) => setDeskDiseases(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Consultation Mode & Patient Source */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Consultation Mode <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CONSULTATION_MODES.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setBookMode(m.id as "In-Clinic" | "Online");
+                            setBookTimeSlot("");
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                            bookMode === m.id
+                              ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500 shadow-2xs"
+                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-white"
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${bookMode === m.id ? "bg-sky-600" : "bg-slate-300"}`} />
+                          <span>{m.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Patient Source <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={deskSource}
+                      onChange={(e) => setDeskSource(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    >
+                      {MARKETING_SOURCES.map((source) => (
+                        <option key={source} value={source}>
+                          {source}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 space-y-4 text-xs font-medium text-slate-700">
-                {/* Patient Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      Patient Full Name <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Enter patient full name"
-                      value={standalonePatientName}
-                      onChange={(e) => setStandalonePatientName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+              {/* CARD 2: APPOINTMENT DETAILS (WITH EXTRA BRANCH DROPDOWN) */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-5">
+                <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                  <div className="w-7 h-7 rounded-lg bg-[#0284c7] text-white flex items-center justify-center text-xs font-extrabold shadow-2xs">
+                    2
                   </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                      10-Digit Mobile Number <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      maxLength={10}
-                      placeholder="e.g. 9876543210"
-                      value={standalonePhone}
-                      onChange={(e) => setStandalonePhone(e.target.value.replace(/\D/g, ""))}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
+                  <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight">
+                    Appointment Details
+                  </h2>
                 </div>
 
-                {/* Consultation Mode */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Consultation Mode <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {CONSULTATION_MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          setBookMode(m.id as "In-Clinic" | "Online");
-                          setBookTimeSlot("");
-                        }}
-                        className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                          bookMode === m.id
-                            ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500 shadow-2xs"
-                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${bookMode === m.id ? "bg-sky-600" : "bg-slate-300"}`} />
-                        <span>{m.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Branch Selection */}
+                {/* EXTRA BRANCH DROPDOWN AS REQUESTED */}
                 {bookMode === "In-Clinic" && (
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Target Clinic Branch <span className="text-rose-500">*</span>
                     </label>
-                    <select
-                      value={bookBranch}
-                      onChange={(e) => {
-                        setBookBranch(e.target.value);
-                        setBookTimeSlot("");
-                      }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                    >
-                      {branches
-                        .filter((b) => b !== "All Branches")
-                        .map((b) => (
-                          <option key={b} value={b}>
-                            📍 {b}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="relative">
+                      <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <select
+                        value={deskBranch}
+                        onChange={(e) => {
+                          setDeskBranch(e.target.value);
+                          setBookBranch(e.target.value);
+                          setBookTimeSlot("");
+                        }}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7] cursor-pointer"
+                      >
+                        {branches
+                          .filter((b) => b !== "All Branches")
+                          .map((b) => (
+                            <option key={b} value={b}>
+                              📍 {b}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
                 )}
 
                 {/* Doctor & Date */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Consultant Doctor <span className="text-rose-500">*</span>
                     </label>
                     {loadingBookingDoctors ? (
-                      <div className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                        <RefreshCw className="w-3 h-3 animate-spin text-sky-600" />
-                        <span>Loading doctors...</span>
+                      <div className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-400 font-semibold flex items-center gap-2">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-600" />
+                        <span>Loading doctor schedule...</span>
                       </div>
                     ) : bookingAvailableDoctors.length === 0 ? (
-                      <div className="w-full px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-[11px] text-rose-700 font-bold">
+                      <div className="w-full px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700 font-bold">
                         {bookMode === "Online"
                           ? "No online doctors available"
-                          : `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}`}
+                          : `No doctors scheduled at ${deskBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}`}
                       </div>
                     ) : (
-                      <select
-                        value={bookDoctorId}
-                        onChange={(e) => {
-                          setBookDoctorId(e.target.value);
-                          const doc = bookingAvailableDoctors.find((d: any) => (d.doctorId || d.id) === e.target.value);
-                          if (doc) setBookDoctorName(doc.doctorName || doc.name);
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                      >
-                        {bookingAvailableDoctors.map((doc: any) => (
-                          <option key={doc.doctorId || doc.id} value={doc.doctorId || doc.id}>
-                            {doc.doctorName || doc.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <Stethoscope className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <select
+                          value={bookDoctorId}
+                          onChange={(e) => {
+                            setBookDoctorId(e.target.value);
+                            const doc = bookingAvailableDoctors.find((d: any) => (d.doctorId || d.id) === e.target.value);
+                            if (doc) setBookDoctorName(doc.name);
+                          }}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7] cursor-pointer"
+                        >
+                          {bookingAvailableDoctors.map((doc: any) => (
+                            <option key={doc.doctorId || doc.id} value={doc.doctorId || doc.id}>
+                              {doc.name} ({doc.specialty || "Homeopathy"})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
                       Appointment Date <span className="text-rose-500">*</span>
                     </label>
-                    <input
-                      type="date"
-                      min={new Date().toISOString().split("T")[0]}
-                      value={bookDate}
-                      onChange={(e) => setBookDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsCalendarOpen(true)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-900 flex items-center justify-between cursor-pointer transition-all shadow-2xs group text-left relative"
+                    >
+                      <Calendar className="w-4 h-4 text-[#0284c7] absolute left-3.5 top-1/2 -translate-y-1/2 group-hover:scale-110 transition-transform" />
+                      <span>{toDDMMYYYY(bookDate)}</span>
+                      <span className="text-[10px] text-sky-600 font-bold bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                        Choose Date
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -1791,33 +2048,33 @@ function TelecallerDashboardContent() {
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                        Select Time Slot (15-min intervals) *
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-tight">
+                        Select Available Time Slot (15-min intervals) <span className="text-rose-500">*</span>
                       </label>
                       {bookTimeSlot && (
-                        <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
-                          Selected: {bookTimeSlot}
+                        <span className="text-xs font-extrabold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200">
+                          Selected Slot: {bookTimeSlot}
                         </span>
                       )}
                     </div>
 
                     {bookingSlotSessions.length === 0 ? (
-                      <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-800 font-medium">
+                      <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 font-medium">
                         {bookingAvailableDoctors.length === 0
-                          ? `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}.`
+                          ? `No doctors scheduled at ${deskBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}.`
                           : !bookDoctorId
                           ? "Please select a consultant doctor above."
                           : `No slot sessions configured for ${bookDoctorName} on ${getDayOfWeekAbbr(bookDate)}.`}
                       </div>
                     ) : (
-                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1 border border-slate-100 rounded-lg p-2 bg-slate-50/50">
+                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
                         {bookingSlotSessions.map((session: any, sIdx: number) => (
-                          <div key={sIdx} className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                          <div key={sIdx} className="space-y-1.5">
+                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
                               {session.sessionName}
                             </span>
-                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                               {session.slots.map((slot: any, slIdx: number) => {
                                 const isSelected = bookTimeSlot === slot.time;
                                 const isFull = slot.isFull;
@@ -1827,15 +2084,15 @@ function TelecallerDashboardContent() {
                                     type="button"
                                     disabled={isFull}
                                     onClick={() => setBookTimeSlot(slot.time)}
-                                    className={`p-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
+                                    className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
                                       isSelected
-                                        ? "bg-sky-600 text-white border-sky-600 ring-2 ring-sky-300 font-bold"
+                                        ? "bg-sky-600 text-white border-sky-600 ring-2 ring-sky-300 font-bold shadow-2xs"
                                         : isFull
                                         ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60"
                                         : "bg-white border-slate-200 text-slate-700 hover:border-sky-400 hover:bg-sky-50/50"
                                     }`}
                                   >
-                                    <span className="text-[10px] font-semibold">{slot.time}</span>
+                                    <span className="text-[10.5px] font-bold">{slot.time}</span>
                                     <span
                                       className={`text-[8.5px] font-black uppercase mt-0.5 px-1 py-0.2 rounded ${
                                         isSelected
@@ -1868,61 +2125,56 @@ function TelecallerDashboardContent() {
                   </div>
                 )}
 
-                {/* Reason & Remarks */}
+                {/* Booking Remarks */}
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Reason for Visit / Symptoms
-                  </label>
-                  <input
-                    type="text"
-                    value={bookReason}
-                    onChange={(e) => setBookReason(e.target.value)}
-                    placeholder="Consultation, chronic complaint, homeopathic review"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Booking Remarks
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Booking Remarks / Notes
                   </label>
                   <textarea
                     value={bookNotes}
                     onChange={(e) => setBookNotes(e.target.value)}
                     rows={2}
-                    placeholder="Notes from telecaller..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    placeholder="Enter any specific notes from telecaller..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]"
                   />
                 </div>
 
-                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => router.push("/telecaller/dashboard")}
-                    className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                   >
                     Back to Follow-ups
                   </button>
                   <button
-                    type="button"
-                    onClick={() => handleConfirmBooking(true)}
+                    type="submit"
                     disabled={savingBooking || !bookDate || !bookTimeSlot}
-                    className="px-5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                    className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold flex items-center gap-2 shadow-2xs disabled:opacity-50 cursor-pointer"
                   >
-                    {savingBooking ? "Booking..." : "Confirm & Book Slot"}
+                    {savingBooking ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Confirming Slot...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Confirm &amp; Book Slot</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 3: STANDALONE CALL LOGS & PATIENT OUTCOME DESK                       */}
+        {/* TAB 3: STANDALONE CALL LOGS DESK (FORM ONLY - RECENT TABLE REMOVED)       */}
         {/* ========================================================================= */}
         {activeTab === "log_call" && (
-          <div className="p-6 max-w-5xl mx-auto space-y-6">
-            {/* Record New Call Log Form */}
+          <div className="p-6 max-w-3xl mx-auto space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
               <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4 text-white flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -1930,7 +2182,7 @@ function TelecallerDashboardContent() {
                     <PhoneCall className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm">Log Patient Call & Outcome</h2>
+                    <h2 className="font-extrabold text-sm">Log Patient Call &amp; Outcome</h2>
                     <p className="text-[11px] text-emerald-100">
                       Record telecaller calling outcome, feedback, and notes
                     </p>
@@ -2014,13 +2266,13 @@ function TelecallerDashboardContent() {
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Call Discussion & Outcome Notes
+                    Call Discussion &amp; Outcome Notes
                   </label>
                   <textarea
                     value={callRemarks}
                     onChange={(e) => setCallRemarks(e.target.value)}
-                    rows={2}
-                    placeholder="Patient traveling, requested Saturday slot, medication refill status, etc."
+                    rows={3}
+                    placeholder="Patient traveling, requested Saturday slot, medicine still running..."
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -2035,73 +2287,6 @@ function TelecallerDashboardContent() {
                   </button>
                 </div>
               </form>
-            </div>
-
-            {/* Recent Call Logs Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-sm text-slate-900">Recent Call Activity Logs</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">
-                    {callLogsList.length} Entries
-                  </span>
-                </div>
-                <button
-                  onClick={fetchCallLogs}
-                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3 h-3 ${loadingCallLogs ? "animate-spin text-emerald-600" : ""}`} />
-                  <span>Refresh</span>
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-[11px]">
-                  <thead>
-                    <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                      <th className="py-2.5 px-3">Patient Name</th>
-                      <th className="py-2.5 px-3">Phone</th>
-                      <th className="py-2.5 px-3">Branch</th>
-                      <th className="py-2.5 px-3">Call Outcome</th>
-                      <th className="py-2.5 px-3">Notes</th>
-                      <th className="py-2.5 px-3">Logged Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {loadingCallLogs ? (
-                      <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
-                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-emerald-600 mb-1" />
-                          <span>Loading call logs...</span>
-                        </td>
-                      </tr>
-                    ) : callLogsList.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
-                          <span>No call logs recorded yet.</span>
-                        </td>
-                      </tr>
-                    ) : (
-                      callLogsList.slice(0, 30).map((log: any, idx: number) => (
-                        <tr key={log.id || idx} className="hover:bg-slate-50/70 transition">
-                          <td className="py-2.5 px-3 font-bold text-slate-900">{log.patientName}</td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600">{log.phone}</td>
-                          <td className="py-2.5 px-3 text-slate-600">{log.branch}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-800">
-                              {log.callOutcome}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">{log.notes || "—"}</td>
-                          <td className="py-2.5 px-3 text-slate-500 font-mono text-[10px]">
-                            {log.dateTime ? new Date(log.dateTime).toLocaleString() : "—"}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
         )}
@@ -2204,7 +2389,7 @@ function TelecallerDashboardContent() {
         </div>
       )}
 
-      {/* POPUP MODAL 2: Book Appointment Directly (UNLOCKED MULTI-BRANCH) */}
+      {/* POPUP MODAL 2: Book Appointment from Table (UNLOCKED MULTI-BRANCH) */}
       {bookingItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden animate-scaleIn">
@@ -2245,7 +2430,7 @@ function TelecallerDashboardContent() {
                 </div>
               </div>
 
-              {/* Consultation Mode (In-Clinic vs Online) */}
+              {/* Consultation Mode */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
                   Consultation Mode <span className="text-rose-500">*</span>
@@ -2272,7 +2457,7 @@ function TelecallerDashboardContent() {
                 </div>
               </div>
 
-              {/* MULTI-BRANCH SELECTOR (Unlocked for Telecaller!) */}
+              {/* Branch Selector */}
               {bookMode === "In-Clinic" && (
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
@@ -2320,13 +2505,13 @@ function TelecallerDashboardContent() {
                       onChange={(e) => {
                         setBookDoctorId(e.target.value);
                         const doc = bookingAvailableDoctors.find((d: any) => (d.doctorId || d.id) === e.target.value);
-                        if (doc) setBookDoctorName(doc.doctorName || doc.name);
+                        if (doc) setBookDoctorName(doc.name);
                       }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                     >
                       {bookingAvailableDoctors.map((doc: any) => (
                         <option key={doc.doctorId || doc.id} value={doc.doctorId || doc.id}>
-                          {doc.doctorName || doc.name}
+                          {doc.name}
                         </option>
                       ))}
                     </select>
@@ -2337,17 +2522,18 @@ function TelecallerDashboardContent() {
                   <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
                     Appointment Date <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="date"
-                    min={new Date().toISOString().split("T")[0]}
-                    value={bookDate}
-                    onChange={(e) => setBookDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsCalendarOpen(true)}
+                    className="w-full px-3 py-2 bg-slate-50 hover:bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 flex items-center justify-between cursor-pointer transition-all shadow-2xs group text-left"
+                  >
+                    <span>{toDDMMYYYY(bookDate)}</span>
+                    <Calendar className="w-4 h-4 text-[#0284c7] group-hover:scale-110 transition-transform" />
+                  </button>
                 </div>
               </div>
 
-              {/* TIME SELECTION: ANALOG CLOCK FOR ONLINE, 15-MIN GRID FOR IN-CLINIC */}
+              {/* Time Slot Picker */}
               {bookMode === "Online" ? (
                 <div>
                   <AnalogClockPicker
@@ -2473,7 +2659,7 @@ function TelecallerDashboardContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleConfirmBooking(false)}
+                  onClick={handleConfirmModalBooking}
                   disabled={savingBooking || !bookDate || !bookTimeSlot}
                   className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
@@ -2485,7 +2671,7 @@ function TelecallerDashboardContent() {
         </div>
       )}
 
-      {/* POPUP MODAL 3: Log Call / Outcome */}
+      {/* POPUP MODAL 3: Log Call Outcome from Table */}
       {logCallItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-scaleIn">
@@ -2535,7 +2721,7 @@ function TelecallerDashboardContent() {
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                  Call Notes & Discussion
+                  Call Notes &amp; Discussion
                 </label>
                 <textarea
                   value={callRemarks}
@@ -2564,6 +2750,231 @@ function TelecallerDashboardContent() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* INTERACTIVE CALENDAR MODAL (SAME AS RECEPTION) */}
+      {isCalendarOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-4">
+            {/* Header: Month Year & Nav */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-900">
+                    {MONTH_NAMES[calMonth]} {calYear}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 font-semibold">Select Appointment Date</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {(() => {
+                  const now = new Date();
+                  const isCurrentMonthOrPast =
+                    calYear < now.getFullYear() ||
+                    (calYear === now.getFullYear() && calMonth <= now.getMonth());
+                  return (
+                    <button
+                      type="button"
+                      disabled={isCurrentMonthOrPast}
+                      onClick={() => {
+                        if (isCurrentMonthOrPast) return;
+                        if (calMonth === 0) {
+                          setCalMonth(11);
+                          setCalYear((y) => y - 1);
+                        } else {
+                          setCalMonth((m) => m - 1);
+                        }
+                      }}
+                      className={`w-7 h-7 rounded-lg text-slate-600 flex items-center justify-center transition-colors ${
+                        isCurrentMonthOrPast
+                          ? "opacity-25 cursor-not-allowed text-slate-300"
+                          : "hover:bg-slate-100 cursor-pointer"
+                      }`}
+                      title={isCurrentMonthOrPast ? "Past months cannot be selected" : "Previous Month"}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  );
+                })()}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (calMonth === 11) {
+                      setCalMonth(0);
+                      setCalYear((y) => y + 1);
+                    } else {
+                      setCalMonth((m) => m + 1);
+                    }
+                  }}
+                  className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCalendarOpen(false)}
+                  className="w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 flex items-center justify-center transition-colors ml-1 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Weekdays Row */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                <span key={d} className="text-[11px] font-extrabold text-slate-400 py-1">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            {/* Days Grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: firstDayOffset }).map((_, i) => (
+                <div key={`empty-${i}`} className="h-9" />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const formatted = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                const isSelected =
+                  bookDate === formatted ||
+                  toDDMMYYYY(bookDate) ===
+                    `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
+                const isToday = (() => {
+                  const t = new Date();
+                  return day === t.getDate() && calMonth === t.getMonth() && calYear === t.getFullYear();
+                })();
+                const isPastDate = (() => {
+                  const t = new Date();
+                  t.setHours(0, 0, 0, 0);
+                  const cellDate = new Date(calYear, calMonth, day);
+                  cellDate.setHours(0, 0, 0, 0);
+                  return cellDate.getTime() < t.getTime();
+                })();
+
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    disabled={isPastDate}
+                    onClick={() => {
+                      if (isPastDate) return;
+                      setBookDate(formatted);
+                      setIsCalendarOpen(false);
+                    }}
+                    title={isPastDate ? "Past dates cannot be booked" : formatted}
+                    className={`h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center ${
+                      isPastDate
+                        ? "text-slate-300 bg-slate-50/50 cursor-not-allowed line-through opacity-50"
+                        : isSelected
+                        ? "bg-[#0284c7] text-white shadow-md shadow-sky-500/30 font-extrabold scale-105 cursor-pointer"
+                        : isToday
+                        ? "border-2 border-[#0284c7] text-[#0284c7] font-extrabold hover:bg-sky-50 cursor-pointer"
+                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer Quick Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  const y = now.getFullYear();
+                  const m = String(now.getMonth() + 1).padStart(2, "0");
+                  const d = String(now.getDate()).padStart(2, "0");
+                  setBookDate(`${y}-${m}-${d}`);
+                  setCalMonth(now.getMonth());
+                  setCalYear(y);
+                  setIsCalendarOpen(false);
+                }}
+                className="text-xs font-extrabold text-[#0284c7] hover:underline cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCalendarOpen(false)}
+                className="text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL 4: Appointment Booked Success Token Modal */}
+      {showSuccessModal && bookedSuccessDetails && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 text-center space-y-4 animate-scaleIn">
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div>
+              <span className="text-[11px] font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Confirmed &amp; Scheduled
+              </span>
+              <h3 className="text-xl font-black text-slate-900 mt-2">Appointment Booked!</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Token generated and clinical slot successfully reserved.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 text-left space-y-2 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                <span className="text-slate-500 font-bold">Token Number:</span>
+                <span className="text-base font-black text-[#0284c7] font-mono">
+                  {bookedSuccessDetails.token}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Patient:</span>
+                <span className="font-extrabold text-slate-900">{bookedSuccessDetails.name}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Reg ID (MRN):</span>
+                <span className="font-mono font-bold text-slate-700">{bookedSuccessDetails.regId}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Doctor:</span>
+                <span className="font-bold text-slate-800">{bookedSuccessDetails.doctor}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Branch:</span>
+                <span className="font-bold text-slate-800">{bookedSuccessDetails.branch}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Date &amp; Slot:</span>
+                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
+                  {bookedSuccessDetails.date} • {bookedSuccessDetails.time}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowSuccessModal(false);
+                setBookedSuccessDetails(null);
+                router.push("/telecaller/dashboard");
+              }}
+              className="w-full py-2.5 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-extrabold text-sm shadow-md transition-all cursor-pointer"
+            >
+              Done &amp; View Follow-up Queue
+            </button>
           </div>
         </div>
       )}
