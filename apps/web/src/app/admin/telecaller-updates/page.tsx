@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  Trash2,
 } from "lucide-react";
 
 interface CallLogItem {
@@ -52,6 +53,8 @@ export default function TelecallerUpdatesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 25;
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const fetchLogs = async () => {
     try {
       setLoading(true);
@@ -65,6 +68,33 @@ export default function TelecallerUpdatesPage() {
       console.error("Failed to fetch telecaller logs:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteLog = async (id: string, patientName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete the call log record for "${patientName}"?`)) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/telecaller/call-logs?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setLogs((prev) => prev.filter((l) => l.id !== id));
+        if (data.stats) {
+          setStats(data.stats);
+        } else {
+          fetchLogs();
+        }
+      } else {
+        alert(data.error || "Failed to delete call log record.");
+      }
+    } catch (e: any) {
+      alert(e.message || "Error deleting call log record.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -349,12 +379,13 @@ export default function TelecallerUpdatesPage() {
                     <th className="py-3 px-4">Branch</th>
                     <th className="py-3 px-4">Call Outcome</th>
                     <th className="py-3 px-4">Conversation Notes &amp; Remarks</th>
+                    <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {paginatedLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
                         {loading ? "Loading live activity..." : "No call updates match your search."}
                       </td>
                     </tr>
@@ -400,6 +431,22 @@ export default function TelecallerUpdatesPage() {
                         </td>
                         <td className="py-3.5 px-4 text-slate-700 max-w-md leading-relaxed">
                           {item.notes}
+                        </td>
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            disabled={deletingId === item.id}
+                            onClick={() => handleDeleteLog(item.id, item.patientName)}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                            title="Delete this call log record"
+                          >
+                            {deletingId === item.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            )}
+                            <span>Delete</span>
+                          </button>
                         </td>
                       </tr>
                     ))

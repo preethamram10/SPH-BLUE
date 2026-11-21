@@ -96,9 +96,11 @@ export async function DELETE(req: NextRequest) {
       );
     }
     const success = await telecallerCallLogService.deleteLog(id);
+    const stats = await telecallerCallLogService.getStats();
     return NextResponse.json({
       success,
       message: success ? "Call log deleted successfully" : "Call log not found",
+      stats,
     });
   } catch (error: any) {
     console.error("DELETE telecaller call log error:", error);
