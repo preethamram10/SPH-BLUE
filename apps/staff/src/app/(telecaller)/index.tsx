@@ -15,18 +15,13 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { removeAuthToken, clearAllAuthData, getAssignedBranch } from "../../services/auth";
+import { removeAuthToken, clearAllAuthData, getAssignedBranch, getActiveStaff } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBottomNav";
 
 type TelecallerTab = "followups" | "log_call" | "book_appointment";
 
-const DEFAULT_BOOKING_BRANCHES = [
-  "Kphb Branch",
-  "Chandanagar Branch",
-  "Dilshuknagar Branch",
-  "Nallagandla Branch",
-];
+const DEFAULT_BOOKING_BRANCHES: string[] = [];
 
 const TIME_SLOTS = [
   "10:00 AM",
@@ -84,8 +79,8 @@ export default function TelecallerPortalScreen() {
 
   // Telecaller Profile info
   const [telecallerProfile, setTelecallerProfile] = useState({
-    name: "Srikanth Reddy",
-    telecallerId: "TC01",
+    name: "Telecaller",
+    telecallerId: "",
     assignedBranch: "All Branches",
     bookedCount: 0,
   });
@@ -111,7 +106,7 @@ export default function TelecallerPortalScreen() {
   // Section 2: Log Call Update State
   const [patientName, setPatientName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
-  const [hospitalBranch, setHospitalBranch] = useState("KPHB Branch");
+  const [hospitalBranch, setHospitalBranch] = useState("");
   const [callDateTime, setCallDateTime] = useState(getFormattedNow());
   const [callOutcome, setCallOutcome] = useState("Interested");
   const [notesRemarks, setNotesRemarks] = useState("");
@@ -122,8 +117,8 @@ export default function TelecallerPortalScreen() {
   const [bookFollowUpId, setBookFollowUpId] = useState<string | null>(null);
   const [bookPatientName, setBookPatientName] = useState("");
   const [bookMobileNumber, setBookMobileNumber] = useState("");
-  const [bookBranch, setBookBranch] = useState("KPHB Branch");
-  const [bookDoctor, setBookDoctor] = useState("Dr. Prashant K Vaidya");
+  const [bookBranch, setBookBranch] = useState("");
+  const [bookDoctor, setBookDoctor] = useState("");
   const [bookDate, setBookDate] = useState(getTodayDDMMYYYY());
   const [bookSlot, setBookSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
@@ -183,12 +178,7 @@ export default function TelecallerPortalScreen() {
     setCalendarModalOpen(false);
   };
   const [bookingAppt, setBookingAppt] = useState(false);
-  const [availableDoctors, setAvailableDoctors] = useState<any[]>([
-    { id: "1793864791241", name: "Dr. Prashant K Vaidya", branchName: "All Branches" },
-    { id: "1793864791242", name: "Dr. Jobeadh Begum", branchName: "Chandanagar Branch" },
-    { id: "1793864791243", name: "Dr. Padma Priya", branchName: "KPHB Branch" },
-    { id: "1793864791244", name: "Dr. Ramakrishna Chanduri", branchName: "Dilshuknagar Branch" },
-  ]);
+  const [availableDoctors, setAvailableDoctors] = useState<any[]>([]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/branches`)
@@ -198,7 +188,10 @@ export default function TelecallerPortalScreen() {
         if (list.length > 0) {
           const names: string[] = list.map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim())).filter(Boolean);
           if (names.length > 0) {
-            setBookingBranches(Array.from(new Set(names)));
+            const unique = Array.from(new Set(names));
+            setBookingBranches(unique);
+            setHospitalBranch((prev) => prev || unique[0]);
+            setBookBranch((prev) => prev || unique[0]);
           }
         }
       })
@@ -209,6 +202,15 @@ export default function TelecallerPortalScreen() {
   useEffect(() => {
     (async () => {
       try {
+        const staffObj = await getActiveStaff();
+        if (staffObj) {
+          setTelecallerProfile((prev) => ({
+            ...prev,
+            name: staffObj.name || staffObj.fullName || prev.name,
+            telecallerId: staffObj.id || staffObj.employeeId || staffObj.code || prev.telecallerId,
+            assignedBranch: staffObj.branch || staffObj.branchName || prev.assignedBranch,
+          }));
+        }
         const branchObj = await getAssignedBranch();
         if (branchObj) {
           const bName = typeof branchObj === "string" ? branchObj : branchObj.name || "All Branches";
@@ -223,7 +225,7 @@ export default function TelecallerPortalScreen() {
           }
         }
       } catch (e) {
-        console.warn("Failed reading assigned branch:", e);
+        console.warn("Failed reading staff/assigned branch:", e);
       }
     })();
   }, []);
@@ -236,6 +238,11 @@ export default function TelecallerPortalScreen() {
         const data = await res.json();
         if (data.success && Array.isArray(data.employees) && data.employees.length > 0) {
           setAvailableDoctors(data.employees);
+          const prashant = data.employees.find((d: any) => (d.name || "").toLowerCase().includes("prashant"));
+          const chosen = prashant || data.employees[0];
+          if (chosen) {
+            setBookDoctor((prev) => prev || chosen.name);
+          }
         }
       } catch (err) {
         console.warn("Failed fetching doctors:", err);
@@ -664,7 +671,7 @@ export default function TelecallerPortalScreen() {
                       </Text>
                     </View>
                     <Text style={styles.doctorText}>
-                      {item.doctorName?.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName || "Prashant K Vaidya"}`}
+                      {item.doctorName ? (item.doctorName.startsWith("Dr.") ? item.doctorName : `Dr. ${item.doctorName}`) : ""}
                     </Text>
                   </View>
 
@@ -722,7 +729,7 @@ export default function TelecallerPortalScreen() {
             </Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Ramesh Kumar"
+              placeholder="Enter patient full name"
               placeholderTextColor="#94a3b8"
               value={patientName}
               onChangeText={setPatientName}
@@ -884,7 +891,7 @@ export default function TelecallerPortalScreen() {
             </Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Ramesh Kumar"
+              placeholder="Enter patient full name"
               placeholderTextColor="#94a3b8"
               value={bookPatientName}
               onChangeText={setBookPatientName}

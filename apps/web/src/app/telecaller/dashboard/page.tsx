@@ -38,12 +38,7 @@ interface DoctorOption {
   specialty?: string;
 }
 
-const DEFAULT_BOOKING_BRANCHES = [
-  "KPHB Branch",
-  "Chandanagar Branch",
-  "Dilshuknagar Branch",
-  "Nallagandla Branch",
-];
+const DEFAULT_BOOKING_BRANCHES: string[] = [];
 
 const TIME_SLOTS = [
   "10:00 AM",
@@ -94,8 +89,8 @@ function TelecallerDashboardContent() {
 
   // Telecaller Profile
   const [telecallerProfile, setTelecallerProfile] = useState({
-    name: "Telecaller Agent",
-    telecallerId: "TC01",
+    name: "Telecaller",
+    telecallerId: "",
     assignedBranch: "All Branches",
     bookedCount: 0,
   });
@@ -121,9 +116,9 @@ function TelecallerDashboardContent() {
   const [bookFollowUpId, setBookFollowUpId] = useState<string | null>(null);
   const [bookPatientName, setBookPatientName] = useState("");
   const [bookMobileNumber, setBookMobileNumber] = useState("");
-  const [bookBranch, setBookBranch] = useState("KPHB Branch");
-  const [bookDoctor, setBookDoctor] = useState("Dr. Prashant K Vaidya");
-  const [bookDoctorId, setBookDoctorId] = useState("1793864791241");
+  const [bookBranch, setBookBranch] = useState("");
+  const [bookDoctor, setBookDoctor] = useState("");
+  const [bookDoctorId, setBookDoctorId] = useState("");
   const [bookDate, setBookDate] = useState("");
   const [bookSlot, setBookSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
@@ -178,8 +173,9 @@ function TelecallerDashboardContent() {
             .map((b: any) => (typeof b === "string" ? b.trim() : b.name?.trim()))
             .filter(Boolean);
           if (names.length > 0) {
-            setBranches(Array.from(new Set(names)));
-            setBookBranch(names[0]);
+            const unique = Array.from(new Set(names));
+            setBranches(unique);
+            setBookBranch((prev) => prev || unique[0] || "");
           }
         }
       })
@@ -197,12 +193,10 @@ function TelecallerDashboardContent() {
           }));
           setDoctors(mapped);
           const prashant = mapped.find((d) => d.name.toLowerCase().includes("prashant"));
-          if (prashant) {
-            setBookDoctor(prashant.name);
-            setBookDoctorId(prashant.id);
-          } else if (mapped[0]) {
-            setBookDoctor(mapped[0].name);
-            setBookDoctorId(mapped[0].id);
+          const chosen = prashant || mapped[0];
+          if (chosen) {
+            setBookDoctor((prev) => prev || chosen.name);
+            setBookDoctorId((prev) => prev || chosen.id);
           }
         }
       })
@@ -482,7 +476,7 @@ function TelecallerDashboardContent() {
                 </span>
               </div>
               <p className="text-[11.5px] text-slate-500 mt-0.5">
-                Logged in as <span className="font-bold text-slate-700">{telecallerProfile.name}</span> ({telecallerProfile.telecallerId}) • Branch:{" "}
+                Logged in as <span className="font-bold text-slate-700">{telecallerProfile.name}</span>{telecallerProfile.telecallerId ? ` (${telecallerProfile.telecallerId})` : ""} • Branch:{" "}
                 <span className="font-semibold text-slate-700">{telecallerProfile.assignedBranch}</span>
               </p>
             </div>
@@ -786,9 +780,9 @@ function TelecallerDashboardContent() {
                                 </a>
                               </td>
                               <td className="py-3 px-4">
-                                <div className="font-bold text-slate-800">{p.branch || "KPHB Branch"}</div>
+                                <div className="font-bold text-slate-800">{p.branch || "—"}</div>
                                 <div className="text-[10.5px] text-slate-500">
-                                  {p.doctorName || "Dr. Prashant K Vaidya"}
+                                  {p.doctorName ? (p.doctorName.startsWith("Dr.") ? p.doctorName : `Dr. ${p.doctorName}`) : "—"}
                                 </div>
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">
@@ -888,7 +882,7 @@ function TelecallerDashboardContent() {
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Ramesh Kumar"
+                          placeholder="Enter patient full name"
                           value={bookPatientName}
                           onChange={(e) => setBookPatientName(e.target.value)}
                           className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -907,7 +901,7 @@ function TelecallerDashboardContent() {
                           type="tel"
                           required
                           maxLength={10}
-                          placeholder="9876543210"
+                          placeholder="Enter 10-digit mobile number"
                           value={bookMobileNumber}
                           onChange={(e) => setBookMobileNumber(e.target.value.replace(/\D/g, ""))}
                           className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -923,7 +917,7 @@ function TelecallerDashboardContent() {
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Migraine, Hair Fall, Skin Allergy, Joint Pain"
+                      placeholder="Enter chief complaint, disease, or symptoms"
                       value={bookDisease}
                       onChange={(e) => setBookDisease(e.target.value)}
                       className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -1227,7 +1221,7 @@ function TelecallerDashboardContent() {
                               <div className="text-[10.5px] text-slate-500 font-medium">{l.phoneNumber}</div>
                             </td>
                             <td className="py-3 px-4 font-semibold text-slate-700">
-                              {l.branch || "KPHB Branch"}
+                              {l.branch || "—"}
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span
@@ -1253,7 +1247,7 @@ function TelecallerDashboardContent() {
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span className="font-mono text-[10.5px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">
-                                {l.telecallerId || l.agentName || "TC01"}
+                                {l.telecallerId || l.agentName || "TC"}
                               </span>
                             </td>
                           </tr>

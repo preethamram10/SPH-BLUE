@@ -24,8 +24,8 @@ export default function TelecallerSidebar({
   onTabChange,
 }: TelecallerSidebarProps) {
   const router = useRouter();
-  const [agentName, setAgentName] = useState<string>("Telecaller Desk");
-  const [telecallerId, setTelecallerId] = useState<string>("TC01");
+  const [agentName, setAgentName] = useState<string>("Telecaller");
+  const [telecallerId, setTelecallerId] = useState<string>("");
   const [branchName, setBranchName] = useState<string>("All Branches");
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -145,9 +145,11 @@ export default function TelecallerSidebar({
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="truncate">{agentName}</span>
               </div>
-              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-sky-100 text-sky-800 font-bold shrink-0">
-                {telecallerId}
-              </span>
+              {telecallerId ? (
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-sky-100 text-sky-800 font-bold shrink-0">
+                  {telecallerId}
+                </span>
+              ) : null}
             </div>
             <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-1">
               <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />

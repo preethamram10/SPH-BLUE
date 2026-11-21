@@ -222,6 +222,12 @@ export default function StaffLoginScreen() {
         router.replace("/(staff)" as any);
       } else if (activeTab === "telecaller") {
         await saveUserRole("TELECALLER");
+        if (validatedData?.user || validatedData?.staff || validatedData?.telecaller) {
+          await saveActiveStaff(validatedData.user || validatedData.staff || validatedData.telecaller);
+        }
+        if (validatedData?.branch) {
+          await saveActiveBranch(validatedData.branch);
+        }
         router.replace("/(telecaller)" as any);
       } else {
         await saveUserRole("ADMIN");
