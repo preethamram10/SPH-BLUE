@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import TelecallerSidebar from "@/components/telecaller/TelecallerSidebar";
 import AnalogClockPicker from "@/components/AnalogClockPicker";
 import {
@@ -29,6 +30,9 @@ import {
   PhoneCall,
   PhoneOutgoing,
   Check,
+  ClipboardList,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 export interface FollowUpItem {
@@ -55,24 +59,6 @@ export interface FollowUpItem {
   consultationFee: number;
   prescriptionImages?: string[];
 }
-
-const STANDARD_TIME_SLOTS = [
-  "10:00 AM",
-  "10:30 AM",
-  "11:00 AM",
-  "11:30 AM",
-  "12:00 PM",
-  "12:30 PM",
-  "04:00 PM",
-  "04:30 PM",
-  "05:00 PM",
-  "05:30 PM",
-  "06:00 PM",
-  "06:30 PM",
-  "07:00 PM",
-  "07:30 PM",
-  "08:00 PM",
-];
 
 const CONSULTATION_MODES = [
   { id: "In-Clinic", label: "In-Clinic Consultation" },
@@ -183,6 +169,7 @@ function isSlotTimePassed(timeStr: string, dateStr: string): boolean {
 function TelecallerDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const activeTab = (searchParams.get("tab") || "followups").toLowerCase();
 
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [branches, setBranches] = useState<string[]>([
@@ -220,21 +207,32 @@ function TelecallerDashboardContent() {
   const [rescheduleNotes, setRescheduleNotes] = useState("");
   const [savingReschedule, setSavingReschedule] = useState(false);
 
-  // Form state for Book Appointment
+  // Form state for Book Appointment (Modal & Standalone Desk)
   const [bookBranch, setBookBranch] = useState("KPHB Branch");
   const [bookDoctorId, setBookDoctorId] = useState("");
   const [bookDoctorName, setBookDoctorName] = useState("");
-  const [bookDate, setBookDate] = useState("");
+  const [bookDate, setBookDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [bookTimeSlot, setBookTimeSlot] = useState("");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
   const [bookReason, setBookReason] = useState("");
   const [bookNotes, setBookNotes] = useState("");
   const [savingBooking, setSavingBooking] = useState(false);
 
+  // Standalone Booking Extra Fields
+  const [standalonePatientName, setStandalonePatientName] = useState("");
+  const [standalonePhone, setStandalonePhone] = useState("");
+
   // Form state for Log Call Outcome
   const [callOutcome, setCallOutcome] = useState("Interested");
   const [callRemarks, setCallRemarks] = useState("");
   const [savingCallLog, setSavingCallLog] = useState(false);
+
+  // Standalone Call Logs tab state
+  const [callLogsList, setCallLogsList] = useState<any[]>([]);
+  const [loadingCallLogs, setLoadingCallLogs] = useState(false);
+  const [logPatientName, setLogPatientName] = useState("");
+  const [logPhone, setLogPhone] = useState("");
+  const [logBranch, setLogBranch] = useState("KPHB Branch");
 
   // Dynamic doctors, no-shows & booked appointments for booking modal
   const [bookingAvailableDoctors, setBookingAvailableDoctors] = useState<any[]>([]);
@@ -271,6 +269,7 @@ function TelecallerDashboardContent() {
       if (saved && saved !== "Spiritual Homeopathy Clinic" && saved !== "All Branches") {
         setSelectedBranch(saved);
         setBookBranch(saved);
+        setLogBranch(saved);
       }
     } catch {}
 
@@ -343,6 +342,28 @@ function TelecallerDashboardContent() {
     fetchFollowUps();
   }, [fetchFollowUps]);
 
+  // Fetch Call Logs when on Call Logs tab
+  const fetchCallLogs = useCallback(async () => {
+    try {
+      setLoadingCallLogs(true);
+      const res = await fetch("/api/telecaller/call-logs");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.logs)) {
+        setCallLogsList(data.logs);
+      }
+    } catch (e) {
+      console.warn("Failed fetching call logs:", e);
+    } finally {
+      setLoadingCallLogs(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "log_call") {
+      fetchCallLogs();
+    }
+  }, [activeTab, fetchCallLogs]);
+
   // Debounced search handling
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
@@ -414,7 +435,7 @@ function TelecallerDashboardContent() {
     }
   };
 
-  // Open Book Appointment Modal
+  // Open Book Appointment Modal from Table
   const openBookingModal = (item: FollowUpItem) => {
     setBookingItem(item);
     const initialBranch =
@@ -441,14 +462,14 @@ function TelecallerDashboardContent() {
     setBookNotes(item.notes || "Booked from telecaller calling roster");
   };
 
-  // Open Log Call Modal
+  // Open Log Call Modal from Table
   const openLogCallModal = (item: FollowUpItem) => {
     setLogCallItem(item);
     setCallOutcome("Interested");
     setCallRemarks(item.notes || "");
   };
 
-  // Submit Call Log
+  // Submit Call Log Modal
   const handleSaveCallLog = async () => {
     if (!logCallItem) return;
     setSavingCallLog(true);
@@ -486,9 +507,59 @@ function TelecallerDashboardContent() {
     }
   };
 
+  // Submit Standalone Call Log from Call Logs tab
+  const handleStandaloneCallLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!logPatientName.trim()) {
+      alert("Please enter patient name.");
+      return;
+    }
+    const cleanPhone = logPhone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
+      alert("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    setSavingCallLog(true);
+    try {
+      const agentName = localStorage.getItem("telecaller_name") || localStorage.getItem("user_name") || "Telecaller Desk";
+      const telecallerId = localStorage.getItem("telecaller_id") || "TC01";
+
+      const res = await fetch("/api/telecaller/call-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientName: logPatientName.trim(),
+          phone: cleanPhone,
+          branch: logBranch,
+          dateTime: new Date().toISOString(),
+          callOutcome,
+          notes: callRemarks,
+          agentName,
+          telecallerId,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActionMessage(`Call log recorded for ${logPatientName} (${callOutcome})!`);
+        setTimeout(() => setActionMessage(null), 4000);
+        setLogPatientName("");
+        setLogPhone("");
+        setCallRemarks("");
+        fetchCallLogs();
+      } else {
+        alert(data.error || "Failed to save call log");
+      }
+    } catch (err: any) {
+      alert(err.message || "Error saving call log");
+    } finally {
+      setSavingCallLog(false);
+    }
+  };
+
   // Fetch doctors and active no-shows for Book Appointment based on branch, date, and mode
   useEffect(() => {
-    if (!bookingItem || !bookDate) return;
+    if (!bookDate) return;
 
     let isMounted = true;
     setLoadingBookingDoctors(true);
@@ -597,11 +668,11 @@ function TelecallerDashboardContent() {
     return () => {
       isMounted = false;
     };
-  }, [bookingItem, bookBranch, bookDate, bookMode]);
+  }, [bookBranch, bookDate, bookMode]);
 
   // Fetch booked appointments for live slot capacity calculation (In-Clinic mode)
   useEffect(() => {
-    if (!bookingItem || bookMode !== "In-Clinic" || !bookDoctorId || !bookDate) {
+    if (bookMode !== "In-Clinic" || !bookDoctorId || !bookDate) {
       setBookedAppointments([]);
       return;
     }
@@ -635,7 +706,7 @@ function TelecallerDashboardContent() {
     return () => {
       isMounted = false;
     };
-  }, [bookingItem, bookMode, bookBranch, bookDate, bookDoctorId]);
+  }, [bookMode, bookBranch, bookDate, bookDoctorId]);
 
   // Compute 15-minute slot sessions with 3-capacity per slot for In-Clinic mode
   const bookingSlotSessions = useMemo(() => {
@@ -751,12 +822,25 @@ function TelecallerDashboardContent() {
     });
   }, [bookMode, bookDoctorId, bookingAvailableDoctors, activeBookingNoShows, bookedAppointments, bookDate]);
 
-  // Handle Confirm Booking
-  const handleConfirmBooking = async () => {
-    if (!bookingItem || !bookDate || !bookTimeSlot) {
+  // Handle Confirm Booking (Works for Modal & Standalone Tab)
+  const handleConfirmBooking = async (isStandalone = false) => {
+    const targetPatientName = isStandalone ? standalonePatientName : bookingItem?.patientName;
+    const targetPhone = isStandalone ? standalonePhone : bookingItem?.phone;
+
+    if (!targetPatientName || !targetPhone) {
+      alert("Please enter patient name and mobile number");
+      return;
+    }
+    const cleanPhone = targetPhone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
+      alert("Please enter a valid 10-digit mobile number");
+      return;
+    }
+    if (!bookDate || !bookTimeSlot) {
       alert("Please choose appointment date and an available time slot");
       return;
     }
+
     setSavingBooking(true);
     try {
       let dtFormatted = bookDate;
@@ -767,35 +851,47 @@ function TelecallerDashboardContent() {
         }
       }
 
+      const sourceApptId = bookingItem?.appointmentId || undefined;
+
       const res = await fetch("/api/reception/follow-ups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          appointmentId: bookingItem.appointmentId,
-          patientName: bookingItem.patientName,
-          phoneNumber: bookingItem.phone,
+          appointmentId: sourceApptId,
+          patientName: targetPatientName.trim(),
+          phoneNumber: cleanPhone,
           branch: bookMode === "Online" ? "Online Consultation" : bookBranch,
           doctorId: bookDoctorId,
           doctorName: bookDoctorName,
           appointmentDate: dtFormatted,
           selectedTimeSlot: bookTimeSlot,
           consultationMode: bookMode,
-          diseases: bookReason,
-          notes: bookNotes,
+          diseases: bookReason || "Follow-up Booking",
+          notes: bookNotes || "Booked from telecaller portal",
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setFollowUps((prev) =>
-          prev.filter(
-            (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
-          )
-        );
+        if (bookingItem) {
+          setFollowUps((prev) =>
+            prev.filter(
+              (f) => f.id !== bookingItem.id && f.appointmentId !== bookingItem.appointmentId
+            )
+          );
+        }
         setActionMessage(
-          `Appointment successfully booked for ${bookingItem.patientName} at ${bookBranch} on ${dtFormatted} (${bookTimeSlot})!`
+          `Appointment successfully booked for ${targetPatientName} at ${bookBranch} on ${dtFormatted} (${bookTimeSlot})!`
         );
         setTimeout(() => setActionMessage(null), 4500);
         setBookingItem(null);
+        if (isStandalone) {
+          setStandalonePatientName("");
+          setStandalonePhone("");
+          setBookReason("");
+          setBookNotes("");
+          setBookTimeSlot("");
+          router.push("/telecaller/dashboard");
+        }
         fetchFollowUps(true);
       } else {
         alert(data.error || "Failed to book appointment");
@@ -889,7 +985,7 @@ function TelecallerDashboardContent() {
 
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
-      <TelecallerSidebar activeTab="followups" />
+      <TelecallerSidebar activeTab={activeTab} />
 
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
         {/* Header Bar */}
@@ -898,44 +994,96 @@ function TelecallerDashboardContent() {
             <div>
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold shadow-2xs">
-                  <Headset className="w-4 h-4" />
+                  {activeTab === "book_appointment" ? (
+                    <CalendarPlus className="w-4 h-4" />
+                  ) : activeTab === "log_call" ? (
+                    <ClipboardList className="w-4 h-4" />
+                  ) : (
+                    <Headset className="w-4 h-4" />
+                  )}
                 </div>
                 <h1 className="text-base font-extrabold text-slate-900 tracking-tight">
-                  Patient Follow-Up Calling Roster
+                  {activeTab === "book_appointment"
+                    ? "Book Patient Appointment"
+                    : activeTab === "log_call"
+                    ? "Call Logs & Patient Updates"
+                    : "Patient Follow-Up Calling Roster"}
                 </h1>
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Live Queue
                 </span>
               </div>
               <p className="text-[11.5px] text-slate-500 mt-0.5">
-                {selectedBranch} • Multi-branch calling roster with live status, slot booking & rescheduling
+                {selectedBranch} • Multi-branch telecaller desk with live status, slot booking & rescheduling
               </p>
             </div>
 
-            {/* Actions: Search, Branch Filter (UNLOCKED), Status Filter, Refresh, Excel Export */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Search Box */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search patient, phone, MRN..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 w-48 sm:w-56"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => handleSearchChange("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
+            {/* Navigation Tabs Pill Bar */}
+            <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200">
+              <Link
+                href="/telecaller/dashboard"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === "followups"
+                    ? "bg-white text-sky-700 shadow-2xs ring-1 ring-slate-200/60"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                }`}
+              >
+                <CalendarCheck className="w-3.5 h-3.5" />
+                <span>Follow-ups</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-sky-100 text-sky-800 font-extrabold">
+                  {stats.total}
+                </span>
+              </Link>
 
-              {/* Branch Selector (UNLOCKED: Telecaller can view All Branches or any branch) */}
-              <div className="flex items-center gap-1">
+              <Link
+                href="/telecaller/dashboard?tab=book_appointment"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === "book_appointment"
+                    ? "bg-white text-sky-700 shadow-2xs ring-1 ring-slate-200/60"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                }`}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                <span>Book Slot</span>
+              </Link>
+
+              <Link
+                href="/telecaller/dashboard?tab=log_call"
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === "log_call"
+                    ? "bg-white text-sky-700 shadow-2xs ring-1 ring-slate-200/60"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                }`}
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>Call Logs</span>
+              </Link>
+            </div>
+
+            {/* Actions for Follow-ups Tab */}
+            {activeTab === "followups" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Search Box */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search patient, phone, MRN..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 w-44 sm:w-52"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => handleSearchChange("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Branch Selector (UNLOCKED: Telecaller can view All Branches or any branch) */}
                 <select
                   value={selectedBranch}
                   onChange={(e) => handleBranchChange(e.target.value)}
@@ -950,45 +1098,45 @@ function TelecallerDashboardContent() {
                       </option>
                     ))}
                 </select>
+
+                {/* Status Filter */}
+                <select
+                  value={statusFilter}
+                  onChange={(e) => handleStatusChange(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Due Today">Due Today</option>
+                  <option value="Due Tomorrow">Due Tomorrow</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Upcoming">Upcoming</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Completed">Completed</option>
+                </select>
+
+                {/* Refresh Button */}
+                <button
+                  onClick={() => fetchFollowUps(true)}
+                  disabled={loading || refreshing}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                  title="Refresh Live Data"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-600" : ""}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+
+                {/* Export Excel / CSV Button */}
+                <button
+                  onClick={handleExportCSV}
+                  disabled={exporting || followUps.length === 0}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{exporting ? "Exporting..." : "Export Excel"}</span>
+                </button>
               </div>
-
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
-              >
-                <option value="All">All Statuses</option>
-                <option value="Due Today">Due Today</option>
-                <option value="Due Tomorrow">Due Tomorrow</option>
-                <option value="Overdue">Overdue</option>
-                <option value="Upcoming">Upcoming</option>
-                <option value="Scheduled">Scheduled</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Completed">Completed</option>
-              </select>
-
-              {/* Refresh Button */}
-              <button
-                onClick={() => fetchFollowUps(true)}
-                disabled={loading || refreshing}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                title="Refresh Live Data"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-600" : ""}`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-
-              {/* Export Excel / CSV Button */}
-              <button
-                onClick={handleExportCSV}
-                disabled={exporting || followUps.length === 0}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{exporting ? "Exporting..." : "Export Excel"}</span>
-              </button>
-            </div>
+            )}
           </div>
         </header>
 
@@ -1005,473 +1153,958 @@ function TelecallerDashboardContent() {
           </div>
         )}
 
-        {/* Content Body */}
-        <div className="p-6 space-y-4">
-          {/* Period Filter Bar */}
-          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider mr-1">
-                Period Filter:
-              </span>
+        {/* ========================================================================= */}
+        {/* TAB 1: PATIENT FOLLOW-UP CALLING ROSTER                                  */}
+        {/* ========================================================================= */}
+        {activeTab === "followups" && (
+          <div className="p-6 space-y-4">
+            {/* Period Filter Bar */}
+            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider mr-1">
+                  Period Filter:
+                </span>
 
-              {/* 1. Today */}
-              <button
-                onClick={() => handlePeriodChange("due_today")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "due_today"
-                    ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
-                    : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Today</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
+                {/* 1. Today */}
+                <button
+                  onClick={() => handlePeriodChange("due_today")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "due_today"
+                      ? "bg-amber-600 text-white shadow-2xs shadow-amber-200"
+                      : "bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200"
                   }`}
                 >
-                  {stats.dueToday}
-                </span>
-              </button>
-
-              {/* 2. Tomorrow */}
-              <button
-                onClick={() => handlePeriodChange("due_tomorrow")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "due_tomorrow"
-                    ? "bg-emerald-600 text-white shadow-2xs shadow-emerald-200"
-                    : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200"
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Tomorrow</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "due_tomorrow" ? "bg-white/25 text-white" : "bg-emerald-200 text-emerald-900"
-                  }`}
-                >
-                  {stats.dueTomorrow}
-                </span>
-              </button>
-
-              {/* 3. This Month */}
-              <button
-                onClick={() => handlePeriodChange("this_month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "this_month"
-                    ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
-                    : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>This Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
-                  }`}
-                >
-                  {stats.thisMonth}
-                </span>
-              </button>
-
-              {/* 4. Next Month */}
-              <button
-                onClick={() => handlePeriodChange("next_month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "next_month"
-                    ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
-                    : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Next Month</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
-                  }`}
-                >
-                  {stats.nextMonth}
-                </span>
-              </button>
-
-              {/* 5. Overdue */}
-              <button
-                onClick={() => handlePeriodChange("overdue")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "overdue"
-                    ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
-                    : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
-                }`}
-              >
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>Overdue</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
-                  }`}
-                >
-                  {stats.overdue}
-                </span>
-              </button>
-
-              {/* 6. Custom Month */}
-              <button
-                onClick={() => handlePeriodChange("month")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "month"
-                    ? "bg-purple-600 text-white shadow-2xs shadow-purple-200"
-                    : "bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200"
-                }`}
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Custom Month</span>
-                {periodFilter === "month" && selectedMonth && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-purple-800 text-white font-mono">
-                    {selectedMonth}
-                  </span>
-                )}
-              </button>
-
-              {/* 7. Custom Date */}
-              <button
-                onClick={() => handlePeriodChange("range")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "range"
-                    ? "bg-teal-600 text-white shadow-2xs shadow-teal-200"
-                    : "bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200"
-                }`}
-              >
-                <CalendarPlus className="w-3.5 h-3.5" />
-                <span>Custom Date</span>
-                {periodFilter === "range" && (startDate || endDate) && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-teal-800 text-white">
-                    Active
-                  </span>
-                )}
-              </button>
-
-              {/* 8. All Follow-Ups */}
-              <button
-                onClick={() => handlePeriodChange("all")}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  periodFilter === "all"
-                    ? "bg-slate-900 text-white shadow-2xs"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                }`}
-              >
-                <span>All Follow-Ups</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-white/20 text-current font-extrabold">
-                  {stats.total}
-                </span>
-              </button>
-            </div>
-
-            {/* Pagination Size Selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-slate-500">Per page:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-2 py-1 rounded-md border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
-              >
-                <option value={25}>25</option>
-                <option value={35}>35 (Default)</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-
-            {/* Extended controls for Choose Month */}
-            {periodFilter === "month" && (
-              <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-purple-50/50 p-2.5 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Select Specific Month:</span>
-                  </span>
-                  <input
-                    type="month"
-                    value={selectedMonth}
-                    onChange={(e) => {
-                      setSelectedMonth(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg border border-purple-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
-                  />
-                </div>
-                <span className="text-[11px] text-slate-500 font-semibold">
-                  Showing follow-ups scheduled in month: <strong className="text-purple-800">{selectedMonth}</strong>
-                </span>
-              </div>
-            )}
-
-            {/* Extended controls for Date Range */}
-            {periodFilter === "range" && (
-              <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-teal-50/50 p-2.5 rounded-lg">
-                <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-teal-600" />
-                  <span>Choose Date Range:</span>
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500">From:</span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => {
-                      setStartDate(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-bold text-slate-500">To:</span>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => {
-                      setEndDate(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
-                  />
-                </div>
-                {(startDate || endDate) && (
-                  <button
-                    onClick={() => {
-                      setStartDate("");
-                      setEndDate("");
-                      setCurrentPage(1);
-                    }}
-                    className="px-2.5 py-1 rounded-md text-[11px] font-bold text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Today</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                      periodFilter === "due_today" ? "bg-white/25 text-white" : "bg-amber-200 text-amber-900"
+                    }`}
                   >
-                    Clear Range
-                  </button>
-                )}
-                <span className="text-[11px] text-slate-500 font-semibold">
-                  Showing follow-ups between <strong className="text-teal-800">{startDate || "Start"}</strong> and <strong className="text-teal-800">{endDate || "End"}</strong>
-                </span>
+                    {stats.dueToday}
+                  </span>
+                </button>
+
+                {/* 2. Tomorrow */}
+                <button
+                  onClick={() => handlePeriodChange("due_tomorrow")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "due_tomorrow"
+                      ? "bg-emerald-600 text-white shadow-2xs shadow-emerald-200"
+                      : "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200"
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Tomorrow</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                      periodFilter === "due_tomorrow" ? "bg-white/25 text-white" : "bg-emerald-200 text-emerald-900"
+                    }`}
+                  >
+                    {stats.dueTomorrow}
+                  </span>
+                </button>
+
+                {/* 3. This Month */}
+                <button
+                  onClick={() => handlePeriodChange("this_month")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "this_month"
+                      ? "bg-sky-600 text-white shadow-2xs shadow-sky-200"
+                      : "bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>This Month</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                      periodFilter === "this_month" ? "bg-white/25 text-white" : "bg-sky-200 text-sky-800"
+                    }`}
+                  >
+                    {stats.thisMonth}
+                  </span>
+                </button>
+
+                {/* 4. Next Month */}
+                <button
+                  onClick={() => handlePeriodChange("next_month")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "next_month"
+                      ? "bg-indigo-600 text-white shadow-2xs shadow-indigo-200"
+                      : "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Next Month</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                      periodFilter === "next_month" ? "bg-white/25 text-white" : "bg-indigo-200 text-indigo-800"
+                    }`}
+                  >
+                    {stats.nextMonth}
+                  </span>
+                </button>
+
+                {/* 5. Overdue */}
+                <button
+                  onClick={() => handlePeriodChange("overdue")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "overdue"
+                      ? "bg-rose-600 text-white shadow-2xs shadow-rose-200"
+                      : "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200"
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Overdue</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                      periodFilter === "overdue" ? "bg-white/25 text-white" : "bg-rose-200 text-rose-800"
+                    }`}
+                  >
+                    {stats.overdue}
+                  </span>
+                </button>
+
+                {/* 6. Custom Month */}
+                <button
+                  onClick={() => handlePeriodChange("month")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "month"
+                      ? "bg-purple-600 text-white shadow-2xs shadow-purple-200"
+                      : "bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Custom Month</span>
+                  {periodFilter === "month" && selectedMonth && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-purple-800 text-white font-mono">
+                      {selectedMonth}
+                    </span>
+                  )}
+                </button>
+
+                {/* 7. Custom Date */}
+                <button
+                  onClick={() => handlePeriodChange("range")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "range"
+                      ? "bg-teal-600 text-white shadow-2xs shadow-teal-200"
+                      : "bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200"
+                  }`}
+                >
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  <span>Custom Date</span>
+                  {periodFilter === "range" && (startDate || endDate) && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-teal-800 text-white">
+                      Active
+                    </span>
+                  )}
+                </button>
+
+                {/* 8. All Follow-Ups */}
+                <button
+                  onClick={() => handlePeriodChange("all")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    periodFilter === "all"
+                      ? "bg-slate-900 text-white shadow-2xs"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  <span>All Follow-Ups</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9.5px] bg-white/20 text-current font-extrabold">
+                    {stats.total}
+                  </span>
+                </button>
               </div>
-            )}
+
+              {/* Pagination Size Selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-500">Per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-2 py-1 rounded-md border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={25}>25</option>
+                  <option value={35}>35 (Default)</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+
+              {/* Extended controls for Choose Month */}
+              {periodFilter === "month" && (
+                <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-purple-50/50 p-2.5 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Select Specific Month:</span>
+                    </span>
+                    <input
+                      type="month"
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        setSelectedMonth(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-purple-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                    />
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-semibold">
+                    Showing follow-ups scheduled in month: <strong className="text-purple-800">{selectedMonth}</strong>
+                  </span>
+                </div>
+              )}
+
+              {/* Extended controls for Date Range */}
+              {periodFilter === "range" && (
+                <div className="w-full pt-2.5 mt-1 border-t border-slate-100 flex items-center gap-3 flex-wrap bg-teal-50/50 p-2.5 rounded-lg">
+                  <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Choose Date Range:</span>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500">From:</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-bold text-slate-500">To:</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 shadow-2xs"
+                    />
+                  </div>
+                  {(startDate || endDate) && (
+                    <button
+                      onClick={() => {
+                        setStartDate("");
+                        setEndDate("");
+                        setCurrentPage(1);
+                      }}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-bold text-rose-600 bg-white hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                    >
+                      Clear Range
+                    </button>
+                  )}
+                  <span className="text-[11px] text-slate-500 font-semibold">
+                    Showing follow-ups between <strong className="text-teal-800">{startDate || "Start"}</strong> and <strong className="text-teal-800">{endDate || "End"}</strong>
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Follow-Ups Table Card */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <th className="py-2 px-2 w-10 text-center">S.No</th>
+                      <th className="py-2 px-3">Patient MRN & Name</th>
+                      <th className="py-2 px-2.5">Phone & Call</th>
+                      <th className="py-2 px-2.5">Branch</th>
+                      <th className="py-2 px-3">Attending Doctor</th>
+                      <th className="py-2 px-2.5 text-center">Follow-Up Due Date</th>
+                      <th className="py-2 px-3 text-center">Action Options</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="py-16 text-center text-slate-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <RefreshCw className="w-6 h-6 animate-spin text-sky-600" />
+                            <span className="font-bold text-xs text-slate-600">Loading follow-ups roster...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : followUps.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-16 text-center text-slate-400">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <CalendarCheck className="w-8 h-8 text-slate-300" />
+                            <span className="font-bold text-slate-700 text-sm">No follow-ups found</span>
+                            <span className="text-xs text-slate-400 max-w-sm">
+                              No patient follow-ups match the selected period, branch ({selectedBranch}), or search criteria.
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      followUps.map((item, idx) => {
+                        const sNo = (currentPage - 1) * pageSize + idx + 1;
+                        const cleanPhone = item.phone.replace(/\D/g, "");
+
+                        return (
+                          <tr
+                            key={item.id}
+                            className="hover:bg-sky-50/40 transition-colors group"
+                          >
+                            {/* S.No */}
+                            <td className="py-2 px-2 text-center text-slate-400 font-bold text-[10px]">
+                              {sNo}
+                            </td>
+
+                            {/* Patient MRN & Name */}
+                            <td className="py-2 px-3">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-6 h-6 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-[10px] shrink-0">
+                                  {item.patientName.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors flex items-center gap-1 text-[11.5px]">
+                                    <span>{item.patientName}</span>
+                                  </div>
+                                  <div className="text-[9.5px] font-mono text-slate-500 font-semibold">
+                                    {item.mrn || "—"}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Phone & Direct Calling */}
+                            <td className="py-2 px-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-slate-700 font-semibold text-[10.5px]">
+                                  {cleanPhone || "—"}
+                                </span>
+                                {cleanPhone && (
+                                  <div className="flex items-center gap-1">
+                                    {/* Direct Dial */}
+                                    <a
+                                      href={`tel:${cleanPhone}`}
+                                      className="p-1 rounded bg-sky-50 hover:bg-sky-100 text-sky-700 transition"
+                                      title="Call Patient"
+                                    >
+                                      <PhoneOutgoing className="w-2.5 h-2.5" />
+                                    </a>
+                                    {/* Direct WhatsApp */}
+                                    <button
+                                      onClick={() => handleWhatsApp(item)}
+                                      className="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer"
+                                      title="WhatsApp Follow-up Message"
+                                    >
+                                      <MessageSquare className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Branch */}
+                            <td className="py-2 px-2.5">
+                              <div className="flex items-center gap-1 text-slate-600 font-semibold text-[10.5px]">
+                                <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                <span className="truncate max-w-[110px]">{item.branch}</span>
+                              </div>
+                            </td>
+
+                            {/* Attending Doctor */}
+                            <td className="py-2 px-3">
+                              <div className="flex items-center gap-1 text-slate-800 font-bold text-[11px]">
+                                <Stethoscope className="w-3 h-3 text-sky-600 shrink-0" />
+                                <span className="truncate max-w-[140px]">{item.doctorName}</span>
+                              </div>
+                            </td>
+
+                            {/* Follow-Up Due Date */}
+                            <td className="py-2 px-2.5 text-center">
+                              <div
+                                className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-[10.5px] ${
+                                  item.isOverdue
+                                    ? "bg-rose-50 border-rose-200 text-rose-700"
+                                    : item.isDueToday
+                                    ? "bg-amber-50 border-amber-200 text-amber-800"
+                                    : item.isDueTomorrow
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                    : "bg-slate-50 border-slate-200 text-slate-900"
+                                }`}
+                              >
+                                <Calendar className="w-2.5 h-2.5 text-current opacity-70" />
+                                <span>{item.dueDate}</span>
+                              </div>
+                            </td>
+
+                            {/* Action Options: Reschedule & Book Appointment & Log Call */}
+                            <td className="py-2.5 px-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Reschedule Button */}
+                                <button
+                                  onClick={() => openRescheduleModal(item)}
+                                  className="px-2 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                  title="Reschedule Follow-Up Date"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" />
+                                  <span>Reschedule</span>
+                                </button>
+
+                                {/* Book Appointment Button */}
+                                <button
+                                  onClick={() => openBookingModal(item)}
+                                  className="px-2 py-0.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                  title="Book Clinical Appointment for any branch"
+                                >
+                                  <CalendarPlus className="w-2.5 h-2.5" />
+                                  <span>Book Slot</span>
+                                </button>
+
+                                {/* Log Call Button */}
+                                <button
+                                  onClick={() => openLogCallModal(item)}
+                                  className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                  title="Record Call Outcome"
+                                >
+                                  <PhoneCall className="w-2.5 h-2.5" />
+                                  <span>Outcome</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Footer */}
+              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50/70 flex items-center justify-between flex-wrap gap-3">
+                <div className="text-xs font-semibold text-slate-500">
+                  Showing{" "}
+                  <span className="font-bold text-slate-800">
+                    {followUps.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                  </span>{" "}
+                  to{" "}
+                  <span className="font-bold text-slate-800">
+                    {Math.min(currentPage * pageSize, totalCount)}
+                  </span>{" "}
+                  of <span className="font-bold text-slate-900">{totalCount}</span> follow-up records
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1 || loading}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Previous</span>
+                  </button>
+
+                  <div className="px-3 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-800 shadow-2xs">
+                    Page {currentPage} of {totalPages}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages || loading}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+        )}
 
-          {/* Follow-Ups Table Card */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[11px]">
-                <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                    <th className="py-2 px-2 w-10 text-center">S.No</th>
-                    <th className="py-2 px-3">Patient MRN & Name</th>
-                    <th className="py-2 px-2.5">Phone & Call</th>
-                    <th className="py-2 px-2.5">Branch</th>
-                    <th className="py-2 px-3">Attending Doctor</th>
-                    <th className="py-2 px-2.5 text-center">Follow-Up Due Date</th>
-                    <th className="py-2 px-3 text-center">Action Options</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <RefreshCw className="w-6 h-6 animate-spin text-sky-600" />
-                          <span className="font-bold text-xs text-slate-600">Loading follow-ups roster...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : followUps.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <CalendarCheck className="w-8 h-8 text-slate-300" />
-                          <span className="font-bold text-slate-700 text-sm">No follow-ups found</span>
-                          <span className="text-xs text-slate-400 max-w-sm">
-                            No patient follow-ups match the selected period, branch ({selectedBranch}), or search criteria.
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    followUps.map((item, idx) => {
-                      const sNo = (currentPage - 1) * pageSize + idx + 1;
-                      const cleanPhone = item.phone.replace(/\D/g, "");
+        {/* ========================================================================= */}
+        {/* TAB 2: STANDALONE DIRECT APPOINTMENT BOOKING DESK                        */}
+        {/* ========================================================================= */}
+        {activeTab === "book_appointment" && (
+          <div className="p-6 max-w-4xl mx-auto space-y-5">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                    <CalendarPlus className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-sm">Direct Clinical Appointment Booking</h2>
+                    <p className="text-[11px] text-sky-100">
+                      Book an appointment for any patient across all clinic branches or online
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-                      return (
-                        <tr
-                          key={item.id}
-                          className="hover:bg-sky-50/40 transition-colors group"
-                        >
-                          {/* S.No */}
-                          <td className="py-2 px-2 text-center text-slate-400 font-bold text-[10px]">
-                            {sNo}
-                          </td>
+              <div className="p-6 space-y-4 text-xs font-medium text-slate-700">
+                {/* Patient Details */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Patient Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Enter patient full name"
+                      value={standalonePatientName}
+                      onChange={(e) => setStandalonePatientName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
 
-                          {/* Patient MRN & Name */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-6 h-6 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-[10px] shrink-0">
-                                {item.patientName.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <div className="font-extrabold text-slate-900 group-hover:text-sky-700 transition-colors flex items-center gap-1 text-[11.5px]">
-                                  <span>{item.patientName}</span>
-                                </div>
-                                <div className="text-[9.5px] font-mono text-slate-500 font-semibold">
-                                  {item.mrn || "—"}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      10-Digit Mobile Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      placeholder="e.g. 9876543210"
+                      value={standalonePhone}
+                      onChange={(e) => setStandalonePhone(e.target.value.replace(/\D/g, ""))}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
 
-                          {/* Phone & Direct Calling */}
-                          <td className="py-2 px-2.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-slate-700 font-semibold text-[10.5px]">
-                                {cleanPhone || "—"}
-                              </span>
-                              {cleanPhone && (
-                                <div className="flex items-center gap-1">
-                                  {/* Direct Dial */}
-                                  <a
-                                    href={`tel:${cleanPhone}`}
-                                    className="p-1 rounded bg-sky-50 hover:bg-sky-100 text-sky-700 transition"
-                                    title="Call Patient"
-                                  >
-                                    <PhoneOutgoing className="w-2.5 h-2.5" />
-                                  </a>
-                                  {/* Direct WhatsApp */}
+                {/* Consultation Mode */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Consultation Mode <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CONSULTATION_MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setBookMode(m.id as "In-Clinic" | "Online");
+                          setBookTimeSlot("");
+                        }}
+                        className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          bookMode === m.id
+                            ? "bg-sky-50 border-sky-500 text-sky-700 ring-1 ring-sky-500 shadow-2xs"
+                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${bookMode === m.id ? "bg-sky-600" : "bg-slate-300"}`} />
+                        <span>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Branch Selection */}
+                {bookMode === "In-Clinic" && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Target Clinic Branch <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={bookBranch}
+                      onChange={(e) => {
+                        setBookBranch(e.target.value);
+                        setBookTimeSlot("");
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    >
+                      {branches
+                        .filter((b) => b !== "All Branches")
+                        .map((b) => (
+                          <option key={b} value={b}>
+                            📍 {b}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Doctor & Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Consultant Doctor <span className="text-rose-500">*</span>
+                    </label>
+                    {loadingBookingDoctors ? (
+                      <div className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-400 font-semibold flex items-center gap-1.5">
+                        <RefreshCw className="w-3 h-3 animate-spin text-sky-600" />
+                        <span>Loading doctors...</span>
+                      </div>
+                    ) : bookingAvailableDoctors.length === 0 ? (
+                      <div className="w-full px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-[11px] text-rose-700 font-bold">
+                        {bookMode === "Online"
+                          ? "No online doctors available"
+                          : `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}`}
+                      </div>
+                    ) : (
+                      <select
+                        value={bookDoctorId}
+                        onChange={(e) => {
+                          setBookDoctorId(e.target.value);
+                          const doc = bookingAvailableDoctors.find((d: any) => (d.doctorId || d.id) === e.target.value);
+                          if (doc) setBookDoctorName(doc.doctorName || doc.name);
+                        }}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                      >
+                        {bookingAvailableDoctors.map((doc: any) => (
+                          <option key={doc.doctorId || doc.id} value={doc.doctorId || doc.id}>
+                            {doc.doctorName || doc.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Appointment Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                      value={bookDate}
+                      onChange={(e) => setBookDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Time Slot Picker */}
+                {bookMode === "Online" ? (
+                  <div>
+                    <AnalogClockPicker
+                      value={bookTimeSlot}
+                      onChange={setBookTimeSlot}
+                      doctorName={bookDoctorName}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                        Select Time Slot (15-min intervals) *
+                      </label>
+                      {bookTimeSlot && (
+                        <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                          Selected: {bookTimeSlot}
+                        </span>
+                      )}
+                    </div>
+
+                    {bookingSlotSessions.length === 0 ? (
+                      <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-800 font-medium">
+                        {bookingAvailableDoctors.length === 0
+                          ? `No doctors scheduled at ${bookBranch.replace(" Branch", "")} on ${getDayOfWeekAbbr(bookDate)}.`
+                          : !bookDoctorId
+                          ? "Please select a consultant doctor above."
+                          : `No slot sessions configured for ${bookDoctorName} on ${getDayOfWeekAbbr(bookDate)}.`}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1 border border-slate-100 rounded-lg p-2 bg-slate-50/50">
+                        {bookingSlotSessions.map((session: any, sIdx: number) => (
+                          <div key={sIdx} className="space-y-1">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                              {session.sessionName}
+                            </span>
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+                              {session.slots.map((slot: any, slIdx: number) => {
+                                const isSelected = bookTimeSlot === slot.time;
+                                const isFull = slot.isFull;
+                                return (
                                   <button
-                                    onClick={() => handleWhatsApp(item)}
-                                    className="p-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer"
-                                    title="WhatsApp Follow-up Message"
+                                    key={slIdx}
+                                    type="button"
+                                    disabled={isFull}
+                                    onClick={() => setBookTimeSlot(slot.time)}
+                                    className={`p-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center cursor-pointer ${
+                                      isSelected
+                                        ? "bg-sky-600 text-white border-sky-600 ring-2 ring-sky-300 font-bold"
+                                        : isFull
+                                        ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60"
+                                        : "bg-white border-slate-200 text-slate-700 hover:border-sky-400 hover:bg-sky-50/50"
+                                    }`}
                                   >
-                                    <MessageSquare className="w-2.5 h-2.5" />
+                                    <span className="text-[10px] font-semibold">{slot.time}</span>
+                                    <span
+                                      className={`text-[8.5px] font-black uppercase mt-0.5 px-1 py-0.2 rounded ${
+                                        isSelected
+                                          ? "bg-white/20 text-white"
+                                          : slot.isNoShow
+                                          ? "bg-rose-100 text-rose-800"
+                                          : slot.isPast
+                                          ? "bg-slate-200 text-slate-500"
+                                          : slot.bookedCount >= 3
+                                          ? "bg-rose-100 text-rose-800"
+                                          : "bg-emerald-50 text-emerald-700"
+                                      }`}
+                                    >
+                                      {slot.isNoShow
+                                        ? "Doctor Off"
+                                        : slot.isPast
+                                        ? "Passed"
+                                        : slot.bookedCount >= 3
+                                        ? "Full"
+                                        : `${slot.bookedCount}/3`}
+                                    </span>
                                   </button>
-                                </div>
-                              )}
+                                );
+                              })}
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Reason & Remarks */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Reason for Visit / Symptoms
+                  </label>
+                  <input
+                    type="text"
+                    value={bookReason}
+                    onChange={(e) => setBookReason(e.target.value)}
+                    placeholder="Consultation, chronic complaint, homeopathic review"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Booking Remarks
+                  </label>
+                  <textarea
+                    value={bookNotes}
+                    onChange={(e) => setBookNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Notes from telecaller..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/telecaller/dashboard")}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                  >
+                    Back to Follow-ups
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmBooking(true)}
+                    disabled={savingBooking || !bookDate || !bookTimeSlot}
+                    className="px-5 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingBooking ? "Booking..." : "Confirm & Book Slot"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 3: STANDALONE CALL LOGS & PATIENT OUTCOME DESK                       */}
+        {/* ========================================================================= */}
+        {activeTab === "log_call" && (
+          <div className="p-6 max-w-5xl mx-auto space-y-6">
+            {/* Record New Call Log Form */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                    <PhoneCall className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-sm">Log Patient Call & Outcome</h2>
+                    <p className="text-[11px] text-emerald-100">
+                      Record telecaller calling outcome, feedback, and notes
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleStandaloneCallLog} className="p-6 space-y-4 text-xs font-medium text-slate-700">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Patient Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Enter patient full name"
+                      value={logPatientName}
+                      onChange={(e) => setLogPatientName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Mobile Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      maxLength={10}
+                      placeholder="10-digit phone"
+                      value={logPhone}
+                      onChange={(e) => setLogPhone(e.target.value.replace(/\D/g, ""))}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Hospital Branch
+                    </label>
+                    <select
+                      value={logBranch}
+                      onChange={(e) => setLogBranch(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      {branches
+                        .filter((b) => b !== "All Branches")
+                        .map((b) => (
+                          <option key={b} value={b}>
+                            📍 {b}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-2">
+                    Call Outcome <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    {CALL_OUTCOMES.map((oc) => (
+                      <button
+                        key={oc.id}
+                        type="button"
+                        onClick={() => setCallOutcome(oc.id)}
+                        className={`p-2 rounded-lg border text-left font-bold transition flex items-center justify-between cursor-pointer ${
+                          callOutcome === oc.id
+                            ? `${oc.color} ring-2 ring-emerald-500 shadow-2xs`
+                            : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span className="text-xs">{oc.label}</span>
+                        {callOutcome === oc.id && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Call Discussion & Outcome Notes
+                  </label>
+                  <textarea
+                    value={callRemarks}
+                    onChange={(e) => setCallRemarks(e.target.value)}
+                    rows={2}
+                    placeholder="Patient traveling, requested Saturday slot, medication refill status, etc."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                  <button
+                    type="submit"
+                    disabled={savingCallLog}
+                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {savingCallLog ? "Saving..." : "Save Call Log"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Recent Call Logs Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-sm text-slate-900">Recent Call Activity Logs</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">
+                    {callLogsList.length} Entries
+                  </span>
+                </div>
+                <button
+                  onClick={fetchCallLogs}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingCallLogs ? "animate-spin text-emerald-600" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-50/90 border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <th className="py-2.5 px-3">Patient Name</th>
+                      <th className="py-2.5 px-3">Phone</th>
+                      <th className="py-2.5 px-3">Branch</th>
+                      <th className="py-2.5 px-3">Call Outcome</th>
+                      <th className="py-2.5 px-3">Notes</th>
+                      <th className="py-2.5 px-3">Logged Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {loadingCallLogs ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                          <RefreshCw className="w-5 h-5 animate-spin mx-auto text-emerald-600 mb-1" />
+                          <span>Loading call logs...</span>
+                        </td>
+                      </tr>
+                    ) : callLogsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                          <span>No call logs recorded yet.</span>
+                        </td>
+                      </tr>
+                    ) : (
+                      callLogsList.slice(0, 30).map((log: any, idx: number) => (
+                        <tr key={log.id || idx} className="hover:bg-slate-50/70 transition">
+                          <td className="py-2.5 px-3 font-bold text-slate-900">{log.patientName}</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{log.phone}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{log.branch}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-800">
+                              {log.callOutcome}
+                            </span>
                           </td>
-
-                          {/* Branch */}
-                          <td className="py-2 px-2.5">
-                            <div className="flex items-center gap-1 text-slate-600 font-semibold text-[10.5px]">
-                              <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-                              <span className="truncate max-w-[110px]">{item.branch}</span>
-                            </div>
-                          </td>
-
-                          {/* Attending Doctor */}
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1 text-slate-800 font-bold text-[11px]">
-                              <Stethoscope className="w-3 h-3 text-sky-600 shrink-0" />
-                              <span className="truncate max-w-[140px]">{item.doctorName}</span>
-                            </div>
-                          </td>
-
-                          {/* Follow-Up Due Date */}
-                          <td className="py-2 px-2.5 text-center">
-                            <div
-                              className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-[10.5px] ${
-                                item.isOverdue
-                                  ? "bg-rose-50 border-rose-200 text-rose-700"
-                                  : item.isDueToday
-                                  ? "bg-amber-50 border-amber-200 text-amber-800"
-                                  : item.isDueTomorrow
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                                  : "bg-slate-50 border-slate-200 text-slate-900"
-                              }`}
-                            >
-                              <Calendar className="w-2.5 h-2.5 text-current opacity-70" />
-                              <span>{item.dueDate}</span>
-                            </div>
-                          </td>
-
-                          {/* Action Options: Reschedule & Book Appointment & Log Call */}
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {/* Reschedule Button */}
-                              <button
-                                onClick={() => openRescheduleModal(item)}
-                                className="px-2 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                                title="Reschedule Follow-Up Date"
-                              >
-                                <RotateCcw className="w-2.5 h-2.5" />
-                                <span>Reschedule</span>
-                              </button>
-
-                              {/* Book Appointment Button */}
-                              <button
-                                onClick={() => openBookingModal(item)}
-                                className="px-2 py-0.5 rounded-md bg-sky-600 hover:bg-sky-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                                title="Book Clinical Appointment for any branch"
-                              >
-                                <CalendarPlus className="w-2.5 h-2.5" />
-                                <span>Book Slot</span>
-                              </button>
-
-                              {/* Log Call Button */}
-                              <button
-                                onClick={() => openLogCallModal(item)}
-                                className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10.5px] flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                                title="Record Call Outcome"
-                              >
-                                <PhoneCall className="w-2.5 h-2.5" />
-                                <span>Outcome</span>
-                              </button>
-                            </div>
+                          <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">{log.notes || "—"}</td>
+                          <td className="py-2.5 px-3 text-slate-500 font-mono text-[10px]">
+                            {log.dateTime ? new Date(log.dateTime).toLocaleString() : "—"}
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Footer */}
-            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50/70 flex items-center justify-between flex-wrap gap-3">
-              <div className="text-xs font-semibold text-slate-500">
-                Showing{" "}
-                <span className="font-bold text-slate-800">
-                  {followUps.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-bold text-slate-800">
-                  {Math.min(currentPage * pageSize, totalCount)}
-                </span>{" "}
-                of <span className="font-bold text-slate-900">{totalCount}</span> follow-up records
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage <= 1 || loading}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 shadow-2xs cursor-pointer"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Previous</span>
-                </button>
-
-                <div className="px-3 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-800 shadow-2xs">
-                  Page {currentPage} of {totalPages}
-                </div>
-
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages || loading}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 shadow-2xs cursor-pointer"
-                >
-                  <span>Next</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* POPUP MODAL 1: Reschedule Follow-up */}
@@ -1840,7 +2473,7 @@ function TelecallerDashboardContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmBooking}
+                  onClick={() => handleConfirmBooking(false)}
                   disabled={savingBooking || !bookDate || !bookTimeSlot}
                   className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >

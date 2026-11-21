@@ -71,16 +71,19 @@ export default function TelecallerSidebar({
     {
       id: "followups",
       name: "Follow-ups",
+      href: "/telecaller/dashboard",
       icon: CalendarCheck,
     },
     {
       id: "book_appointment",
       name: "Book Appointment",
+      href: "/telecaller/dashboard?tab=book_appointment",
       icon: Calendar,
     },
     {
       id: "log_call",
       name: "Call Logs & Updates",
+      href: "/telecaller/dashboard?tab=log_call",
       icon: ClipboardList,
     },
   ];
@@ -164,13 +167,12 @@ export default function TelecallerSidebar({
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <button
+              <Link
                 key={item.id}
+                href={item.href}
                 onClick={() => {
                   if (onTabChange) {
                     onTabChange(item.id as any);
-                  } else {
-                    router.push(`/telecaller/dashboard?tab=${item.id}`);
                   }
                 }}
                 title={isCollapsed ? item.name : undefined}
@@ -188,7 +190,7 @@ export default function TelecallerSidebar({
                   }`}
                 />
                 {!isCollapsed && <span className="truncate">{item.name}</span>}
-              </button>
+              </Link>
             );
           })}
 
