@@ -282,25 +282,25 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         }
         return samePhoneFamilyAppts.map((a, idx) => {
           const isCurrent = a.id === appointment?.id;
+          // Target Amount from doctor:
           const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
-          const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
-          const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
+          
+          // Existing prescribed medicines if already entered for this appointment
+          const existingMeds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
             ? (a.medicines || a.medicinesList)!.map((m, mIdx) => ({
               id: m.id || `med-${idx}-${mIdx}`,
-              name: m.name || "Prescribed Homeo Kit",
+              name: m.name || "",
               type: m.type || "Pills",
               timing: m.timing || "Morning & Night",
-              amount: Number(m.amount) || mFee,
+              amount: Number(m.amount) || 0,
             }))
-            : [
-              {
-                id: `med-${idx}-1`,
-                name: "Prescribed Homeo Kit",
-                type: "Pills",
-                timing: "Morning & Night",
-                amount: mFee,
-              },
-            ];
+            : [];
+          const hasPrescribedMeds = existingMeds.length > 0;
+          const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0
+            ? a.medicineFee
+            : hasPrescribedMeds
+            ? existingMeds.reduce((sum, mi) => sum + (Number(mi.amount) || 0), 0)
+            : 0;
 
           return {
             appointmentId: a.id,
@@ -311,14 +311,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             doctorName: a.doctorName || "Consultant Doctor",
             selected: true,
             consultationFee: cFee,
-            includeConsultFee: cFee > 0,
+            includeConsultFee: true, // Target amount
             medicineFee: mFee,
-            includeMedicineFee: true,
+            includeMedicineFee: hasPrescribedMeds && mFee > 0, // ONLY true if doctor already prescribed medicines
             medicineDuration: a.medicineDuration || "1 Month",
-            medicineItems: meds,
+            medicineItems: existingMeds,
             otherCharges: 0,
             discount: 0,
-            subtotal: (cFee > 0 ? cFee : 0) + mFee,
+            subtotal: cFee + (hasPrescribedMeds ? mFee : 0), // Strictly ONLY Target Amount (cFee) by default!
             isExpanded: isCurrent || idx === 0,
           };
         });
@@ -353,6 +353,17 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       prev.map((m) => {
         if (m.appointmentId !== appointmentId) return m;
         const updated = { ...m, [field]: value };
+        if (field === "includeMedicineFee" && value === true && updated.medicineItems.length === 0) {
+          updated.medicineItems = [
+            {
+              id: `med-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              name: "",
+              type: "Pills",
+              timing: "Morning & Night",
+              amount: 0,
+            },
+          ];
+        }
         const consult = updated.includeConsultFee ? Number(updated.consultationFee) || 0 : 0;
         const med = updated.includeMedicineFee
           ? updated.medicineItems.length > 0
@@ -373,10 +384,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         if (m.appointmentId !== appointmentId) return m;
         const newItem: MedicineItem = {
           id: `med-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          name: "Homeo Remedy",
+          name: "",
           type: "Pills",
           timing: "Morning & Night",
-          amount: 500,
+          amount: 0,
         };
         const updatedItems = [...m.medicineItems, newItem];
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
@@ -385,6 +396,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         const disc = Number(m.discount) || 0;
         return {
           ...m,
+          includeMedicineFee: true,
           medicineItems: updatedItems,
           medicineFee: medSum,
           subtotal: Math.max(0, consult + medSum + other - disc),
