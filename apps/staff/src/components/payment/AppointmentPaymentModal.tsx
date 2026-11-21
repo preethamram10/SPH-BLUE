@@ -96,10 +96,12 @@ export interface AppointmentPaymentModalProps {
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
+const EMPTY_ALL_APPOINTMENTS: any[] = [];
+
 export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = ({
   visible,
   appointment,
-  allAppointments = [],
+  allAppointments = EMPTY_ALL_APPOINTMENTS,
   onClose,
   onPaymentSuccess,
   onOpenPatientFile,
@@ -234,8 +236,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
   const cleanPhone = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
 
   const samePhoneFamilyAppts = React.useMemo(() => {
-    if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return [];
-    return allAppointments.filter((a: any) => {
+    if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return EMPTY_ALL_APPOINTMENTS;
+    const matched = allAppointments.filter((a: any) => {
       const p = (a.phoneNumber || a.phone || "").replace(/\D/g, "").slice(-10);
       return (
         p === cleanPhone &&
@@ -243,62 +245,72 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         a.status !== "CANCELLED"
       );
     });
+    return matched.length > 0 ? matched : EMPTY_ALL_APPOINTMENTS;
   }, [cleanPhone, allAppointments]);
 
   const isMultiPayApplicable = samePhoneFamilyAppts.length > 1;
   const [isMultiPayEnabled, setIsMultiPayEnabled] = useState<boolean>(false);
   const [multiPayMembers, setMultiPayMembers] = useState<MultiPayMember[]>([]);
 
+  const familyApptIdsKey = React.useMemo(() => {
+    return samePhoneFamilyAppts.map((a: any) => a.id).sort().join(",");
+  }, [samePhoneFamilyAppts]);
+
   useEffect(() => {
     if (samePhoneFamilyAppts.length > 1) {
-      const init: MultiPayMember[] = samePhoneFamilyAppts.map((a: any, idx: number) => {
-        const isCurrent = a.id === appointment?.id;
-        const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
-        const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
-        const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
-          ? (a.medicines || a.medicinesList)!.map((m: any, mIdx: number) => ({
-            id: m.id || `med-${idx}-${mIdx}`,
-            name: m.name || "Prescribed Homeo Kit",
-            type: m.type || "Pills",
-            timing: m.timing || "1 - 0 - 1",
-            amount: Number(m.amount) || mFee,
-          }))
-          : [
-            {
-              id: `med-${idx}-1`,
-              name: "Prescribed Homeo Kit",
-              type: "Pills",
-              timing: "1 - 0 - 1",
-              amount: mFee,
-            },
-          ];
+      setMultiPayMembers((prev) => {
+        const currentIds = prev.map((m) => m.appointmentId).sort().join(",");
+        if (currentIds === familyApptIdsKey && prev.length === samePhoneFamilyAppts.length) {
+          return prev;
+        }
+        return samePhoneFamilyAppts.map((a: any, idx: number) => {
+          const isCurrent = a.id === appointment?.id;
+          const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
+          const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0 ? a.medicineFee : 1500;
+          const meds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
+            ? (a.medicines || a.medicinesList)!.map((m: any, mIdx: number) => ({
+              id: m.id || `med-${idx}-${mIdx}`,
+              name: m.name || "Prescribed Homeo Kit",
+              type: m.type || "Pills",
+              timing: m.timing || "1 - 0 - 1",
+              amount: Number(m.amount) || mFee,
+            }))
+            : [
+              {
+                id: `med-${idx}-1`,
+                name: "Prescribed Homeo Kit",
+                type: "Pills",
+                timing: "1 - 0 - 1",
+                amount: mFee,
+              },
+            ];
 
-        return {
-          appointmentId: a.id,
-          patientName: a.patientName || a.name || `Family Member ${idx + 1}`,
-          phone: cleanPhone,
-          registrationId: a.registrationId || a.patientId || "SPH-GEN",
-          token: a.token || a.tokenNumber || `#A-${idx + 1}`,
-          doctorName: a.doctorName || "Consultant Doctor",
-          selected: true,
-          consultationFee: cFee,
-          includeConsultFee: cFee > 0,
-          medicineFee: mFee,
-          includeMedicineFee: true,
-          medicineDuration: a.medicineDuration || "1 Month",
-          medicineItems: meds,
-          otherCharges: 0,
-          discount: 0,
-          subtotal: (cFee > 0 ? cFee : 0) + mFee,
-          isExpanded: isCurrent || idx === 0,
-        };
+          return {
+            appointmentId: a.id,
+            patientName: a.patientName || a.name || `Family Member ${idx + 1}`,
+            phone: cleanPhone,
+            registrationId: a.registrationId || a.patientId || "SPH-GEN",
+            token: a.token || a.tokenNumber || `#A-${idx + 1}`,
+            doctorName: a.doctorName || "Consultant Doctor",
+            selected: true,
+            consultationFee: cFee,
+            includeConsultFee: cFee > 0,
+            medicineFee: mFee,
+            includeMedicineFee: true,
+            medicineDuration: a.medicineDuration || "1 Month",
+            medicineItems: meds,
+            otherCharges: 0,
+            discount: 0,
+            subtotal: (cFee > 0 ? cFee : 0) + mFee,
+            isExpanded: isCurrent || idx === 0,
+          };
+        });
       });
-      setMultiPayMembers(init);
     } else {
-      setMultiPayMembers([]);
-      setIsMultiPayEnabled(false);
+      setMultiPayMembers((prev) => (prev.length > 0 ? [] : prev));
+      setIsMultiPayEnabled((prev) => (prev ? false : prev));
     }
-  }, [samePhoneFamilyAppts, appointment, cleanPhone]);
+  }, [familyApptIdsKey, appointment?.id, cleanPhone, samePhoneFamilyAppts]);
 
   const multiPayGrandTotal = React.useMemo(() => {
     if (!isMultiPayEnabled) return 0;
