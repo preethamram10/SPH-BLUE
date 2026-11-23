@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Loader2,
 } from "lucide-react";
+import { generateRegistrationId } from "@/utils/idGenerator";
 
 type SessionTab = "TODAY" | "YESTERDAY" | "ALL";
 
@@ -228,7 +229,7 @@ export default function ReceptionAllPatientsPage() {
 
     try {
       setIsRegistering(true);
-      const generatedMrn = `SPH-${Math.floor(1000 + Math.random() * 9000)}`;
+      const generatedMrn = await generateRegistrationId(branchName);
 
       const res = await fetch("/api/reception/patients", {
         method: "POST",

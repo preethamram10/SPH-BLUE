@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { patientService, appointmentService, normalizeDateStr } from "@spiritualhomeo/database";
+import { patientService, appointmentService, normalizeDateStr, registrationSequenceService } from "@spiritualhomeo/database";
 
 /** Returns YYYY-MM-DD for a given Date (local zone of the server) */
 function toDateStr(d: Date): string {
@@ -183,15 +183,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { regId, name, phone, email, diseases, branch } = body;
 
-    if (!regId || !name || !phone) {
+    if (!name || !phone) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields (regId, name, phone)" },
+        { success: false, error: "Missing required fields (name, phone)" },
         { status: 400 }
       );
     }
 
+    const finalRegId = regId && regId.trim()
+      ? regId.trim().toUpperCase()
+      : await registrationSequenceService.getNextRegistrationId(branch || "KPB");
+
     const saved = await patientService.upsertPatient({
-      regId,
+      regId: finalRegId,
       name,
       phone,
       email,

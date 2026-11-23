@@ -31,6 +31,7 @@ import {
   ZoomOut,
   X,
   Stethoscope,
+  Lock,
 } from "lucide-react";
 
 // Client-side image compression
@@ -542,7 +543,7 @@ function OldPrescriptionEntryContent() {
                     <button
                       type="button"
                       onClick={() => checkPatientId()}
-                      disabled={!regId.trim() || isCheckingId}
+                      disabled={!regId.trim() || isCheckingId || hasGeneratedId}
                       className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
                     >
                       {isCheckingId ? "Checking..." : "Verify ID"}
@@ -564,16 +565,62 @@ function OldPrescriptionEntryContent() {
                 </div>
 
                 <div className="relative">
+                  {hasGeneratedId && (
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none text-emerald-600 z-10">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                  )}
                   <input
                     type="text"
                     required
+                    readOnly={hasGeneratedId}
                     value={regId}
-                    onChange={(e) => handleRegIdChange(e.target.value)}
-                    onBlur={() => checkPatientId()}
+                    onChange={(e) => {
+                      if (!hasGeneratedId) {
+                        handleRegIdChange(e.target.value);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!hasGeneratedId) {
+                        checkPatientId();
+                      }
+                    }}
                     placeholder="e.g. SPH-KPB-0001 (auto-capitalized)"
-                    className="w-full font-mono font-bold uppercase px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] tracking-wider text-slate-900 shadow-2xs"
+                    className={`w-full font-mono font-bold uppercase py-2.5 rounded-xl text-sm tracking-wider shadow-2xs transition-all ${
+                      hasGeneratedId
+                        ? "bg-slate-100 border border-emerald-300 text-emerald-950 cursor-not-allowed select-none pl-10 pr-28"
+                        : "bg-white border border-slate-200 px-3.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                    }`}
                   />
+                  {hasGeneratedId && (
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
+                        🔒 Locked
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm("Unlock and clear the generated ID?")) {
+                            setRegId("");
+                            setHasGeneratedId(false);
+                            setIdStatus("IDLE");
+                          }
+                        }}
+                        className="text-[11px] font-bold text-slate-500 hover:text-rose-600 underline cursor-pointer"
+                        title="Clear generated ID and type manually"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {hasGeneratedId && (
+                  <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Next sequential MRN <strong>{regId}</strong> has been auto-generated and blocked from editing to prevent typos.</span>
+                  </p>
+                )}
 
                 {/* Status Badges - DISPLAYING MRN ID & PHONE FIRST */}
                 {idStatus === "EXISTS" && existingPatientData && (
