@@ -45,6 +45,25 @@ export const BRANCH_CONFIG = [
   { id: "dilshuknagar", name: "Dilshuknagar Branch", short: "DSNR", color: "#8b5cf6" },
 ];
 
+export function normalizeDoctorName(name?: string): string {
+  if (!name || typeof name !== "string") return "Dr. Prashant K Vaidya";
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("vaidya") || lower.includes("prashant") || lower.includes("prasanth")) {
+    return "Dr. Prashant K Vaidya";
+  }
+  if (lower.includes("ramakrishna") || lower.includes("chanduri")) {
+    return "Dr. RamaKrishna Chanduri";
+  }
+  if (lower.includes("jobeadh") || lower.includes("parveej")) {
+    return "Dr. Jobeadh Parveej";
+  }
+  if (lower.includes("padma") || lower.includes("priya")) {
+    return "Dr. Padma Priya";
+  }
+  return trimmed;
+}
+
 export const ALL_KNOWN_SOURCES = [
   "Old Patient",
   "Referral",
@@ -257,7 +276,7 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
       map[monthKey].sourceBreakdown[src] = (map[monthKey].sourceBreakdown[src] || 0) + amt;
 
       // Doctor
-      const doc = t.doctorName || "Dr. Prashant K Vaidya";
+      const doc = normalizeDoctorName(t.doctorName);
       map[monthKey].doctorBreakdown[doc] = (map[monthKey].doctorBreakdown[doc] || 0) + amt;
     });
 
@@ -643,7 +662,7 @@ export const ReportsAnalyticsDashboard: React.FC<ReportsDashboardProps> = ({
         if (docCustomEnd && normDate > docCustomEnd) return;
       }
 
-      const docName = (t.doctorName || "Dr. Prashant K Vaidya").trim();
+      const docName = normalizeDoctorName(t.doctorName);
       const amt = Number(t.totalAmount) || 0;
 
       const bLower = (t.branchName || "").toLowerCase();

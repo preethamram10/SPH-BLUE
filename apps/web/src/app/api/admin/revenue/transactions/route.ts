@@ -161,6 +161,25 @@ function isHistoricalOrUploadPlaceholder(a: any): boolean {
   return false;
 }
 
+function normalizeDoctorDisplayName(doc?: string): string {
+  if (!doc || typeof doc !== "string") return "Dr. Prashant K Vaidya";
+  const trimmed = doc.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("vaidya") || lower.includes("prashant") || lower.includes("prasanth")) {
+    return "Dr. Prashant K Vaidya";
+  }
+  if (lower.includes("ramakrishna") || lower.includes("chanduri")) {
+    return "Dr. Ramakrishna Chanduri";
+  }
+  if (lower.includes("jobeadh") || lower.includes("parveej")) {
+    return "Dr. Jobeadh Parveej";
+  }
+  if (lower.includes("padma") || lower.includes("priya")) {
+    return "Dr. Padma Priya";
+  }
+  return trimmed;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -339,7 +358,7 @@ export async function GET(req: Request) {
         patientName: a.patientName || "Patient",
         phone: a.phone || "N/A",
         branchName: a.branch || "Clinic Branch",
-        doctorName: (a.doctorName || (a as any).doctor || "Dr. Prashant K Vaidya").trim(),
+        doctorName: normalizeDoctorDisplayName(a.doctorName || (a as any).doctor),
         paymentType: pType || (isPkg ? "package" : (split === "Consultation & Medicine" ? "consult_and_med" : "consultation")),
         revenueSplit: split,
         source: (a.marketingSource || (a as any).source || (a as any).patientSource || "Walk-in").trim(),

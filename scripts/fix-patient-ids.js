@@ -74,7 +74,16 @@ appointmentFiles.forEach((file) => {
     const content = JSON.parse(fs.readFileSync(file, "utf-8"));
     if (Array.isArray(content)) {
       let updatedCount = 0;
-      content.forEach((a) => {
+        // Normalize Doctor Name
+        if (a.doctorName) {
+          const docLower = String(a.doctorName).toLowerCase();
+          if (docLower.includes("vaidya") || docLower.includes("prasanth") || docLower.includes("prashant")) {
+            if (a.doctorName !== "Dr. Prashant K Vaidya") {
+              a.doctorName = "Dr. Prashant K Vaidya";
+              updatedCount++;
+            }
+          }
+        }
         const current = (a.registrationId || "").trim().toUpperCase();
         if (ID_MAPPING[current]) {
           const old = a.registrationId;
@@ -178,6 +187,14 @@ async function tryPrismaUpdates() {
         `UPDATE "Invoice" SET "registrationId" = '${newId}' WHERE "registrationId" = '${oldId}';`
       ).catch(() => {});
     }
+
+    // Normalize Doctor Names across DB tables
+    await prisma.$executeRawUnsafe(
+      `UPDATE "Appointment" SET "doctorName" = 'Dr. Prashant K Vaidya' WHERE "doctorName" ILIKE '%vaidya%' OR "doctorName" ILIKE '%prasanth%';`
+    ).catch(() => {});
+    await prisma.$executeRawUnsafe(
+      `UPDATE "DoctorSchedule" SET "doctorName" = 'Dr. Prashant K Vaidya' WHERE "doctorName" ILIKE '%vaidya%' OR "doctorName" ILIKE '%prasanth%';`
+    ).catch(() => {});
 
     await prisma.$disconnect();
     console.log("PostgreSQL tables successfully updated!\n");

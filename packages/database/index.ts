@@ -2625,6 +2625,20 @@ function loadAppointmentsFromDisk(): AppointmentRecord[] {
             a.updatedAt = a.createdAt || new Date().toISOString();
             modified = true;
           }
+          if (a.doctorName) {
+            const docLower = String(a.doctorName).toLowerCase();
+            if (docLower.includes("vaidya") || docLower.includes("prasanth") || docLower.includes("prashant")) {
+              if (a.doctorName !== "Dr. Prashant K Vaidya") {
+                a.doctorName = "Dr. Prashant K Vaidya";
+                modified = true;
+              }
+            } else if (docLower.includes("ramakrishna") || docLower.includes("chanduri")) {
+              if (a.doctorName !== "Dr. Ramakrishna Chanduri") {
+                a.doctorName = "Dr. Ramakrishna Chanduri";
+                modified = true;
+              }
+            }
+          }
         });
         if (modified) {
           safeAtomicWrite(file, parsed);
