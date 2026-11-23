@@ -120,13 +120,11 @@ export async function GET(req: NextRequest) {
         pageSize,
       });
     }
-
     // High-performance targeted enrichment ONLY for the current page items
     // Use decorate = false so appointmentService does NOT decorate all 15,000 database appointments
     const pageRegIds = new Set(pagedRaw.map((p) => (p.regId || "").trim().toUpperCase()).filter(Boolean));
     const allAppts = await appointmentService.getAppointments(undefined, undefined, undefined, false, false);
     const apptsByRegId = new Map<string, any[]>();
-
     allAppts.forEach((a) => {
       if (a.isDeleted) return;
       const key = (a.registrationId || "").trim().toUpperCase();

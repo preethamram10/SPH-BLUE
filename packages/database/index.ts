@@ -4039,6 +4039,75 @@ function getRegistrationSequencesStore(): Record<string, number> {
   return global.__sphRegistrationSequencesStore;
 }
 
+function computeNextRegistrationNumber(code: BranchCode, store: Record<string, number>): number {
+  const patients = getPatientsStore();
+  const appointments = getAppointmentsStore();
+
+  const usedNumbers = new Set<number>();
+  const regex = new RegExp(`^SPH-${code}-(\\d+)`, "i");
+
+  patients.forEach((p) => {
+    const match = (p.regId || "").match(regex);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > 0) {
+        usedNumbers.add(num);
+      }
+    }
+  });
+
+  appointments.forEach((a) => {
+    const match = (a.registrationId || "").match(regex);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > 0) {
+        usedNumbers.add(num);
+      }
+    }
+  });
+
+  const sorted = Array.from(usedNumbers).sort((a, b) => a - b);
+
+  // Identify the continuous sequence maximum by detecting rogue outlier gaps (> 100).
+  // Example: [1, 2, ..., 1813, 17814, 17815, 17816, 17817, 17818]
+  // 17814 - 1813 = 16001 > 100, which is an outlier rogue leap.
+  // The true continuous sequence cluster ends at 1813.
+  let continuousMax = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const num = sorted[i];
+    if (i === 0) {
+      continuousMax = num;
+    } else {
+      const prev = sorted[i - 1];
+      // If there is an anomalous jump greater than 100, do not let continuousMax jump to the outlier!
+      if (num - prev > 100) {
+        break;
+      }
+      continuousMax = num;
+    }
+  }
+
+  // Check store sequence: if an explicit manual reset exists, respect it.
+  // Otherwise, only accept store[code] if it is consistent with the continuous cluster (not an outlier jump).
+  const isExplicit = Boolean((store as any)[`${code}_manual`]);
+  const storeVal = store[code] || 0;
+  let baseNum = continuousMax;
+
+  if (isExplicit && storeVal > 0) {
+    baseNum = Math.max(baseNum, storeVal);
+  } else if (storeVal > 0 && storeVal <= continuousMax + 100) {
+    baseNum = Math.max(baseNum, storeVal);
+  }
+
+  // Find next available unused sequential ID
+  let candidate = Math.max(1, baseNum + 1);
+  while (usedNumbers.has(candidate)) {
+    candidate++;
+  }
+
+  return candidate;
+}
+
 export const registrationSequenceService = {
   getBranchCode(branchNameOrId?: string): BranchCode {
     return getBranchShortcut(branchNameOrId);
@@ -4048,35 +4117,9 @@ export const registrationSequenceService = {
     const code = getBranchShortcut(branchNameOrId);
     const store = getRegistrationSequencesStore();
 
-    // Scan existing patients and appointments to ensure monotonic sequence
-    const patients = getPatientsStore();
-    const appointments = getAppointmentsStore();
-
-    let maxNum = store[code] || 0;
-    const regex = new RegExp(`^SPH-${code}-(\\d+)`, "i");
-
-    patients.forEach((p) => {
-      const match = (p.regId || "").match(regex);
-      if (match && match[1]) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
-      }
-    });
-
-    appointments.forEach((a) => {
-      const match = (a.registrationId || "").match(regex);
-      if (match && match[1]) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
-      }
-    });
-
-    const nextNum = maxNum + 1;
+    const nextNum = computeNextRegistrationNumber(code, store);
     store[code] = nextNum;
+    delete (store as any)[`${code}_manual`];
     global.__sphRegistrationSequencesStore = store;
     saveRegistrationSequencesToDisk(store);
 
@@ -4087,33 +4130,7 @@ export const registrationSequenceService = {
   async peekNextRegistrationId(branchNameOrId?: string): Promise<string> {
     const code = getBranchShortcut(branchNameOrId);
     const store = getRegistrationSequencesStore();
-    const patients = getPatientsStore();
-    const appointments = getAppointmentsStore();
-
-    let maxNum = store[code] || 0;
-    const regex = new RegExp(`^SPH-${code}-(\\d+)`, "i");
-
-    patients.forEach((p) => {
-      const match = (p.regId || "").match(regex);
-      if (match && match[1]) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
-      }
-    });
-
-    appointments.forEach((a) => {
-      const match = (a.registrationId || "").match(regex);
-      if (match && match[1]) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxNum) {
-          maxNum = num;
-        }
-      }
-    });
-
-    const nextNum = maxNum + 1;
+    const nextNum = computeNextRegistrationNumber(code, store);
     const formattedNum = String(nextNum).padStart(4, "0");
     return `SPH-${code}-${formattedNum}`;
   },
@@ -4121,6 +4138,7 @@ export const registrationSequenceService = {
   async resetSequence(branchCode: BranchCode, startValue = 0): Promise<void> {
     const store = getRegistrationSequencesStore();
     store[branchCode] = startValue;
+    (store as any)[`${branchCode}_manual`] = true;
     global.__sphRegistrationSequencesStore = store;
     saveRegistrationSequencesToDisk(store);
   },

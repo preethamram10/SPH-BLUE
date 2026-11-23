@@ -269,7 +269,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           const isCurrent = a.id === appointment?.id;
           // Target Amount from doctor:
           const cFee = typeof a.consultationFee === "number" && a.consultationFee > 0 ? a.consultationFee : 0;
-          
+
           // Existing prescribed medicines if already entered for this appointment
           const existingMeds: MedicineItem[] = Array.isArray(a.medicines || a.medicinesList) && (a.medicines || a.medicinesList)!.length > 0
             ? (a.medicines || a.medicinesList)!.map((m: any, mIdx: number) => ({
@@ -284,8 +284,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           const mFee = typeof a.medicineFee === "number" && a.medicineFee > 0
             ? a.medicineFee
             : hasPrescribedMeds
-            ? existingMeds.reduce((sum: number, mi: any) => sum + (Number(mi.amount) || 0), 0)
-            : 0;
+              ? existingMeds.reduce((sum: number, mi: any) => sum + (Number(mi.amount) || 0), 0)
+              : 0;
 
           const target = cFee + (hasPrescribedMeds ? mFee : 0);
 
@@ -2054,14 +2054,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                               const medList = fm.medicinesList || [];
                               return (
                                 <View key={idx} style={{ borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: "#e2e8f0", paddingTop: 6, marginTop: 6 }}>
-                                    <View style={[styles.breakdownRow, { backgroundColor: "#f1f5f9", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }]}>
-                                      <Text style={[styles.breakdownRowDesc, { fontWeight: "900", color: "#0f172a" }]}>
-                                        👤 {fm.patientName} ({fm.registrationId || "SPH-GEN"})
-                                      </Text>
-                                      <Text style={[styles.breakdownRowAmount, { color: "#0f172a", fontWeight: "900" }]}>
-                                        ₹{Number(fm.totalPaid || 0).toFixed(2)}
-                                      </Text>
-                                    </View>
+                                  <View style={[styles.breakdownRow, { backgroundColor: "#f1f5f9", paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }]}>
+                                    <Text style={[styles.breakdownRowDesc, { fontWeight: "900", color: "#0f172a" }]}>
+                                      👤 {fm.patientName} ({fm.registrationId || "SPH-GEN"})
+                                    </Text>
+                                    <Text style={[styles.breakdownRowAmount, { color: "#0f172a", fontWeight: "900" }]}>
+                                      ₹{Number(fm.totalPaid || 0).toFixed(2)}
+                                    </Text>
+                                  </View>
 
                                   {Number(fm.consultationFee) > 0 && (
                                     <View style={[styles.breakdownRow, { paddingLeft: 8 }]}>
