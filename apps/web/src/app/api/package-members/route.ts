@@ -105,9 +105,9 @@ export async function POST(req: NextRequest) {
       if (profiles.length > 0) {
         const matched = patientName
           ? profiles.find(
-              (p: any) =>
-                (p.name || p.patientName || "").toLowerCase().trim() === patientName.toLowerCase().trim()
-            ) || profiles[0]
+            (p: any) =>
+              (p.name || p.patientName || "").toLowerCase().trim() === patientName.toLowerCase().trim()
+          ) || profiles[0]
           : profiles[0];
         if (!patientName) patientName = matched.name || matched.patientName;
         if (!registrationId) registrationId = matched.regId || matched.registrationId;
