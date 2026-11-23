@@ -5123,9 +5123,11 @@ export interface StaffAttendanceRecord {
   shift1PunchInTime?: string;
   shift1PunchInLocation?: string;
   shift1PunchInPhoto?: string;
+  shift1PunchInCoords?: { lat: number; lng: number };
   shift1PunchOutTime?: string;
   shift1PunchOutLocation?: string;
   shift1PunchOutPhoto?: string;
+  shift1PunchOutCoords?: { lat: number; lng: number };
 
   // Shift 2 Details (Multi-shift / Split Shift)
   shift2Start?: string;
@@ -5133,9 +5135,11 @@ export interface StaffAttendanceRecord {
   shift2PunchInTime?: string;
   shift2PunchInLocation?: string;
   shift2PunchInPhoto?: string;
+  shift2PunchInCoords?: { lat: number; lng: number };
   shift2PunchOutTime?: string;
   shift2PunchOutLocation?: string;
   shift2PunchOutPhoto?: string;
+  shift2PunchOutCoords?: { lat: number; lng: number };
 
   // Primary Punches (Consolidated)
   punchInTime?: string; // IST 12-hour format
@@ -5627,12 +5631,14 @@ export const staffAttendanceService = {
         existing.shift2PunchInTime = nowTime;
         existing.shift2PunchInLocation = payload.location;
         existing.shift2PunchInPhoto = payload.photo;
+        existing.shift2PunchInCoords = payload.coords || undefined;
         // Shift 2 duty is actively on-duty, clear overall punchOutTime
         existing.punchOutTime = undefined;
       } else {
         existing.shift1PunchInTime = nowTime;
         existing.shift1PunchInLocation = payload.location;
         existing.shift1PunchInPhoto = payload.photo;
+        existing.shift1PunchInCoords = payload.coords || undefined;
       }
 
       if (!existing.punchInTime) {
@@ -5650,6 +5656,7 @@ export const staffAttendanceService = {
         existing.shift2PunchOutTime = nowTime;
         existing.shift2PunchOutLocation = payload.location;
         existing.shift2PunchOutPhoto = payload.photo;
+        existing.shift2PunchOutCoords = payload.coords || undefined;
         existing.punchOutTime = nowTime;
         existing.punchOutLocation = payload.location;
         existing.punchOutPhoto = payload.photo;
@@ -5658,6 +5665,7 @@ export const staffAttendanceService = {
         existing.shift1PunchOutTime = nowTime;
         existing.shift1PunchOutLocation = payload.location;
         existing.shift1PunchOutPhoto = payload.photo;
+        existing.shift1PunchOutCoords = payload.coords || undefined;
         existing.punchOutTime = nowTime;
         existing.punchOutLocation = payload.location;
         existing.punchOutPhoto = payload.photo;

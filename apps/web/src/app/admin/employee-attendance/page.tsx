@@ -39,6 +39,18 @@ interface EmployeeOption {
   shift2Start?: string;
 }
 
+const getMapLink = (location?: string, coords?: { lat: number; lng: number } | null): string => {
+  if (coords && typeof coords.lat === "number" && typeof coords.lng === "number") {
+    return `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+  }
+  if (!location) return "";
+  const match = location.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+  if (match) {
+    return `https://www.google.com/maps?q=${match[1]},${match[2]}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+};
+
 export default function EmployeeAttendancePage() {
   // View mode: 'daily' = across all employees for selected date, 'full' = selected employee's full multi-shift attendance history
   const [viewMode, setViewMode] = useState<"daily" | "full">("daily");
@@ -59,7 +71,7 @@ export default function EmployeeAttendancePage() {
   const [fullStatusFilter, setFullStatusFilter] = useState<string>("ALL");
 
   // Modals
-  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; location?: string; time?: string } | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; location?: string; time?: string; coords?: { lat: number; lng: number } } | null>(null);
   const [previewPunchesDay, setPreviewPunchesDay] = useState<any | null>(null);
 
   const [branches, setBranches] = useState<string[]>([
@@ -386,76 +398,114 @@ export default function EmployeeAttendancePage() {
                           {/* Punch In */}
                           <td className="py-3.5 px-4">
                             {item.shiftType === "MULTI_STRICT" || Boolean(item.shift2PunchInTime || item.shift2PunchOutTime || item.shift2Start) ? (
-                              <div className="space-y-2">
+                              <div className="space-y-2.5">
                                 {/* Shift 1 Login */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 In</span>
-                                  {item.shift1PunchInTime || item.punchInTime ? (
-                                    <div className="flex items-center gap-1.5">
-                                      {(item.shift1PunchInPhoto || item.punchInPhoto) && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPreviewPhoto({
-                                              url: (item.shift1PunchInPhoto || item.punchInPhoto)!,
-                                              title: `Shift 1 Login - ${item.staffName}`,
-                                              location: item.shift1PunchInLocation || item.punchInLocation,
-                                              time: item.shift1PunchInTime || item.punchInTime!,
-                                            })
-                                          }
-                                          className="cursor-pointer"
-                                          title="View Shift 1 Selfie"
-                                        >
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={item.shift1PunchInPhoto || item.punchInPhoto}
-                                            alt="S1 In"
-                                            className="w-7 h-7 rounded-md object-cover border border-emerald-400 shadow-2xs"
-                                          />
-                                        </button>
-                                      )}
-                                      <span className="font-bold text-slate-800 text-xs">
-                                        {formatToIST12Hour(item.shift1PunchInTime || item.punchInTime!)}
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 In</span>
+                                    {item.shift1PunchInTime || item.punchInTime ? (
+                                      <div className="flex items-center gap-1.5">
+                                        {(item.shift1PunchInPhoto || item.punchInPhoto) && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setPreviewPhoto({
+                                                url: (item.shift1PunchInPhoto || item.punchInPhoto)!,
+                                                title: `Shift 1 Login - ${item.staffName}`,
+                                                location: item.shift1PunchInLocation || item.punchInLocation,
+                                                time: item.shift1PunchInTime || item.punchInTime!,
+                                                coords: item.shift1PunchInCoords || item.punchInCoords,
+                                              })
+                                            }
+                                            className="cursor-pointer"
+                                            title="View Shift 1 Selfie"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.shift1PunchInPhoto || item.punchInPhoto}
+                                              alt="S1 In"
+                                              className="w-7 h-7 rounded-md object-cover border border-emerald-400 shadow-2xs"
+                                            />
+                                          </button>
+                                        )}
+                                        <span className="font-bold text-slate-800 text-xs">
+                                          {formatToIST12Hour(item.shift1PunchInTime || item.punchInTime!)}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                  {(item.shift1PunchInLocation || item.punchInLocation) && (
+                                    <div className="flex items-center gap-1 pl-1 text-[10.5px] text-slate-600 max-w-[210px]">
+                                      <span className="truncate" title={item.shift1PunchInLocation || item.punchInLocation}>
+                                        📍 {item.shift1PunchInLocation || item.punchInLocation}
                                       </span>
+                                      <a
+                                        href={getMapLink(item.shift1PunchInLocation || item.punchInLocation, item.shift1PunchInCoords || item.punchInCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
                                     </div>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">—</span>
                                   )}
                                 </div>
 
                                 {/* Shift 2 Login */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 In</span>
-                                  {item.shift2PunchInTime ? (
-                                    <div className="flex items-center gap-1.5">
-                                      {item.shift2PunchInPhoto && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPreviewPhoto({
-                                              url: item.shift2PunchInPhoto!,
-                                              title: `Shift 2 Login - ${item.staffName}`,
-                                              location: item.shift2PunchInLocation,
-                                              time: item.shift2PunchInTime!,
-                                            })
-                                          }
-                                          className="cursor-pointer"
-                                          title="View Shift 2 Selfie"
-                                        >
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={item.shift2PunchInPhoto}
-                                            alt="S2 In"
-                                            className="w-7 h-7 rounded-md object-cover border border-purple-400 shadow-2xs"
-                                          />
-                                        </button>
-                                      )}
-                                      <span className="font-bold text-purple-900 text-xs">
-                                        {formatToIST12Hour(item.shift2PunchInTime)}
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 In</span>
+                                    {item.shift2PunchInTime ? (
+                                      <div className="flex items-center gap-1.5">
+                                        {item.shift2PunchInPhoto && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setPreviewPhoto({
+                                                url: item.shift2PunchInPhoto!,
+                                                title: `Shift 2 Login - ${item.staffName}`,
+                                                location: item.shift2PunchInLocation,
+                                                time: item.shift2PunchInTime!,
+                                                coords: item.shift2PunchInCoords,
+                                              })
+                                            }
+                                            className="cursor-pointer"
+                                            title="View Shift 2 Selfie"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.shift2PunchInPhoto}
+                                              alt="S2 In"
+                                              className="w-7 h-7 rounded-md object-cover border border-purple-400 shadow-2xs"
+                                            />
+                                          </button>
+                                        )}
+                                        <span className="font-bold text-purple-900 text-xs">
+                                          {formatToIST12Hour(item.shift2PunchInTime)}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                  {item.shift2PunchInLocation && (
+                                    <div className="flex items-center gap-1 pl-1 text-[10.5px] text-purple-800 max-w-[210px]">
+                                      <span className="truncate" title={item.shift2PunchInLocation}>
+                                        📍 {item.shift2PunchInLocation}
                                       </span>
+                                      <a
+                                        href={getMapLink(item.shift2PunchInLocation, item.shift2PunchInCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
                                     </div>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">—</span>
                                   )}
                                 </div>
                               </div>
@@ -470,6 +520,7 @@ export default function EmployeeAttendancePage() {
                                         title: `Punch In Selfie - ${item.staffName}`,
                                         location: item.punchInLocation,
                                         time: item.punchInTime,
+                                        coords: item.punchInCoords,
                                       })
                                     }
                                     className="relative group cursor-pointer"
@@ -486,9 +537,20 @@ export default function EmployeeAttendancePage() {
                                 <div>
                                   <span className="font-bold text-slate-800">{formatToIST12Hour(item.punchInTime)}</span>
                                   {item.punchInLocation && (
-                                    <p className="text-[10px] text-slate-400 max-w-[140px] truncate" title={item.punchInLocation}>
-                                      📍 {item.punchInLocation}
-                                    </p>
+                                    <div className="flex items-center gap-1 text-[10.5px] text-slate-600 max-w-[190px]">
+                                      <span className="truncate" title={item.punchInLocation}>
+                                        📍 {item.punchInLocation}
+                                      </span>
+                                      <a
+                                        href={getMapLink(item.punchInLocation, item.punchInCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -500,84 +562,122 @@ export default function EmployeeAttendancePage() {
                           {/* Punch Out */}
                           <td className="py-3.5 px-4">
                             {item.shiftType === "MULTI_STRICT" || Boolean(item.shift2PunchInTime || item.shift2PunchOutTime || item.shift2Start) ? (
-                              <div className="space-y-2">
+                              <div className="space-y-2.5">
                                 {/* Shift 1 Logout */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 Out</span>
-                                  {item.shift1PunchOutTime ? (
-                                    <div className="flex items-center gap-1.5">
-                                      {item.shift1PunchOutPhoto && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPreviewPhoto({
-                                              url: item.shift1PunchOutPhoto!,
-                                              title: `Shift 1 Logout - ${item.staffName}`,
-                                              location: item.shift1PunchOutLocation,
-                                              time: item.shift1PunchOutTime!,
-                                            })
-                                          }
-                                          className="cursor-pointer"
-                                          title="View Shift 1 Exit Selfie"
-                                        >
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={item.shift1PunchOutPhoto}
-                                            alt="S1 Out"
-                                            className="w-7 h-7 rounded-md object-cover border border-slate-300 shadow-2xs"
-                                          />
-                                        </button>
-                                      )}
-                                      <span className="font-bold text-slate-800 text-xs">
-                                        {formatToIST12Hour(item.shift1PunchOutTime)}
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-sky-100 text-sky-800 border border-sky-200">S1 Out</span>
+                                    {item.shift1PunchOutTime ? (
+                                      <div className="flex items-center gap-1.5">
+                                        {item.shift1PunchOutPhoto && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setPreviewPhoto({
+                                                url: item.shift1PunchOutPhoto!,
+                                                title: `Shift 1 Logout - ${item.staffName}`,
+                                                location: item.shift1PunchOutLocation,
+                                                time: item.shift1PunchOutTime!,
+                                                coords: item.shift1PunchOutCoords,
+                                              })
+                                            }
+                                            className="cursor-pointer"
+                                            title="View Shift 1 Exit Selfie"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.shift1PunchOutPhoto}
+                                              alt="S1 Out"
+                                              className="w-7 h-7 rounded-md object-cover border border-slate-300 shadow-2xs"
+                                            />
+                                          </button>
+                                        )}
+                                        <span className="font-bold text-slate-800 text-xs">
+                                          {formatToIST12Hour(item.shift1PunchOutTime)}
+                                        </span>
+                                      </div>
+                                    ) : (item.shift1PunchInTime || item.punchInTime) ? (
+                                      <span className="text-amber-600 font-semibold text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                        In Clinic
                                       </span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                  {item.shift1PunchOutLocation && (
+                                    <div className="flex items-center gap-1 pl-1 text-[10.5px] text-slate-600 max-w-[210px]">
+                                      <span className="truncate" title={item.shift1PunchOutLocation}>
+                                        📍 {item.shift1PunchOutLocation}
+                                      </span>
+                                      <a
+                                        href={getMapLink(item.shift1PunchOutLocation, item.shift1PunchOutCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
                                     </div>
-                                  ) : (item.shift1PunchInTime || item.punchInTime) ? (
-                                    <span className="text-amber-600 font-semibold text-[10px] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                                      In Clinic
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">—</span>
                                   )}
                                 </div>
 
                                 {/* Shift 2 Logout */}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 Out</span>
-                                  {item.shift2PunchOutTime ? (
-                                    <div className="flex items-center gap-1.5">
-                                      {item.shift2PunchOutPhoto && (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPreviewPhoto({
-                                              url: item.shift2PunchOutPhoto!,
-                                              title: `Shift 2 Logout - ${item.staffName}`,
-                                              location: item.shift2PunchOutLocation,
-                                              time: item.shift2PunchOutTime!,
-                                            })
-                                          }
-                                          className="cursor-pointer"
-                                          title="View Shift 2 Exit Selfie"
-                                        >
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={item.shift2PunchOutPhoto}
-                                            alt="S2 Out"
-                                            className="w-7 h-7 rounded-md object-cover border border-purple-300 shadow-2xs"
-                                          />
-                                        </button>
-                                      )}
-                                      <span className="font-bold text-purple-900 text-xs">
-                                        {formatToIST12Hour(item.shift2PunchOutTime)}
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">S2 Out</span>
+                                    {item.shift2PunchOutTime ? (
+                                      <div className="flex items-center gap-1.5">
+                                        {item.shift2PunchOutPhoto && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setPreviewPhoto({
+                                                url: item.shift2PunchOutPhoto!,
+                                                title: `Shift 2 Logout - ${item.staffName}`,
+                                                location: item.shift2PunchOutLocation,
+                                                time: item.shift2PunchOutTime!,
+                                                coords: item.shift2PunchOutCoords,
+                                              })
+                                            }
+                                            className="cursor-pointer"
+                                            title="View Shift 2 Exit Selfie"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={item.shift2PunchOutPhoto}
+                                              alt="S2 Out"
+                                              className="w-7 h-7 rounded-md object-cover border border-purple-300 shadow-2xs"
+                                            />
+                                          </button>
+                                        )}
+                                        <span className="font-bold text-purple-900 text-xs">
+                                          {formatToIST12Hour(item.shift2PunchOutTime)}
+                                        </span>
+                                      </div>
+                                    ) : item.shift2PunchInTime ? (
+                                      <span className="text-purple-600 font-semibold text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                        In Clinic
                                       </span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[11px]">—</span>
+                                    )}
+                                  </div>
+                                  {item.shift2PunchOutLocation && (
+                                    <div className="flex items-center gap-1 pl-1 text-[10.5px] text-purple-800 max-w-[210px]">
+                                      <span className="truncate" title={item.shift2PunchOutLocation}>
+                                        📍 {item.shift2PunchOutLocation}
+                                      </span>
+                                      <a
+                                        href={getMapLink(item.shift2PunchOutLocation, item.shift2PunchOutCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
                                     </div>
-                                  ) : item.shift2PunchInTime ? (
-                                    <span className="text-purple-600 font-semibold text-[10px] bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
-                                      In Clinic
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">—</span>
                                   )}
                                 </div>
                               </div>
@@ -592,6 +692,7 @@ export default function EmployeeAttendancePage() {
                                         title: `Punch Out Selfie - ${item.staffName}`,
                                         location: item.punchOutLocation,
                                         time: item.punchOutTime,
+                                        coords: item.punchOutCoords,
                                       })
                                     }
                                     className="relative group cursor-pointer"
@@ -608,9 +709,20 @@ export default function EmployeeAttendancePage() {
                                 <div>
                                   <span className="font-bold text-slate-800">{formatToIST12Hour(item.punchOutTime)}</span>
                                   {item.punchOutLocation && (
-                                    <p className="text-[10px] text-slate-400 max-w-[140px] truncate" title={item.punchOutLocation}>
-                                      📍 {item.punchOutLocation}
-                                    </p>
+                                    <div className="flex items-center gap-1 text-[10.5px] text-slate-600 max-w-[190px]">
+                                      <span className="truncate" title={item.punchOutLocation}>
+                                        📍 {item.punchOutLocation}
+                                      </span>
+                                      <a
+                                        href={getMapLink(item.punchOutLocation, item.punchOutCoords)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-sky-600 font-bold hover:underline shrink-0 text-[10px]"
+                                        title="View on Google Maps"
+                                      >
+                                        Map ↗
+                                      </a>
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1120,10 +1232,21 @@ export default function EmployeeAttendancePage() {
               </p>
             )}
             {previewPhoto.location && (
-              <p className="text-xs text-slate-500 mb-3 flex items-center justify-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate max-w-[260px]">{previewPhoto.location}</span>
-              </p>
+              <div className="mb-3 space-y-1">
+                <p className="text-xs text-slate-600 flex items-center justify-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="truncate max-w-[260px] font-medium">{previewPhoto.location}</span>
+                </p>
+                <a
+                  href={getMapLink(previewPhoto.location, previewPhoto.coords)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 px-3 py-1 rounded-full border border-sky-200 transition"
+                >
+                  <MapPin className="w-3 h-3 text-sky-600" />
+                  Open Exact GPS on Google Maps ↗
+                </a>
+              </div>
             )}
 
             <div className="w-64 h-64 mx-auto rounded-xl overflow-hidden border-2 border-slate-200 shadow-md mb-4 bg-slate-900">

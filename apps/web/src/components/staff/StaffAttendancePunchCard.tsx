@@ -14,6 +14,18 @@ import {
   Sparkles,
 } from "lucide-react";
 
+const getMapLink = (location?: string, coords?: { lat: number; lng: number } | null): string => {
+  if (coords && typeof coords.lat === "number" && typeof coords.lng === "number") {
+    return `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+  }
+  if (!location) return "";
+  const match = location.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+  if (match) {
+    return `https://www.google.com/maps?q=${match[1]},${match[2]}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+};
+
 export interface AttendanceRecord {
   id?: string;
   staffId: string;
@@ -24,21 +36,27 @@ export interface AttendanceRecord {
   shift1PunchInTime?: string;
   shift1PunchInLocation?: string;
   shift1PunchInPhoto?: string;
+  shift1PunchInCoords?: { lat: number; lng: number };
   shift1PunchOutTime?: string;
   shift1PunchOutLocation?: string;
   shift1PunchOutPhoto?: string;
+  shift1PunchOutCoords?: { lat: number; lng: number };
   shift2PunchInTime?: string;
   shift2PunchInLocation?: string;
   shift2PunchInPhoto?: string;
+  shift2PunchInCoords?: { lat: number; lng: number };
   shift2PunchOutTime?: string;
   shift2PunchOutLocation?: string;
   shift2PunchOutPhoto?: string;
+  shift2PunchOutCoords?: { lat: number; lng: number };
   punchInTime?: string;
   punchInLocation?: string;
   punchInPhoto?: string;
+  punchInCoords?: { lat: number; lng: number };
   punchOutTime?: string;
   punchOutLocation?: string;
   punchOutPhoto?: string;
+  punchOutCoords?: { lat: number; lng: number };
   workingHours?: string;
   status: "Present" | "Late" | "Half Day" | "Absent";
   lateMinutes?: number;
@@ -72,6 +90,8 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
   const [punchShift, setPunchShift] = useState<"shift1" | "shift2">("shift1");
   const [locationText, setLocationText] = useState<string>("Locating GPS...");
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<"locating" | "success" | "error">("locating");
+  const [locationError, setLocationError] = useState<string>("");
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -106,35 +126,59 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch GPS Coordinates
+  // Fetch Accurate GPS Coordinates
   const fetchLocation = async () => {
+    setLocationStatus("locating");
+    setLocationError("");
+    setLocationText("Acquiring high-accuracy GPS coordinates...");
+
     if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocationStatus("error");
+      setLocationError("Geolocation is not supported by your browser.");
       setLocationText("Geolocation not supported");
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLocationCoords({ lat: latitude, lng: longitude });
+        const { latitude, longitude, accuracy } = pos.coords;
+        const coords = { lat: latitude, lng: longitude };
+        setLocationCoords(coords);
+        setLocationStatus("success");
+
         try {
           // Reverse geocode via OpenStreetMap Nominatim
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
           );
-          const data = await res.json();
-          setLocationText(
-            data.display_name?.split(",").slice(0, 3).join(",") ||
-              `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-          );
+          if (res.ok) {
+            const data = await res.json();
+            const displayName = data.display_name?.split(",").slice(0, 3).join(",").trim();
+            if (displayName) {
+              setLocationText(`${displayName} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+              return;
+            }
+          }
         } catch {
-          setLocationText(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          // Ignore reverse geocode failures
         }
+        setLocationText(`GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)} (±${Math.round(accuracy)}m)`);
       },
       (err) => {
-        setLocationText("Location permission denied (Using branch default)");
-        console.warn(err.message);
+        setLocationStatus("error");
+        setLocationCoords(null);
+        let msg = "GPS location access required. Please enable location permissions.";
+        if (err.code === 1) {
+          msg = "Location permission denied. Please allow location access in your browser to verify punch.";
+        } else if (err.code === 2) {
+          msg = "Position unavailable. Please ensure GPS/Location is enabled on your device.";
+        } else if (err.code === 3) {
+          msg = "Location request timed out. Please tap 'Retry GPS'.";
+        }
+        setLocationError(msg);
+        setLocationText(msg);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
   };
 
@@ -195,6 +239,11 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
   const handlePunchSubmit = async () => {
     if (!capturedPhoto) {
       setErrorMsg("Please take a selfie first.");
+      return;
+    }
+
+    if (!locationCoords) {
+      setErrorMsg("Real-time GPS coordinates are required for attendance compliance. Please enable device location / GPS and tap 'Retry GPS'.");
       return;
     }
 
@@ -645,9 +694,19 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
                     <span className="font-bold text-slate-800">{todayRecord.punchInTime}</span>
                   </div>
                   {todayRecord.punchInLocation && (
-                    <div className="flex items-start gap-1.5 text-xs text-slate-500">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-2">{todayRecord.punchInLocation}</span>
+                    <div className="flex flex-col gap-0.5 text-xs text-slate-600">
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                        <span className="line-clamp-2">{todayRecord.punchInLocation}</span>
+                      </div>
+                      <a
+                        href={getMapLink(todayRecord.punchInLocation, todayRecord.punchInCoords)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-bold text-sky-600 hover:underline pl-5"
+                      >
+                        View on Map ↗
+                      </a>
                     </div>
                   )}
                   {todayRecord.punchInPhoto && (
@@ -716,6 +775,22 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
                       <span className="font-bold text-emerald-600">{todayRecord.workingHours}</span>
                     </div>
                   )}
+                  {todayRecord.punchOutLocation && (
+                    <div className="flex flex-col gap-0.5 text-xs text-slate-600">
+                      <div className="flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0" />
+                        <span className="line-clamp-2">{todayRecord.punchOutLocation}</span>
+                      </div>
+                      <a
+                        href={getMapLink(todayRecord.punchOutLocation, todayRecord.punchOutCoords)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] font-bold text-sky-600 hover:underline pl-5"
+                      >
+                        View on Map ↗
+                      </a>
+                    </div>
+                  )}
                   {todayRecord.punchOutPhoto && (
                     <div className="mt-3 flex items-center gap-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -780,9 +855,20 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
             </div>
 
             <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-3">
-              <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="truncate max-w-[280px]">{locationText}</span>
+              <div className="text-xs flex items-center justify-center gap-1.5 w-full px-2 text-center">
+                <MapPin className={`w-3.5 h-3.5 shrink-0 ${locationCoords ? "text-emerald-400" : "text-amber-400"}`} />
+                <span className={`truncate max-w-[280px] font-medium ${locationCoords ? "text-emerald-300" : "text-amber-300"}`}>
+                  {locationText}
+                </span>
+                {locationStatus === "error" && (
+                  <button
+                    type="button"
+                    onClick={fetchLocation}
+                    className="ml-1 text-[11px] underline text-sky-400 hover:text-sky-300 font-bold"
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -804,14 +890,14 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
             <h3 className="font-bold text-lg text-slate-800 mb-1">
               Confirm {isPunching === "in" ? "Punch In" : "Punch Out"} {isMultiShift ? (punchShift === "shift2" ? "• Shift 2" : "• Shift 1") : ""}
             </h3>
-            <p className="text-xs text-slate-500 mb-4">Please verify your selfie before submitting</p>
+            <p className="text-xs text-slate-500 mb-4">Please verify your selfie &amp; GPS location before submitting</p>
 
             <div className="relative mx-auto w-48 h-48 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-md mb-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={capturedPhoto} alt="Captured" className="w-full h-full object-cover" />
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-3 mb-5 text-left text-xs space-y-1.5 border border-slate-200">
+            <div className="bg-slate-50 rounded-xl p-3 mb-4 text-left text-xs space-y-2 border border-slate-200">
               <div className="flex justify-between">
                 <span className="text-slate-500">Staff:</span>
                 <span className="font-semibold text-slate-700">{staff.name}</span>
@@ -828,13 +914,44 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
                 <span className="text-slate-500">Time:</span>
                 <span className="font-semibold text-slate-700">{currentTime}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Location:</span>
-                <span className="font-medium text-slate-700 truncate max-w-[170px]">
-                  {locationText}
-                </span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">GPS Location:</span>
+                  {locationCoords ? (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      GPS Locked
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={fetchLocation}
+                      className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 hover:bg-rose-100"
+                    >
+                      Retry GPS
+                    </button>
+                  )}
+                </div>
+                <p className="font-medium text-slate-700 text-[11px] leading-tight break-words mt-1">
+                  📍 {locationText}
+                </p>
+                {locationCoords && (
+                  <a
+                    href={getMapLink(locationText, locationCoords)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10.5px] font-bold text-sky-600 hover:underline inline-flex items-center gap-1 mt-1"
+                  >
+                    View Exact Coordinates on Google Maps ↗
+                  </a>
+                )}
               </div>
             </div>
+
+            {errorMsg && (
+              <div className="mb-3 p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs font-medium text-left">
+                {errorMsg}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -850,11 +967,15 @@ export const StaffAttendancePunchCard: React.FC<StaffPunchProps> = ({
 
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || !locationCoords}
                 onClick={handlePunchSubmit}
-                className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                className={`py-2.5 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 shadow-sm transition ${
+                  loading || !locationCoords
+                    ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                }`}
               >
-                {loading ? "Submitting..." : "Confirm & Save"}
+                {loading ? "Submitting..." : !locationCoords ? "Awaiting GPS..." : "Confirm & Save"}
               </button>
             </div>
           </div>

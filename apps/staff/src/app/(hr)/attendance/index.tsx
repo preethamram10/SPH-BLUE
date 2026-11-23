@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -35,6 +36,8 @@ interface AttendanceItem {
   shift1PunchOutPhoto?: string;
   shift1PunchInLocation?: string;
   shift1PunchOutLocation?: string;
+  shift1PunchInCoords?: { lat: number; lng: number };
+  shift1PunchOutCoords?: { lat: number; lng: number };
   shift2Start?: string;
   shift2End?: string;
   shift2PunchInTime?: string | null;
@@ -43,20 +46,25 @@ interface AttendanceItem {
   shift2PunchOutPhoto?: string;
   shift2PunchInLocation?: string;
   shift2PunchOutLocation?: string;
+  shift2PunchInCoords?: { lat: number; lng: number };
+  shift2PunchOutCoords?: { lat: number; lng: number };
   punchInTime: string | null;
   punchOutTime: string | null;
   workingHours: string;
   status: "Present" | "Late" | "Half Day" | "Absent" | "On Leave" | "In Clinic";
   punchInLocation?: string;
   punchInPhoto?: string;
+  punchInCoords?: { lat: number; lng: number };
   punchOutLocation?: string;
   punchOutPhoto?: string;
+  punchOutCoords?: { lat: number; lng: number };
   punches?: Array<{
     id: string;
     type: "in" | "out";
     time: string;
     location?: string;
     photo?: string;
+    coords?: { lat: number; lng: number };
     shift?: string;
   }>;
 }
@@ -80,7 +88,24 @@ export default function HRAttendanceScreen() {
   const [records, setRecords] = useState<AttendanceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; location?: string } | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; location?: string; coords?: { lat: number; lng: number } } | null>(null);
+
+  const openMap = (location?: string, coords?: { lat: number; lng: number }) => {
+    let url = "";
+    if (coords && typeof coords.lat === "number" && typeof coords.lng === "number") {
+      url = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+    } else if (location) {
+      const match = location.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+      if (match) {
+        url = `https://www.google.com/maps?q=${match[1]},${match[2]}`;
+      } else {
+        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+      }
+    }
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
 
   // Fetch branches
   useEffect(() => {
@@ -147,6 +172,8 @@ export default function HRAttendanceScreen() {
           shift1PunchOutPhoto: a.shift1PunchOutPhoto,
           shift1PunchInLocation: a.shift1PunchInLocation || a.punchInLocation,
           shift1PunchOutLocation: a.shift1PunchOutLocation,
+          shift1PunchInCoords: a.shift1PunchInCoords || a.punchInCoords,
+          shift1PunchOutCoords: a.shift1PunchOutCoords,
           shift2Start: a.shift2Start,
           shift2End: a.shift2End,
           shift2PunchInTime: a.shift2PunchInTime || null,
@@ -155,12 +182,16 @@ export default function HRAttendanceScreen() {
           shift2PunchOutPhoto: a.shift2PunchOutPhoto,
           shift2PunchInLocation: a.shift2PunchInLocation,
           shift2PunchOutLocation: a.shift2PunchOutLocation,
+          shift2PunchInCoords: a.shift2PunchInCoords,
+          shift2PunchOutCoords: a.shift2PunchOutCoords,
           punchInTime: a.punchInTime || null,
           punchOutTime: a.punchOutTime || null,
           punchInPhoto: a.punchInPhoto || undefined,
           punchOutPhoto: a.punchOutPhoto || undefined,
           punchInLocation: a.punchInLocation || undefined,
           punchOutLocation: a.punchOutLocation || undefined,
+          punchInCoords: a.punchInCoords,
+          punchOutCoords: a.punchOutCoords,
           workingHours: a.workingHours || "-",
           status: a.status || (a.punchInTime ? "Present" : "Absent"),
           punches: a.punches || [],
@@ -184,6 +215,8 @@ export default function HRAttendanceScreen() {
           shift1PunchOutPhoto: r.shift1PunchOutPhoto,
           shift1PunchInLocation: r.shift1PunchInLocation || r.punchInLocation,
           shift1PunchOutLocation: r.shift1PunchOutLocation,
+          shift1PunchInCoords: r.shift1PunchInCoords || r.punchInCoords,
+          shift1PunchOutCoords: r.shift1PunchOutCoords,
           shift2Start: r.shift2Start,
           shift2End: r.shift2End,
           shift2PunchInTime: r.shift2PunchInTime || null,
@@ -192,12 +225,16 @@ export default function HRAttendanceScreen() {
           shift2PunchOutPhoto: r.shift2PunchOutPhoto,
           shift2PunchInLocation: r.shift2PunchInLocation,
           shift2PunchOutLocation: r.shift2PunchOutLocation,
+          shift2PunchInCoords: r.shift2PunchInCoords,
+          shift2PunchOutCoords: r.shift2PunchOutCoords,
           punchInTime: r.punchInTime || null,
           punchOutTime: r.punchOutTime || null,
           punchInPhoto: r.punchInPhoto || undefined,
           punchOutPhoto: r.punchOutPhoto || undefined,
           punchInLocation: r.punchInLocation || undefined,
           punchOutLocation: r.punchOutLocation || undefined,
+          punchInCoords: r.punchInCoords,
+          punchOutCoords: r.punchOutCoords,
           workingHours: r.workingHours || "-",
           status: r.status || (r.punchInTime ? "Present" : "Absent"),
           punches: r.punches || [],
@@ -527,7 +564,8 @@ export default function HRAttendanceScreen() {
                                 setPreviewPhoto({
                                   url: item.shift1PunchInPhoto!,
                                   title: `Shift 1 Login - ${item.staffName}`,
-                                  location: item.shift1PunchInLocation,
+                                  location: item.shift1PunchInLocation || item.punchInLocation,
+                                  coords: item.shift1PunchInCoords || item.punchInCoords,
                                 })
                               }
                             >
@@ -539,6 +577,17 @@ export default function HRAttendanceScreen() {
                             <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
                               {item.shift1PunchInTime || item.punchInTime || "—"}
                             </Text>
+                            {(item.shift1PunchInLocation || item.punchInLocation) && (
+                              <TouchableOpacity
+                                onPress={() => openMap(item.shift1PunchInLocation || item.punchInLocation, item.shift1PunchInCoords || item.punchInCoords)}
+                                style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 1 }}
+                              >
+                                <Ionicons name="location" size={9} color="#0284c7" />
+                                <Text style={{ fontSize: 8.5, color: "#0284c7", fontWeight: "700", maxWidth: 95 }} numberOfLines={1}>
+                                  {item.shift1PunchInLocation || item.punchInLocation}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -547,6 +596,17 @@ export default function HRAttendanceScreen() {
                             <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
                               {item.shift1PunchOutTime || "—"}
                             </Text>
+                            {item.shift1PunchOutLocation && (
+                              <TouchableOpacity
+                                onPress={() => openMap(item.shift1PunchOutLocation, item.shift1PunchOutCoords)}
+                                style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 1 }}
+                              >
+                                <Ionicons name="location" size={9} color="#0284c7" />
+                                <Text style={{ fontSize: 8.5, color: "#0284c7", fontWeight: "700", maxWidth: 95 }} numberOfLines={1}>
+                                  {item.shift1PunchOutLocation}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                           {item.shift1PunchOutPhoto && (
                             <TouchableOpacity
@@ -555,6 +615,7 @@ export default function HRAttendanceScreen() {
                                   url: item.shift1PunchOutPhoto!,
                                   title: `Shift 1 Logout - ${item.staffName}`,
                                   location: item.shift1PunchOutLocation,
+                                  coords: item.shift1PunchOutCoords,
                                 })
                               }
                             >
@@ -591,6 +652,7 @@ export default function HRAttendanceScreen() {
                                   url: item.shift2PunchInPhoto!,
                                   title: `Shift 2 Login - ${item.staffName}`,
                                   location: item.shift2PunchInLocation,
+                                  coords: item.shift2PunchInCoords,
                                 })
                               }
                             >
@@ -602,6 +664,17 @@ export default function HRAttendanceScreen() {
                             <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
                               {item.shift2PunchInTime || "—"}
                             </Text>
+                            {item.shift2PunchInLocation && (
+                              <TouchableOpacity
+                                onPress={() => openMap(item.shift2PunchInLocation, item.shift2PunchInCoords)}
+                                style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 1 }}
+                              >
+                                <Ionicons name="location" size={9} color="#7c3aed" />
+                                <Text style={{ fontSize: 8.5, color: "#7c3aed", fontWeight: "700", maxWidth: 95 }} numberOfLines={1}>
+                                  {item.shift2PunchInLocation}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -610,6 +683,17 @@ export default function HRAttendanceScreen() {
                             <Text style={{ fontSize: 11.5, fontWeight: "800", color: "#0f172a" }}>
                               {item.shift2PunchOutTime || "—"}
                             </Text>
+                            {item.shift2PunchOutLocation && (
+                              <TouchableOpacity
+                                onPress={() => openMap(item.shift2PunchOutLocation, item.shift2PunchOutCoords)}
+                                style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 1 }}
+                              >
+                                <Ionicons name="location" size={9} color="#7c3aed" />
+                                <Text style={{ fontSize: 8.5, color: "#7c3aed", fontWeight: "700", maxWidth: 95 }} numberOfLines={1}>
+                                  {item.shift2PunchOutLocation}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                           {item.shift2PunchOutPhoto && (
                             <TouchableOpacity
@@ -618,6 +702,7 @@ export default function HRAttendanceScreen() {
                                   url: item.shift2PunchOutPhoto!,
                                   title: `Shift 2 Logout - ${item.staffName}`,
                                   location: item.shift2PunchOutLocation,
+                                  coords: item.shift2PunchOutCoords,
                                 })
                               }
                             >
@@ -672,12 +757,15 @@ export default function HRAttendanceScreen() {
                 {(item.punchInLocation || item.punchInPhoto) && (
                   <View style={styles.footnoteRow}>
                     {item.punchInLocation && (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}>
+                      <TouchableOpacity
+                        onPress={() => openMap(item.punchInLocation, item.punchInCoords)}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}
+                      >
                         <Ionicons name="location-outline" size={12} color="#0284c7" />
-                        <Text style={styles.footnoteText} numberOfLines={1}>
-                          {item.punchInLocation}
+                        <Text style={[styles.footnoteText, { color: "#0284c7", fontWeight: "700" }]} numberOfLines={1}>
+                          {item.punchInLocation} ↗
                         </Text>
-                      </View>
+                      </TouchableOpacity>
                     )}
                     {item.punchInPhoto && (
                       <TouchableOpacity
@@ -687,6 +775,7 @@ export default function HRAttendanceScreen() {
                             url: item.punchInPhoto!,
                             title: item.staffName,
                             location: item.punchInLocation,
+                            coords: item.punchInCoords,
                           })
                         }
                         activeOpacity={0.8}
@@ -710,12 +799,18 @@ export default function HRAttendanceScreen() {
         <View style={styles.photoModalOverlay}>
           <View style={styles.photoModalCard}>
             <View style={styles.photoModalHeader}>
-              <View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={styles.photoModalTitle}>{previewPhoto?.title} - Punch Photo</Text>
                 {previewPhoto?.location && (
-                  <Text style={styles.photoModalSub} numberOfLines={1}>
-                    📍 {previewPhoto.location}
-                  </Text>
+                  <TouchableOpacity
+                    onPress={() => openMap(previewPhoto.location, previewPhoto.coords)}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 }}
+                  >
+                    <Ionicons name="location" size={12} color="#0284c7" />
+                    <Text style={[styles.photoModalSub, { color: "#0284c7", fontWeight: "700" }]} numberOfLines={1}>
+                      {previewPhoto.location} ↗ (View on Map)
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
               <TouchableOpacity onPress={() => setPreviewPhoto(null)} style={{ padding: 4 }}>

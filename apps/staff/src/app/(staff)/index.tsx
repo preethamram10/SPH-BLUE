@@ -298,11 +298,9 @@ export default function MobileStaffDashboard() {
   const [punchModalVisible, setPunchModalVisible] = useState(false);
   const [punchTypeToConfirm, setPunchTypeToConfirm] = useState<"in" | "out">("in");
   const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null);
-  const [detectedLocation, setDetectedLocation] = useState("KPHB Colony, Road No. 1, Hyderabad");
-  const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number }>({
-    lat: 17.4938,
-    lng: 78.3999,
-  });
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [detectedLocation, setDetectedLocation] = useState("Acquiring GPS location...");
+  const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [submittingPunch, setSubmittingPunch] = useState(false);
 
   // Monthly Attendance Metrics
@@ -541,25 +539,68 @@ export default function MobileStaffDashboard() {
     });
   }, [fetchTodayAttendance, fetchLeaves, fetchMonthlyHistory, staffId, attendanceMonthFilter]);
 
-  // Auto-Detect Location with Geofence check
+  const tryIpLocationFallback = async () => {
+    try {
+      const res = await fetch("https://ipapi.co/json/");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.latitude && data.longitude) {
+          const lat = parseFloat(data.latitude);
+          const lng = parseFloat(data.longitude);
+          const place = [data.city, data.region, data.country_name].filter(Boolean).join(", ");
+          setDetectedCoords({ lat, lng });
+          setDetectedLocation(`${place} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+          setDetectingLocation(false);
+          return;
+        }
+      }
+    } catch {}
+
+    setDetectedLocation("GPS location required - Tap to Retry");
+    setDetectedCoords(null);
+    setDetectingLocation(false);
+  };
+
+  // Auto-Detect Location with high accuracy & IP fallback
   const detectLocation = () => {
+    setDetectingLocation(true);
+    setDetectedLocation("Acquiring GPS coordinates...");
+
     if (typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setDetectedCoords({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-          setDetectedLocation(`${branchName} Geofence (${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E)`);
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setDetectedCoords({ lat, lng });
+
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const name = data.display_name?.split(",").slice(0, 3).join(",").trim();
+              if (name) {
+                setDetectedLocation(`${name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+                setDetectingLocation(false);
+                return;
+              }
+            }
+          } catch {}
+
+          setDetectedLocation(`GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          setDetectingLocation(false);
         },
-        () => {
-          setDetectedLocation(`${branchName} Premises (Inside Geofence)`);
+        async (err) => {
+          console.warn("Geolocation API error, trying IP fallback:", err?.message);
+          await tryIpLocationFallback();
         },
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
-    } else {
-      setDetectedLocation(`${branchName} Premises (Inside Geofence)`);
+      return;
     }
+
+    tryIpLocationFallback();
   };
 
   // Open Punch Modal
@@ -620,6 +661,14 @@ export default function MobileStaffDashboard() {
   const handleConfirmPunch = async () => {
     if (!selfiePhoto) {
       Alert.alert("Selfie Required", "Please capture a facial selfie to verify attendance.");
+      return;
+    }
+
+    if (!detectedCoords) {
+      Alert.alert(
+        "GPS Location Required",
+        "Exact GPS location is required to verify your attendance. Please ensure GPS/Location is enabled on your device and tap 'Retry GPS'."
+      );
       return;
     }
 
@@ -947,16 +996,30 @@ export default function MobileStaffDashboard() {
 
               {/* Automatic Location Detection Banner */}
               <View style={styles.locationBanner}>
-                <Ionicons name="location-sharp" size={16} color="#4ade80" />
+                <Ionicons name="location-sharp" size={16} color={detectedCoords ? "#4ade80" : "#fbbf24"} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.locationTitle}>VERIFIED CLINIC LOCATION</Text>
+                  <Text style={styles.locationTitle}>
+                    {detectedCoords ? "VERIFIED GPS LOCATION" : "GPS LOCATION STATUS"}
+                  </Text>
                   <Text style={styles.locationAddress} numberOfLines={1}>
-                    {detectedLocation}
+                    {detectingLocation ? "Detecting real-time GPS..." : detectedLocation}
                   </Text>
                 </View>
-                <View style={styles.geofencePill}>
-                  <Text style={styles.geofencePillText}>IN GEOFENCE</Text>
-                </View>
+                {detectedCoords ? (
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(`https://www.google.com/maps?q=${detectedCoords.lat},${detectedCoords.lng}`)}
+                    style={styles.geofencePill}
+                  >
+                    <Text style={styles.geofencePillText}>MAP ↗</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={detectLocation}
+                    style={[styles.geofencePill, { backgroundColor: "rgba(239, 68, 68, 0.2)" }]}
+                  >
+                    <Text style={[styles.geofencePillText, { color: "#fca5a5" }]}>RETRY GPS</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Main Punch Action Button */}
@@ -1549,9 +1612,34 @@ export default function MobileStaffDashboard() {
                 <Text style={styles.verifyVal}>{currentTime} • {currentDate}</Text>
               </View>
               <View style={styles.verifyRow}>
-                <Ionicons name="location-outline" size={16} color="#16a34a" />
-                <Text style={styles.verifyLabel}>Location:</Text>
-                <Text style={styles.verifyVal} numberOfLines={1}>{detectedLocation}</Text>
+                <Ionicons name="location-outline" size={16} color={detectedCoords ? "#16a34a" : "#dc2626"} />
+                <Text style={styles.verifyLabel}>GPS Location:</Text>
+                <Text style={[styles.verifyVal, !detectedCoords && { color: "#dc2626" }]} numberOfLines={2}>
+                  {detectingLocation ? "Acquiring GPS location..." : detectedLocation}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+                <TouchableOpacity
+                  onPress={detectLocation}
+                  disabled={detectingLocation}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, backgroundColor: "#f1f5f9", borderRadius: 6 }}
+                >
+                  <Ionicons name="refresh" size={12} color="#0284c7" />
+                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#0284c7" }}>
+                    {detectingLocation ? "Locating..." : "Retry GPS"}
+                  </Text>
+                </TouchableOpacity>
+                {detectedCoords && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Linking.openURL(`https://www.google.com/maps?q=${detectedCoords.lat},${detectedCoords.lng}`);
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 3, paddingHorizontal: 8, backgroundColor: "#e0f2fe", borderRadius: 6 }}
+                  >
+                    <Ionicons name="map-outline" size={12} color="#0369a1" />
+                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#0369a1" }}>View on Map ↗</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -1602,10 +1690,10 @@ export default function MobileStaffDashboard() {
               style={[
                 styles.confirmPunchBtn,
                 punchTypeToConfirm === "in" ? styles.confirmIn : styles.confirmOut,
-                (!selfiePhoto || submittingPunch) && styles.confirmDisabled,
+                (!selfiePhoto || submittingPunch || !detectedCoords || detectingLocation) && styles.confirmDisabled,
               ]}
               onPress={handleConfirmPunch}
-              disabled={!selfiePhoto || submittingPunch}
+              disabled={!selfiePhoto || submittingPunch || !detectedCoords || detectingLocation}
               activeOpacity={0.8}
             >
               {submittingPunch ? (
@@ -1614,7 +1702,13 @@ export default function MobileStaffDashboard() {
                 <>
                   <Ionicons name="checkmark-done" size={20} color="#ffffff" />
                   <Text style={styles.confirmPunchBtnText}>
-                    {punchTypeToConfirm === "in" ? "CONFIRM PUNCH IN" : "CONFIRM PUNCH OUT"}
+                    {detectingLocation
+                      ? "ACQUIRING GPS..."
+                      : !detectedCoords
+                      ? "GPS REQUIRED"
+                      : punchTypeToConfirm === "in"
+                      ? "CONFIRM PUNCH IN"
+                      : "CONFIRM PUNCH OUT"}
                   </Text>
                 </>
               )}
