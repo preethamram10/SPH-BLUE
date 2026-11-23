@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReceptionSidebar from "@/components/reception/ReceptionSidebar";
 import {
   Crown,
@@ -14,22 +14,57 @@ import {
   Eye,
   CheckCircle2,
   AlertCircle,
+  Plus,
+  CreditCard,
+  User,
+  Check,
 } from "lucide-react";
 
 export default function ReceptionPackageMembersPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [branchName, setBranchName] = useState("KPHB Branch");
+  const [selectedBranch, setSelectedBranch] = useState("Kphb Branch");
+  const [availableBranches, setAvailableBranches] = useState<string[]>([
+    "All Branches",
+    "Kphb Branch",
+    "Chandanagar Branch",
+    "Dilshuknagar Branch",
+    "Nallagandla Branch",
+  ]);
   const [members, setMembers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<any | null>(null);
 
-  useEffect(() => {
-    const savedBranch = localStorage.getItem("branch_name");
-    const activeBranch = savedBranch || "KPHB Branch";
-    setBranchName(activeBranch);
+  // Register Package Member Modal
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [patientLookupQuery, setPatientLookupQuery] = useState("");
+  const [isSearchingPatient, setIsSearchingPatient] = useState(false);
+  const [patientSuggestions, setPatientSuggestions] = useState<any[]>([]);
+  const [regForm, setRegForm] = useState({
+    patientName: "",
+    phone: "",
+    registrationId: "",
+    branch: "Kphb Branch",
+    durationMonths: 3,
+    totalAmount: "",
+    initialPaidAmount: "",
+    paymentMethod: "CASH",
+    notes: "",
+  });
+  const [isSubmittingReg, setIsSubmittingReg] = useState(false);
+  const [regError, setRegError] = useState("");
 
+  // Quick Payment Modal
+  const [paymentModalMember, setPaymentModalMember] = useState<any | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  const fetchMembers = (branchToFetch?: string) => {
+    const b = branchToFetch !== undefined ? branchToFetch : selectedBranch;
     setIsLoading(true);
-    fetch(`/api/package-members?branch=${encodeURIComponent(activeBranch)}`)
+    const branchParam = b && b !== "All Branches" ? `?branch=${encodeURIComponent(b)}` : "";
+    fetch(`/api/package-members${branchParam}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.members)) {
@@ -38,16 +73,197 @@ export default function ReceptionPackageMembersPage() {
       })
       .catch((err) => console.error("Error loading branch package members:", err))
       .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    const savedBranch =
+      localStorage.getItem("user_assigned_branch") ||
+      localStorage.getItem("user_branch") ||
+      localStorage.getItem("branch_name") ||
+      "Kphb Branch";
+    setSelectedBranch(savedBranch);
+    setRegForm((prev) => ({ ...prev, branch: savedBranch }));
+    fetchMembers(savedBranch);
+
+    fetch("/api/branches")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          const names: string[] = data.data.map((b: any) => b.name?.trim()).filter(Boolean);
+          if (names.length > 0) {
+            const list = ["All Branches", ...names.filter((n) => n !== "All Branches")];
+            setAvailableBranches(list);
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleBranchChange = (newBranch: string) => {
+    setSelectedBranch(newBranch);
+    fetchMembers(newBranch);
+  };
+
+  // Debounced Patient Search for Modal
+  useEffect(() => {
+    if (!patientLookupQuery.trim() || patientLookupQuery.trim().length < 3) {
+      setPatientSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingPatient(true);
+      try {
+        const res = await fetch(`/api/reception/patients/by-phone?query=${encodeURIComponent(patientLookupQuery.trim())}`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.profiles)) {
+          setPatientSuggestions(data.profiles.slice(0, 5));
+        } else {
+          setPatientSuggestions([]);
+        }
+      } catch {
+        setPatientSuggestions([]);
+      } finally {
+        setIsSearchingPatient(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [patientLookupQuery]);
+
+  const selectPatientSuggestion = (p: any) => {
+    setRegForm((prev) => ({
+      ...prev,
+      patientName: p.patientName || "",
+      phone: p.phone || "",
+      registrationId: p.registrationId || "",
+      branch: p.branch || selectedBranch || "Kphb Branch",
+    }));
+    setPatientSuggestions([]);
+    setPatientLookupQuery(p.patientName ? `${p.patientName} (${p.phone})` : p.phone);
+  };
+
+  const handleRegisterPackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError("");
+
+    if (!regForm.patientName.trim() || !regForm.phone.trim()) {
+      setRegError("Patient Name and Phone are required.");
+      return;
+    }
+    const total = parseFloat(regForm.totalAmount) || 0;
+    if (total <= 0) {
+      setRegError("Please enter a valid Total Package Fee.");
+      return;
+    }
+
+    const initialPaid = parseFloat(regForm.initialPaidAmount) || 0;
+    if (initialPaid > total) {
+      setRegError("Initial paid amount cannot exceed total package amount.");
+      return;
+    }
+
+    setIsSubmittingReg(true);
+    try {
+      const res = await fetch("/api/package-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          registrationId: regForm.registrationId,
+          patientName: regForm.patientName,
+          phone: regForm.phone,
+          branch: regForm.branch || selectedBranch || "Kphb Branch",
+          durationMonths: regForm.durationMonths,
+          totalAmount: total,
+          initialPaidAmount: initialPaid,
+          paymentMethod: regForm.paymentMethod,
+          notes: regForm.notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setIsRegisterModalOpen(false);
+        setRegForm({
+          patientName: "",
+          phone: "",
+          registrationId: "",
+          branch: selectedBranch,
+          durationMonths: 3,
+          totalAmount: "",
+          initialPaidAmount: "",
+          paymentMethod: "CASH",
+          notes: "",
+        });
+        setPatientLookupQuery("");
+        fetchMembers();
+        alert(data.message || "Package registered successfully!");
+      } else {
+        setRegError(data.error || "Failed to register package.");
+      }
+    } catch (err: any) {
+      setRegError(err.message || "Network error registering package.");
+    } finally {
+      setIsSubmittingReg(false);
+    }
+  };
+
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentModalMember) return;
+    const amt = parseFloat(paymentAmount) || 0;
+    if (amt <= 0) {
+      alert("Please enter a valid payment amount.");
+      return;
+    }
+    if (amt > (paymentModalMember.pendingAmount || 0)) {
+      alert(`Amount exceeds the remaining due balance of ₹${paymentModalMember.pendingAmount}`);
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    try {
+      const res = await fetch("/api/package-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "payment",
+          packageId: paymentModalMember.id,
+          amount: amt,
+          paymentMethod,
+          notes: paymentNotes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setPaymentModalMember(null);
+        setPaymentAmount("");
+        setPaymentNotes("");
+        fetchMembers();
+        if (selectedMember && selectedMember.id === paymentModalMember.id) {
+          setSelectedMember(data.member);
+        }
+        alert(data.message || `Payment of ₹${amt} recorded successfully!`);
+      } else {
+        alert(data.error || "Failed to record payment");
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   const filtered = members.filter((m) => {
     const q = searchTerm.toLowerCase();
-    return (
+    const matchesSearch =
       (m.patientName || "").toLowerCase().includes(q) ||
       (m.phone || "").includes(q) ||
       (m.registrationId || "").toLowerCase().includes(q) ||
-      (m.packageName || "").toLowerCase().includes(q)
-    );
+      (m.packageName || "").toLowerCase().includes(q) ||
+      (m.branch || "").toLowerCase().includes(q);
+
+    return matchesSearch;
   });
 
   const totalMembers = members.length;
@@ -71,16 +287,16 @@ export default function ReceptionPackageMembersPage() {
                 <div>
                   <h1 className="text-base font-extrabold text-slate-900">Branch Package Members</h1>
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                    {branchName} Only
+                    {selectedBranch}
                   </span>
                 </div>
               </div>
               <p className="text-[11.5px] text-slate-500 mt-1">
-                Patients registered in long-term treatment packages for {branchName}
+                Patients registered in long-term treatment packages for {selectedBranch}
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -91,6 +307,29 @@ export default function ReceptionPackageMembersPage() {
                   className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
+
+              <select
+                value={selectedBranch}
+                onChange={(e) => handleBranchChange(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+              >
+                {availableBranches.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => {
+                  setRegError("");
+                  setIsRegisterModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Register Package</span>
+              </button>
             </div>
           </div>
         </header>
@@ -102,7 +341,7 @@ export default function ReceptionPackageMembersPage() {
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Active Members</div>
               <div className="text-2xl font-black text-slate-900 mt-1">{totalMembers}</div>
-              <div className="text-[11px] text-slate-400 mt-0.5">Enrolled at {branchName}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Enrolled at {selectedBranch}</div>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
@@ -130,16 +369,23 @@ export default function ReceptionPackageMembersPage() {
               <div className="font-extrabold text-sm text-slate-900">
                 Package Enrolled Patients ({filtered.length})
               </div>
-              <span className="text-[11px] text-slate-400 font-medium">Branch restricted visibility</span>
+              <span className="text-[11px] text-slate-400 font-medium">{selectedBranch}</span>
             </div>
 
             {isLoading ? (
               <div className="p-16 text-center text-slate-400 font-medium text-xs">
-                Loading {branchName} package members...
+                Loading {selectedBranch} package members...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="p-16 text-center text-slate-400 font-medium text-xs">
-                No package members found for {branchName}.
+              <div className="p-16 text-center text-slate-400 font-medium text-xs flex flex-col items-center justify-center gap-3">
+                <Crown className="w-8 h-8 text-slate-300" />
+                <p>No package members found for {selectedBranch}.</p>
+                <button
+                  onClick={() => setIsRegisterModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  + Register First Package Member
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -148,6 +394,7 @@ export default function ReceptionPackageMembersPage() {
                     <tr>
                       <th className="py-3 px-4">Patient &amp; Contact</th>
                       <th className="py-3 px-4">Reg ID</th>
+                      <th className="py-3 px-4">Branch</th>
                       <th className="py-3 px-4">Package &amp; Duration</th>
                       <th className="py-3 px-4">Validity</th>
                       <th className="py-3 px-4 text-right">Total Fee</th>
@@ -171,6 +418,9 @@ export default function ReceptionPackageMembersPage() {
                           <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-bold text-[11px] border border-sky-200">
                             {m.registrationId || "SPH-PAT"}
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-[11px] font-semibold text-slate-600">{m.branch || "Kphb Branch"}</span>
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-800">{m.packageName}</div>
@@ -203,13 +453,31 @@ export default function ReceptionPackageMembersPage() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <button
-                            onClick={() => setSelectedMember(m)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 hover:border-amber-400 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-[11px] font-bold transition-colors"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>History</span>
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedMember(m)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 hover:border-amber-400 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 text-[11px] font-bold transition-colors cursor-pointer"
+                              title="View installment history"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>History</span>
+                            </button>
+                            {(m.pendingAmount || 0) > 0 && (
+                              <button
+                                onClick={() => {
+                                  setPaymentModalMember(m);
+                                  setPaymentAmount(String(m.pendingAmount || ""));
+                                  setPaymentMethod("CASH");
+                                  setPaymentNotes("");
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 text-emerald-800 text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Record installment payment"
+                              >
+                                <CreditCard className="w-3 h-3 text-emerald-600" />
+                                <span>Pay Due</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -219,6 +487,360 @@ export default function ReceptionPackageMembersPage() {
             )}
           </div>
         </div>
+
+        {/* Register Package Member Modal */}
+        {isRegisterModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-amber-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-black text-xs">
+                    <Crown className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">Register Package Member</h3>
+                    <p className="text-[11px] text-slate-500">Enroll patient in 1–6 Month Treatment Subscription</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsRegisterModalOpen(false)}
+                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleRegisterPackage} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                {regError && (
+                  <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                    <span>{regError}</span>
+                  </div>
+                )}
+
+                {/* Patient Lookup / Search */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Find Existing Patient (Phone or MRN ID)
+                  </label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Type phone or SPH-KPB ID to auto-fill..."
+                      value={patientLookupQuery}
+                      onChange={(e) => setPatientLookupQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    {isSearchingPatient && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">
+                        Searching...
+                      </span>
+                    )}
+                  </div>
+
+                  {patientSuggestions.length > 0 && (
+                    <div className="mt-1 border border-slate-200 rounded-lg bg-white shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                      {patientSuggestions.map((p, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => selectPatientSuggestion(p)}
+                          className="p-2 hover:bg-amber-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                        >
+                          <div>
+                            <span className="font-bold text-slate-800">{p.patientName}</span>
+                            <span className="text-slate-400 text-[11px] ml-1.5 font-mono">{p.phone}</span>
+                          </div>
+                          <span className="px-1.5 py-0.5 text-[10px] bg-slate-100 text-slate-600 rounded font-semibold">
+                            {p.registrationId || p.branch || "Profile"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Patient Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. V. Keerthana"
+                      value={regForm.patientName}
+                      onChange={(e) => setRegForm({ ...regForm, patientName: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Phone Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="10 digit mobile"
+                      value={regForm.phone}
+                      onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Registration / MRN ID</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. SPH-KPB-17818"
+                      value={regForm.registrationId}
+                      onChange={(e) => setRegForm({ ...regForm, registrationId: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Branch</label>
+                    <select
+                      value={regForm.branch}
+                      onChange={(e) => setRegForm({ ...regForm, branch: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                    >
+                      {availableBranches
+                        .filter((b) => b !== "All Branches")
+                        .map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Package Duration Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Package Duration</label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {[1, 2, 3, 4, 5, 6].map((m) => (
+                      <button
+                        type="button"
+                        key={m}
+                        onClick={() => setRegForm({ ...regForm, durationMonths: m })}
+                        className={`py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          regForm.durationMonths === m
+                            ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        {m}M
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-amber-700 font-medium mt-1">
+                    Selected: {regForm.durationMonths} Month{regForm.durationMonths > 1 ? "s" : ""} Treatment Package
+                  </p>
+                </div>
+
+                {/* Pricing Fields */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Total Package Fee (₹) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="100"
+                      placeholder="e.g. 10000"
+                      value={regForm.totalAmount}
+                      onChange={(e) => setRegForm({ ...regForm, totalAmount: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Initial Down Payment (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      placeholder="0 if pay later"
+                      value={regForm.initialPaidAmount}
+                      onChange={(e) => setRegForm({ ...regForm, initialPaidAmount: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-black text-emerald-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Payment Method</label>
+                    <select
+                      value={regForm.paymentMethod}
+                      onChange={(e) => setRegForm({ ...regForm, paymentMethod: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                    >
+                      <option value="CASH">CASH</option>
+                      <option value="UPI">UPI</option>
+                      <option value="COUNTER_UPI">COUNTER UPI (QR)</option>
+                      <option value="CARD">CARD</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Notes / Remarks</label>
+                    <input
+                      type="text"
+                      placeholder="Optional notes"
+                      value={regForm.notes}
+                      onChange={(e) => setRegForm({ ...regForm, notes: e.target.value })}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Calculation Preview */}
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-slate-600">Pending Balance: </span>
+                    <span className="font-extrabold text-amber-900">
+                      ₹
+                      {Math.max(
+                        0,
+                        (parseFloat(regForm.totalAmount) || 0) - (parseFloat(regForm.initialPaidAmount) || 0)
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-amber-700 font-semibold">
+                    Valid for {regForm.durationMonths} Months
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRegisterModalOpen(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReg}
+                    className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingReg ? "Registering..." : "Confirm & Enroll Member"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Payment (Pay Due) Modal */}
+        {paymentModalMember && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl border border-slate-200 w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">
+                    ₹
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">Collect Package Installment</h3>
+                    <p className="text-[11px] text-slate-500">
+                      {paymentModalMember.patientName} • {paymentModalMember.registrationId}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPaymentModalMember(null)}
+                  className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleRecordPayment} className="p-5 space-y-4">
+                <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200 flex items-center justify-between text-xs">
+                  <div>
+                    <div className="text-[10px] text-amber-700 uppercase font-bold">Outstanding Due</div>
+                    <div className="text-lg font-black text-amber-900">
+                      ₹{(paymentModalMember.pendingAmount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-slate-500 uppercase font-bold">Total Paid So Far</div>
+                    <div className="text-sm font-black text-emerald-700">
+                      ₹{(paymentModalMember.paidAmount || 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Payment Amount to Collect (₹) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max={paymentModalMember.pendingAmount}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-black text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                  >
+                    <option value="CASH">CASH</option>
+                    <option value="UPI">UPI</option>
+                    <option value="COUNTER_UPI">COUNTER UPI (QR)</option>
+                    <option value="CARD">CARD</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Notes / Remarks</label>
+                  <input
+                    type="text"
+                    placeholder="Installment payment notes"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentModalMember(null)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPayment}
+                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingPayment ? "Recording..." : "Record Payment"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Member Installment History Modal */}
         {selectedMember && (
@@ -269,9 +891,24 @@ export default function ReceptionPackageMembersPage() {
 
                 {/* Installments List */}
                 <div>
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2">
-                    Payment Installments History
-                  </h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      Payment Installments History
+                    </h4>
+                    {(selectedMember.pendingAmount || 0) > 0 && (
+                      <button
+                        onClick={() => {
+                          setPaymentModalMember(selectedMember);
+                          setPaymentAmount(String(selectedMember.pendingAmount || ""));
+                          setPaymentMethod("CASH");
+                          setPaymentNotes("");
+                        }}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200"
+                      >
+                        + Collect Installment
+                      </button>
+                    )}
+                  </div>
                   {selectedMember.payments && selectedMember.payments.length > 0 ? (
                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                       {selectedMember.payments.map((p: any, idx: number) => {
@@ -324,4 +961,3 @@ export default function ReceptionPackageMembersPage() {
     </div>
   );
 }
-

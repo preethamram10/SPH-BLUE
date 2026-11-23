@@ -9,6 +9,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Linking,
+  Modal,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -33,6 +35,26 @@ export default function MobilePackageMembersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("All");
+
+  // Add Package Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [patientName, setPatientName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [registrationId, setRegistrationId] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("Kphb Branch");
+  const [durationMonths, setDurationMonths] = useState(3);
+  const [totalAmount, setTotalAmount] = useState("");
+  const [initialPaidAmount, setInitialPaidAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [notes, setNotes] = useState("");
+  const [submittingAdd, setSubmittingAdd] = useState(false);
+
+  // Quick Pay Modal State
+  const [payModalMember, setPayModalMember] = useState<any | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMethod, setPayMethod] = useState("CASH");
+  const [payNotes, setPayNotes] = useState("");
+  const [submittingPay, setSubmittingPay] = useState(false);
 
   const fetchMembers = async () => {
     try {
@@ -75,9 +97,9 @@ export default function MobilePackageMembersScreen() {
     fetchBranches();
   }, []);
 
-  const handleDial = (phone: string) => {
-    if (!phone) return;
-    const clean = phone.replace(/\D/g, "");
+  const handleDial = (phoneNumber: string) => {
+    if (!phoneNumber) return;
+    const clean = phoneNumber.replace(/\D/g, "");
     Linking.openURL(`tel:${clean}`);
   };
 
@@ -124,6 +146,96 @@ export default function MobilePackageMembersScreen() {
   const totalRevenue = members.reduce((acc, m) => acc + (Number(m.paidAmount) || 0), 0);
   const totalPending = members.reduce((acc, m) => acc + (Number(m.pendingAmount) || 0), 0);
 
+  const handleAddPackage = async () => {
+    if (!patientName.trim() || !phone.trim()) {
+      Alert.alert("Required Fields", "Please enter patient name and phone number.");
+      return;
+    }
+    const tot = parseFloat(totalAmount) || 0;
+    if (tot <= 0) {
+      Alert.alert("Invalid Amount", "Please enter a valid total package amount.");
+      return;
+    }
+
+    setSubmittingAdd(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/package-members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          patientName: patientName.trim(),
+          phone: phone.trim(),
+          registrationId: registrationId.trim(),
+          branch: selectedBranch || "Kphb Branch",
+          durationMonths,
+          totalAmount: tot,
+          initialPaidAmount: parseFloat(initialPaidAmount) || 0,
+          paymentMethod,
+          notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setIsAddModalOpen(false);
+        setPatientName("");
+        setPhone("");
+        setRegistrationId("");
+        setTotalAmount("");
+        setInitialPaidAmount("");
+        setNotes("");
+        fetchMembers();
+        Alert.alert("Success", data.message || "Package registered successfully!");
+      } else {
+        Alert.alert("Error", data.error || "Failed to register package.");
+      }
+    } catch (err: any) {
+      Alert.alert("Network Error", err.message || "Could not register package.");
+    } finally {
+      setSubmittingAdd(false);
+    }
+  };
+
+  const handlePayInstallment = async () => {
+    if (!payModalMember) return;
+    const amt = parseFloat(payAmount) || 0;
+    if (amt <= 0) {
+      Alert.alert("Invalid Amount", "Please enter an installment payment amount.");
+      return;
+    }
+
+    setSubmittingPay(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/package-members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "payment",
+          packageId: payModalMember.id,
+          amount: amt,
+          paymentMethod: payMethod,
+          notes: payNotes,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setPayModalMember(null);
+        setPayAmount("");
+        setPayNotes("");
+        fetchMembers();
+        Alert.alert("Success", data.message || `Payment of ₹${amt} recorded!`);
+      } else {
+        Alert.alert("Error", data.error || "Failed to record payment.");
+      }
+    } catch (err: any) {
+      Alert.alert("Network Error", err.message || "Could not record payment.");
+    } finally {
+      setSubmittingPay(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
       {/* Header */}
@@ -133,11 +245,17 @@ export default function MobilePackageMembersScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Package Members</Text>
-          <Text style={styles.headerSub}>Live Chronic Care Patient Subscriptions</Text>
+          <Text style={styles.headerSub}>Live Patient Subscriptions &amp; Balances</Text>
         </View>
-        <TouchableOpacity style={styles.refreshBtn} onPress={fetchMembers}>
-          <Ionicons name="refresh" size={18} color="#0284c7" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity style={styles.addBtn} onPress={() => setIsAddModalOpen(true)}>
+            <Ionicons name="add" size={16} color="#ffffff" />
+            <Text style={styles.addBtnText}>Add</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.refreshBtn} onPress={fetchMembers}>
+            <Ionicons name="refresh" size={16} color="#0284c7" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -145,7 +263,7 @@ export default function MobilePackageMembersScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#0284c7"]} />}
       >
-        {/* Modern Clean White Hero Card (matches Total Revenue / PayLater UI) */}
+        {/* Hero KPI Card */}
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View>
@@ -157,7 +275,6 @@ export default function MobilePackageMembersScreen() {
             </View>
           </View>
 
-          {/* Inline Summary Strip */}
           <View style={styles.heroSummaryRow}>
             <View style={styles.heroSummaryItem}>
               <Text style={styles.heroSummaryLabel}>COLLECTED</Text>
@@ -206,20 +323,10 @@ export default function MobilePackageMembersScreen() {
             return (
               <TouchableOpacity
                 key={b}
-                style={[
-                  styles.branchChip,
-                  isSel && styles.branchChipActive,
-                ]}
+                style={[styles.branchChip, isSel && styles.branchChipActive]}
                 onPress={() => setBranchFilter(b)}
               >
-                <Text
-                  style={[
-                    styles.branchChipText,
-                    isSel && styles.branchChipTextActive,
-                  ]}
-                >
-                  {b}
-                </Text>
+                <Text style={[styles.branchChipText, isSel && styles.branchChipTextActive]}>{b}</Text>
               </TouchableOpacity>
             );
           })}
@@ -235,6 +342,9 @@ export default function MobilePackageMembersScreen() {
             <Text style={styles.emptySub}>
               Patients registered under chronic treatment plans will appear here in real time.
             </Text>
+            <TouchableOpacity style={styles.emptyAddBtn} onPress={() => setIsAddModalOpen(true)}>
+              <Text style={styles.emptyAddBtnText}>+ Register Package</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           filtered.map((m) => {
@@ -245,14 +355,11 @@ export default function MobilePackageMembersScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.memberName}>{m.patientName}</Text>
                     <Text style={styles.regText}>
-                      ID: {m.registrationId || "SPH-GEN"} • {m.branch}
+                      ID: {m.registrationId || "SPH-GEN"} • {m.branch || "Kphb Branch"}
                     </Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.dialBtn}
-                    onPress={() => handleDial(m.phone)}
-                  >
+                  <TouchableOpacity style={styles.dialBtn} onPress={() => handleDial(m.phone)}>
                     <Ionicons name="call" size={12} color="#0284c7" />
                     <Text style={styles.dialBtnText}>{m.phone}</Text>
                   </TouchableOpacity>
@@ -265,7 +372,7 @@ export default function MobilePackageMembersScreen() {
                     <Text style={styles.planTitle}>{m.packageName || "Annual Treatment Plan"}</Text>
                   </View>
                   <Text style={styles.validityText}>
-                    Duration: {m.durationMonths || 12} Months
+                    Duration: {m.durationMonths || 3} Months
                     {m.endDate ? ` • Valid till ${m.endDate}` : ""}
                   </Text>
                 </View>
@@ -291,11 +398,150 @@ export default function MobilePackageMembersScreen() {
                     </Text>
                   </View>
                 </View>
+
+                {hasDue && (
+                  <TouchableOpacity
+                    style={styles.payDueBtn}
+                    onPress={() => {
+                      setPayModalMember(m);
+                      setPayAmount(String(m.pendingAmount || ""));
+                    }}
+                  >
+                    <Ionicons name="cash-outline" size={14} color="#ffffff" />
+                    <Text style={styles.payDueBtnText}>Collect Due (₹{m.pendingAmount})</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* Add Package Member Modal */}
+      <Modal visible={isAddModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Register Package Member</Text>
+              <TouchableOpacity onPress={() => setIsAddModalOpen(false)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalBody}>
+              <Text style={styles.inputLabel}>Patient Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. V. Keerthana"
+                value={patientName}
+                onChangeText={setPatientName}
+              />
+
+              <Text style={styles.inputLabel}>Mobile Phone *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="10-digit mobile"
+                keyboardType="phone-pad"
+                value={phone}
+                onChangeText={setPhone}
+              />
+
+              <Text style={styles.inputLabel}>MRN / Reg ID</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. SPH-KPB-17818"
+                value={registrationId}
+                onChangeText={setRegistrationId}
+              />
+
+              <Text style={styles.inputLabel}>Duration</Text>
+              <View style={styles.durationRow}>
+                {[1, 2, 3, 4, 5, 6].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.durationChip, durationMonths === m && styles.durationChipActive]}
+                    onPress={() => setDurationMonths(m)}
+                  >
+                    <Text style={[styles.durationChipText, durationMonths === m && styles.durationChipTextActive]}>
+                      {m}M
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.inputLabel}>Total Package Fee (₹) *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 10000"
+                keyboardType="numeric"
+                value={totalAmount}
+                onChangeText={setTotalAmount}
+              />
+
+              <Text style={styles.inputLabel}>Initial Paid (₹)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="0 if pay later"
+                keyboardType="numeric"
+                value={initialPaidAmount}
+                onChangeText={setInitialPaidAmount}
+              />
+
+              <TouchableOpacity
+                style={[styles.submitBtn, submittingAdd && { opacity: 0.6 }]}
+                disabled={submittingAdd}
+                onPress={handleAddPackage}
+              >
+                <Text style={styles.submitBtnText}>
+                  {submittingAdd ? "Registering..." : "Confirm & Register Package"}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Pay Due Modal */}
+      <Modal visible={!!payModalMember} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Collect Installment</Text>
+              <TouchableOpacity onPress={() => setPayModalMember(null)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#0f172a", marginBottom: 8 }}>
+                {payModalMember?.patientName} ({payModalMember?.registrationId})
+              </Text>
+              <Text style={{ fontSize: 12, color: "#d97706", fontWeight: "800", marginBottom: 12 }}>
+                Pending Balance: ₹{payModalMember?.pendingAmount}
+              </Text>
+
+              <Text style={styles.inputLabel}>Payment Amount (₹) *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Amount to collect"
+                keyboardType="numeric"
+                value={payAmount}
+                onChangeText={setPayAmount}
+              />
+
+              <TouchableOpacity
+                style={[styles.submitBtn, submittingPay && { opacity: 0.6 }]}
+                disabled={submittingPay}
+                onPress={handlePayInstallment}
+              >
+                <Text style={styles.submitBtnText}>
+                  {submittingPay ? "Recording..." : "Record Payment"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -314,6 +560,16 @@ const styles = StyleSheet.create({
   backBtn: { padding: 6, marginRight: 8 },
   headerTitle: { fontSize: 16, fontWeight: "800", color: "#0f172a" },
   headerSub: { fontSize: 11, color: "#64748b", fontWeight: "600" },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addBtnText: { color: "#ffffff", fontSize: 12, fontWeight: "800" },
   refreshBtn: { padding: 8, backgroundColor: "#f0f9ff", borderRadius: 8 },
   scroll: { flex: 1 },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
@@ -370,6 +626,7 @@ const styles = StyleSheet.create({
   branchChip: {
     flex: 1,
     paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: "#ffffff",
     borderWidth: 1,
@@ -428,6 +685,17 @@ const styles = StyleSheet.create({
   ledgerLabel: { fontSize: 9.5, fontWeight: "800", color: "#94a3b8" },
   ledgerVal: { fontSize: 12.5, fontWeight: "800", color: "#0f172a", marginTop: 2 },
   ledgerDivider: { width: 1, height: 20, backgroundColor: "#e2e8f0" },
+  payDueBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "#d97706",
+    borderRadius: 8,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  payDueBtnText: { color: "#ffffff", fontSize: 11.5, fontWeight: "800" },
   emptyCard: {
     backgroundColor: "#ffffff",
     borderRadius: 16,
@@ -439,4 +707,68 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 14, fontWeight: "800", color: "#1e293b", marginTop: 12 },
   emptySub: { fontSize: 12, color: "#64748b", textAlign: "center", marginTop: 4 },
+  emptyAddBtn: {
+    marginTop: 12,
+    backgroundColor: "#0284c7",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  emptyAddBtnText: { color: "#ffffff", fontSize: 12, fontWeight: "800" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    justifyContent: "center",
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    overflow: "hidden",
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  modalTitle: { fontSize: 15, fontWeight: "800", color: "#0f172a" },
+  modalBody: { padding: 16, gap: 10 },
+  inputLabel: { fontSize: 11, fontWeight: "700", color: "#475569" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  durationRow: { flexDirection: "row", gap: 6 },
+  durationChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+  },
+  durationChipActive: { backgroundColor: "#0284c7", borderColor: "#0284c7" },
+  durationChipText: { fontSize: 12, fontWeight: "700", color: "#64748b" },
+  durationChipTextActive: { color: "#ffffff", fontWeight: "800" },
+  submitBtn: {
+    backgroundColor: "#0284c7",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 6,
+  },
+  submitBtnText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
 });

@@ -6388,6 +6388,110 @@ function savePackageMembersToDisk(data: PackageMemberRecord[]): void {
   } catch {}
 }
 
+function resolvePackageBranch(branch?: string, regId?: string, phone?: string): string {
+  let b = (branch || "").trim();
+  const isGeneric = !b || /^(clinic|clinic branch|spiritual|spiritual homeopathy|all|all branches)$/i.test(b);
+  if (!isGeneric) {
+    return b;
+  }
+  const cleanReg = (regId || "").toUpperCase();
+  if (cleanReg.includes("KPB") || cleanReg.includes("KPHB")) return "Kphb Branch";
+  if (cleanReg.includes("CHN") || cleanReg.includes("CHANDANAGAR")) return "Chandanagar Branch";
+  if (cleanReg.includes("NLG") || cleanReg.includes("NALLAGANDLA")) return "Nallagandla Branch";
+  if (cleanReg.includes("DNR") || cleanReg.includes("DSNR") || cleanReg.includes("DILSHUK")) return "Dilshuknagar Branch";
+
+  try {
+    const cleanPhone = normalizePhone(phone || "");
+    if (cleanPhone.length >= 10) {
+      const patients = getPatientsStore();
+      const pat = patients.find(
+        (p) =>
+          normalizePhone(p.phone).slice(-10) === cleanPhone.slice(-10) &&
+          p.branch &&
+          !/^(clinic|spiritual|all)/i.test(p.branch)
+      );
+      if (pat && pat.branch) return pat.branch;
+      const appts = getAppointmentsStore();
+      const apt = appts.find(
+        (a) =>
+          normalizePhone(a.phone || "").slice(-10) === cleanPhone.slice(-10) &&
+          a.branch &&
+          !/^(clinic|spiritual|all)/i.test(a.branch)
+      );
+      if (apt && apt.branch) return apt.branch;
+    }
+  } catch {}
+
+  return b || "Kphb Branch";
+}
+
+function syncPackagesFromAppointmentsAndPatients(store: PackageMemberRecord[]): boolean {
+  let modified = false;
+  try {
+    const appts = getAppointmentsStore();
+    for (const a of appts) {
+      if (a.hasPackage || (a.packageTotalAmount && a.packageTotalAmount > 0) || a.packageName) {
+        const cleanReg = (a.registrationId || "").trim().toUpperCase();
+        const cleanPhone = normalizePhone(a.phone || "");
+        const cleanName = (a.patientName || "").trim();
+        const exists = store.some((p) => {
+          if (cleanReg && isExplicitRegId(cleanReg) && isExplicitRegId(p.registrationId) && (p.registrationId || "").trim().toUpperCase() === cleanReg) return true;
+          if (cleanPhone.length >= 10 && normalizePhone(p.phone).slice(-10) === cleanPhone.slice(-10) && matchPatientProfile(a, p)) return true;
+          if (a.packageId && p.id === a.packageId) return true;
+          return false;
+        });
+
+        if (!exists && cleanName && (cleanPhone.length >= 10 || cleanReg)) {
+          const duration = Math.max(1, Math.min(7, a.packageDurationMonths || 3));
+          const total = Math.max(0, a.packageTotalAmount || 0);
+          const paid = Math.max(0, a.packagePaidAmount || 0);
+          const pending = typeof a.packagePendingAmount === "number" ? a.packagePendingAmount : Math.max(0, total - paid);
+          const branch = resolvePackageBranch(a.branch, cleanReg, cleanPhone);
+
+          const now = new Date(a.createdAt || Date.now());
+          const startYmd = a.appointmentDate || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+          let endYmd = a.packageEndDate || "";
+          if (!endYmd) {
+            const endD = new Date(now.getFullYear(), now.getMonth() + duration, now.getDate());
+            endYmd = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, "0")}-${String(endD.getDate()).padStart(2, "0")}`;
+          }
+
+          const newPkg: PackageMemberRecord = {
+            id: a.packageId || `pkg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            registrationId: cleanReg,
+            patientName: cleanName,
+            phone: cleanPhone,
+            branch,
+            packageName: a.packageName || `${duration} Month${duration > 1 ? "s" : ""} Treatment Package`,
+            durationMonths: duration,
+            startDate: startYmd,
+            endDate: endYmd,
+            totalAmount: total,
+            paidAmount: paid,
+            pendingAmount: pending,
+            status: pending === 0 && total > 0 ? "COMPLETED" : "ACTIVE",
+            payments: paid > 0 ? [{
+              id: `pay_${Date.now()}_init`,
+              amount: paid,
+              paidAt: a.createdAt || new Date().toISOString(),
+              paymentMethod: a.paymentMethod || "CASH",
+              appointmentId: a.id,
+              notes: "Initial Package Payment",
+            }] : [],
+            createdAt: a.createdAt || new Date().toISOString(),
+          };
+
+          store.unshift(newPkg);
+          modified = true;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("syncPackagesFromAppointmentsAndPatients error:", err);
+  }
+  return modified;
+}
+
 function getPackageMembersStore(): PackageMemberRecord[] {
   const file = getPackageMembersCachePath();
   let mtime = 0;
@@ -6404,6 +6508,11 @@ function getPackageMembersStore(): PackageMemberRecord[] {
   ) {
     global.__sphPackageMembersStore = loadPackageMembersFromDisk();
     global.__sphPackageMembersLastMtime = mtime;
+
+    // Check if backfill is needed from appointments and patients
+    if (syncPackagesFromAppointmentsAndPatients(global.__sphPackageMembersStore)) {
+      savePackageMembersToDisk(global.__sphPackageMembersStore);
+    }
   }
   return global.__sphPackageMembersStore;
 }
@@ -6411,12 +6520,29 @@ function getPackageMembersStore(): PackageMemberRecord[] {
 export const packageService = {
   async getAllPackageMembers(branch?: string): Promise<PackageMemberRecord[]> {
     let list = getPackageMembersStore();
+    let hasResolved = false;
+    for (const p of list) {
+      if (!p.branch || /^(clinic|clinic branch|spiritual|spiritual homeopathy|all|all branches)$/i.test((p.branch || "").trim())) {
+        const resolved = resolvePackageBranch(p.branch, p.registrationId, p.phone);
+        if (resolved && resolved !== p.branch) {
+          p.branch = resolved;
+          hasResolved = true;
+        }
+      }
+    }
+    if (hasResolved) {
+      savePackageMembersToDisk(list);
+    }
+
     if (branch) {
       const cleanTarget = normalizeBranchName(branch);
       if (cleanTarget && cleanTarget !== "all branches" && cleanTarget !== "all") {
         list = list.filter((p) => {
           const pb = normalizeBranchName(p.branch);
-          return pb === cleanTarget || pb.includes(cleanTarget) || cleanTarget.includes(pb);
+          if (pb === cleanTarget || pb.includes(cleanTarget) || cleanTarget.includes(pb)) return true;
+          const regB = normalizeBranchName(p.registrationId || "");
+          if (regB === cleanTarget) return true;
+          return false;
         });
       }
     }
@@ -6466,7 +6592,7 @@ export const packageService = {
     const cleanReg = (data.registrationId || "").trim().toUpperCase();
     const cleanPhone = normalizePhone(data.phone);
     const cleanName = data.patientName.trim();
-    const cleanBranch = data.branch.trim();
+    const cleanBranch = resolvePackageBranch(data.branch, cleanReg, cleanPhone);
     const duration = Math.max(1, Math.min(7, data.durationMonths || 1));
     const total = Math.max(0, data.totalAmount || 0);
     const initialPaid = Math.max(0, data.initialPaidAmount || 0);

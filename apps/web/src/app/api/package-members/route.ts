@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { packageService } from "@spiritualhomeo/database";
+import { packageService, patientService } from "@spiritualhomeo/database";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const branch = searchParams.get("branch") || undefined;
+    const rawBranch = searchParams.get("branch") || undefined;
+    const branch =
+      rawBranch && !/^(all|all branches)$/i.test(rawBranch.trim())
+        ? rawBranch.trim()
+        : undefined;
     const search = searchParams.get("search") || "";
 
     let members = await packageService.getAllPackageMembers(branch);
@@ -18,7 +22,8 @@ export async function GET(req: NextRequest) {
           (m.patientName || "").toLowerCase().includes(q) ||
           (m.phone || "").includes(q) ||
           (m.registrationId || "").toLowerCase().includes(q) ||
-          (m.packageName || "").toLowerCase().includes(q)
+          (m.packageName || "").toLowerCase().includes(q) ||
+          (m.branch || "").toLowerCase().includes(q)
       );
     }
 
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Default: action === "register"
-    const {
+    let {
       registrationId,
       patientName,
       phone,
@@ -86,9 +91,33 @@ export async function POST(req: NextRequest) {
       notes,
     } = body;
 
+    // Auto-resolve patient info if only registrationId or phone was supplied
+    if ((!patientName || !phone) && registrationId) {
+      const pat: any = await patientService.getByRegId(registrationId);
+      if (pat) {
+        if (!patientName) patientName = pat.name || pat.patientName;
+        if (!phone) phone = pat.phone;
+        if (!branch) branch = pat.branch;
+      }
+    } else if ((!patientName || !registrationId) && phone) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      const profiles: any[] = await patientService.getProfilesByPhone(cleanPhone);
+      if (profiles.length > 0) {
+        const matched = patientName
+          ? profiles.find(
+              (p: any) =>
+                (p.name || p.patientName || "").toLowerCase().trim() === patientName.toLowerCase().trim()
+            ) || profiles[0]
+          : profiles[0];
+        if (!patientName) patientName = matched.name || matched.patientName;
+        if (!registrationId) registrationId = matched.regId || matched.registrationId;
+        if (!branch) branch = matched.branch;
+      }
+    }
+
     if (!patientName || !phone) {
       return NextResponse.json(
-        { success: false, error: "Patient name and phone are required" },
+        { success: false, error: "Patient name and phone number are required" },
         { status: 400 }
       );
     }
