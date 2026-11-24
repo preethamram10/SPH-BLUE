@@ -433,9 +433,9 @@ export default function AdminLoginActivityPage() {
                     <tr>
                       <td colSpan={7} className="py-12 text-center space-y-2">
                         <History className="w-8 h-8 text-slate-300 mx-auto" />
-                        <p className="font-bold text-slate-700">No login activity records found</p>
+                        <p className="font-bold text-slate-700">No real-time login activity records found</p>
                         <p className="text-slate-400 text-[11px]">
-                          Try adjusting your role or branch filters.
+                          Real-time sessions will appear here automatically when Reception, Staff, or HR log in.
                         </p>
                       </td>
                     </tr>

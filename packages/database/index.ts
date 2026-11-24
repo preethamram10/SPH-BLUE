@@ -9132,138 +9132,29 @@ function getLoginActivityCachePath(): string {
   return path.join(rootCache, "login_activity_store.json");
 }
 
-function generateInitialSeedActivities(): LoginActivityRecord[] {
-  const now = Date.now();
-  const seedList: LoginActivityRecord[] = [
-    {
-      id: "log-seed-1",
-      userId: "reception-kphb",
-      userName: "Kphb Branch (Reception)",
-      userRole: "RECEPTION",
-      phone: "9121111666",
-      branchName: "KPHB Branch",
-      platform: "WEB",
-      deviceInfo: "Chrome 122 / Windows",
-      ipAddress: "129.121.170.129",
-      loginTimeIso: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-      loginTimeIst: formatTo12HourIST(new Date(now - 3 * 60 * 60 * 1000)),
-      logoutTimeIso: null,
-      logoutTimeIst: null,
-      status: "ACTIVE",
-      duration: calculateDurationIST(new Date(now - 3 * 60 * 60 * 1000).toISOString(), null),
-      createdAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "log-seed-2",
-      userId: "staff-swathi",
-      userName: "Swathi Reddy",
-      userRole: "STAFF",
-      phone: "9876543210",
-      branchName: "KPHB Branch",
-      platform: "STAFF_APP",
-      deviceInfo: "Android 14 / Samsung Galaxy",
-      ipAddress: "49.207.195.42",
-      loginTimeIso: new Date(now - 4 * 60 * 60 * 1000).toISOString(),
-      loginTimeIst: formatTo12HourIST(new Date(now - 4 * 60 * 60 * 1000)),
-      logoutTimeIso: null,
-      logoutTimeIst: null,
-      status: "ACTIVE",
-      duration: calculateDurationIST(new Date(now - 4 * 60 * 60 * 1000).toISOString(), null),
-      createdAt: new Date(now - 4 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(now - 4 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "log-seed-3",
-      userId: "hr-admin-1",
-      userName: "HR Operations",
-      userRole: "HR",
-      phone: "9876500001",
-      branchName: "All Branches",
-      platform: "WEB",
-      deviceInfo: "Chrome 122 / Mac OS",
-      ipAddress: "129.121.170.129",
-      loginTimeIso: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
-      loginTimeIst: formatTo12HourIST(new Date(now - 5 * 60 * 60 * 1000)),
-      logoutTimeIso: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
-      logoutTimeIst: formatTo12HourIST(new Date(now - 1 * 60 * 60 * 1000)),
-      status: "LOGGED_OUT",
-      duration: calculateDurationIST(
-        new Date(now - 5 * 60 * 60 * 1000).toISOString(),
-        new Date(now - 1 * 60 * 60 * 1000).toISOString()
-      ),
-      createdAt: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "log-seed-4",
-      userId: "reception-nalla",
-      userName: "Nallagandla Branch (Reception)",
-      userRole: "RECEPTION",
-      phone: "9121111777",
-      branchName: "Nallagandla Branch",
-      platform: "STAFF_APP",
-      deviceInfo: "iOS 17 / iPhone 15",
-      ipAddress: "49.207.210.15",
-      loginTimeIso: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
-      loginTimeIst: formatTo12HourIST(new Date(now - 8 * 60 * 60 * 1000)),
-      logoutTimeIso: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-      logoutTimeIst: formatTo12HourIST(new Date(now - 2 * 60 * 60 * 1000)),
-      status: "LOGGED_OUT",
-      duration: calculateDurationIST(
-        new Date(now - 8 * 60 * 60 * 1000).toISOString(),
-        new Date(now - 2 * 60 * 60 * 1000).toISOString()
-      ),
-      createdAt: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: "log-seed-5",
-      userId: "staff-naresh",
-      userName: "Naresh Kumar",
-      userRole: "STAFF",
-      phone: "9848022338",
-      branchName: "Chandanagar Branch",
-      platform: "STAFF_APP",
-      deviceInfo: "Android 13 / Redmi Note",
-      ipAddress: "157.48.188.76",
-      loginTimeIso: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
-      loginTimeIst: formatTo12HourIST(new Date(now - 24 * 60 * 60 * 1000)),
-      logoutTimeIso: new Date(now - 16 * 60 * 60 * 1000).toISOString(),
-      logoutTimeIst: formatTo12HourIST(new Date(now - 16 * 60 * 60 * 1000)),
-      status: "LOGGED_OUT",
-      duration: calculateDurationIST(
-        new Date(now - 24 * 60 * 60 * 1000).toISOString(),
-        new Date(now - 16 * 60 * 60 * 1000).toISOString()
-      ),
-      createdAt: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(now - 16 * 60 * 60 * 1000).toISOString(),
-    },
-  ];
-
-  return seedList;
-}
-
 function loadLoginActivityFromDisk(): LoginActivityRecord[] {
   try {
     const file = getLoginActivityCachePath();
     if (fs.existsSync(file)) {
       const content = fs.readFileSync(file, "utf-8");
       const parsed = JSON.parse(content);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        // Strictly real-time: filter out any mock/seed records
+        return parsed.filter((r) => r && r.id && !r.id.startsWith("log-seed-"));
+      }
     }
   } catch (err) {
     console.warn("Failed to read login activity store:", err);
   }
-  const initial = generateInitialSeedActivities();
-  saveLoginActivityToDisk(initial);
-  return initial;
+  return [];
 }
 
 function saveLoginActivityToDisk(data: LoginActivityRecord[]): void {
   try {
     const file = getLoginActivityCachePath();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf-8");
+    // Strictly real-time: strip any seed records before writing
+    const cleanRealtimeData = data.filter((r) => r && r.id && !r.id.startsWith("log-seed-"));
+    fs.writeFileSync(file, JSON.stringify(cleanRealtimeData, null, 2), "utf-8");
   } catch (err) {
     console.warn("Failed to write login activity store:", err);
   }
@@ -9272,7 +9163,14 @@ function saveLoginActivityToDisk(data: LoginActivityRecord[]): void {
 function getLoginActivityStore(): LoginActivityRecord[] {
   if (!global.__sphLoginActivityStore) {
     global.__sphLoginActivityStore = loadLoginActivityFromDisk();
+  } else {
+    // Ensure any mock/seed records are removed from in-memory cache
+    global.__sphLoginActivityStore = global.__sphLoginActivityStore.filter(
+      (r) => r && r.id && !r.id.startsWith("log-seed-")
+    );
   }
+  return global.__sphLoginActivityStore;
+}
   return global.__sphLoginActivityStore;
 }
 
