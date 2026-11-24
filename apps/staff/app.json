@@ -7,6 +7,11 @@
     "icon": "./assets/images/icon.png",
     "scheme": "spiritualhomeo-staff",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/Noti icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
       "bundleIdentifier": "com.spiritualhomeo.staff",
       "icon": "./assets/images/icon.png"
@@ -43,9 +48,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/Noti icon.png",
+          "imageWidth": 200
         }
       ],
       "expo-secure-store",
