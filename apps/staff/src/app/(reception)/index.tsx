@@ -372,18 +372,8 @@ export default function ReceptionDashboard() {
   );
 
   const currentFollowUpList = useMemo(() => {
-    const list = followUpModalType === "OPTED" ? optedFollowUpAppointments : notOptedFollowUpAppointments;
-    if (!followUpModalSearch.trim()) return list;
-    const q = followUpModalSearch.toLowerCase().trim();
-    return list.filter((a) => {
-      const name = (a.patientName || a.name || "").toLowerCase();
-      const phone = (a.phone || a.phoneNumber || "").toLowerCase();
-      const regId = (a.registrationId || a.patientId || "").toLowerCase();
-      const token = String(a.token || "").toLowerCase();
-      const doc = (a.doctorName || "").toLowerCase();
-      return name.includes(q) || phone.includes(q) || regId.includes(q) || token.includes(q) || doc.includes(q);
-    });
-  }, [followUpModalType, optedFollowUpAppointments, notOptedFollowUpAppointments, followUpModalSearch]);
+    return followUpModalType === "OPTED" ? optedFollowUpAppointments : notOptedFollowUpAppointments;
+  }, [followUpModalType, optedFollowUpAppointments, notOptedFollowUpAppointments]);
 
   const optedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.optedFollowUp ?? optedFollowUpAppointments.length);
   const notOptedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.notOptedFollowUp ?? notOptedFollowUpAppointments.length);
@@ -2393,40 +2383,9 @@ export default function ReceptionDashboard() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Search Bar */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    marginHorizontal: 14,
-                    marginVertical: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    backgroundColor: "#f8fafc",
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: "#e2e8f0",
-                    gap: 8,
-                  }}
-                >
-                  <Ionicons name="search" size={14} color="#94a3b8" />
-                  <TextInput
-                    value={followUpModalSearch}
-                    onChangeText={setFollowUpModalSearch}
-                    placeholder="Search patient, phone, MRN..."
-                    placeholderTextColor="#94a3b8"
-                    style={{ flex: 1, fontSize: 12, color: "#0f172a", padding: 0 }}
-                  />
-                  {followUpModalSearch ? (
-                    <TouchableOpacity onPress={() => setFollowUpModalSearch("")}>
-                      <Ionicons name="close-circle" size={14} color="#94a3b8" />
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-
                 {/* List */}
                 <ScrollView
-                  style={{ flex: 1, paddingHorizontal: 14, marginBottom: 10 }}
+                  style={{ flex: 1, paddingHorizontal: 14, marginVertical: 10 }}
                   showsVerticalScrollIndicator={false}
                 >
                   {currentFollowUpList.length === 0 ? (
@@ -2436,31 +2395,32 @@ export default function ReceptionDashboard() {
                         No patients found
                       </Text>
                       <Text style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
-                        {followUpModalSearch
-                          ? "No matching patients found for your search."
-                          : `There are no patients in this category for ${selectedDate}.`}
+                        There are no patients in this category for {selectedDate}.
                       </Text>
                     </View>
                   ) : (
                     <View style={{ gap: 8, paddingBottom: 10 }}>
                       {currentFollowUpList.map((item, idx) => {
                         const patName = item.patientName || item.name || "Patient";
-                        const cleanPhone = (item.phoneNumber || item.phone || "").replace(/\D/g, "").slice(-10);
-                        const regId = item.registrationId || item.patientId || item.mrn || "SPH-GEN";
+                        const rawPhone = item.phoneNumber || item.phone || "";
+                        const cleanPhone = rawPhone.replace(/\D/g, "").slice(-10);
+                        const displayPhone = cleanPhone ? `+91 ${cleanPhone}` : rawPhone || "No Mobile";
+                        const regId = item.registrationId || item.patientId || item.mrn || `SPH-${item.id?.slice(0, 6) || "GEN"}`;
                         const docName = item.doctorName || "Doctor";
 
                         return (
                           <View
                             key={item.id || `fu-${idx}`}
                             style={{
-                              padding: 10,
+                              padding: 12,
                               borderRadius: 12,
                               borderWidth: 1,
                               borderColor: "#e2e8f0",
                               backgroundColor: "#ffffff",
-                              gap: 6,
+                              gap: 8,
                             }}
                           >
+                            {/* Patient Name & Token */}
                             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
                                 <View
@@ -2481,18 +2441,32 @@ export default function ReceptionDashboard() {
                                   {patName}
                                 </Text>
                               </View>
-                              <Text style={{ fontSize: 10, fontFamily: "monospace", color: "#64748b", fontWeight: "700" }}>
-                                {regId}
-                              </Text>
+                              <View
+                                style={{
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  backgroundColor: "#f8fafc",
+                                  borderRadius: 4,
+                                  borderWidth: 1,
+                                  borderColor: "#e2e8f0",
+                                }}
+                              >
+                                <Text style={{ fontSize: 10, fontFamily: "monospace", color: "#475569", fontWeight: "700" }}>
+                                  ID: {regId}
+                                </Text>
+                              </View>
                             </View>
 
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                              <Text style={{ fontSize: 11, color: "#475569" }}>
-                                👨‍⚕️ Dr. {docName}
-                              </Text>
-                              <Text style={{ fontSize: 11, color: "#94a3b8" }}>•</Text>
-                              <Text style={{ fontSize: 11, color: "#475569" }}>
-                                🕒 {item.timeSlot || "Scheduled"}
+                            {/* Mobile Phone & Doctor / Timing */}
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                <Ionicons name="call-outline" size={12} color="#0284c7" />
+                                <Text style={{ fontSize: 11, fontWeight: "700", color: "#0f172a" }}>
+                                  {displayPhone}
+                                </Text>
+                              </View>
+                              <Text style={{ fontSize: 10.5, color: "#64748b" }}>
+                                👨‍⚕️ Dr. {docName} • {item.timeSlot || "Scheduled"}
                               </Text>
                             </View>
 
@@ -2513,7 +2487,7 @@ export default function ReceptionDashboard() {
                               >
                                 <Ionicons name="calendar" size={12} color="#16a34a" />
                                 <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#166534" }}>
-                                  Next: {item.followUpDate || "Scheduled"}{" "}
+                                  Next Follow-up: {item.followUpDate || "Scheduled"}{" "}
                                   {item.followUpInterval ? `(${item.followUpInterval})` : ""}
                                 </Text>
                               </View>
@@ -2539,83 +2513,59 @@ export default function ReceptionDashboard() {
                             )}
 
                             {/* Actions Row */}
-                            <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                justifyContent: "flex-end",
-                                gap: 6,
-                                marginTop: 4,
-                                borderTopWidth: 1,
-                                borderTopColor: "#f1f5f9",
-                                paddingTop: 6,
-                              }}
-                            >
-                              {cleanPhone ? (
-                                <>
-                                  <TouchableOpacity
-                                    onPress={() => handleCallPatient(cleanPhone)}
-                                    style={{
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 5,
-                                      borderRadius: 6,
-                                      backgroundColor: "#f0f9ff",
-                                      borderWidth: 1,
-                                      borderColor: "#bae6fd",
-                                      flexDirection: "row",
-                                      alignItems: "center",
-                                      gap: 4,
-                                    }}
-                                  >
-                                    <Ionicons name="call" size={11} color={COLORS.themeBlue} />
-                                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: COLORS.themeBlue }}>
-                                      Call
-                                    </Text>
-                                  </TouchableOpacity>
-
-                                  <TouchableOpacity
-                                    onPress={() => handleWhatsAppPatient(cleanPhone, patName)}
-                                    style={{
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 5,
-                                      borderRadius: 6,
-                                      backgroundColor: "#f0fdf4",
-                                      borderWidth: 1,
-                                      borderColor: "#bbf7d0",
-                                      flexDirection: "row",
-                                      alignItems: "center",
-                                      gap: 4,
-                                    }}
-                                  >
-                                    <Ionicons name="logo-whatsapp" size={11} color="#16a34a" />
-                                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#16a34a" }}>
-                                      WhatsApp
-                                    </Text>
-                                  </TouchableOpacity>
-                                </>
-                              ) : null}
-
-                              <TouchableOpacity
-                                onPress={() => {
-                                  setFollowUpModalType(null);
-                                  openPatientFile(item);
-                                }}
+                            {cleanPhone ? (
+                              <View
                                 style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 5,
-                                  borderRadius: 6,
-                                  backgroundColor: "#f1f5f9",
                                   flexDirection: "row",
                                   alignItems: "center",
-                                  gap: 4,
+                                  justifyContent: "flex-end",
+                                  gap: 8,
+                                  borderTopWidth: 1,
+                                  borderTopColor: "#f1f5f9",
+                                  paddingTop: 6,
                                 }}
                               >
-                                <Ionicons name="document-text-outline" size={11} color="#475569" />
-                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569" }}>
-                                  Patient File
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
+                                <TouchableOpacity
+                                  onPress={() => handleCallPatient(cleanPhone)}
+                                  style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    borderRadius: 6,
+                                    backgroundColor: "#f0f9ff",
+                                    borderWidth: 1,
+                                    borderColor: "#bae6fd",
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Ionicons name="call" size={11} color={COLORS.themeBlue} />
+                                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: COLORS.themeBlue }}>
+                                    Call
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  onPress={() => handleWhatsAppPatient(cleanPhone, patName)}
+                                  style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    borderRadius: 6,
+                                    backgroundColor: "#f0fdf4",
+                                    borderWidth: 1,
+                                    borderColor: "#bbf7d0",
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Ionicons name="logo-whatsapp" size={11} color="#16a34a" />
+                                  <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#166534" }}>
+                                    WhatsApp
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : null}
                           </View>
                         );
                       })}

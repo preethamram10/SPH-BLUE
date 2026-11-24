@@ -2003,18 +2003,6 @@ export default function ReceptionDashboardPage() {
                                 <span>Schedule</span>
                               </button>
                             )}
-
-                            <Link
-                              href={`/reception/patient-file?id=${item.id}&name=${encodeURIComponent(
-                                patName
-                              )}&phone=${encodeURIComponent(cleanPhone)}&branch=${encodeURIComponent(
-                                branchName
-                              )}&registrationId=${encodeURIComponent(regId)}`}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 transition-all"
-                            >
-                              <FileText className="w-3 h-3" />
-                              <span>Patient File</span>
-                            </Link>
                           </div>
                         </div>
                       );
