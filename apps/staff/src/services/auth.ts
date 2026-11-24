@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { API_BASE_URL } from "../config/api";
+import { API_BASE_URL, FALLBACK_API_BASE_URL } from "../config/api";
 import { getBranchPhone } from "../utils/branchPhone";
 import { clearAllSessionData } from "./appSession";
 
@@ -252,6 +252,28 @@ export async function apiFetch<T = any>(
     return data;
   } catch (err: any) {
     clearTimeout(timeoutId);
+
+    // If local dev server was unreachable, fallback to live VPS
+    if (
+      !endpoint.startsWith("http") &&
+      API_BASE_URL !== FALLBACK_API_BASE_URL &&
+      (err.message?.includes("fetch failed") ||
+        err.message?.includes("unreachable") ||
+        err.message?.includes("Network request failed") ||
+        err.name === "TypeError" ||
+        err.name === "AbortError")
+    ) {
+      try {
+        const fallbackUrl = `${FALLBACK_API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+        const fbResponse = await fetch(fallbackUrl, {
+          ...options,
+          headers,
+        });
+        const fbData = await fbResponse.json();
+        if (fbResponse.ok) return fbData;
+      } catch {}
+    }
+
     if (err.name === "AbortError") {
       throw new Error("Network request timed out. Please check clinic connection and try again.");
     }

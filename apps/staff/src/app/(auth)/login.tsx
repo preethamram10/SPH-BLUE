@@ -29,7 +29,7 @@ import {
   getUserRole,
   saveSessionId,
 } from "../../services/auth";
-import { API_BASE_URL } from "../../config/api";
+import { API_BASE_URL, FALLBACK_API_BASE_URL } from "../../config/api";
 
 type TabType = "doctor_reception" | "admin_hr" | "staff" | "telecaller";
 
@@ -149,11 +149,25 @@ export default function StaffLoginScreen() {
           : activeTab === "staff"
           ? "STAFF"
           : "TELECALLER";
-      const res = await fetch(`${API_BASE_URL}/auth/validate-phone`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanNumber, role: roleToSend }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE_URL}/auth/validate-phone`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: cleanNumber, role: roleToSend }),
+        });
+      } catch (netErr: any) {
+        if (API_BASE_URL !== FALLBACK_API_BASE_URL) {
+          console.warn("Primary API unreachable, falling back to live VPS:", FALLBACK_API_BASE_URL);
+          res = await fetch(`${FALLBACK_API_BASE_URL}/auth/validate-phone`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: cleanNumber, role: roleToSend }),
+          });
+        } else {
+          throw netErr;
+        }
+      }
 
       const data = await res.json();
       if (!res.ok || !data.authorized) {
