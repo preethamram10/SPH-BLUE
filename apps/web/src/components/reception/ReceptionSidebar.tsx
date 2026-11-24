@@ -56,6 +56,20 @@ export default function ReceptionSidebar({ activePage }: ReceptionSidebarProps) 
   };
 
   const handleLogout = () => {
+    const sessionId = localStorage.getItem("session_id");
+    try {
+      fetch("/api/auth/login-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "LOGOUT",
+          sessionId,
+          userRole: "RECEPTION",
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    localStorage.removeItem("session_id");
     localStorage.removeItem("user_role");
     localStorage.removeItem("branch_id");
     localStorage.removeItem("branch_name");

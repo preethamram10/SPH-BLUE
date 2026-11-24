@@ -25,10 +25,44 @@ export async function removeUserRole(): Promise<void> {
   await SecureStore.deleteItemAsync(USER_ROLE_KEY);
 }
 
+const SESSION_ID_KEY = "spiritualhomeo_session_id";
+
+export async function saveSessionId(id: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(SESSION_ID_KEY, id);
+  } catch {}
+}
+
+export async function getSessionId(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(SESSION_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Wipe all authentication & session data on explicit user logout
  */
 export async function clearAllAuthData(): Promise<void> {
+  try {
+    const sessId = await SecureStore.getItemAsync(SESSION_ID_KEY);
+    const role = await SecureStore.getItemAsync(USER_ROLE_KEY);
+    if (sessId || role) {
+      fetch(`${API_BASE_URL}/auth/login-activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "LOGOUT",
+          sessionId: sessId || undefined,
+          userRole: role || undefined,
+        }),
+      }).catch(() => {});
+    }
+  } catch {}
+  try {
+    await SecureStore.deleteItemAsync(SESSION_ID_KEY);
+  } catch {}
   try {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
   } catch {}

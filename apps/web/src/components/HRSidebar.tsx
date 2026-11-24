@@ -30,6 +30,7 @@ import {
   Trash2,
   Image as ImageIcon,
   Truck,
+  History,
 } from "lucide-react";
 
 interface HRSidebarProps {
@@ -63,6 +64,20 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
   };
 
   const handleLogout = () => {
+    const sessionId = localStorage.getItem("session_id");
+    try {
+      fetch("/api/auth/login-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "LOGOUT",
+          sessionId,
+          userRole: "HR",
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    localStorage.removeItem("session_id");
     localStorage.removeItem("user_role");
     localStorage.removeItem("branch_id");
     localStorage.removeItem("branch_name");
@@ -113,6 +128,7 @@ export default function HRSidebar({ currentPath }: HRSidebarProps) {
         { label: "Miscellaneous Pay Cuts", href: "/hr/pay-cuts", icon: DollarSign },
         { label: "Shiprocket Logistics", href: "/hr/shiprocket", icon: Truck },
         { label: "Branch Cleaning", href: "/hr/branch-cleaning", icon: Sparkles },
+        { label: "Staff Login Activity", href: "/hr/login-activity", icon: History },
       ],
     },
     {

@@ -27,6 +27,7 @@ import {
   removeActiveBranch,
   getAuthToken,
   getUserRole,
+  saveSessionId,
 } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 
@@ -212,6 +213,27 @@ export default function StaffLoginScreen() {
           if (validatedData?.branch) {
             await saveActiveBranch(validatedData.branch);
           }
+          // Record Staff App Reception Login Activity (12-hour IST)
+          try {
+            const bName = validatedData?.branch?.name || "Clinic Branch";
+            const actRes = await fetch(`${API_BASE_URL}/auth/login-activity`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "LOGIN",
+                userId: validatedData?.branch?.id || `rec-${mobileNumber}`,
+                userName: `${bName} (Reception)`,
+                userRole: "RECEPTION",
+                phone: mobileNumber,
+                branchName: bName,
+                platform: "STAFF_APP",
+                deviceInfo: `${Platform.OS.toUpperCase()} Staff App`,
+              }),
+            });
+            const actData = await actRes.json();
+            if (actData.sessionId) await saveSessionId(actData.sessionId);
+          } catch {}
+
           router.replace("/(reception)" as any);
         }
       } else if (activeTab === "staff") {
@@ -219,6 +241,29 @@ export default function StaffLoginScreen() {
         if (validatedData?.staff || validatedData?.user) {
           await saveActiveStaff(validatedData.staff || validatedData.user);
         }
+
+        // Record Staff App User Login Activity (12-hour IST)
+        try {
+          const stName = validatedData?.staff?.name || validatedData?.user?.name || "Staff Member";
+          const bName = validatedData?.staff?.branchName || validatedData?.user?.branchName || "KPHB Branch";
+          const actRes = await fetch(`${API_BASE_URL}/auth/login-activity`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "LOGIN",
+              userId: validatedData?.staff?.id || validatedData?.user?.id || `staff-${mobileNumber}`,
+              userName: stName,
+              userRole: "STAFF",
+              phone: mobileNumber,
+              branchName: bName,
+              platform: "STAFF_APP",
+              deviceInfo: `${Platform.OS.toUpperCase()} Staff App`,
+            }),
+          });
+          const actData = await actRes.json();
+          if (actData.sessionId) await saveSessionId(actData.sessionId);
+        } catch {}
+
         router.replace("/(staff)" as any);
       } else if (activeTab === "telecaller") {
         await saveUserRole("TELECALLER");
@@ -262,6 +307,27 @@ export default function StaffLoginScreen() {
       if (cleanUser === "hr" && cleanPass === "hr@123") {
         await saveAuthToken("hr_session_token");
         await saveUserRole("HR");
+
+        // Record Staff App HR Login Activity (12-hour IST)
+        try {
+          const actRes = await fetch(`${API_BASE_URL}/auth/login-activity`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "LOGIN",
+              userId: "hr-staff-app",
+              userName: "HR Operations",
+              userRole: "HR",
+              phone: "hr",
+              branchName: "All Branches",
+              platform: "STAFF_APP",
+              deviceInfo: `${Platform.OS.toUpperCase()} Staff App`,
+            }),
+          });
+          const actData = await actRes.json();
+          if (actData.sessionId) await saveSessionId(actData.sessionId);
+        } catch {}
+
         router.replace("/(hr)" as any);
         return;
       }

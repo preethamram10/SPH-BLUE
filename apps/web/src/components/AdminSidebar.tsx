@@ -30,6 +30,7 @@ import {
   Truck,
   ChevronLeft,
   ChevronRight,
+  History,
 } from "lucide-react";
 
 interface AdminSidebarProps {
@@ -63,6 +64,20 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
   };
 
   const handleLogout = () => {
+    const sessionId = localStorage.getItem("session_id");
+    try {
+      fetch("/api/auth/login-activity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "LOGOUT",
+          sessionId,
+          userRole: "ADMIN",
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    localStorage.removeItem("session_id");
     localStorage.removeItem("user_role");
     localStorage.removeItem("branch_id");
     localStorage.removeItem("branch_name");
@@ -111,6 +126,7 @@ export default function AdminSidebar({ currentPath }: AdminSidebarProps) {
         { label: "Miscellaneous Pay Cuts", href: "/admin/pay-cuts", icon: DollarSign },
         { label: "Shiprocket Logistics", href: "/admin/shiprocket", icon: Truck },
         { label: "Branch Cleaning", href: "/admin/branch-cleaning", icon: Sparkles },
+        { label: "Staff Login Activity", href: "/admin/login-activity", icon: History },
       ],
     },
     {

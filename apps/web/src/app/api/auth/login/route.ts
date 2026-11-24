@@ -5,6 +5,7 @@ import {
   doctorScheduleService,
   employeeService,
   normalizePhone,
+  loginActivityService,
 } from "@spiritualhomeo/database";
 
 export async function POST(request: Request) {
@@ -104,9 +105,25 @@ export async function POST(request: Request) {
         })
       ).toString("base64");
 
+      let sessionId = `log-${Date.now()}`;
+      try {
+        const act = await loginActivityService.recordLogin({
+          userId: `reception-branch-${branch.id}`,
+          userName: `${branch.name} (Reception)`,
+          userRole: "RECEPTION",
+          phone: clean10,
+          branchName: branch.name,
+          platform: "STAFF_APP",
+        });
+        sessionId = act.id;
+      } catch (e) {
+        console.warn("Failed to record reception login activity:", e);
+      }
+
       return NextResponse.json({
         success: true,
         token,
+        sessionId,
         user: {
           id: `reception-branch-${branch.id}`,
           name: `${branch.name} (Reception)`,
@@ -273,9 +290,25 @@ export async function POST(request: Request) {
         })
       ).toString("base64");
 
+      let sessionId = `log-${Date.now()}`;
+      try {
+        const act = await loginActivityService.recordLogin({
+          userId,
+          userName,
+          userRole: role,
+          phone: identifier,
+          branchName: "All Branches",
+          platform: "STAFF_APP",
+        });
+        sessionId = act.id;
+      } catch (e) {
+        console.warn("Failed to record admin/hr login activity:", e);
+      }
+
       return NextResponse.json({
         success: true,
         token,
+        sessionId,
         user: {
           id: userId,
           name: userName,
@@ -324,9 +357,25 @@ export async function POST(request: Request) {
         })
       ).toString("base64");
 
+      let sessionId = `log-${Date.now()}`;
+      try {
+        const act = await loginActivityService.recordLogin({
+          userId: staffId,
+          userName: staffName,
+          userRole: "STAFF",
+          phone: clean10,
+          branchName,
+          platform: "STAFF_APP",
+        });
+        sessionId = act.id;
+      } catch (e) {
+        console.warn("Failed to record staff login activity:", e);
+      }
+
       return NextResponse.json({
         success: true,
         token,
+        sessionId,
         user: {
           id: staffId,
           name: staffName,

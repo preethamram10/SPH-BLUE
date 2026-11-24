@@ -148,10 +148,33 @@ export default function WebLoginPage() {
         localStorage.removeItem("doctor_id");
         localStorage.removeItem("is_head_doctor");
         localStorage.removeItem("doctor_category");
+        const bName = validatedData?.branch?.name || "Clinic Branch";
         if (validatedData?.branch?.name) {
           localStorage.setItem("branch_name", validatedData.branch.name);
           localStorage.setItem("branch_id", validatedData.branch.id || "");
         }
+
+        // Record Reception Web Login Activity (12-hour IST)
+        fetch("/api/auth/login-activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "LOGIN",
+            userId: validatedData?.branch?.id || `rec-${mobileNumber}`,
+            userName: `${bName} (Reception)`,
+            userRole: "RECEPTION",
+            phone: mobileNumber,
+            branchName: bName,
+            platform: "WEB",
+            deviceInfo: navigator.userAgent || "Web Browser",
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.sessionId) localStorage.setItem("session_id", d.sessionId);
+          })
+          .catch(() => {});
+
         window.location.href = "/reception/dashboard";
       } else if (returnedRole === "TELECALLER") {
         localStorage.setItem("user_role", "TELECALLER");
@@ -185,6 +208,27 @@ export default function WebLoginPage() {
       // 1. Admin Verification
       if (cleanUser === "admin" && cleanPass === "admin@123") {
         localStorage.setItem("user_role", "ADMIN");
+
+        fetch("/api/auth/login-activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "LOGIN",
+            userId: "admin-main",
+            userName: "System Admin",
+            userRole: "ADMIN",
+            phone: "admin",
+            branchName: "All Branches",
+            platform: "WEB",
+            deviceInfo: navigator.userAgent || "Web Browser",
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.sessionId) localStorage.setItem("session_id", d.sessionId);
+          })
+          .catch(() => {});
+
         window.location.href = "/admin/dashboard";
         return;
       }
@@ -192,6 +236,27 @@ export default function WebLoginPage() {
       // 2. HR Verification
       if (cleanUser === "hr" && cleanPass === "hr@123") {
         localStorage.setItem("user_role", "HR");
+
+        fetch("/api/auth/login-activity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "LOGIN",
+            userId: "hr-main",
+            userName: "HR Operations",
+            userRole: "HR",
+            phone: "hr",
+            branchName: "All Branches",
+            platform: "WEB",
+            deviceInfo: navigator.userAgent || "Web Browser",
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.sessionId) localStorage.setItem("session_id", d.sessionId);
+          })
+          .catch(() => {});
+
         window.location.href = "/hr/dashboard";
         return;
       }
