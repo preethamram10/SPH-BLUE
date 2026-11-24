@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -131,6 +132,10 @@ export default function ReceptionDashboard() {
   // Appointment Payment Modal State
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedPaymentAppt, setSelectedPaymentAppt] = useState<any>(null);
+
+  // Follow-up Opted / Not Opted Modal State
+  const [followUpModalType, setFollowUpModalType] = useState<"OPTED" | "NOT_OPTED" | null>(null);
+  const [followUpModalSearch, setFollowUpModalSearch] = useState("");
 
   // Track screen focus & AppState to halt background polling when navigated away or minimized
   const [isScreenFocused, setIsScreenFocused] = useState(true);
@@ -343,8 +348,45 @@ export default function ReceptionDashboard() {
   const inConsultationCount = isLoadingSummary && !summary ? "–" : (summary?.inConsultation ?? inConsultationAppointments.length);
   const collectFeeCount = isLoadingSummary && !summary ? "–" : (summary?.collectFee ?? collectFeeAppointments.length);
   const completedCount = isLoadingSummary && !summary ? "–" : (summary?.completed ?? completedAppointments.length);
-  const optedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.optedFollowUp ?? "–");
-  const notOptedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.notOptedFollowUp ?? "–");
+
+  // Follow-up Opted vs Not Opted Calculation
+  const isFollowUpOpted = (a: any) => {
+    if (!a) return false;
+    if (a.isFollowUpBooked || a.followUpOpted === true) return true;
+    if (a.followUpDate && typeof a.followUpDate === "string" && a.followUpDate.trim().length > 0) {
+      const interval = (a.followUpInterval || "").trim().toLowerCase();
+      if (interval !== "no follow-up" && interval !== "none" && interval !== "no_followup") {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const optedFollowUpAppointments = useMemo(
+    () => appointments.filter(isFollowUpOpted),
+    [appointments]
+  );
+  const notOptedFollowUpAppointments = useMemo(
+    () => appointments.filter((a) => !isFollowUpOpted(a)),
+    [appointments]
+  );
+
+  const currentFollowUpList = useMemo(() => {
+    const list = followUpModalType === "OPTED" ? optedFollowUpAppointments : notOptedFollowUpAppointments;
+    if (!followUpModalSearch.trim()) return list;
+    const q = followUpModalSearch.toLowerCase().trim();
+    return list.filter((a) => {
+      const name = (a.patientName || a.name || "").toLowerCase();
+      const phone = (a.phone || a.phoneNumber || "").toLowerCase();
+      const regId = (a.registrationId || a.patientId || "").toLowerCase();
+      const token = String(a.token || "").toLowerCase();
+      const doc = (a.doctorName || "").toLowerCase();
+      return name.includes(q) || phone.includes(q) || regId.includes(q) || token.includes(q) || doc.includes(q);
+    });
+  }, [followUpModalType, optedFollowUpAppointments, notOptedFollowUpAppointments, followUpModalSearch]);
+
+  const optedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.optedFollowUp ?? optedFollowUpAppointments.length);
+  const notOptedFollowUpCount = isLoadingSummary && !summary ? "–" : (summary?.notOptedFollowUp ?? notOptedFollowUpAppointments.length);
 
   // Displayed Appointments for Single Virtualized FlatList
   const displayedAppointments = useMemo(() => {
@@ -1157,7 +1199,10 @@ export default function ReceptionDashboard() {
 
             <TouchableOpacity
               style={styles.subStatCard}
-              onPress={() => router.push("/(reception)/follow-ups" as any)}
+              onPress={() => {
+                setFollowUpModalType("OPTED");
+                setFollowUpModalSearch("");
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.subStatBlue}>{optedFollowUpCount}</Text>
@@ -1166,7 +1211,10 @@ export default function ReceptionDashboard() {
 
             <TouchableOpacity
               style={styles.subStatCard}
-              onPress={() => router.push("/(reception)/follow-ups" as any)}
+              onPress={() => {
+                setFollowUpModalType("NOT_OPTED");
+                setFollowUpModalSearch("");
+              }}
               activeOpacity={0.8}
             >
               <Text style={styles.subStatSlate}>{notOptedFollowUpCount}</Text>
@@ -2207,6 +2255,409 @@ export default function ReceptionDashboard() {
           }
         }}
       />
+
+      {/* FOLLOW-UP OPTED / NOT OPTED MODAL */}
+      <Modal visible={!!followUpModalType} transparent animationType="slide">
+        <TouchableWithoutFeedback onPress={() => setFollowUpModalType(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  styles.modalContainer,
+                  { maxHeight: Dimensions.get("window").height * 0.82, width: "94%", maxWidth: 480, padding: 0, overflow: "hidden" },
+                ]}
+              >
+                {/* Header */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#f1f5f9",
+                    backgroundColor: "#f8fafc",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        backgroundColor: followUpModalType === "OPTED" ? "#f0fdf4" : "#f1f5f9",
+                        borderWidth: 1,
+                        borderColor: followUpModalType === "OPTED" ? "#bbf7d0" : "#e2e8f0",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons
+                        name={followUpModalType === "OPTED" ? "checkmark-circle" : "alert-circle"}
+                        size={20}
+                        color={followUpModalType === "OPTED" ? "#16a34a" : "#64748b"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "800", color: "#0f172a" }}>
+                          {followUpModalType === "OPTED" ? "Follow-up Opted" : "Follow-up Not Opted"}
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            borderRadius: 10,
+                            backgroundColor: followUpModalType === "OPTED" ? "#dcfce7" : "#e2e8f0",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: "800",
+                              color: followUpModalType === "OPTED" ? "#15803d" : "#475569",
+                            }}
+                          >
+                            {currentFollowUpList.length}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                        {selectedDate} • {branchShortName}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setFollowUpModalType(null)}
+                    style={{ padding: 6, borderRadius: 20, backgroundColor: "#f1f5f9" }}
+                  >
+                    <Ionicons name="close" size={18} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Subheader: Opted / Not Opted Tabs */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    paddingHorizontal: 14,
+                    paddingTop: 10,
+                    paddingBottom: 6,
+                    gap: 8,
+                    backgroundColor: "#ffffff",
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => setFollowUpModalType("OPTED")}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 7,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: followUpModalType === "OPTED" ? "#0284c7" : "#f1f5f9",
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: "800",
+                        color: followUpModalType === "OPTED" ? "#ffffff" : "#64748b",
+                      }}
+                    >
+                      Opted ({optedFollowUpAppointments.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setFollowUpModalType("NOT_OPTED")}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 7,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      backgroundColor: followUpModalType === "NOT_OPTED" ? "#475569" : "#f1f5f9",
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: "800",
+                        color: followUpModalType === "NOT_OPTED" ? "#ffffff" : "#64748b",
+                      }}
+                    >
+                      Not Opted ({notOptedFollowUpAppointments.length})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Search Bar */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginHorizontal: 14,
+                    marginVertical: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    backgroundColor: "#f8fafc",
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#e2e8f0",
+                    gap: 8,
+                  }}
+                >
+                  <Ionicons name="search" size={14} color="#94a3b8" />
+                  <TextInput
+                    value={followUpModalSearch}
+                    onChangeText={setFollowUpModalSearch}
+                    placeholder="Search patient, phone, MRN..."
+                    placeholderTextColor="#94a3b8"
+                    style={{ flex: 1, fontSize: 12, color: "#0f172a", padding: 0 }}
+                  />
+                  {followUpModalSearch ? (
+                    <TouchableOpacity onPress={() => setFollowUpModalSearch("")}>
+                      <Ionicons name="close-circle" size={14} color="#94a3b8" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* List */}
+                <ScrollView
+                  style={{ flex: 1, paddingHorizontal: 14, marginBottom: 10 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {currentFollowUpList.length === 0 ? (
+                    <View style={{ padding: 32, alignItems: "center", gap: 6 }}>
+                      <Ionicons name="calendar-outline" size={32} color="#cbd5e1" />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569" }}>
+                        No patients found
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
+                        {followUpModalSearch
+                          ? "No matching patients found for your search."
+                          : `There are no patients in this category for ${selectedDate}.`}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8, paddingBottom: 10 }}>
+                      {currentFollowUpList.map((item, idx) => {
+                        const patName = item.patientName || item.name || "Patient";
+                        const cleanPhone = (item.phoneNumber || item.phone || "").replace(/\D/g, "").slice(-10);
+                        const regId = item.registrationId || item.patientId || item.mrn || "SPH-GEN";
+                        const docName = item.doctorName || "Doctor";
+
+                        return (
+                          <View
+                            key={item.id || `fu-${idx}`}
+                            style={{
+                              padding: 10,
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: "#e2e8f0",
+                              backgroundColor: "#ffffff",
+                              gap: 6,
+                            }}
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                                <View
+                                  style={{
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 2,
+                                    backgroundColor: "#f0f9ff",
+                                    borderRadius: 6,
+                                    borderWidth: 1,
+                                    borderColor: "#bae6fd",
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 10, fontWeight: "800", color: COLORS.themeBlue }}>
+                                    Token #{item.token || idx + 1}
+                                  </Text>
+                                </View>
+                                <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a", flex: 1 }} numberOfLines={1}>
+                                  {patName}
+                                </Text>
+                              </View>
+                              <Text style={{ fontSize: 10, fontFamily: "monospace", color: "#64748b", fontWeight: "700" }}>
+                                {regId}
+                              </Text>
+                            </View>
+
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <Text style={{ fontSize: 11, color: "#475569" }}>
+                                👨‍⚕️ Dr. {docName}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: "#94a3b8" }}>•</Text>
+                              <Text style={{ fontSize: 11, color: "#475569" }}>
+                                🕒 {item.timeSlot || "Scheduled"}
+                              </Text>
+                            </View>
+
+                            {/* Status Info */}
+                            {followUpModalType === "OPTED" ? (
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  backgroundColor: "#f0fdf4",
+                                  borderWidth: 1,
+                                  borderColor: "#bbf7d0",
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 4,
+                                  borderRadius: 8,
+                                }}
+                              >
+                                <Ionicons name="calendar" size={12} color="#16a34a" />
+                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#166534" }}>
+                                  Next: {item.followUpDate || "Scheduled"}{" "}
+                                  {item.followUpInterval ? `(${item.followUpInterval})` : ""}
+                                </Text>
+                              </View>
+                            ) : (
+                              <View
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  backgroundColor: "#f8fafc",
+                                  borderWidth: 1,
+                                  borderColor: "#e2e8f0",
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 4,
+                                  borderRadius: 8,
+                                }}
+                              >
+                                <Ionicons name="information-circle-outline" size={12} color="#94a3b8" />
+                                <Text style={{ fontSize: 10.5, fontWeight: "600", color: "#64748b" }}>
+                                  No follow-up scheduled for this visit
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* Actions Row */}
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                gap: 6,
+                                marginTop: 4,
+                                borderTopWidth: 1,
+                                borderTopColor: "#f1f5f9",
+                                paddingTop: 6,
+                              }}
+                            >
+                              {cleanPhone ? (
+                                <>
+                                  <TouchableOpacity
+                                    onPress={() => handleCallPatient(cleanPhone)}
+                                    style={{
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 5,
+                                      borderRadius: 6,
+                                      backgroundColor: "#f0f9ff",
+                                      borderWidth: 1,
+                                      borderColor: "#bae6fd",
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 4,
+                                    }}
+                                  >
+                                    <Ionicons name="call" size={11} color={COLORS.themeBlue} />
+                                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: COLORS.themeBlue }}>
+                                      Call
+                                    </Text>
+                                  </TouchableOpacity>
+
+                                  <TouchableOpacity
+                                    onPress={() => handleWhatsAppPatient(cleanPhone, patName)}
+                                    style={{
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 5,
+                                      borderRadius: 6,
+                                      backgroundColor: "#f0fdf4",
+                                      borderWidth: 1,
+                                      borderColor: "#bbf7d0",
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 4,
+                                    }}
+                                  >
+                                    <Ionicons name="logo-whatsapp" size={11} color="#16a34a" />
+                                    <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#16a34a" }}>
+                                      WhatsApp
+                                    </Text>
+                                  </TouchableOpacity>
+                                </>
+                              ) : null}
+
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setFollowUpModalType(null);
+                                  openPatientFile(item);
+                                }}
+                                style={{
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 5,
+                                  borderRadius: 6,
+                                  backgroundColor: "#f1f5f9",
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 4,
+                                }}
+                              >
+                                <Ionicons name="document-text-outline" size={11} color="#475569" />
+                                <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#475569" }}>
+                                  Patient File
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </ScrollView>
+
+                {/* Footer */}
+                <View
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderTopWidth: 1,
+                    borderTopColor: "#f1f5f9",
+                    backgroundColor: "#f8fafc",
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ fontSize: 11, color: "#64748b" }}>
+                    Showing {currentFollowUpList.length} patient(s)
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setFollowUpModalType(null)}
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: "#e2e8f0",
+                    }}
+                  >
+                    <Text style={{ fontSize: 11.5, fontWeight: "700", color: "#334155" }}>
+                      Close
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
