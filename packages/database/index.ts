@@ -9171,8 +9171,6 @@ function getLoginActivityStore(): LoginActivityRecord[] {
   }
   return global.__sphLoginActivityStore;
 }
-  return global.__sphLoginActivityStore;
-}
 
 export const loginActivityService = {
   async getAllActivities(filter?: {
