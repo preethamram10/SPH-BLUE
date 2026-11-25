@@ -2210,6 +2210,60 @@ export const patientService = {
   },
 
   /**
+   * Returns ALL profiles (active + soft-deleted) sharing this mobile number
+   */
+  async getAllProfilesByPhone(phone: string): Promise<Array<PatientRecord & { appointmentCount: number; lastVisit?: string }>> {
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone || cleanPhone.length < 10) return [];
+    const last10 = cleanPhone.slice(-10);
+
+    const store = getPatientsStore();
+    const appts = getAppointmentsStore();
+    const matchedPatients = store.filter((p) => normalizePhone(p.phone || "").slice(-10) === last10);
+
+    const resultsMap = new Map<string, PatientRecord & { appointmentCount: number; lastVisit?: string }>();
+
+    for (const patient of matchedPatients) {
+      const reg = (patient.regId || "").trim().toUpperCase();
+      const pAppointments = appts.filter(
+        (a) =>
+          (a.registrationId || "").trim().toUpperCase() === reg ||
+          (normalizePhone(a.phone || "").slice(-10) === last10 &&
+            normalizePatientName(a.patientName || "") === normalizePatientName(patient.name || ""))
+      );
+      const lastAppt = pAppointments[0];
+      resultsMap.set(reg || patient.id, {
+        ...patient,
+        appointmentCount: pAppointments.length,
+        lastVisit: lastAppt ? `${lastAppt.appointmentDate} (${lastAppt.doctorName})` : undefined,
+      });
+    }
+
+    // Also include any distinct registrationIds found in appointments for this phone that may not be in patients_store
+    for (const a of appts) {
+      if (normalizePhone(a.phone || "").slice(-10) !== last10) continue;
+      const reg = (a.registrationId || "").trim().toUpperCase();
+      if (!reg || resultsMap.has(reg)) continue;
+      const pAppointments = appts.filter((x) => (x.registrationId || "").trim().toUpperCase() === reg);
+      resultsMap.set(reg, {
+        id: a.id,
+        regId: reg,
+        name: a.patientName || "Patient",
+        phone: a.phone || last10,
+        branch: a.branch || "Kphb Branch",
+        diseases: a.diseases || "",
+        isDeleted: !!a.isDeleted,
+        deletedAt: a.deletedAt,
+        createdAt: a.createdAt || new Date().toISOString(),
+        appointmentCount: pAppointments.length,
+        lastVisit: `${a.appointmentDate} (${a.doctorName})`,
+      });
+    }
+
+    return Array.from(resultsMap.values());
+  },
+
+  /**
    * Returns all active profiles sharing this mobile number
    */
   async getProfilesByPhone(phone: string): Promise<Array<PatientRecord & { appointmentCount: number; lastVisit?: string }>> {
@@ -2448,20 +2502,127 @@ export const patientService = {
   },
 
   /**
-   * Permanently purges a deleted profile
+   * Permanently purges a complete patient profile from all stores and PostgreSQL DB
    */
   async permanentlyDeletePatientProfile(regId: string): Promise<boolean> {
     const cleanReg = regId.trim().toUpperCase();
+    if (!cleanReg) return false;
+    let deletedAny = false;
+
+    // 1. Remove from patients_store
     let store = getPatientsStore();
     const initialLen = store.length;
-    store = store.filter((p) => p.regId.trim().toUpperCase() !== cleanReg);
-
+    store = store.filter((p) => (p.regId || "").trim().toUpperCase() !== cleanReg);
     if (store.length !== initialLen) {
       global.__sphPatientsStore = store;
       savePatientsToDisk(store);
-      return true;
+      deletedAny = true;
     }
-    return false;
+
+    // 2. Remove associated appointments
+    try {
+      let appts = getAppointmentsStore();
+      const initialApptLen = appts.length;
+      appts = appts.filter((a) => (a.registrationId || "").trim().toUpperCase() !== cleanReg);
+      if (appts.length !== initialApptLen) {
+        global.__sphAppointmentsStore = appts;
+        saveAppointmentsToDisk(appts);
+        deletedAny = true;
+      }
+    } catch (_) {}
+
+    // 3. Remove associated package members
+    try {
+      let pkgs = getPackageMembersStore();
+      const initialPkgLen = pkgs.length;
+      pkgs = pkgs.filter((pm) => (pm.registrationId || "").trim().toUpperCase() !== cleanReg);
+      if (pkgs.length !== initialPkgLen) {
+        global.__sphPackageMembersStore = pkgs;
+        savePackageMembersToDisk(pkgs);
+        deletedAny = true;
+      }
+    } catch (_) {}
+
+    // 4. Remove associated pay later records
+    try {
+      let payLater = getPayLaterStore();
+      const initialPlLen = payLater.length;
+      payLater = payLater.filter(
+        (pl) => (pl.registrationId || pl.patientId || "").trim().toUpperCase() !== cleanReg
+      );
+      if (payLater.length !== initialPlLen) {
+        global.__sphPayLaterStore = payLater;
+        savePayLaterToDisk(payLater);
+        deletedAny = true;
+      }
+    } catch (_) {}
+
+    // 5. Remove from PostgreSQL via Prisma
+    try {
+      const dbProfiles = await prisma.patientProfile.findMany({
+        where: { mrn: { equals: cleanReg, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (dbProfiles.length > 0) {
+        const ids = dbProfiles.map((p) => p.id);
+        await prisma.consultation.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.invoice.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.appointment.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.patientProfile.deleteMany({ where: { id: { in: ids } } });
+        deletedAny = true;
+      }
+    } catch (_) {}
+
+    return deletedAny;
+  },
+
+  /**
+   * Permanently deletes ALL profiles created on a mobile number from all stores and DB
+   */
+  async permanentlyDeleteProfilesByPhone(phone: string): Promise<{ deletedCount: number; deletedRegIds: string[] }> {
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return { deletedCount: 0, deletedRegIds: [] };
+    }
+    const last10 = cleanPhone.slice(-10);
+
+    const profiles = await this.getAllProfilesByPhone(last10);
+    const regIds = Array.from(
+      new Set(profiles.map((p) => (p.regId || "").trim().toUpperCase()).filter(Boolean))
+    );
+
+    let deletedCount = 0;
+    for (const regId of regIds) {
+      const ok = await this.permanentlyDeletePatientProfile(regId);
+      if (ok) deletedCount++;
+    }
+
+    // Also remove any remaining phone-matched patients without regId in patients_store
+    let store = getPatientsStore();
+    const beforeStoreLen = store.length;
+    store = store.filter((p) => normalizePhone(p.phone || "").slice(-10) !== last10);
+    if (store.length !== beforeStoreLen) {
+      global.__sphPatientsStore = store;
+      savePatientsToDisk(store);
+      deletedCount += beforeStoreLen - store.length;
+    }
+
+    // Also clean up any PostgreSQL PatientProfile matching phone
+    try {
+      const dbProfiles = await prisma.patientProfile.findMany({
+        where: { phone: { endsWith: last10 } },
+        select: { id: true },
+      });
+      if (dbProfiles.length > 0) {
+        const ids = dbProfiles.map((p) => p.id);
+        await prisma.consultation.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.invoice.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.appointment.deleteMany({ where: { patientId: { in: ids } } }).catch(() => {});
+        await prisma.patientProfile.deleteMany({ where: { id: { in: ids } } });
+      }
+    } catch (_) {}
+
+    return { deletedCount: Math.max(deletedCount, regIds.length), deletedRegIds: regIds };
   },
 
   /**
@@ -2545,8 +2706,8 @@ export const patientService = {
     if (branch && branch.toLowerCase() !== "all") {
       const cleanB = branch.toLowerCase().replace(/branch/gi, "").trim();
       deleted = deleted.filter((p) => {
-        const pb = p.branch.toLowerCase().replace(/branch/gi, "").trim();
-        return pb === cleanB || cleanB.includes(pb) || pb.includes(cleanB);
+        const pb = (p.branch || "").toLowerCase().replace(/branch/gi, "").trim();
+        return pb === cleanB || (pb.length > 0 && (cleanB.includes(pb) || pb.includes(cleanB)));
       });
     }
 
@@ -2554,9 +2715,9 @@ export const patientService = {
       const q = searchQuery.trim().toLowerCase();
       deleted = deleted.filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.phone.includes(q) ||
-          p.regId.toLowerCase().includes(q)
+          (p.name || "").toLowerCase().includes(q) ||
+          (p.phone || "").includes(q) ||
+          (p.regId || "").toLowerCase().includes(q)
       );
     }
 

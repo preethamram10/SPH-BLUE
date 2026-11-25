@@ -65,6 +65,26 @@ export default function DeleteProfilesPage() {
   const [profiles, setProfiles] = useState<DeletedProfile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
 
+  // Mobile Number Lookup & Delete State
+  const [phoneLookupQuery, setPhoneLookupQuery] = useState("");
+  const [lookupProfiles, setLookupProfiles] = useState<
+    Array<{
+      id: string;
+      regId: string;
+      name: string;
+      phone: string;
+      branch: string;
+      isDeleted?: boolean;
+      deletedAt?: string;
+      createdAt?: string;
+      appointmentCount?: number;
+      lastVisit?: string;
+    }>
+  >([]);
+  const [isLookingUpPhone, setIsLookingUpPhone] = useState(false);
+  const [hasSearchedPhone, setHasSearchedPhone] = useState(false);
+  const [searchedPhoneDisplay, setSearchedPhoneDisplay] = useState("");
+
   // Deleted Appointments State (48-hour retention)
   const [deletedAppointments, setDeletedAppointments] = useState<DeletedAppointment[]>([]);
   const [monthlyStats, setMonthlyStats] = useState<{
@@ -206,7 +226,7 @@ export default function DeleteProfilesPage() {
   };
 
   const handlePermanentDeleteProfile = async (regId: string, name: string) => {
-    if (!confirm(`DANGER: Permanently delete profile "${name}" (${regId})? Its ID sequence will NEVER be reassigned.`)) return;
+    if (!confirm(`DANGER: Permanently delete profile "${name}" (${regId}) from the database? This cannot be undone and removes the complete profile.`)) return;
     try {
       const res = await fetch("/api/admin/deleted-profiles", {
         method: "POST",
@@ -215,10 +235,69 @@ export default function DeleteProfilesPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setFeedback({ type: "success", message: `Profile "${name}" (${regId}) permanently purged.` });
+        setFeedback({ type: "success", message: `Profile "${name}" (${regId}) permanently deleted from database.` });
+        setLookupProfiles((prev) => prev.filter((p) => p.regId !== regId));
         fetchDeletedProfiles();
       } else {
         setFeedback({ type: "error", message: data.error || "Failed to purge profile." });
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Network error. Please try again." });
+    }
+  };
+
+  // Lookup all profiles by mobile number
+  const handleLookupByPhone = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const digits = phoneLookupQuery.replace(/\D/g, "").slice(-10);
+    if (digits.length < 10) {
+      setFeedback({ type: "error", message: "Please enter a valid 10-digit mobile number." });
+      return;
+    }
+    setIsLookingUpPhone(true);
+    setHasSearchedPhone(true);
+    setSearchedPhoneDisplay(digits);
+    try {
+      const res = await fetch(`/api/admin/deleted-profiles?lookupPhone=${encodeURIComponent(digits)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.lookupProfiles)) {
+        setLookupProfiles(data.lookupProfiles);
+      } else {
+        setLookupProfiles([]);
+      }
+    } catch {
+      setFeedback({ type: "error", message: "Failed to search profiles for this mobile number." });
+      setLookupProfiles([]);
+    } finally {
+      setIsLookingUpPhone(false);
+    }
+  };
+
+  const handleDeleteAllProfilesByPhone = async () => {
+    if (!searchedPhoneDisplay || lookupProfiles.length === 0) return;
+    if (
+      !confirm(
+        `DANGER: Permanently delete ALL ${lookupProfiles.length} profile(s) created on mobile number ${searchedPhoneDisplay} from the database? This removes all complete profiles and cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/deleted-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "PERMANENT_DELETE_BY_PHONE", phone: searchedPhoneDisplay }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFeedback({
+          type: "success",
+          message: `Permanently deleted ${data.deletedCount || lookupProfiles.length} profile(s) for mobile number ${searchedPhoneDisplay} from database.`,
+        });
+        setLookupProfiles([]);
+        fetchDeletedProfiles();
+      } else {
+        setFeedback({ type: "error", message: data.error || "Failed to delete profiles." });
       }
     } catch {
       setFeedback({ type: "error", message: "Network error. Please try again." });
@@ -348,41 +427,6 @@ export default function DeleteProfilesPage() {
             </button>
           </div>
 
-          {/* TAB SWITCHER */}
-          <div className="flex items-center p-1.5 bg-slate-200/80 rounded-2xl w-fit shadow-xs">
-            <button
-              type="button"
-              onClick={() => setActiveTab("profiles")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                activeTab === "profiles"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <User className="w-4 h-4 text-[#0284c7]" />
-              <span>Deleted Patient Profiles (30 Days)</span>
-              <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-black">
-                {profiles.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("appointments")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                activeTab === "appointments"
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <Calendar className="w-4 h-4 text-rose-500" />
-              <span>Deleted Appointments (48 Hours)</span>
-              <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-black">
-                {deletedAppointments.length}
-              </span>
-            </button>
-          </div>
-
           {/* FEEDBACK BANNER */}
           {feedback && (
             <div
@@ -410,16 +454,157 @@ export default function DeleteProfilesPage() {
             </div>
           )}
 
-          {/* TAB 1: PROFILES GUARDRAIL */}
+          {/* TAB 1: PROFILES GUARDRAIL & MOBILE LOOKUP DELETE */}
           {activeTab === "profiles" && (
-            <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/60 flex items-start gap-3">
-              <ShieldAlert className="w-5 h-5 text-[#0284c7] shrink-0 mt-0.5" />
-              <div className="text-xs text-sky-950 leading-relaxed">
-                <p className="font-bold">30-Day Auto-Purge &amp; Sequence Protection Guardrail</p>
-                <p className="text-sky-800 mt-0.5">
-                  Profiles deleted from reception remain recoverable here for <strong>30 days</strong>. After 30 days, expired records are automatically purged permanently. 
-                  Even after deletion or permanent purge, <strong>the Patient Registration ID is never reused or reassigned</strong> to any other patient.
-                </p>
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl border border-sky-200 bg-sky-50/60 flex items-start gap-3">
+                <ShieldAlert className="w-5 h-5 text-[#0284c7] shrink-0 mt-0.5" />
+                <div className="text-xs text-sky-950 leading-relaxed">
+                  <p className="font-bold">30-Day Auto-Purge &amp; Sequence Protection Guardrail</p>
+                  <p className="text-sky-800 mt-0.5">
+                    Profiles deleted from reception remain recoverable here for <strong>30 days</strong>. After 30 days, expired records are automatically purged permanently. 
+                    Even after deletion or permanent purge, <strong>the Patient Registration ID is never reused or reassigned</strong> to any other patient.
+                  </p>
+                </div>
+              </div>
+
+              {/* Lookup All Profiles Created on Mobile Number & Delete */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-rose-600" />
+                      <span>Find &amp; Permanently Delete Profiles by Mobile Number</span>
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Enter a patient mobile number to view all profiles created on that number, and permanently delete a specific profile or all profiles from the database.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleLookupByPhone} className="flex flex-wrap items-center gap-3">
+                  <div className="relative flex-1 min-w-[240px] max-w-md">
+                    <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Enter 10-digit mobile number (e.g. 9876543210)..."
+                      value={phoneLookupQuery}
+                      onChange={(e) => setPhoneLookupQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50/60 focus:outline-none focus:border-[#0284c7] focus:bg-white"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLookingUpPhone}
+                    className="px-4 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>{isLookingUpPhone ? "Searching..." : "Find All Profiles"}</span>
+                  </button>
+                  {hasSearchedPhone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneLookupQuery("");
+                        setLookupProfiles([]);
+                        setHasSearchedPhone(false);
+                        setSearchedPhoneDisplay("");
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
+
+                {hasSearchedPhone && (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-extrabold text-slate-800">
+                        {isLookingUpPhone
+                          ? "Searching profiles..."
+                          : `Found ${lookupProfiles.length} profile(s) on +91 ${searchedPhoneDisplay}`}
+                      </span>
+                      {!isLookingUpPhone && lookupProfiles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteAllProfilesByPhone}
+                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete All Profiles ({lookupProfiles.length}) from DB</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {!isLookingUpPhone && lookupProfiles.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-500 font-medium">
+                        No patient profiles found for mobile number <strong>{searchedPhoneDisplay}</strong>.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-white border-b border-slate-100 text-[10.5px] font-extrabold text-slate-500 uppercase">
+                              <th className="py-2.5 px-4">Patient Name &amp; ID</th>
+                              <th className="py-2.5 px-4">Mobile</th>
+                              <th className="py-2.5 px-4">Branch</th>
+                              <th className="py-2.5 px-4">Status &amp; Visits</th>
+                              <th className="py-2.5 px-4 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {lookupProfiles.map((lp) => (
+                              <tr key={lp.regId || lp.id} className="hover:bg-slate-50/70">
+                                <td className="py-2.5 px-4">
+                                  <div className="font-extrabold text-slate-900">{lp.name}</div>
+                                  <div className="font-mono text-[11px] font-bold text-[#0284c7] mt-0.5">
+                                    {lp.regId}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4 font-bold text-slate-700">{lp.phone}</td>
+                                <td className="py-2.5 px-4">
+                                  <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px]">
+                                    {lp.branch}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                        lp.isDeleted
+                                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                          : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      }`}
+                                    >
+                                      {lp.isDeleted ? "In Trash" : "Active"}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-medium">
+                                      {lp.appointmentCount ?? 0} visit(s)
+                                    </span>
+                                  </div>
+                                  {lp.lastVisit && (
+                                    <div className="text-[10px] text-slate-400 mt-0.5">Last: {lp.lastVisit}</div>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-4 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePermanentDeleteProfile(lp.regId, lp.name)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete Permanently</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

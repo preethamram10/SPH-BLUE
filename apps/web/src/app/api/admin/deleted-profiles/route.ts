@@ -4,6 +4,13 @@ import { patientService } from "@spiritualhomeo/database";
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const lookupPhone = searchParams.get("lookupPhone")?.trim();
+
+    if (lookupPhone) {
+      const lookupProfiles = await patientService.getAllProfilesByPhone(lookupPhone);
+      return NextResponse.json({ success: true, lookupProfiles });
+    }
+
     const branch = searchParams.get("branch") || undefined;
     const search = searchParams.get("search") || undefined;
     const sortBy = (searchParams.get("sortBy") as "newest" | "oldest") || "newest";
@@ -21,7 +28,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, regId } = body;
+    const { action, regId, phone } = body;
+
+    if (action === "PERMANENT_DELETE_BY_PHONE") {
+      if (!phone) {
+        return NextResponse.json({ success: false, error: "phone is required" }, { status: 400 });
+      }
+      const result = await patientService.permanentlyDeleteProfilesByPhone(phone);
+      return NextResponse.json({ success: true, ...result });
+    }
 
     if (!regId) {
       return NextResponse.json({ success: false, error: "regId is required" }, { status: 400 });
