@@ -81,8 +81,15 @@ export interface MultiPayMember {
   includeMedicineFee: boolean;
   medicineDuration: string;
   medicineItems: MedicineItem[];
+  showDetailedMedicines?: boolean;
   otherCharges: number;
   discount: number;
+  isPayLater?: boolean;
+  payLaterAmountPaid?: number;
+  payLaterNotes?: string;
+  discountAmountRequest?: number;
+  discountRequestNotes?: string;
+  discountRequestStatus?: "IDLE" | "SUBMITTING" | "SENT";
   subtotal: number;
   isExpanded?: boolean;
 }
@@ -241,14 +248,18 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return EMPTY_ALL_APPOINTMENTS;
     const matched = allAppointments.filter((a: any) => {
       const p = (a.phoneNumber || a.phone || "").replace(/\D/g, "").slice(-10);
-      return (
-        p === cleanPhone &&
-        !a.isDeleted &&
-        a.status !== "CANCELLED"
-      );
+      if (p !== cleanPhone) return false;
+      if (a.isDeleted || a.status === "CANCELLED") return false;
+      const isPaidOrDone =
+        Boolean(a.isFeeCollected) ||
+        a.paymentStatus === "PAID" ||
+        a.status === "COMPLETED" ||
+        (Number(a.totalPaid) > 0 && Boolean(a.paidAt || a.invoiceId));
+      if (isPaidOrDone && a.id !== appointment?.id) return false;
+      return true;
     });
     return matched.length > 0 ? matched : EMPTY_ALL_APPOINTMENTS;
-  }, [cleanPhone, allAppointments]);
+  }, [cleanPhone, allAppointments, appointment?.id]);
 
   const isMultiPayApplicable = samePhoneFamilyAppts.length > 1;
   const [isMultiPayEnabled, setIsMultiPayEnabled] = useState<boolean>(false);
@@ -305,8 +316,15 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             includeMedicineFee: hasPrescribedMeds && mFee > 0, // ONLY true if doctor already prescribed medicines
             medicineDuration: a.medicineDuration || "1 Month",
             medicineItems: existingMeds,
+            showDetailedMedicines: false,
             otherCharges: 0,
             discount: 0,
+            isPayLater: false,
+            payLaterAmountPaid: target,
+            payLaterNotes: "",
+            discountAmountRequest: 0,
+            discountRequestNotes: "",
+            discountRequestStatus: "IDLE" as const,
             subtotal: target,
             isExpanded: isCurrent || idx === 0,
           };
@@ -335,6 +353,82 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
     setMultiPayMembers((prev) =>
       prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
     );
+  };
+
+  const computeMemberSubtotal = (m: {
+    includeConsultFee: boolean;
+    consultationFee: number;
+    includeMedicineFee: boolean;
+    medicineFee: number;
+    medicineItems: MedicineItem[];
+    otherCharges: number;
+    discount: number;
+    isPayLater?: boolean;
+    payLaterAmountPaid?: number;
+  }) => {
+    const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+    const med = m.includeMedicineFee
+      ? m.medicineItems.length > 0
+        ? m.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+        : Number(m.medicineFee) || 0
+      : 0;
+    const billTotal = Math.max(0, consult + med + (Number(m.otherCharges) || 0) - (Number(m.discount) || 0));
+    if (m.isPayLater) {
+      return Math.max(0, Math.min(billTotal, Number(m.payLaterAmountPaid) || 0));
+    }
+    return billTotal;
+  };
+
+  const getMemberBillTotal = (m: MultiPayMember) => {
+    const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+    const med = m.includeMedicineFee
+      ? m.medicineItems.length > 0
+        ? m.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+        : Number(m.medicineFee) || 0
+      : 0;
+    return Math.max(0, consult + med + (Number(m.otherCharges) || 0) - (Number(m.discount) || 0));
+  };
+
+  const handleRequestMemberDiscount = async (appointmentId: string) => {
+    const member = multiPayMembers.find((m) => m.appointmentId === appointmentId);
+    if (!member) return;
+    const amt = Number(member.discountAmountRequest) || 0;
+    if (amt <= 0) {
+      Alert.alert("Invalid Amount", `Please enter a valid discount amount for ${member.patientName}.`);
+      return;
+    }
+
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "SUBMITTING" } : m))
+    );
+
+    try {
+      const res = await apiFetch<any>("/reception/discount-request", {
+        method: "POST",
+        body: JSON.stringify({
+          appointmentId: member.appointmentId,
+          discountAmount: amt,
+          notes: member.discountRequestNotes || `Discount requested for ${member.patientName}`,
+        }),
+      });
+      if (res && res.success) {
+        setMultiPayMembers((prev) =>
+          prev.map((m) =>
+            m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "SENT" } : m
+          )
+        );
+      } else {
+        Alert.alert("Error", res?.error || "Failed to send discount request.");
+        setMultiPayMembers((prev) =>
+          prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "IDLE" } : m))
+        );
+      }
+    } catch {
+      Alert.alert("Network Error", "Failed to send discount request.");
+      setMultiPayMembers((prev) =>
+        prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "IDLE" } : m))
+      );
+    }
   };
 
   const handleMemberTargetAmountChange = (appointmentId: string, val: number) => {
@@ -380,11 +474,8 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           }
         }
 
-        const cVal = incConsult ? consult : 0;
         const mVal = incMed ? (items.length > 0 ? items.reduce((s, i) => s + (Number(i.amount) || 0), 0) : medFee) : 0;
-        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
-
-        return {
+        const nextM = {
           ...m,
           targetAmount: target,
           consultationFee: consult,
@@ -392,7 +483,10 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           medicineFee: mVal,
           includeMedicineFee: incMed,
           medicineItems: items,
-          subtotal,
+        };
+        return {
+          ...nextM,
+          subtotal: computeMemberSubtotal(nextM),
         };
       })
     );
@@ -439,19 +533,18 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           ];
         }
 
-        const cVal = incConsult ? consult : 0;
-        const mVal = incMed ? medFee : 0;
-        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
-
-        return {
+        const nextM = {
           ...m,
           paymentType: type,
           consultationFee: consult,
           includeConsultFee: incConsult,
-          medicineFee: mVal,
+          medicineFee: medFee,
           includeMedicineFee: incMed,
           medicineItems: items,
-          subtotal,
+        };
+        return {
+          ...nextM,
+          subtotal: computeMemberSubtotal(nextM),
         };
       })
     );
@@ -473,15 +566,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
             },
           ];
         }
-        const consult = updated.includeConsultFee ? Number(updated.consultationFee) || 0 : 0;
-        const med = updated.includeMedicineFee
-          ? updated.medicineItems.length > 0
-            ? updated.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
-            : Number(updated.medicineFee) || 0
-          : 0;
-        const other = Number(updated.otherCharges) || 0;
-        const disc = Number(updated.discount) || 0;
-        updated.subtotal = Math.max(0, consult + med + other - disc);
+        updated.subtotal = computeMemberSubtotal(updated);
         return updated;
       })
     );
@@ -500,15 +585,16 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         };
         const updatedItems = [...m.medicineItems, newItem];
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextM = {
           ...m,
-          includeMedicineFee: true,
+          includeMedicineFee: m.paymentType === "split" ? true : m.includeMedicineFee,
+          showDetailedMedicines: true,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextM,
+          subtotal: computeMemberSubtotal(nextM),
         };
       })
     );
@@ -520,14 +606,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
         if (m.appointmentId !== appointmentId) return m;
         const updatedItems = m.medicineItems.filter((mi) => mi.id !== medId);
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextM = {
           ...m,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextM,
+          subtotal: computeMemberSubtotal(nextM),
         };
       })
     );
@@ -546,14 +632,14 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           mi.id === medId ? { ...mi, [field]: val } : mi
         );
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextM = {
           ...m,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextM,
+          subtotal: computeMemberSubtotal(nextM),
         };
       })
     );
@@ -585,22 +671,31 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
           card: optedSplitModes.includes("card") ? splitCard : 0,
           counterUpi: optedSplitModes.includes("counterUpi") ? splitCounterUpi : 0,
         } : undefined,
-        members: selected.map((m) => ({
-          appointmentId: m.appointmentId,
-          patientName: m.patientName,
-          registrationId: m.registrationId,
-          token: m.token,
-          doctorName: m.doctorName,
-          paymentType: m.paymentType || "consult_and_med",
-          targetAmount: m.targetAmount || 0,
-          consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
-          medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
-          medicineDuration: m.medicineDuration,
-          medicinesList: m.includeMedicineFee ? m.medicineItems : [],
-          otherCharges: Number(m.otherCharges) || 0,
-          discount: Number(m.discount) || 0,
-          totalPaid: Number(m.subtotal) || 0,
-        })),
+        members: selected.map((m) => {
+          const billTotal = getMemberBillTotal(m);
+          const paidToday = Number(m.subtotal) || 0;
+          const payLaterAmt = m.isPayLater ? Math.max(0, billTotal - paidToday) : 0;
+          return {
+            appointmentId: m.appointmentId,
+            patientName: m.patientName,
+            phone: m.phone,
+            registrationId: m.registrationId,
+            token: m.token,
+            doctorName: m.doctorName,
+            paymentType: m.paymentType || "consult_and_med",
+            targetAmount: m.targetAmount || 0,
+            consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
+            medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
+            medicineDuration: m.medicineDuration,
+            medicinesList: (m.includeMedicineFee || m.showDetailedMedicines) ? m.medicineItems : [],
+            otherCharges: Number(m.otherCharges) || 0,
+            discount: Number(m.discount) || 0,
+            totalAmountDue: billTotal,
+            totalPaid: paidToday,
+            payLaterAmount: payLaterAmt,
+            payLaterNotes: m.isPayLater ? m.payLaterNotes : undefined,
+          };
+        }),
       };
 
       const res = await apiFetch<any>("/reception/multi-payment", {
@@ -2493,73 +2588,62 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   })}
                                 </View>
 
-                                {/* Consultation Fee Toggle */}
-                                <View style={styles.multiPaySectionRow}>
-                                  <TouchableOpacity
-                                    style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-                                    onPress={() =>
-                                      handleUpdateMemberField(member.appointmentId, "includeConsultFee", !member.includeConsultFee)
-                                    }
-                                    activeOpacity={0.7}
-                                  >
-                                    <Ionicons
-                                      name={member.includeConsultFee ? "checkbox" : "square-outline"}
-                                      size={18}
-                                      color={member.includeConsultFee ? "#0284c7" : "#94a3b8"}
-                                    />
-                                    <Text style={styles.multiPaySectionTitle}>Consultation Fee</Text>
-                                  </TouchableOpacity>
-
-                                  {member.includeConsultFee && (
-                                    <TextInput
-                                      style={styles.multiPayFeeInput}
-                                      keyboardType="numeric"
-                                      value={String(member.consultationFee || 0)}
-                                      onChangeText={(txt) =>
-                                        handleUpdateMemberField(member.appointmentId, "consultationFee", Math.max(0, Number(txt) || 0))
-                                      }
-                                      placeholder="₹0"
-                                    />
-                                  )}
-                                </View>
-
-                                {/* Medical Request (Prescribed Remedies) Toggle */}
+                                {/* Consultation Fee (or Combined Consultation & Medicine Fee) */}
                                 <View style={styles.multiPaySectionBox}>
-                                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                                     <TouchableOpacity
-                                      style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                                      style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}
+                                      disabled={member.paymentType === "consultation" || member.paymentType === "consult_and_med"}
                                       onPress={() =>
-                                        handleUpdateMemberField(member.appointmentId, "includeMedicineFee", !member.includeMedicineFee)
+                                        handleUpdateMemberField(member.appointmentId, "includeConsultFee", !member.includeConsultFee)
                                       }
                                       activeOpacity={0.7}
                                     >
                                       <Ionicons
-                                        name={member.includeMedicineFee ? "checkbox" : "square-outline"}
+                                        name={member.includeConsultFee ? "checkbox" : "square-outline"}
                                         size={18}
-                                        color={member.includeMedicineFee ? "#0284c7" : "#94a3b8"}
+                                        color={member.includeConsultFee ? "#0284c7" : "#94a3b8"}
                                       />
-                                      <Text style={styles.multiPaySectionTitle}>Medical Request (Medicines)</Text>
+                                      <View style={{ flex: 1 }}>
+                                        <Text style={styles.multiPaySectionTitle}>
+                                          {member.paymentType === "consult_and_med" ? "Consultation & Medicine Fee" : "Consultation Fee"}
+                                        </Text>
+                                        <Text style={{ fontSize: 9.5, color: "#64748b" }}>
+                                          {member.paymentType === "consult_and_med"
+                                            ? "Combined fee (Locked to Target)"
+                                            : "Doctor Consultation Fee"}
+                                        </Text>
+                                      </View>
                                     </TouchableOpacity>
 
-                                    <Text style={{ fontSize: 11, fontWeight: "800", color: "#059669" }}>
-                                      ₹{Number(member.medicineFee || 0).toLocaleString()}
-                                    </Text>
+                                    {member.includeConsultFee && (
+                                      <TextInput
+                                        style={[
+                                          styles.multiPayFeeInput,
+                                          (member.paymentType === "consultation" || member.paymentType === "consult_and_med") && {
+                                            backgroundColor: "#f1f5f9",
+                                            color: "#64748b",
+                                          },
+                                        ]}
+                                        editable={member.paymentType === "split"}
+                                        keyboardType="numeric"
+                                        value={String(
+                                          member.consultationFee > 0
+                                            ? member.consultationFee
+                                            : member.paymentType === "consultation" || member.paymentType === "consult_and_med"
+                                            ? member.targetAmount || 0
+                                            : 0
+                                        )}
+                                        onChangeText={(txt) =>
+                                          handleUpdateMemberField(member.appointmentId, "consultationFee", Math.max(0, Number(txt) || 0))
+                                        }
+                                        placeholder="₹0"
+                                      />
+                                    )}
                                   </View>
 
-                                  {!member.includeMedicineFee && (
-                                    <TouchableOpacity
-                                      style={[styles.multiPayAddMedBtn, { marginTop: 6 }]}
-                                      onPress={() => handleUpdateMemberField(member.appointmentId, "includeMedicineFee", true)}
-                                      activeOpacity={0.7}
-                                    >
-                                      <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
-                                      <Text style={styles.multiPayAddMedBtnText}>+ Add Medical Request ({member.patientName})</Text>
-                                    </TouchableOpacity>
-                                  )}
-
-                                  {member.includeMedicineFee && (
-                                    <View style={{ marginTop: 8, gap: 8 }}>
-                                      {/* Duration Pills */}
+                                  {member.paymentType === "consult_and_med" && member.includeConsultFee && (
+                                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#e2e8f0", gap: 8 }}>
                                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
                                         {["15 Days", "1 Month", "2 Months", "3 Months"].map((dur) => (
                                           <TouchableOpacity
@@ -2583,50 +2667,299 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                         ))}
                                       </ScrollView>
 
-                                      {/* Medicine Items List */}
-                                      {member.medicineItems.map((med) => (
-                                        <View key={med.id} style={styles.multiPayMedRow}>
-                                          <TextInput
-                                            style={styles.multiPayMedNameInput}
-                                            placeholder="Remedy name"
-                                            value={med.name}
-                                            onChangeText={(txt) =>
-                                              handleUpdateMedicineInMember(member.appointmentId, med.id, "name", txt)
+                                      {!member.showDetailedMedicines ? (
+                                        <TouchableOpacity
+                                          style={styles.multiPayAddMedBtn}
+                                          onPress={() => {
+                                            handleUpdateMemberField(member.appointmentId, "showDetailedMedicines", true);
+                                            if (member.medicineItems.length === 0) {
+                                              handleAddMedicineToMember(member.appointmentId);
                                             }
-                                          />
-                                          <TextInput
-                                            style={styles.multiPayMedAmtInput}
-                                            keyboardType="numeric"
-                                            placeholder="₹"
-                                            value={String(med.amount || "")}
-                                            onChangeText={(txt) =>
-                                              handleUpdateMedicineInMember(
-                                                member.appointmentId,
-                                                med.id,
-                                                "amount",
-                                                Math.max(0, Number(txt) || 0)
-                                              )
-                                            }
-                                          />
-                                          <TouchableOpacity
-                                            onPress={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
-                                            style={{ padding: 4 }}
-                                            activeOpacity={0.7}
-                                          >
-                                            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                                          </TouchableOpacity>
+                                          }}
+                                          activeOpacity={0.7}
+                                        >
+                                          <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
+                                          <Text style={styles.multiPayAddMedBtnText}>+ Add Medicine Items</Text>
+                                        </TouchableOpacity>
+                                      ) : (
+                                        <View style={{ gap: 6 }}>
+                                          {member.medicineItems.map((med) => (
+                                            <View key={med.id} style={styles.multiPayMedRow}>
+                                              <TextInput
+                                                style={styles.multiPayMedNameInput}
+                                                placeholder="Remedy name"
+                                                value={med.name}
+                                                onChangeText={(txt) =>
+                                                  handleUpdateMedicineInMember(member.appointmentId, med.id, "name", txt)
+                                                }
+                                              />
+                                              <TextInput
+                                                style={styles.multiPayMedAmtInput}
+                                                keyboardType="numeric"
+                                                placeholder="₹"
+                                                value={String(med.amount || "")}
+                                                onChangeText={(txt) =>
+                                                  handleUpdateMedicineInMember(
+                                                    member.appointmentId,
+                                                    med.id,
+                                                    "amount",
+                                                    Math.max(0, Number(txt) || 0)
+                                                  )
+                                                }
+                                              />
+                                              {member.medicineItems.length > 1 && (
+                                                <TouchableOpacity
+                                                  onPress={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                                  style={{ padding: 4 }}
+                                                  activeOpacity={0.7}
+                                                >
+                                                  <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                                </TouchableOpacity>
+                                              )}
+                                            </View>
+                                          ))}
+                                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                            <TouchableOpacity
+                                              onPress={() => handleUpdateMemberField(member.appointmentId, "showDetailedMedicines", false)}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Text style={{ fontSize: 10.5, color: "#64748b", fontWeight: "700" }}>
+                                                Hide Medicine Details
+                                              </Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                              style={styles.multiPayAddMedBtn}
+                                              onPress={() => handleAddMedicineToMember(member.appointmentId)}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
+                                              <Text style={styles.multiPayAddMedBtnText}>+ Add Item</Text>
+                                            </TouchableOpacity>
+                                          </View>
                                         </View>
-                                      ))}
+                                      )}
+                                    </View>
+                                  )}
+                                </View>
 
-                                      {/* Add Medicine Button */}
+                                {/* Separate Medical Request (ONLY IN SPLIT MODE - SAME AS NORMAL CHECKOUT) */}
+                                {member.paymentType === "split" && (
+                                  <View style={styles.multiPaySectionBox}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                                       <TouchableOpacity
-                                        style={styles.multiPayAddMedBtn}
-                                        onPress={() => handleAddMedicineToMember(member.appointmentId)}
+                                        style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                                        onPress={() =>
+                                          handleUpdateMemberField(member.appointmentId, "includeMedicineFee", !member.includeMedicineFee)
+                                        }
                                         activeOpacity={0.7}
                                       >
-                                        <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
-                                        <Text style={styles.multiPayAddMedBtnText}>+ Add Remedy to Medical Request</Text>
+                                        <Ionicons
+                                          name={member.includeMedicineFee ? "checkbox" : "square-outline"}
+                                          size={18}
+                                          color={member.includeMedicineFee ? "#0284c7" : "#94a3b8"}
+                                        />
+                                        <Text style={styles.multiPaySectionTitle}>Medical Request (Medicines)</Text>
                                       </TouchableOpacity>
+
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#059669" }}>
+                                        ₹{Number(member.medicineFee || 0).toLocaleString()}
+                                      </Text>
+                                    </View>
+
+                                    {member.includeMedicineFee && (
+                                      <View style={{ marginTop: 8, gap: 8 }}>
+                                        {/* Duration Pills */}
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                                          {["15 Days", "1 Month", "2 Months", "3 Months"].map((dur) => (
+                                            <TouchableOpacity
+                                              key={dur}
+                                              style={[
+                                                styles.multiPayDurationChip,
+                                                member.medicineDuration === dur && styles.multiPayDurationChipActive,
+                                              ]}
+                                              onPress={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Text
+                                                style={[
+                                                  styles.multiPayDurationText,
+                                                  member.medicineDuration === dur && styles.multiPayDurationTextActive,
+                                                ]}
+                                              >
+                                                {dur}
+                                              </Text>
+                                            </TouchableOpacity>
+                                          ))}
+                                        </ScrollView>
+
+                                        {/* Medicine Items List */}
+                                        {member.medicineItems.map((med) => (
+                                          <View key={med.id} style={styles.multiPayMedRow}>
+                                            <TextInput
+                                              style={styles.multiPayMedNameInput}
+                                              placeholder="Remedy name"
+                                              value={med.name}
+                                              onChangeText={(txt) =>
+                                                handleUpdateMedicineInMember(member.appointmentId, med.id, "name", txt)
+                                              }
+                                            />
+                                            <TextInput
+                                              style={styles.multiPayMedAmtInput}
+                                              keyboardType="numeric"
+                                              placeholder="₹"
+                                              value={String(med.amount || "")}
+                                              onChangeText={(txt) =>
+                                                handleUpdateMedicineInMember(
+                                                  member.appointmentId,
+                                                  med.id,
+                                                  "amount",
+                                                  Math.max(0, Number(txt) || 0)
+                                                )
+                                              }
+                                            />
+                                            <TouchableOpacity
+                                              onPress={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                              style={{ padding: 4 }}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                                            </TouchableOpacity>
+                                          </View>
+                                        ))}
+
+                                        {/* Add Medicine Button */}
+                                        <TouchableOpacity
+                                          style={styles.multiPayAddMedBtn}
+                                          onPress={() => handleAddMedicineToMember(member.appointmentId)}
+                                          activeOpacity={0.7}
+                                        >
+                                          <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
+                                          <Text style={styles.multiPayAddMedBtnText}>+ Add Remedy to Medical Request</Text>
+                                        </TouchableOpacity>
+                                      </View>
+                                    )}
+                                  </View>
+                                )}
+
+                                {/* Individual Request Discount (Per Member) */}
+                                <View style={styles.multiPaySectionBox}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <Text style={styles.multiPaySectionTitle}>Request Discount ({member.patientName})</Text>
+                                    {member.discountRequestStatus === "SENT" && (
+                                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#059669" }}>✓ Sent to Admin/HR</Text>
+                                    )}
+                                  </View>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                    <TextInput
+                                      style={[styles.multiPayMedAmtInput, { width: 65 }]}
+                                      keyboardType="numeric"
+                                      placeholder="₹ Amt"
+                                      value={member.discountAmountRequest ? String(member.discountAmountRequest) : ""}
+                                      onChangeText={(txt) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "discountAmountRequest",
+                                          Math.max(0, Number(txt) || 0)
+                                        )
+                                      }
+                                    />
+                                    <TextInput
+                                      style={styles.multiPayMedNameInput}
+                                      placeholder="Reason / notes..."
+                                      value={member.discountRequestNotes || ""}
+                                      onChangeText={(txt) =>
+                                        handleUpdateMemberField(member.appointmentId, "discountRequestNotes", txt)
+                                      }
+                                    />
+                                    <TouchableOpacity
+                                      style={{
+                                        backgroundColor: "#0284c7",
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 7,
+                                        borderRadius: 7,
+                                      }}
+                                      disabled={member.discountRequestStatus === "SUBMITTING"}
+                                      onPress={() => handleRequestMemberDiscount(member.appointmentId)}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Text style={{ color: "#ffffff", fontSize: 10.5, fontWeight: "800" }}>
+                                        {member.discountRequestStatus === "SUBMITTING" ? "..." : "Request"}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+
+                                {/* Individual Pay Later (Per Member) */}
+                                <View
+                                  style={[
+                                    styles.multiPaySectionBox,
+                                    member.isPayLater && { backgroundColor: "#fffbeb", borderColor: "#fcd34d" },
+                                  ]}
+                                >
+                                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                      <Ionicons name="time-outline" size={15} color={member.isPayLater ? "#d97706" : "#64748b"} />
+                                      <Text style={styles.multiPaySectionTitle}>Pay Later ({member.patientName})</Text>
+                                    </View>
+                                    <TouchableOpacity
+                                      style={{
+                                        backgroundColor: member.isPayLater ? "#d97706" : "#ffffff",
+                                        borderWidth: 1,
+                                        borderColor: "#fcd34d",
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 4,
+                                        borderRadius: 7,
+                                      }}
+                                      onPress={() => {
+                                        const nextOn = !member.isPayLater;
+                                        const billTotal = getMemberBillTotal(member);
+                                        setMultiPayMembers((prev) =>
+                                          prev.map((m) => {
+                                            if (m.appointmentId !== member.appointmentId) return m;
+                                            const defaultPaidNow = nextOn ? Math.round(billTotal * 0.75) : billTotal;
+                                            const nextM = {
+                                              ...m,
+                                              isPayLater: nextOn,
+                                              payLaterAmountPaid: defaultPaidNow,
+                                            };
+                                            return { ...nextM, subtotal: computeMemberSubtotal(nextM) };
+                                          })
+                                        );
+                                      }}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Text style={{ fontSize: 10.5, fontWeight: "800", color: member.isPayLater ? "#ffffff" : "#92400e" }}>
+                                        {member.isPayLater ? "✓ Pay Later On" : "+ Pay Later"}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
+
+                                  {member.isPayLater && (
+                                    <View style={{ marginTop: 8, gap: 6 }}>
+                                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                        <Text style={{ fontSize: 10.5, fontWeight: "700", color: "#334155" }}>Paid Today (₹):</Text>
+                                        <TextInput
+                                          style={[styles.multiPayMedAmtInput, { width: 80 }]}
+                                          keyboardType="numeric"
+                                          value={String(member.payLaterAmountPaid ?? 0)}
+                                          onChangeText={(txt) => {
+                                            const billTotal = getMemberBillTotal(member);
+                                            const val = Math.max(0, Math.min(billTotal, Number(txt) || 0));
+                                            handleUpdateMemberField(member.appointmentId, "payLaterAmountPaid", val);
+                                          }}
+                                        />
+                                        <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#b45309" }}>
+                                          Due: ₹{Math.max(0, getMemberBillTotal(member) - (Number(member.subtotal) || 0)).toLocaleString()}
+                                        </Text>
+                                      </View>
+                                      <TextInput
+                                        style={styles.multiPayMedNameInput}
+                                        placeholder="Pay later notes (optional)..."
+                                        value={member.payLaterNotes || ""}
+                                        onChangeText={(txt) =>
+                                          handleUpdateMemberField(member.appointmentId, "payLaterNotes", txt)
+                                        }
+                                      />
                                     </View>
                                   )}
                                 </View>
