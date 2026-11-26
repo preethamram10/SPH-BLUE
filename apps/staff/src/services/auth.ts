@@ -211,6 +211,62 @@ export async function removeAuthToken(): Promise<void> {
 }
 
 /**
+ * Drop-in replacement for fetch() that attaches the Bearer token, enforces a 15s timeout,
+ * and falls back to the production VPS if a local dev server is unreachable.
+ */
+export async function authFetch(
+  endpoint: string,
+  options: RequestInit = {},
+  timeoutMs: number = 15000
+): Promise<Response> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+
+    if (
+      !endpoint.startsWith("http") &&
+      API_BASE_URL !== FALLBACK_API_BASE_URL &&
+      (err.message?.includes("fetch failed") ||
+        err.message?.includes("unreachable") ||
+        err.message?.includes("Network request failed") ||
+        err.name === "TypeError" ||
+        err.name === "AbortError")
+    ) {
+      const fallbackUrl = `${FALLBACK_API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+      return await fetch(fallbackUrl, { ...options, headers });
+    }
+
+    if (err.name === "AbortError") {
+      throw new Error("Network request timed out. Please check clinic connection and try again.");
+    }
+    throw err;
+  }
+}
+
+/**
  * Helper to execute authenticated API calls with Bearer token header.
  */
 export async function apiFetch<T = any>(

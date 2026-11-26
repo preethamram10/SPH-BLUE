@@ -15,7 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { removeAuthToken, clearAllAuthData, getAssignedBranch, getActiveStaff } from "../../services/auth";
+import { removeAuthToken, clearAllAuthData, getAssignedBranch, getActiveStaff, authFetch } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBottomNav";
 import AnalogClockPicker from "../../components/AnalogClockPicker";
@@ -240,7 +240,7 @@ export default function TelecallerPortalScreen() {
   const [availableDoctors, setAvailableDoctors] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/branches`)
+    authFetch(`${API_BASE_URL}/branches`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.branches) ? data.branches : []);
@@ -293,7 +293,7 @@ export default function TelecallerPortalScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
+        const res = await authFetch(`${API_BASE_URL}/admin/employees?category=DOCTOR`);
         const data = await res.json();
         if (data.success && Array.isArray(data.employees) && data.employees.length > 0) {
           setAvailableDoctors(data.employees);
@@ -345,7 +345,7 @@ export default function TelecallerPortalScreen() {
   const fetchRecentLogs = useCallback(async () => {
     try {
       setLoadingLogs(true);
-      const res = await fetch(`${API_BASE_URL}/telecaller/call-logs`);
+      const res = await authFetch(`${API_BASE_URL}/telecaller/call-logs`);
       const data = await res.json();
       if (data.success && Array.isArray(data.logs)) {
         setRecentLogs(data.logs);
@@ -451,7 +451,7 @@ export default function TelecallerPortalScreen() {
     if (!selectedFollowUp) return;
     try {
       setRescheduling(true);
-      const res = await fetch(`${API_BASE_URL}/reception/follow-ups`, {
+      const res = await authFetch(`${API_BASE_URL}/reception/follow-ups`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -517,7 +517,7 @@ export default function TelecallerPortalScreen() {
           : "";
       const finalNotes = `${notesRemarks.trim()}${scheduleSuffix}`.trim();
 
-      const res = await fetch(`${API_BASE_URL}/telecaller/call-logs`, {
+      const res = await authFetch(`${API_BASE_URL}/telecaller/call-logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -577,7 +577,7 @@ export default function TelecallerPortalScreen() {
       setBookingAppt(true);
       const matchedDoctor = availableDoctors.find((d) => d.name === bookDoctor) || availableDoctors[0];
 
-      const res = await fetch(`${API_BASE_URL}/reception/follow-ups`, {
+      const res = await authFetch(`${API_BASE_URL}/reception/follow-ups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

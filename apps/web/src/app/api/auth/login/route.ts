@@ -7,6 +7,7 @@ import {
   normalizePhone,
   loginActivityService,
 } from "@spiritualhomeo/database";
+import { signSessionToken, attachSessionCookie } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -94,16 +95,13 @@ export async function POST(request: Request) {
         phone: matchedEmployee?.phone || clean10,
       };
 
-      const token = Buffer.from(
-        JSON.stringify({
-          userId: `reception-branch-${branch.id}`,
-          role: "RECEPTION",
-          branchId: branch.id,
-          branchName: branch.name,
-          identifier,
-          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        })
-      ).toString("base64");
+      const token = signSessionToken({
+        userId: `reception-branch-${branch.id}`,
+        role: "RECEPTION",
+        branchId: branch.id,
+        branchName: branch.name,
+        identifier,
+      });
 
       let sessionId = `log-${Date.now()}`;
       try {
@@ -120,22 +118,25 @@ export async function POST(request: Request) {
         console.warn("Failed to record reception login activity:", e);
       }
 
-      return NextResponse.json({
-        success: true,
-        token,
-        sessionId,
-        user: {
-          id: `reception-branch-${branch.id}`,
-          name: `${branch.name} (Reception)`,
-          role: "RECEPTION",
-          branch: {
-            id: branch.id,
-            name: branch.name,
-            phone: branch.phone,
+      return attachSessionCookie(
+        NextResponse.json({
+          success: true,
+          token,
+          sessionId,
+          user: {
+            id: `reception-branch-${branch.id}`,
+            name: `${branch.name} (Reception)`,
+            role: "RECEPTION",
+            branch: {
+              id: branch.id,
+              name: branch.name,
+              phone: branch.phone,
+            },
+            identifier,
           },
-          identifier,
-        },
-      });
+        }),
+        token
+      );
     }
 
     // 2. DOCTOR LOGIN
@@ -193,40 +194,40 @@ export async function POST(request: Request) {
 
       const doctorCategory = isHead ? "HEAD" : (matchedEmployee?.doctorCategory || "EMPLOYEE");
 
-      const token = Buffer.from(
-        JSON.stringify({
-          userId: docId,
-          role: "DOCTOR",
-          name: docName,
-          isHeadDoctor: isHead,
-          doctorCategory,
-          identifier,
-          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        })
-      ).toString("base64");
-
-      return NextResponse.json({
-        success: true,
-        token,
-        user: {
-          id: docId,
-          name: docName,
-          role: "DOCTOR",
-          isHeadDoctor: isHead,
-          doctorCategory,
-          identifier,
-        },
-        doctor: {
-          id: docId,
-          name: docName,
-          role: "DOCTOR",
-          isHeadDoctor: isHead,
-          doctorCategory,
-          phone: matchedSchedule?.phone || matchedEmployee?.phone || clean10,
-          specialty: matchedSchedule?.specialty || "Consultant Homeopath",
-          branch: matchedEmployee?.branchName || "KPHB Branch",
-        },
+      const token = signSessionToken({
+        userId: docId,
+        role: "DOCTOR",
+        name: docName,
+        isHeadDoctor: isHead,
+        doctorCategory,
+        identifier,
       });
+
+      return attachSessionCookie(
+        NextResponse.json({
+          success: true,
+          token,
+          user: {
+            id: docId,
+            name: docName,
+            role: "DOCTOR",
+            isHeadDoctor: isHead,
+            doctorCategory,
+            identifier,
+          },
+          doctor: {
+            id: docId,
+            name: docName,
+            role: "DOCTOR",
+            isHeadDoctor: isHead,
+            doctorCategory,
+            phone: matchedSchedule?.phone || matchedEmployee?.phone || clean10,
+            specialty: matchedSchedule?.specialty || "Consultant Homeopath",
+            branch: matchedEmployee?.branchName || "KPHB Branch",
+          },
+        }),
+        token
+      );
     }
 
     // 3. TELECALLER LOGIN
@@ -252,26 +253,26 @@ export async function POST(request: Request) {
       const tcName = matchedEmployee?.name || dbUser?.name || "Telecaller Staff";
       const tcId = matchedEmployee?.id || dbUser?.id || `tc-${clean10}`;
 
-      const token = Buffer.from(
-        JSON.stringify({
-          userId: tcId,
-          role: "TELECALLER",
-          name: tcName,
-          identifier,
-          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        })
-      ).toString("base64");
-
-      return NextResponse.json({
-        success: true,
-        token,
-        user: {
-          id: tcId,
-          name: tcName,
-          role: "TELECALLER",
-          identifier,
-        },
+      const token = signSessionToken({
+        userId: tcId,
+        role: "TELECALLER",
+        name: tcName,
+        identifier,
       });
+
+      return attachSessionCookie(
+        NextResponse.json({
+          success: true,
+          token,
+          user: {
+            id: tcId,
+            name: tcName,
+            role: "TELECALLER",
+            identifier,
+          },
+        }),
+        token
+      );
     }
 
     // 4. ADMIN / HR LOGIN
@@ -287,14 +288,12 @@ export async function POST(request: Request) {
       const userName = dbUser?.name || matchedEmployee?.name || `${role} Member`;
       const userId = dbUser?.id || matchedEmployee?.id || `user-${role.toLowerCase()}-1`;
 
-      const token = Buffer.from(
-        JSON.stringify({
-          userId,
-          role,
-          identifier,
-          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        })
-      ).toString("base64");
+      const token = signSessionToken({
+        userId,
+        role,
+        name: userName,
+        identifier,
+      });
 
       let sessionId = `log-${Date.now()}`;
       try {
@@ -311,17 +310,20 @@ export async function POST(request: Request) {
         console.warn("Failed to record admin/hr login activity:", e);
       }
 
-      return NextResponse.json({
-        success: true,
-        token,
-        sessionId,
-        user: {
-          id: userId,
-          name: userName,
-          role,
-          identifier,
-        },
-      });
+      return attachSessionCookie(
+        NextResponse.json({
+          success: true,
+          token,
+          sessionId,
+          user: {
+            id: userId,
+            name: userName,
+            role,
+            identifier,
+          },
+        }),
+        token
+      );
     }
 
     // 5. STAFF LOGIN
@@ -352,16 +354,13 @@ export async function POST(request: Request) {
       const staffId = matchedEmployee?.id || dbUser?.id || `staff-${clean10}`;
       const branchName = matchedEmployee?.branchName || "KPHB Branch";
 
-      const token = Buffer.from(
-        JSON.stringify({
-          userId: staffId,
-          role: "STAFF",
-          name: staffName,
-          branchName,
-          identifier,
-          exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        })
-      ).toString("base64");
+      const token = signSessionToken({
+        userId: staffId,
+        role: "STAFF",
+        name: staffName,
+        branchName,
+        identifier,
+      });
 
       let sessionId = `log-${Date.now()}`;
       try {
@@ -378,21 +377,24 @@ export async function POST(request: Request) {
         console.warn("Failed to record staff login activity:", e);
       }
 
-      return NextResponse.json({
-        success: true,
-        token,
-        sessionId,
-        user: {
-          id: staffId,
-          name: staffName,
-          role: "STAFF",
-          branchName,
-          branch: { name: branchName },
-          shiftStartTime: matchedEmployee?.shiftStartTime || "09:00 AM",
-          graceMinutes: matchedEmployee?.graceMinutes || 15,
-          identifier,
-        },
-      });
+      return attachSessionCookie(
+        NextResponse.json({
+          success: true,
+          token,
+          sessionId,
+          user: {
+            id: staffId,
+            name: staffName,
+            role: "STAFF",
+            branchName,
+            branch: { name: branchName },
+            shiftStartTime: matchedEmployee?.shiftStartTime || "09:00 AM",
+            graceMinutes: matchedEmployee?.graceMinutes || 15,
+            identifier,
+          },
+        }),
+        token
+      );
     }
 
     return NextResponse.json(

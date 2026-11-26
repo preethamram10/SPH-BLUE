@@ -16,7 +16,8 @@
     "db:studio": "npm run db:studio --workspace=@spiritualhomeo/database",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "fix:ids": "node scripts/fix-patient-ids.js"
+    "fix:ids": "node scripts/fix-patient-ids.js",
+    "test": "node --test apps/web/tests/*.test.mjs"
   }
 }
 

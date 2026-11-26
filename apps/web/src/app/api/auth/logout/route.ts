@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loginActivityService } from "@spiritualhomeo/database";
+import { clearSessionCookie } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -15,11 +16,13 @@ export async function POST(request: Request) {
       phone: body.phone,
     });
 
-    return NextResponse.json({
-      success: true,
-      message: "Successfully logged out",
-      record,
-    });
+    return clearSessionCookie(
+      NextResponse.json({
+        success: true,
+        message: "Successfully logged out",
+        record,
+      })
+    );
   } catch (err: any) {
     console.error("Logout API error:", err);
     return NextResponse.json(

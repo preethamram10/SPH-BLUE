@@ -97,6 +97,9 @@ model PatientProfile {
   invoices      Invoice[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+
+  @@index([phone])
+  @@index([createdAt])
 }
 model Appointment {
   id          String            @id @default(uuid())
@@ -114,6 +117,11 @@ model Appointment {
 
   consultation Consultation?
   invoice      Invoice?
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([dateTime])
+  @@index([status])
 }
 
 model Consultation {
@@ -130,6 +138,10 @@ model Consultation {
   advice        String?
   followUpDate  DateTime?
   createdAt     DateTime       @default(now())
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([followUpDate])
 }
 
 model Lead {
@@ -146,6 +158,10 @@ model Lead {
   callLogs     CallLog[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+
+  @@index([phone])
+  @@index([status])
+  @@index([assignedToId])
 }
 
 model CallLog {
@@ -158,6 +174,9 @@ model CallLog {
   outcome   String
   notes     String?
   calledAt  DateTime @default(now())
+
+  @@index([callerId])
+  @@index([calledAt])
 }
 
 model Attendance {
@@ -168,6 +187,9 @@ model Attendance {
   checkIn   DateTime  @default(now())
   checkOut  DateTime?
   status    String    @default("PRESENT")
+
+  @@index([userId])
+  @@index([date])
 }
 
 model Invoice {
@@ -181,6 +203,9 @@ model Invoice {
   status        String         @default("PAID")
   paymentMethod String         @default("CASH")
   createdAt     DateTime       @default(now())
+
+  @@index([patientId])
+  @@index([createdAt])
 }
 
 model Branch {

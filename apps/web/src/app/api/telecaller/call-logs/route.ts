@@ -8,8 +8,10 @@ export async function GET(req: NextRequest) {
     const branch = searchParams.get("branch") || undefined;
     const outcome = searchParams.get("outcome") || undefined;
     const telecallerId = searchParams.get("telecallerId") || undefined;
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const logs = await telecallerCallLogService.getAllLogs({
+    const allLogs = await telecallerCallLogService.getAllLogs({
       search,
       branch,
       outcome,
@@ -17,9 +19,27 @@ export async function GET(req: NextRequest) {
     });
     const stats = await telecallerCallLogService.getStats();
 
+    if (pageParam || limitParam) {
+      const limit = Math.min(100, Math.max(1, parseInt(limitParam || "26", 10) || 26));
+      const total = allLogs.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const page = Math.min(totalPages, Math.max(1, parseInt(pageParam || "1", 10) || 1));
+      const start = (page - 1) * limit;
+      return NextResponse.json({
+        success: true,
+        logs: allLogs.slice(start, start + limit),
+        total,
+        page,
+        limit,
+        totalPages,
+        stats,
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      logs,
+      logs: allLogs,
+      total: allLogs.length,
       stats,
     });
   } catch (error: any) {

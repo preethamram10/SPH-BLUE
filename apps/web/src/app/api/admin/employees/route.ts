@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { employeeService, appointmentService } from "@spiritualhomeo/database";
+import { sanitizeRecord, sanitizeRecords } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
         const nameKey = (e.name || "").toLowerCase();
         const count = (countMap[idKey] || 0) + (countMap[nameKey] || 0);
         return {
-          ...e,
+          ...sanitizeRecord(e),
           bookedCount: count,
         };
       });
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, employees: enriched, nextTelecallerId });
     }
 
-    return NextResponse.json({ success: true, employees });
+    return NextResponse.json({ success: true, employees: sanitizeRecords(employees) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to fetch employees" }, { status: 500 });
   }
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
     }
 
     const employee = await employeeService.createEmployee(body);
-    return NextResponse.json({ success: true, employee }, { status: 201 });
+    return NextResponse.json({ success: true, employee: sanitizeRecord(employee) }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to create employee" }, { status: 500 });
   }
@@ -122,7 +123,7 @@ export async function PUT(req: NextRequest) {
     if (!updated) {
       return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
-    return NextResponse.json({ success: true, employee: updated });
+    return NextResponse.json({ success: true, employee: sanitizeRecord(updated) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Failed to update employee" }, { status: 500 });
   }
