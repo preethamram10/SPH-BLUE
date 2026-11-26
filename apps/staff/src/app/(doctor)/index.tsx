@@ -83,7 +83,14 @@ export default function DoctorDashboard() {
     setTomorrowStr(`${td}-${tm}-${ty}`);
 
     getActiveDoctor().then((d) => {
-      if (d?.name) setDoctorName(d.name);
+      if (d?.name) {
+        const lower = d.name.toLowerCase();
+        const fixed =
+          lower.includes("vaidya") || lower.includes("prasanth") || lower.includes("prashant")
+            ? "Dr. Prashant K Vaidya"
+            : d.name;
+        setDoctorName(fixed);
+      }
     });
   }, []);
 

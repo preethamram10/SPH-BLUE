@@ -131,11 +131,17 @@ export async function POST(req: NextRequest) {
       }
 
       // Valid Doctor
-      const docName =
+      const rawDocName =
         matchedSchedule?.doctorName ||
         matchedEmployee?.name ||
         dbUser?.name ||
         "Doctor";
+      const docName =
+        rawDocName.toLowerCase().includes("vaidya") ||
+        rawDocName.toLowerCase().includes("prasanth") ||
+        rawDocName.toLowerCase().includes("prashant")
+          ? "Dr. Prashant K Vaidya"
+          : rawDocName;
       const docId =
         matchedSchedule?.doctorId ||
         matchedSchedule?.id ||
@@ -346,11 +352,17 @@ export async function POST(req: NextRequest) {
     // ----------------------------------------------------
     if (requestedRole === "DOCTOR_RECEPTION") {
       if (isDoctor) {
-        const docName =
+        const rawDocName =
           matchedSchedule?.doctorName ||
           matchedEmployee?.name ||
           dbUser?.name ||
           "Doctor";
+        const docName =
+          rawDocName.toLowerCase().includes("vaidya") ||
+          rawDocName.toLowerCase().includes("prasanth") ||
+          rawDocName.toLowerCase().includes("prashant")
+            ? "Dr. Prashant K Vaidya"
+            : rawDocName;
         const docId =
           matchedSchedule?.doctorId ||
           matchedSchedule?.id ||

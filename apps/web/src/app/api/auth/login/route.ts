@@ -159,11 +159,17 @@ export async function POST(request: Request) {
         );
       }
 
-      const docName =
+      const rawDocName =
         matchedSchedule?.doctorName ||
         matchedEmployee?.name ||
         dbUser?.name ||
         "Doctor";
+      const docName =
+        rawDocName.toLowerCase().includes("vaidya") ||
+        rawDocName.toLowerCase().includes("prasanth") ||
+        rawDocName.toLowerCase().includes("prashant")
+          ? "Dr. Prashant K Vaidya"
+          : rawDocName;
       const docId =
         matchedSchedule?.doctorId ||
         matchedSchedule?.id ||

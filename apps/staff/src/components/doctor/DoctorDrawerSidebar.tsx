@@ -34,9 +34,16 @@ export const DoctorDrawerSidebar: React.FC<DoctorDrawerSidebarProps> = ({
   isOpen,
   onClose,
   activeRoute,
-  doctorName = "Dr. Prashant K Vaidya",
+  doctorName: doctorNameProp = "Dr. Prashant K Vaidya",
   isHeadDoctor: isHeadDoctorProp,
 }) => {
+  const doctorName =
+    doctorNameProp &&
+    (doctorNameProp.toLowerCase().includes("vaidya") ||
+      doctorNameProp.toLowerCase().includes("prasanth") ||
+      doctorNameProp.toLowerCase().includes("prashant"))
+      ? "Dr. Prashant K Vaidya"
+      : doctorNameProp || "Dr. Prashant K Vaidya";
   const router = useRouter();
   const [isHeadDoctor, setIsHeadDoctor] = useState(isHeadDoctorProp ?? false);
 

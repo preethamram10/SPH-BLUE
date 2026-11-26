@@ -23,11 +23,22 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
   const [isHeadDoctor, setIsHeadDoctor] = useState(false);
 
   useEffect(() => {
-    const savedDoc = localStorage.getItem("doctor_name") || doctorName;
+    const rawDoc = localStorage.getItem("doctor_name") || doctorName;
+    const savedDoc =
+      rawDoc.toLowerCase().includes("vaidya") ||
+      rawDoc.toLowerCase().includes("prasanth") ||
+      rawDoc.toLowerCase().includes("prashant")
+        ? "Dr. Prashant K Vaidya"
+        : rawDoc;
     const savedIsHead = localStorage.getItem("is_head_doctor");
     const savedCategory = localStorage.getItem("doctor_category");
 
-    if (savedDoc) setDoctorName(savedDoc);
+    if (savedDoc) {
+      setDoctorName(savedDoc);
+      if (savedDoc !== rawDoc) {
+        localStorage.setItem("doctor_name", savedDoc);
+      }
+    }
 
     const docLower = savedDoc.toLowerCase();
     const isHead =
