@@ -5,6 +5,11 @@ import NetworkBanner from "@/components/NetworkBanner";
 export const metadata: Metadata = {
   title: "Spiritual Homeopathy - Clinic Administration",
   description: "Hospital & Clinic ERP Management Portal",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
