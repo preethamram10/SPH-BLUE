@@ -224,8 +224,21 @@ export default function MobileTelecallerAccountsScreen() {
                     </View>
                   </View>
                   <Text style={styles.phoneText}>📞 {t.phone}</Text>
-                  <Text style={styles.passwordText}>🔑 Password: {t.password || "sph12345"}</Text>
                 </View>
+
+                <TouchableOpacity
+                  onPress={() => handleDelete(t.id, t.name)}
+                  style={{
+                    padding: 7,
+                    borderRadius: 8,
+                    backgroundColor: "#fef2f2",
+                    borderWidth: 1,
+                    borderColor: "#fecaca",
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.divider} />
@@ -338,17 +351,6 @@ export default function MobileTelecallerAccountsScreen() {
                   ? "✓ Can access all branches & book doctor appointments across clinic."
                   : `🔒 Restricted only to follow-ups & doctors at ${formBranch}.`}
               </Text>
-
-              <View style={{ marginTop: 8 }}>
-                <Text style={styles.fieldLabel}>Initial Password</Text>
-                <TextInput
-                  style={styles.fieldInput}
-                  placeholder="Password"
-                  placeholderTextColor="#94a3b8"
-                  value={formPassword}
-                  onChangeText={setFormPassword}
-                />
-              </View>
             </ScrollView>
 
             <View style={styles.modalActions}>

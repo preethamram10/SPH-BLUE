@@ -14,6 +14,7 @@ import {
   RefreshCw,
   KeyRound,
   ShieldAlert,
+  Trash2,
 } from "lucide-react";
 
 interface TelecallerAccount {
@@ -156,6 +157,23 @@ export default function TelecallerAccountsPage() {
     }
   };
 
+  const handleDeleteTelecaller = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete telecaller "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/employees?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchTelecallers();
+      } else {
+        alert(data.error || "Failed to delete telecaller.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to delete telecaller.");
+    }
+  };
+
   const filtered = telecallers.filter((t) => {
     const q = searchTerm.toLowerCase();
     const matchesSearch =
@@ -282,12 +300,13 @@ export default function TelecallerAccountsPage() {
                     <th className="py-3 px-4">Assigned Branch Access</th>
                     <th className="py-3 px-4 text-center">Appts Booked</th>
                     <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
                         {loading ? "Loading telecallers..." : "No telecaller accounts found."}
                       </td>
                     </tr>
@@ -296,7 +315,6 @@ export default function TelecallerAccountsPage() {
                       <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3.5 px-4">
                           <p className="font-extrabold text-slate-900">{t.name}</p>
-                          <p className="text-[10.5px] text-slate-400 font-mono">pwd: {t.password || "sph12345"}</p>
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="px-2.5 py-1 rounded-md bg-sky-50 text-[#0284c7] font-extrabold border border-sky-100 font-mono text-[11px]">
@@ -326,6 +344,17 @@ export default function TelecallerAccountsPage() {
                           <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold border bg-emerald-50 text-emerald-700 border-emerald-200">
                             {t.status || "Active"}
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTelecaller(t.id, t.name)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition-colors cursor-pointer"
+                            title="Delete Telecaller"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -429,19 +458,6 @@ export default function TelecallerAccountsPage() {
                       ? "✓ Can view follow-ups & book doctor appointments across all branches."
                       : `🔒 Restricted only to follow-ups and doctors at ${formData.branchName}.`}
                   </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                    Initial Password: <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-[#0284c7]/30"
-                  />
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
