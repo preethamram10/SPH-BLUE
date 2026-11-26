@@ -16,7 +16,6 @@ import {
   Calendar,
   CheckCircle2,
   AlertCircle,
-  Download,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
@@ -241,7 +240,6 @@ function TelecallerDashboardContent() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [exporting, setExporting] = useState(false);
 
   // Modals state for Follow-up Roster
   const [rescheduleItem, setRescheduleItem] = useState<FollowUpItem | null>(null);
@@ -1138,73 +1136,6 @@ function TelecallerDashboardContent() {
     }
   };
 
-  // Real Excel / CSV Export
-  const handleExportCSV = async () => {
-    try {
-      setExporting(true);
-      const params = new URLSearchParams();
-      params.set("export", "true");
-      params.set("period", periodFilter);
-      if (periodFilter === "month" && selectedMonth) params.set("selectedMonth", selectedMonth);
-      if (periodFilter === "range") {
-        if (startDate) params.set("startDate", startDate);
-        if (endDate) params.set("endDate", endDate);
-      }
-      if (searchTerm.trim()) params.set("search", searchTerm.trim());
-      if (selectedBranch && selectedBranch !== "All Branches") params.set("branch", selectedBranch);
-      if (statusFilter && statusFilter !== "All") params.set("status", statusFilter);
-
-      const res = await fetch(`/api/reception/follow-ups?${params.toString()}`, {
-        cache: "no-store",
-      });
-
-      if (!res.ok) return;
-      const data = await res.json();
-      const exportList: FollowUpItem[] = data.followUps || followUps;
-
-      if (exportList.length === 0) return;
-
-      const headers = [
-        "Follow-Up ID",
-        "MRN",
-        "Patient Name",
-        "Phone",
-        "Attending Doctor",
-        "Branch",
-        "Follow-Up Due Date",
-        "Interval",
-        "Status",
-      ];
-
-      const rows = exportList.map((f) => [
-        `"${f.id}"`,
-        `"${f.mrn}"`,
-        `"${f.patientName.replace(/"/g, '""')}"`,
-        `"${f.phone}"`,
-        `"${f.doctorName.replace(/"/g, '""')}"`,
-        `"${f.branch}"`,
-        `"${f.dueDate}"`,
-        `"${!f.followUpInterval || f.followUpInterval === "Custom Date" || f.followUpInterval === "No Follow-up" ? f.dueDate : f.followUpInterval}"`,
-        `"${f.status}"`,
-      ]);
-
-      const csvContent =
-        "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      const nowStr = new Date().toISOString().slice(0, 10);
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `SPH_Telecaller_FollowUps_${periodFilter}_${nowStr}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.warn("Failed to export follow-ups CSV:", err);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   // Direct WhatsApp Message
   const handleWhatsApp = (f: FollowUpItem) => {
     const cleanPhone = f.phone.replace(/\D/g, "");
@@ -1363,16 +1294,6 @@ function TelecallerDashboardContent() {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-sky-600" : ""}`} />
                   <span className="hidden sm:inline">Refresh</span>
-                </button>
-
-                {/* Export Excel / CSV Button */}
-                <button
-                  onClick={handleExportCSV}
-                  disabled={exporting || followUps.length === 0}
-                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{exporting ? "Exporting..." : "Export Excel"}</span>
                 </button>
               </div>
             )}
