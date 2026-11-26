@@ -17,6 +17,7 @@ import {
   CreditCard,
   User,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 interface PayLaterRecord {
@@ -210,7 +211,7 @@ export default function AdminPayLaterPage() {
 
     const totalCleared = dateFiltered
       .filter((r) => r.status === "CLEARED")
-      .reduce((sum, r) => sum + (Number(r.dueAmount) || 0), 0);
+      .reduce((sum, r) => sum + (Number((r as any).clearedAmount ?? r.dueAmount ?? r.totalBill) || 0), 0);
 
     const pendingCount = dateFiltered.filter((r) => r.status === "PENDING").length;
 
@@ -262,6 +263,27 @@ export default function AdminPayLaterPage() {
       alert(err.message || "Network error while settling balance.");
     } finally {
       setIsSubmittingSettle(false);
+    }
+  };
+
+  const handleDeleteRecord = async (record: PayLaterRecord) => {
+    if (!confirm(`Remove Pay Later record for "${record.patientName}" (Pending: ₹${record.dueAmount || 0})?`)) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/pay-later", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "DELETE", id: record.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPayLaterData();
+      } else {
+        alert(data.error || "Failed to remove record.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Network error while removing record.");
     }
   };
 
@@ -661,6 +683,14 @@ export default function AdminPayLaterPage() {
                                 className="p-1 rounded-md border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all"
                               >
                                 <MessageSquare className="w-3 h-3" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteRecord(r)}
+                                title="Remove Pay Later Record"
+                                className="p-1 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
                           </td>

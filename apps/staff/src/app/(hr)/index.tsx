@@ -836,6 +836,18 @@ export default function HRDashboard() {
                 <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.drawerMenuItem}
+                onPress={() => handleNavigate("/(admin)/pay-later")}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.drawerIconBox, { backgroundColor: "#fff7ed" }]}>
+                  <Ionicons name="wallet-outline" size={18} color="#ea580c" />
+                </View>
+                <Text style={styles.drawerMenuText}>Pay Later Dues</Text>
+                <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+              </TouchableOpacity>
+
               {/* Sign Out Navigation Item (Inside side navigation, not fixed) */}
               <TouchableOpacity
                 style={[styles.drawerMenuItem, { marginTop: 16, marginBottom: 30 }]}

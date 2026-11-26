@@ -7212,7 +7212,9 @@ export const payLaterService = {
   async manualSettle(
     id: string,
     amount: number,
-    clearedInvoiceId?: string
+    clearedInvoiceId?: string,
+    paymentMode?: string,
+    notes?: string
   ): Promise<PayLaterRecord | null> {
     const store = getPayLaterStore();
     const item = store.find((r) => r.id === id);
@@ -7229,6 +7231,12 @@ export const payLaterService = {
       item.clearedAmount = (item.clearedAmount || 0) + amount;
       item.status = "PARTIALLY_PAID";
       item.updatedAt = new Date().toISOString();
+    }
+    if (paymentMode) {
+      (item as any).paymentMode = paymentMode;
+    }
+    if (notes) {
+      item.notes = notes;
     }
 
     global.__sphPayLaterStore = store;
@@ -7275,6 +7283,39 @@ export const payLaterService = {
     }
 
     return item;
+  },
+
+  async deletePayLater(id: string): Promise<boolean> {
+    let store = getPayLaterStore();
+    const idx = store.findIndex((r) => r.id === id);
+    if (idx === -1) return false;
+
+    const item = store[idx];
+    const remainingPending = item.status !== "CLEARED" ? Number(item.pendingAmount) || 0 : 0;
+
+    store.splice(idx, 1);
+    global.__sphPayLaterStore = store;
+    savePayLaterToDisk(store);
+
+    // Sync pendingBalance back on patient profile if there was an unsettled amount
+    if (remainingPending > 0 && item.phone) {
+      try {
+        const patients = getPatientsStore();
+        const rPhone = (item.phone || "").replace(/\D/g, "").slice(-10);
+        const patIdx = patients.findIndex((p) => {
+          const pPhone = (p.phone || "").replace(/\D/g, "").slice(-10);
+          return rPhone && pPhone === rPhone;
+        });
+        if (patIdx !== -1) {
+          const currentBal = Number(patients[patIdx].pendingBalance) || 0;
+          patients[patIdx].pendingBalance = Math.max(0, currentBal - remainingPending);
+          global.__sphPatientsStore = patients;
+          savePatientsToDisk(patients);
+        }
+      } catch (_) {}
+    }
+
+    return true;
   },
 
   async getSummary(branch?: string) {

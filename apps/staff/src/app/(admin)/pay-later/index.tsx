@@ -223,7 +223,7 @@ export default function MobilePayLaterScreen() {
 
     const totalCleared = dateFiltered
       .filter((r) => r.status === "CLEARED")
-      .reduce((sum, r) => sum + (Number(r.dueAmount) || 0), 0);
+      .reduce((sum, r) => sum + (Number((r as any).clearedAmount ?? r.dueAmount ?? r.totalBill) || 0), 0);
 
     const pendingCount = dateFiltered.filter((r) => r.status === "PENDING").length;
 
@@ -275,6 +275,36 @@ export default function MobilePayLaterScreen() {
     } finally {
       setIsSubmittingSettle(false);
     }
+  };
+
+  const handleDeleteRecord = (r: PayLaterRecord) => {
+    Alert.alert(
+      "Remove Pay Later Record",
+      `Remove Pay Later record for "${r.patientName}" (Pending: ₹${r.dueAmount || 0})?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiFetch<any>("/pay-later", {
+                method: "POST",
+                body: JSON.stringify({ action: "DELETE", id: r.id }),
+              });
+              if (res && res.success) {
+                Alert.alert("Removed", "Pay Later record removed successfully.");
+                fetchPayLater();
+              } else {
+                Alert.alert("Error", res?.error || "Failed to remove record.");
+              }
+            } catch (err: any) {
+              Alert.alert("Error", err.message || "Failed to communicate with server.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSendWhatsApp = (r: PayLaterRecord) => {
@@ -611,7 +641,15 @@ export default function MobilePayLaterScreen() {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="logo-whatsapp" size={16} color="#ffffff" />
-                    <Text style={styles.whatsappBtnText}>WhatsApp Reminder</Text>
+                    <Text style={styles.whatsappBtnText}>WhatsApp</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => handleDeleteRecord(r)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#dc2626" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1130,6 +1168,16 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: "800",
     color: "#ffffff",
+  },
+  removeBtn: {
+    width: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    borderRadius: 8,
+    paddingVertical: 6.5,
   },
   modalBackdrop: {
     flex: 1,

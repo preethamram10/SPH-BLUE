@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { payLaterService } from "@spiritualhomeo/database";
 
+function normalizePayLaterRecord(r: any) {
+  return {
+    ...r,
+    patientPhone: r.patientPhone || r.phone || "",
+    totalBill: Number(r.totalBill ?? r.originalBillAmount ?? 0),
+    paidAmount: Number(r.paidAmount ?? r.amountPaid ?? 0),
+    dueAmount: Number(r.dueAmount ?? r.pendingAmount ?? 0),
+    clearedAmount: Number(r.clearedAmount ?? 0),
+    doctorName: r.doctorName || "",
+  };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -17,11 +29,18 @@ export async function GET(req: NextRequest) {
     if (phone) {
       const records = await payLaterService.getPendingByPatient(phone);
       const pendingTotal = records.reduce((acc, r) => acc + (Number(r.pendingAmount) || 0), 0);
-      return NextResponse.json({ success: true, records, pendingTotal });
+      return NextResponse.json({
+        success: true,
+        records: records.map(normalizePayLaterRecord),
+        pendingTotal,
+      });
     }
 
     const records = await payLaterService.getAll(branch, status);
-    return NextResponse.json({ success: true, records });
+    return NextResponse.json({
+      success: true,
+      records: records.map(normalizePayLaterRecord),
+    });
   } catch (error: any) {
     console.error("GET /api/pay-later error:", error);
     return NextResponse.json(
@@ -36,15 +55,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action } = body;
 
-    if (action === "MANUAL_SETTLE") {
-      const { id, amount, invoiceId } = body;
-      if (!id || !amount) {
+    if (action === "MANUAL_SETTLE" || action === "settle") {
+      const recordId = body.id || body.payLaterId;
+      const settleAmount = Number(body.amount ?? body.settledAmount ?? 0);
+      const { invoiceId, paymentMode, notes } = body;
+
+      if (!recordId || settleAmount <= 0) {
         return NextResponse.json(
           { success: false, error: "Record ID and Amount are required to settle balance." },
           { status: 400 }
         );
       }
-      const settled = await payLaterService.manualSettle(id, Number(amount), invoiceId);
+      const settled = await payLaterService.manualSettle(
+        recordId,
+        settleAmount,
+        invoiceId,
+        paymentMode,
+        notes
+      );
       if (!settled) {
         return NextResponse.json(
           { success: false, error: "Pay Later record not found." },
@@ -53,8 +81,29 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({
         success: true,
-        message: `Successfully settled ₹${amount} for ${settled.patientName}.`,
-        record: settled,
+        message: `Successfully settled ₹${settleAmount} for ${settled.patientName}.`,
+        record: normalizePayLaterRecord(settled),
+      });
+    }
+
+    if (action === "DELETE" || action === "REMOVE") {
+      const recordId = body.id || body.payLaterId;
+      if (!recordId) {
+        return NextResponse.json(
+          { success: false, error: "Record ID is required to delete." },
+          { status: 400 }
+        );
+      }
+      const deleted = await payLaterService.deletePayLater(recordId);
+      if (!deleted) {
+        return NextResponse.json(
+          { success: false, error: "Pay Later record not found." },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        message: "Pay Later record removed successfully.",
       });
     }
 
