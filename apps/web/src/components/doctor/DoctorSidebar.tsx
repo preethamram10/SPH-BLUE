@@ -10,7 +10,6 @@ import {
   DollarSign,
   LogOut,
   Stethoscope,
-  Building2,
   Calendar,
 } from "lucide-react";
 
@@ -21,17 +20,14 @@ interface DoctorSidebarProps {
 export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
   const router = useRouter();
   const [doctorName, setDoctorName] = useState("Dr. Prashant K Vaidya");
-  const [branchName, setBranchName] = useState("KPHB Branch");
   const [isHeadDoctor, setIsHeadDoctor] = useState(false);
 
   useEffect(() => {
     const savedDoc = localStorage.getItem("doctor_name") || doctorName;
-    const savedBranch = localStorage.getItem("branch_name");
     const savedIsHead = localStorage.getItem("is_head_doctor");
     const savedCategory = localStorage.getItem("doctor_category");
 
     if (savedDoc) setDoctorName(savedDoc);
-    if (savedBranch) setBranchName(savedBranch);
 
     const docLower = savedDoc.toLowerCase();
     const isHead =
@@ -120,10 +116,6 @@ export default function DoctorSidebar({ activePage }: DoctorSidebarProps) {
           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800">
             <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7] shrink-0"></span>
             <span className="truncate">{doctorName}</span>
-          </div>
-          <div className="flex items-center gap-1 text-[9.5px] text-slate-500 mt-0.5">
-            <Building2 className="w-2.5 h-2.5 text-slate-400 shrink-0" />
-            <span className="truncate">{branchName}</span>
           </div>
         </div>
 
