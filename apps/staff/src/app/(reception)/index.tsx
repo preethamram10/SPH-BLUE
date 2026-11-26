@@ -2254,7 +2254,14 @@ export default function ReceptionDashboard() {
               <View
                 style={[
                   styles.modalContainer,
-                  { maxHeight: Dimensions.get("window").height * 0.82, width: "94%", maxWidth: 480, padding: 0, overflow: "hidden" },
+                  {
+                    height: Dimensions.get("window").height * 0.85,
+                    maxHeight: Dimensions.get("window").height * 0.88,
+                    width: "94%",
+                    maxWidth: 480,
+                    padding: 0,
+                    overflow: "hidden",
+                  },
                 ]}
               >
                 {/* Header */}
@@ -2386,7 +2393,10 @@ export default function ReceptionDashboard() {
                 {/* List */}
                 <ScrollView
                   style={{ flex: 1, paddingHorizontal: 14, marginVertical: 10 }}
-                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 16 }}
+                  showsVerticalScrollIndicator={true}
+                  persistentScrollbar={true}
+                  nestedScrollEnabled={true}
                 >
                   {currentFollowUpList.length === 0 ? (
                     <View style={{ padding: 32, alignItems: "center", gap: 6 }}>
