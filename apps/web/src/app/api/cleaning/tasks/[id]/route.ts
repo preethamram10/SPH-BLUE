@@ -37,6 +37,34 @@ export async function PUT(
     // 1. Reception Submits Photos for Verification
     if (action === "SUBMIT") {
       const { fieldsData, submittedBy } = body;
+      const existingTask = await cleaningTaskService.getTaskById(id);
+      if (!existingTask) {
+        return NextResponse.json(
+          { success: false, error: "Cleaning task not found." },
+          { status: 404 }
+        );
+      }
+
+      const incomingMap = new Map<string, any[]>(
+        (Array.isArray(fieldsData) ? fieldsData : []).map((f: any) => [
+          f.fieldId,
+          Array.isArray(f.photos) ? f.photos : [],
+        ])
+      );
+      const missingAreas = (existingTask.fields || [])
+        .filter((f: any) => (incomingMap.get(f.id) || []).length === 0)
+        .map((f: any) => f.name);
+
+      if (missingAreas.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `All assigned inspection areas are mandatory. Please upload at least 1 photo for: ${missingAreas.join(", ")}`,
+          },
+          { status: 400 }
+        );
+      }
+
       const updated = await cleaningTaskService.submitPhotosForVerification(
         id,
         fieldsData || [],

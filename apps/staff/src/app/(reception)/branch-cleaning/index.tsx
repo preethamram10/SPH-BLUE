@@ -607,7 +607,14 @@ export default function ReceptionBranchCleaningScreen() {
                   )}
 
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.fieldNameText}>{field.name}</Text>
+                    <Text style={styles.fieldNameText}>
+                      {field.name} <Text style={{ color: COLORS.danger }}>*</Text>
+                    </Text>
+                    <Text style={{ fontSize: 10.5, color: COLORS.textMuted, fontWeight: "600", marginTop: 2 }}>
+                      {hasPhotos
+                        ? `${localPhotos.length} photo${localPhotos.length > 1 ? "s" : ""} added • Add more (4+ supported)`
+                        : "Mandatory • Multi-photo upload (4+ supported)"}
+                    </Text>
                   </View>
 
                   {/* Status Pill Badge */}

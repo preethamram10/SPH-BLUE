@@ -439,8 +439,11 @@ export default function ReceptionCleaningLockoutView({
                       </div>
                     )}
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm font-extrabold text-slate-900">{field.name}</h3>
+                        <span className="inline-flex items-center text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                          Mandatory
+                        </span>
                         {hasPhotos && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full border border-emerald-200">
                             ✓ Done
@@ -449,8 +452,8 @@ export default function ReceptionCleaningLockoutView({
                       </div>
                       <p className="text-[11px] text-slate-500 font-medium">
                         {hasPhotos
-                          ? `${localPhotos.length} photo${localPhotos.length > 1 ? "s" : ""} attached`
-                          : "Photo evidence required for verification"}
+                          ? `${localPhotos.length} photo${localPhotos.length > 1 ? "s" : ""} attached • You can add more (4+ photos supported)`
+                          : "Mandatory: attach 1 or more photos (4+ photos supported)"}
                       </p>
                     </div>
                   </div>
