@@ -712,14 +712,32 @@ export default function DoctorDashboard() {
                   <View style={styles.infoItem}>
                     <Ionicons name="time-outline" size={13} color="#64748b" />
                     <Text style={styles.infoItemText}>
-                      {appt.timeSlot || appt.selectedTimeSlot || appt.slot || "Slot N/A"}
+                      {(() => {
+                        const candidates = [appt.selectedTimeSlot, appt.timeSlot, appt.slot].filter(Boolean).map((v: any) => String(v).trim());
+                        const valid = candidates.find((raw: string) => !/^\d+\s*(day|days|month|months|week|weeks|min|mins|hr|hrs)$/i.test(raw)) || candidates[0] || "";
+                        if (!valid) return "Slot N/A";
+                        return /\d{1,2}:\d{2}\s*(AM|PM)?\s*[-–]\s*\d{1,2}:\d{2}/i.test(valid)
+                          ? valid.split(/\s*[-–]\s*/)[0].trim()
+                          : valid;
+                      })()}
                     </Text>
                   </View>
 
                   <View style={styles.infoItem}>
                     <Ionicons name="calendar-outline" size={13} color="#0284c7" />
                     <Text style={[styles.infoItemText, { color: "#0284c7", fontWeight: "700" }]}>
-                      {appt.appointmentDate || selectedDate}
+                      {(() => {
+                        const rawDate = appt.appointmentDate || selectedDate || "";
+                        const clean = String(rawDate).trim().split("T")[0].replace(/\//g, "-");
+                        const p = clean.split("-");
+                        if (p.length === 3 && p[0].length === 4) {
+                          return `${p[2].padStart(2, "0")}-${p[1].padStart(2, "0")}-${p[0]}`;
+                        }
+                        if (p.length === 3 && p[2].length === 4) {
+                          return `${p[0].padStart(2, "0")}-${p[1].padStart(2, "0")}-${p[2]}`;
+                        }
+                        return clean;
+                      })()}
                     </Text>
                   </View>
 

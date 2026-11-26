@@ -39,6 +39,33 @@ const CreditCardIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) =
   </svg>
 );
 
+const formatDateDDMMYYYY = (dateStr?: string): string => {
+  if (!dateStr) return "";
+  const clean = String(dateStr).trim().split("T")[0].replace(/\//g, "-");
+  const parts = clean.split("-");
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      return `${parts[2].padStart(2, "0")}-${parts[1].padStart(2, "0")}-${parts[0]}`;
+    }
+    if (parts[2].length === 4) {
+      return `${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}-${parts[2]}`;
+    }
+  }
+  return clean;
+};
+
+const formatSlotTimeOnly = (appt: any): string => {
+  const candidates = [appt.selectedTimeSlot, appt.timeSlot, appt.slot].filter(Boolean).map((v) => String(v).trim());
+  for (const raw of candidates) {
+    if (/^\d+\s*(day|days|month|months|week|weeks|min|mins|hr|hrs)$/i.test(raw)) continue;
+    if (/\d{1,2}:\d{2}\s*(AM|PM)?\s*[-–]\s*\d{1,2}:\d{2}/i.test(raw)) {
+      return raw.split(/\s*[-–]\s*/)[0].trim();
+    }
+    return raw;
+  }
+  return candidates[0] || "Slot N/A";
+};
+
 const renderVisitBadge = (appt: any) => {
   const badge = appt.visitBadge || (appt.hasPackage ? "In-Dur" : appt.isReback ? "Revisit" : "New");
   return (
@@ -619,7 +646,7 @@ export default function DoctorDashboardPage() {
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1 font-bold text-slate-800 text-[11px]">
                               <Clock className="w-3 h-3 text-slate-400" />
-                              <span>{appt.timeSlot || appt.selectedTimeSlot}</span>
+                              <span>{formatSlotTimeOnly(appt)}</span>
                             </div>
                             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                               <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600">
@@ -627,7 +654,7 @@ export default function DoctorDashboardPage() {
                               </span>
                               {appt.appointmentDate && (
                                 <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100">
-                                  📅 {appt.appointmentDate}
+                                  📅 {formatDateDDMMYYYY(appt.appointmentDate)}
                                 </span>
                               )}
                             </div>

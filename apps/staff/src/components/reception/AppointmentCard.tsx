@@ -115,7 +115,11 @@ export const AppointmentCard = memo(function AppointmentCard({
   const doctorDisplayName = appt.doctorName?.startsWith("Dr.")
     ? appt.doctorName
     : `Dr. ${appt.doctorName || "Doctor"}`;
-  const slotDisplay = appt.timeSlot || appt.selectedTimeSlot || "Slot N/A";
+  const rawSlotCandidates = [appt.selectedTimeSlot, appt.timeSlot, appt.slot].filter(Boolean).map((v: any) => String(v).trim());
+  const validSlot = rawSlotCandidates.find((raw: string) => !/^\d+\s*(day|days|month|months|week|weeks|min|mins|hr|hrs)$/i.test(raw)) || rawSlotCandidates[0] || "";
+  const slotDisplay = validSlot
+    ? (/\d{1,2}:\d{2}\s*(AM|PM)?\s*[-–]\s*\d{1,2}:\d{2}/i.test(validSlot) ? validSlot.split(/\s*[-–]\s*/)[0].trim() : validSlot)
+    : "Slot N/A";
   const patientIdDisplay = appt.registrationId || appt.patientId || "ID: N/A";
 
   const handleCardPress = () => {
