@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { removeAuthToken, clearAllAuthData, getAssignedBranch, getActiveStaff } from "../../services/auth";
 import { API_BASE_URL } from "../../config/api";
 import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBottomNav";
+import AnalogClockPicker from "../../components/AnalogClockPicker";
 
 type TelecallerTab = "followups" | "log_call" | "book_appointment";
 
@@ -40,9 +41,11 @@ const TIME_SLOTS = [
 
 const CALL_OUTCOMES = [
   { id: "Interested", label: "Interested", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-  { id: "Callback Requested", label: "Callback", color: "#0284c7", bg: "#f0f9ff", border: "#bae6fd" },
+  { id: "Callback", label: "Callback", color: "#0284c7", bg: "#f0f9ff", border: "#bae6fd" },
   { id: "Not Interested", label: "Not Interested", color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
   { id: "No Response", label: "No Response", color: "#64748b", bg: "#f1f5f9", border: "#e2e8f0" },
+  { id: "Switched Off / Busy", label: "Switched Off / Busy", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+  { id: "Other", label: "Other", color: "#475569", bg: "#f8fafc", border: "#cbd5e1" },
 ];
 
 function getFormattedNow(): string {
@@ -109,6 +112,11 @@ export default function TelecallerPortalScreen() {
   const [hospitalBranch, setHospitalBranch] = useState("");
   const [callDateTime, setCallDateTime] = useState(getFormattedNow());
   const [callOutcome, setCallOutcome] = useState("Interested");
+  const [customCallOutcome, setCustomCallOutcome] = useState("");
+  const [showOutcomeDropdown, setShowOutcomeDropdown] = useState(false);
+  const [logCallbackDate, setLogCallbackDate] = useState(getTodayDDMMYYYY());
+  const [logCallbackTime, setLogCallbackTime] = useState("10:00 AM");
+  const [showCallClockModal, setShowCallClockModal] = useState(false);
   const [notesRemarks, setNotesRemarks] = useState("");
   const [submittingLog, setSubmittingLog] = useState(false);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
@@ -126,7 +134,7 @@ export default function TelecallerPortalScreen() {
 
   // Calendar Modal State
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
-  const [calendarTarget, setCalendarTarget] = useState<"book" | "reschedule">("book");
+  const [calendarTarget, setCalendarTarget] = useState<"book" | "reschedule" | "call_log">("book");
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
 
@@ -143,9 +151,10 @@ export default function TelecallerPortalScreen() {
     "July", "August", "September", "October", "November", "December",
   ];
 
-  const openCalendar = (target: "book" | "reschedule") => {
+  const openCalendar = (target: "book" | "reschedule" | "call_log") => {
     setCalendarTarget(target);
-    const currentDate = target === "book" ? bookDate : rescheduleDate;
+    const currentDate =
+      target === "book" ? bookDate : target === "call_log" ? logCallbackDate : rescheduleDate;
     if (currentDate && currentDate.includes("-")) {
       const parts = currentDate.split("-");
       if (parts.length === 3) {
@@ -172,6 +181,8 @@ export default function TelecallerPortalScreen() {
   const handleSelectDay = (formatted: string) => {
     if (calendarTarget === "book") {
       setBookDate(formatted);
+    } else if (calendarTarget === "call_log") {
+      setLogCallbackDate(formatted);
     } else {
       setRescheduleDate(formatted);
     }
@@ -396,6 +407,15 @@ export default function TelecallerPortalScreen() {
 
     try {
       setSubmittingLog(true);
+      const finalOutcome =
+        callOutcome === "Other" ? customCallOutcome.trim() || "Other" : callOutcome;
+      const isNotInterested = callOutcome === "Not Interested";
+      const scheduleSuffix =
+        !isNotInterested && logCallbackDate
+          ? ` [Follow-up: ${logCallbackDate} ${logCallbackTime}]`
+          : "";
+      const finalNotes = `${notesRemarks.trim()}${scheduleSuffix}`.trim();
+
       const res = await fetch(`${API_BASE_URL}/telecaller/call-logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -403,9 +423,11 @@ export default function TelecallerPortalScreen() {
           patientName: patientName.trim(),
           phone: cleanPhone,
           branch: hospitalBranch,
-          dateTime: callDateTime,
-          callOutcome,
-          notes: notesRemarks.trim(),
+          dateTime: new Date().toISOString(),
+          callbackDate: isNotInterested ? undefined : logCallbackDate,
+          callbackTime: isNotInterested ? undefined : logCallbackTime,
+          callOutcome: finalOutcome,
+          notes: finalNotes,
           agentName: telecallerProfile.name,
           telecallerId: telecallerProfile.telecallerId,
         }),
@@ -415,12 +437,13 @@ export default function TelecallerPortalScreen() {
       if (res.ok && data.success) {
         Alert.alert(
           "Call Update Logged!",
-          `Call outcome "${callOutcome}" for ${patientName} has been saved and broadcasted to Admin & HR live stream.`
+          `Call outcome "${finalOutcome}" for ${patientName} has been saved.`
         );
         // Reset form
         setPatientName("");
         setMobileNumber("");
         setNotesRemarks("");
+        setCustomCallOutcome("");
         setCallDateTime(getFormattedNow());
         fetchRecentLogs();
       } else {
@@ -797,47 +820,76 @@ export default function TelecallerPortalScreen() {
               ))}
             </View>
 
-            {/* Date & Time */}
+            {/* Call Outcome Dropdown */}
             <Text style={styles.inputLabel}>
-              Date &amp; Time: <Text style={{ color: "#ef4444" }}>*</Text>
+              Call Outcome: <Text style={{ color: "#ef4444" }}>*</Text>
             </Text>
-            <TextInput
-              style={styles.textInput}
-              value={callDateTime}
-              onChangeText={setCallDateTime}
-              placeholder="DD/MM/YYYY hh:mm AM/PM"
-              placeholderTextColor="#94a3b8"
-            />
+            <TouchableOpacity
+              onPress={() => setShowOutcomeDropdown(true)}
+              style={styles.dateSelectorBtn}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="list-outline" size={18} color="#0284c7" />
+              <Text style={styles.dateSelectorBtnText}>
+                {CALL_OUTCOMES.find((o) => o.id === callOutcome)?.label || callOutcome}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color="#64748b" />
+            </TouchableOpacity>
 
-            {/* Call Outcome / Status */}
-            <Text style={styles.inputLabel}>
-              Call Outcome / Status: <Text style={{ color: "#ef4444" }}>*</Text>
-            </Text>
-            <View style={styles.pillSelectorWrap}>
-              {CALL_OUTCOMES.map((o) => (
-                <TouchableOpacity
-                  key={o.id}
-                  style={[
-                    styles.outcomePill,
-                    callOutcome === o.id && {
-                      backgroundColor: o.bg,
-                      borderColor: o.color,
-                      borderWidth: 2,
-                    },
-                  ]}
-                  onPress={() => setCallOutcome(o.id)}
-                >
-                  <Text
-                    style={[
-                      styles.outcomePillText,
-                      callOutcome === o.id && { color: o.color, fontWeight: "900" },
-                    ]}
-                  >
-                    {o.label}
+            {/* Custom Outcome Input when Other is selected */}
+            {callOutcome === "Other" && (
+              <View style={{ marginTop: 8 }}>
+                <Text style={styles.inputLabel}>
+                  Specify Other Outcome: <Text style={{ color: "#ef4444" }}>*</Text>
+                </Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter custom call outcome..."
+                  placeholderTextColor="#94a3b8"
+                  value={customCallOutcome}
+                  onChangeText={setCustomCallOutcome}
+                />
+              </View>
+            )}
+
+            {/* Follow-up Date (Calendar) & Time (Analog Clock) - Hidden when Not Interested */}
+            {callOutcome !== "Not Interested" && (
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>
+                    Follow-up Date: <Text style={{ color: "#ef4444" }}>*</Text>
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  <TouchableOpacity
+                    onPress={() => openCalendar("call_log")}
+                    style={styles.dateSelectorBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="calendar-outline" size={16} color="#0284c7" />
+                    <Text style={[styles.dateSelectorBtnText, { fontSize: 12 }]}>
+                      {logCallbackDate || "Select Date"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>
+                    Follow-up Time: <Text style={{ color: "#ef4444" }}>*</Text>
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCallClockModal(true)}
+                    style={styles.dateSelectorBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="time-outline" size={16} color="#0284c7" />
+                    <Text style={[styles.dateSelectorBtnText, { fontSize: 12 }]}>
+                      {logCallbackTime || "10:00 AM"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#64748b" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {/* Notes & Remarks */}
             <Text style={styles.inputLabel}>
@@ -1258,7 +1310,12 @@ export default function TelecallerPortalScreen() {
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1;
                 const formatted = `${String(day).padStart(2, "0")}-${String(calMonth + 1).padStart(2, "0")}-${calYear}`;
-                const targetDate = calendarTarget === "book" ? bookDate : rescheduleDate;
+                const targetDate =
+                  calendarTarget === "book"
+                    ? bookDate
+                    : calendarTarget === "call_log"
+                    ? logCallbackDate
+                    : rescheduleDate;
                 const isSelected = targetDate === formatted;
 
                 return (
@@ -1313,6 +1370,94 @@ export default function TelecallerPortalScreen() {
             </View>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Call Outcome Dropdown Modal */}
+      <Modal
+        visible={showOutcomeDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowOutcomeDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.calModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowOutcomeDropdown(false)}
+        >
+          <View style={styles.calModalContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.calNavHeader}>
+              <Text style={styles.calMonthTitle}>Select Call Outcome</Text>
+              <TouchableOpacity onPress={() => setShowOutcomeDropdown(false)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ gap: 8, marginTop: 8 }}>
+              {CALL_OUTCOMES.map((o) => {
+                const isSel = callOutcome === o.id;
+                return (
+                  <TouchableOpacity
+                    key={o.id}
+                    onPress={() => {
+                      setCallOutcome(o.id);
+                      setShowOutcomeDropdown(false);
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 11,
+                      paddingHorizontal: 14,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: isSel ? "#0284c7" : "#e2e8f0",
+                      backgroundColor: isSel ? "#f0f9ff" : "#ffffff",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isSel ? "800" : "600",
+                        color: isSel ? "#0284c7" : "#0f172a",
+                      }}
+                    >
+                      {o.label}
+                    </Text>
+                    {isSel && <Ionicons name="checkmark-circle" size={18} color="#0284c7" />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Analog Clock Time Picker Modal for Call Update */}
+      <Modal
+        visible={showCallClockModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCallClockModal(false)}
+      >
+        <View style={styles.calModalOverlay}>
+          <View style={[styles.calModalContainer, { maxWidth: 360, width: "92%" }]}>
+            <View style={styles.calNavHeader}>
+              <Text style={styles.calMonthTitle}>Select Follow-up Time</Text>
+              <TouchableOpacity onPress={() => setShowCallClockModal(false)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <AnalogClockPicker
+              value={logCallbackTime}
+              onChange={(t) => setLogCallbackTime(t)}
+            />
+            <TouchableOpacity
+              style={[styles.submitBtn, { marginTop: 10 }]}
+              onPress={() => setShowCallClockModal(false)}
+            >
+              <Text style={styles.submitBtnText}>Confirm Time</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Persistent Bottom Navigation Bar */}

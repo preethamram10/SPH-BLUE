@@ -99,10 +99,11 @@ const MARKETING_SOURCES = [
 
 const CALL_OUTCOMES = [
   { id: "Interested", label: "Interested", color: "text-emerald-700 bg-emerald-50 border-emerald-300" },
-  { id: "Callback Requested", label: "Callback", color: "text-sky-700 bg-sky-50 border-sky-300" },
+  { id: "Callback", label: "Callback", color: "text-sky-700 bg-sky-50 border-sky-300" },
   { id: "Not Interested", label: "Not Interested", color: "text-rose-700 bg-rose-50 border-rose-300" },
   { id: "No Response", label: "No Response", color: "text-slate-700 bg-slate-100 border-slate-300" },
   { id: "Switched Off / Busy", label: "Switched Off / Busy", color: "text-amber-700 bg-amber-50 border-amber-300" },
+  { id: "Other", label: "Other", color: "text-slate-700 bg-slate-100 border-slate-300" },
 ];
 
 function getDayOfWeekAbbr(dateStr: string): string {
@@ -305,8 +306,20 @@ function TelecallerDashboardContent() {
 
   // Form state for Log Call Outcome
   const [callOutcome, setCallOutcome] = useState("Interested");
+  const [customCallOutcome, setCustomCallOutcome] = useState("");
   const [callRemarks, setCallRemarks] = useState("");
   const [savingCallLog, setSavingCallLog] = useState(false);
+
+  // Callback Date (Calendar Popup) & Time (Analog Clock) for Log Call
+  const [logCallbackDate, setLogCallbackDate] = useState(() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+  });
+  const [logCallbackTime, setLogCallbackTime] = useState("10:00 AM");
+  const [showLogCalendarModal, setShowLogCalendarModal] = useState(false);
+  const [showLogClockModal, setShowLogClockModal] = useState(false);
+  const [logCalYear, setLogCalYear] = useState(() => new Date().getFullYear());
+  const [logCalMonth, setLogCalMonth] = useState(() => new Date().getMonth());
 
   // Standalone Call Logs Form state
   const [logPatientName, setLogPatientName] = useState("");
@@ -623,6 +636,13 @@ function TelecallerDashboardContent() {
     try {
       const agentName = localStorage.getItem("telecaller_name") || localStorage.getItem("user_name") || "Telecaller Desk";
       const telecallerId = localStorage.getItem("telecaller_id") || "TC01";
+      const finalOutcome = callOutcome === "Other" ? (customCallOutcome.trim() || "Other") : callOutcome;
+      const isNotInterested = callOutcome === "Not Interested";
+      const scheduleSuffix =
+        !isNotInterested && logCallbackDate
+          ? ` [Follow-up: ${logCallbackDate} ${logCallbackTime}]`
+          : "";
+      const finalNotes = `${callRemarks.trim()}${scheduleSuffix}`.trim();
 
       const res = await fetch("/api/telecaller/call-logs", {
         method: "POST",
@@ -632,8 +652,10 @@ function TelecallerDashboardContent() {
           phone: cleanPhone,
           branch: logBranch,
           dateTime: new Date().toISOString(),
-          callOutcome,
-          notes: callRemarks,
+          callbackDate: isNotInterested ? undefined : logCallbackDate,
+          callbackTime: isNotInterested ? undefined : logCallbackTime,
+          callOutcome: finalOutcome,
+          notes: finalNotes,
           agentName,
           telecallerId,
         }),
@@ -641,13 +663,13 @@ function TelecallerDashboardContent() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setActionMessage(`Call log recorded for ${logPatientName} (${callOutcome})!`);
+        setActionMessage(`Call log recorded for ${logPatientName} (${finalOutcome})!`);
         setTimeout(() => setActionMessage(null), 4000);
         setLogPatientName("");
         setLogPhone("");
         setCallRemarks("");
-        // Redirect to main Follow-Up Calling Roster
-        router.push("/telecaller/dashboard");
+        setCustomCallOutcome("");
+        fetchRecentLogs();
       } else {
         alert(data.error || "Failed to save call log");
       }
@@ -2184,28 +2206,30 @@ function TelecallerDashboardContent() {
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 3: STANDALONE CALL LOGS DESK WITH PATIENT SEARCH & DELETE OPTION       */}
+        {/* TAB 3: STANDALONE CALL LOGS DESK (SYSTEM UI, NO DELETE FOR TELECALLERS)   */}
         {/* ========================================================================= */}
         {activeTab === "log_call" && (
           <div className="p-6 max-w-5xl mx-auto space-y-6">
             {/* Top Form Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-4 text-white flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shadow-inner">
-                    <PhoneCall className="w-4 h-4 text-white" />
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-sky-50 text-[#0284c7] border border-sky-200 flex items-center justify-center">
+                    <PhoneCall className="w-4 h-4" />
                   </div>
                   <div>
-                    <h2 className="font-extrabold text-sm tracking-tight">Log Patient Call &amp; Discussion Outcome</h2>
-                    <p className="text-[11.5px] text-emerald-100 font-medium">
-                      Record telecalling feedback, notes &amp; disposition. Saves and returns to Follow-Ups roster.
+                    <h2 className="font-extrabold text-sm text-slate-900 tracking-tight">
+                      Log Patient Call Update
+                    </h2>
+                    <p className="text-[11.5px] text-slate-500 font-medium">
+                      Record patient call outcome, follow-up date &amp; time, and discussion notes.
                     </p>
                   </div>
                 </div>
 
                 <Link
                   href="/telecaller/dashboard"
-                  className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/20"
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                   <span>Back to Follow-Ups</span>
@@ -2228,7 +2252,7 @@ function TelecallerDashboardContent() {
                         placeholder="Type name (auto-searches roster)"
                         value={logPatientName}
                         onChange={(e) => handleLogPatientNameChange(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                       />
                     </div>
 
@@ -2249,7 +2273,7 @@ function TelecallerDashboardContent() {
                           <div
                             key={p.id}
                             onClick={() => handleSelectLogSuggestion(p)}
-                            className="flex items-center justify-between p-2 rounded-lg hover:bg-emerald-50 cursor-pointer transition text-xs"
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-sky-50 cursor-pointer transition text-xs"
                           >
                             <div>
                               <div className="font-extrabold text-slate-900">{p.name}</div>
@@ -2257,7 +2281,7 @@ function TelecallerDashboardContent() {
                                 📞 {p.phone} {p.diseases ? `• ${p.diseases}` : ""}
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
+                            <span className="px-2 py-0.5 rounded bg-sky-50 text-[#0284c7] border border-sky-200 font-mono font-bold text-[10px]">
                               {p.regId}
                             </span>
                           </div>
@@ -2280,7 +2304,7 @@ function TelecallerDashboardContent() {
                         placeholder="10-digit mobile number"
                         value={logPhone}
                         onChange={(e) => setLogPhone(e.target.value.replace(/\D/g, ""))}
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                       />
                     </div>
                   </div>
@@ -2295,13 +2319,13 @@ function TelecallerDashboardContent() {
                       <select
                         value={logBranch}
                         onChange={(e) => setLogBranch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] cursor-pointer"
                       >
                         {branches
                           .filter((b) => b !== "All Branches")
                           .map((b) => (
                             <option key={b} value={b}>
-                              📍 {b}
+                              {b}
                             </option>
                           ))}
                       </select>
@@ -2309,32 +2333,83 @@ function TelecallerDashboardContent() {
                   </div>
                 </div>
 
-                {/* Call Outcome Selector */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-2">
-                    Call Outcome / Disposition <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                    {CALL_OUTCOMES.map((oc) => {
-                      const isSelected = callOutcome === oc.id;
-                      return (
-                        <button
-                          key={oc.id}
-                          type="button"
-                          onClick={() => setCallOutcome(oc.id)}
-                          className={`p-2.5 rounded-xl border text-left font-bold transition-all flex items-center justify-between cursor-pointer ${
-                            isSelected
-                              ? `${oc.color} ring-2 ring-emerald-500 shadow-2xs font-extrabold scale-[1.02]`
-                              : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                          }`}
-                        >
-                          <span className="text-xs">{oc.label}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-current shrink-0" />}
-                        </button>
-                      );
-                    })}
+                {/* Call Outcome Dropdown + Callback Date & Time (Hidden when Not Interested) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Call Outcome Dropdown */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Call Outcome <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={callOutcome}
+                      onChange={(e) => setCallOutcome(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] cursor-pointer"
+                    >
+                      {CALL_OUTCOMES.map((oc) => (
+                        <option key={oc.id} value={oc.id}>
+                          {oc.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+
+                  {/* Callback Date (Calendar Popup) - Hidden if Not Interested */}
+                  {callOutcome !== "Not Interested" && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Follow-up Date (Calendar)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowLogCalendarModal(true)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 flex items-center justify-between transition cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-[#0284c7]" />
+                          <span>{logCallbackDate || "Select Date"}</span>
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Callback Time (Analog Clock Picker) - Hidden if Not Interested */}
+                  {callOutcome !== "Not Interested" && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Follow-up Time (Analog Clock)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowLogClockModal(true)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 flex items-center justify-between transition cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-[#0284c7]" />
+                          <span>{logCallbackTime || "10:00 AM"}</span>
+                        </span>
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* Custom Outcome Input when "Other" is selected */}
+                {callOutcome === "Other" && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Specify Other Outcome <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Enter custom call outcome..."
+                      value={customCallOutcome}
+                      onChange={(e) => setCustomCallOutcome(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                    />
+                  </div>
+                )}
 
                 {/* Quick Remarks Chips */}
                 <div>
@@ -2356,7 +2431,7 @@ function TelecallerDashboardContent() {
                         onClick={() => {
                           setCallRemarks((prev) => (prev ? `${prev} • ${chip}` : chip));
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200 border border-slate-200 text-[11px] font-semibold text-slate-600 transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-sky-50 hover:text-[#0284c7] hover:border-sky-200 border border-slate-200 text-[11px] font-semibold text-slate-600 transition cursor-pointer"
                       >
                         + {chip}
                       </button>
@@ -2374,7 +2449,7 @@ function TelecallerDashboardContent() {
                     onChange={(e) => setCallRemarks(e.target.value)}
                     rows={3}
                     placeholder="Enter discussion notes: patient condition, requested callback time, medicine status..."
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                   />
                 </div>
 
@@ -2389,7 +2464,7 @@ function TelecallerDashboardContent() {
                   <button
                     type="submit"
                     disabled={savingCallLog}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50 cursor-pointer"
+                    className="px-6 py-2.5 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-extrabold text-xs flex items-center gap-2 shadow-sm transition disabled:opacity-50 cursor-pointer"
                   >
                     {savingCallLog ? (
                       <>
@@ -2399,7 +2474,7 @@ function TelecallerDashboardContent() {
                     ) : (
                       <>
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Save Call Log &amp; Return to Roster</span>
+                        <span>Save Call Update</span>
                       </>
                     )}
                   </button>
@@ -2407,15 +2482,15 @@ function TelecallerDashboardContent() {
               </form>
             </div>
 
-            {/* Bottom Card: Logged Call Updates List with DELETE Option */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {/* Bottom Card: Logged Call Updates List (NO DELETE OPTION FOR TELECALLERS) */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4 text-emerald-700" />
+                  <ClipboardList className="w-4 h-4 text-[#0284c7]" />
                   <h3 className="font-extrabold text-sm text-slate-900">
                     Logged Call Updates ({recentCallLogs.length})
                   </h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-[#0284c7] border border-sky-200">
                     Live Records
                   </span>
                 </div>
@@ -2425,14 +2500,14 @@ function TelecallerDashboardContent() {
                   disabled={loadingRecentLogs}
                   className="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecentLogs ? "animate-spin text-emerald-600" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecentLogs ? "animate-spin text-[#0284c7]" : ""}`} />
                   <span>Refresh Logs</span>
                 </button>
               </div>
 
               {loadingRecentLogs ? (
                 <div className="p-8 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-[#0284c7]" />
                   <span>Loading call log records...</span>
                 </div>
               ) : recentCallLogs.length === 0 ? (
@@ -2451,7 +2526,6 @@ function TelecallerDashboardContent() {
                         <th className="py-2.5 px-3">Call Outcome</th>
                         <th className="py-2.5 px-4">Notes &amp; Discussion</th>
                         <th className="py-2.5 px-3">Logged Date / Agent</th>
-                        <th className="py-2.5 px-3 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -2485,17 +2559,6 @@ function TelecallerDashboardContent() {
                               </div>
                               <div className="text-[10px] text-slate-400 font-mono">{log.agentName || "Telecaller"}</div>
                             </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCallLog(log.id, log.patientName)}
-                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
-                                title="Delete this call log update"
-                              >
-                                <Trash2 className="w-3 h-3 text-rose-600" />
-                                <span>Delete</span>
-                              </button>
-                            </td>
                           </tr>
                         );
                       })}
@@ -2504,6 +2567,120 @@ function TelecallerDashboardContent() {
                 </div>
               )}
             </div>
+
+            {/* CALENDAR POPUP MODAL FOR LOG CALL */}
+            {showLogCalendarModal && (
+              <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h4 className="font-extrabold text-sm text-slate-900">Select Follow-up Date</h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogCalendarModal(false)}
+                      className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (logCalMonth === 0) {
+                          setLogCalMonth(11);
+                          setLogCalYear(logCalYear - 1);
+                        } else {
+                          setLogCalMonth(logCalMonth - 1);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-slate-600" />
+                    </button>
+                    <span className="text-xs font-extrabold text-slate-800">
+                      {new Date(logCalYear, logCalMonth, 1).toLocaleString("en-US", { month: "long", year: "numeric" })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (logCalMonth === 11) {
+                          setLogCalMonth(0);
+                          setLogCalYear(logCalYear + 1);
+                        } else {
+                          setLogCalMonth(logCalMonth + 1);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400">
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                      <div key={d} className="py-1">{d}</div>
+                    ))}
+                    {Array.from({ length: new Date(logCalYear, logCalMonth, 1).getDay() }).map((_, i) => (
+                      <div key={`empty-${i}`} />
+                    ))}
+                    {Array.from({ length: new Date(logCalYear, logCalMonth + 1, 0).getDate() }).map((_, i) => {
+                      const day = i + 1;
+                      const formatted = `${String(day).padStart(2, "0")}-${String(logCalMonth + 1).padStart(2, "0")}-${logCalYear}`;
+                      const isSel = logCallbackDate === formatted;
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            setLogCallbackDate(formatted);
+                            setShowLogCalendarModal(false);
+                          }}
+                          className={`py-1.5 rounded-lg text-xs font-bold cursor-pointer transition ${
+                            isSel
+                              ? "bg-[#0284c7] text-white"
+                              : "text-slate-700 hover:bg-sky-50 hover:text-[#0284c7]"
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ANALOG CLOCK POPUP MODAL FOR LOG CALL */}
+            {showLogClockModal && (
+              <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <h4 className="font-extrabold text-sm text-slate-900">Select Follow-up Time</h4>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogClockModal(false)}
+                      className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <AnalogClockPicker
+                    value={logCallbackTime}
+                    onChange={(t) => setLogCallbackTime(t)}
+                  />
+                  <div className="flex justify-end pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowLogClockModal(false)}
+                      className="px-4 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold cursor-pointer"
+                    >
+                      Confirm Time
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -2891,21 +3068,21 @@ function TelecallerDashboardContent() {
       {logCallItem && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-scaleIn">
-            <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-5 py-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                  <PhoneCall className="w-4 h-4 text-white" />
+            <div className="bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#0284c7] border border-sky-200 flex items-center justify-center">
+                  <PhoneCall className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm">Record Call Outcome</h3>
-                  <p className="text-[11px] text-emerald-100">
+                  <h3 className="font-extrabold text-sm text-slate-900">Record Call Outcome</h3>
+                  <p className="text-[11px] text-slate-500">
                     Patient: {logCallItem.patientName} ({logCallItem.phone})
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setLogCallItem(null)}
-                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2913,26 +3090,20 @@ function TelecallerDashboardContent() {
 
             <div className="p-5 space-y-4 text-xs font-medium text-slate-700">
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-2">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1.5">
                   Call Outcome <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={callOutcome}
+                  onChange={(e) => setCallOutcome(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-slate-50 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
+                >
                   {CALL_OUTCOMES.map((oc) => (
-                    <button
-                      key={oc.id}
-                      type="button"
-                      onClick={() => setCallOutcome(oc.id)}
-                      className={`p-2 rounded-lg border text-left font-bold transition flex items-center justify-between cursor-pointer ${
-                        callOutcome === oc.id
-                          ? `${oc.color} ring-2 ring-emerald-500 shadow-2xs`
-                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                      }`}
-                    >
-                      <span className="text-xs">{oc.label}</span>
-                      {callOutcome === oc.id && <Check className="w-3.5 h-3.5" />}
-                    </button>
+                    <option key={oc.id} value={oc.id}>
+                      {oc.label}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
 
               <div>
@@ -2944,7 +3115,7 @@ function TelecallerDashboardContent() {
                   onChange={(e) => setCallRemarks(e.target.value)}
                   rows={3}
                   placeholder="Patient asked for Saturday slot, traveling out of town, medicine still running..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7]"
                 />
               </div>
 
@@ -2960,7 +3131,7 @@ function TelecallerDashboardContent() {
                   type="button"
                   onClick={handleSaveCallLog}
                   disabled={savingCallLog}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-[#0284c7] hover:bg-[#0369a1] text-white font-extrabold flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
                 >
                   {savingCallLog ? "Saving..." : "Save Call Log"}
                 </button>
