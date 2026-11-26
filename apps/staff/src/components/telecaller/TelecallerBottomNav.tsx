@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-export type TelecallerTabType = "followups" | "log_call" | "book_appointment";
+export type TelecallerTabType = "followups" | "log_call" | "logged_calls" | "book_appointment";
 
 interface TelecallerBottomNavProps {
   activeTab: TelecallerTabType;
@@ -67,7 +67,28 @@ export const TelecallerBottomNav: React.FC<TelecallerBottomNavProps> = ({
         </Text>
       </TouchableOpacity>
 
-      {/* 3. Book Appointment */}
+      {/* 3. Logged Calls */}
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => onTabChange("logged_calls")}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={activeTab === "logged_calls" ? "list" : "list-outline"}
+          size={22}
+          color={activeTab === "logged_calls" ? "#0284c7" : "#64748b"}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            activeTab === "logged_calls" ? styles.tabLabelActive : styles.tabLabelInactive,
+          ]}
+        >
+          Logged Calls
+        </Text>
+      </TouchableOpacity>
+
+      {/* 4. Book Appointment */}
       <TouchableOpacity
         style={styles.tabItem}
         onPress={() => onTabChange("book_appointment")}

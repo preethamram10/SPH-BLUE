@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 
 interface TelecallerSidebarProps {
-  activeTab: "followups" | "book_appointment" | "log_call" | string;
-  onTabChange?: (tab: "followups" | "book_appointment" | "log_call") => void;
+  activeTab: "followups" | "book_appointment" | "log_call" | "logged_calls" | string;
+  onTabChange?: (tab: "followups" | "book_appointment" | "log_call" | "logged_calls") => void;
 }
 
 export default function TelecallerSidebar({
@@ -82,9 +82,15 @@ export default function TelecallerSidebar({
     },
     {
       id: "log_call",
-      name: "Call Logs & Updates",
+      name: "Log Call Update",
       href: "/telecaller/dashboard?tab=log_call",
       icon: ClipboardList,
+    },
+    {
+      id: "logged_calls",
+      name: "Logged Call Updates",
+      href: "/telecaller/logged-calls",
+      icon: Phone,
     },
   ];
 

@@ -2227,13 +2227,22 @@ function TelecallerDashboardContent() {
                   </div>
                 </div>
 
-                <Link
-                  href="/telecaller/dashboard"
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Back to Follow-Ups</span>
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/telecaller/logged-calls"
+                    className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-[#0284c7] text-xs font-bold transition flex items-center gap-1.5 border border-sky-200"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    <span>Logged Call Updates</span>
+                  </Link>
+                  <Link
+                    href="/telecaller/dashboard"
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Back to Follow-Ups</span>
+                  </Link>
+                </div>
               </div>
 
               <form onSubmit={handleStandaloneCallLog} className="p-6 space-y-5 text-xs font-medium text-slate-700">
@@ -2480,92 +2489,6 @@ function TelecallerDashboardContent() {
                   </button>
                 </div>
               </form>
-            </div>
-
-            {/* Bottom Card: Logged Call Updates List (NO DELETE OPTION FOR TELECALLERS) */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4 text-[#0284c7]" />
-                  <h3 className="font-extrabold text-sm text-slate-900">
-                    Logged Call Updates ({recentCallLogs.length})
-                  </h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-[#0284c7] border border-sky-200">
-                    Live Records
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={fetchRecentLogs}
-                  disabled={loadingRecentLogs}
-                  className="px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingRecentLogs ? "animate-spin text-[#0284c7]" : ""}`} />
-                  <span>Refresh Logs</span>
-                </button>
-              </div>
-
-              {loadingRecentLogs ? (
-                <div className="p-8 text-center text-xs font-semibold text-slate-400 flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-[#0284c7]" />
-                  <span>Loading call log records...</span>
-                </div>
-              ) : recentCallLogs.length === 0 ? (
-                <div className="p-10 text-center text-slate-400 space-y-2">
-                  <PhoneCall className="w-8 h-8 mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-500">No call log updates recorded yet</p>
-                  <p className="text-[11px] text-slate-400">Use the form above to log patient call outcomes.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50/90 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
-                        <th className="py-2.5 px-4">Patient Info</th>
-                        <th className="py-2.5 px-3">Branch</th>
-                        <th className="py-2.5 px-3">Call Outcome</th>
-                        <th className="py-2.5 px-4">Notes &amp; Discussion</th>
-                        <th className="py-2.5 px-3">Logged Date / Agent</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {recentCallLogs.map((log: any) => {
-                        const ocObj = CALL_OUTCOMES.find((o) => o.id === log.callOutcome);
-                        const badgeColor = ocObj ? ocObj.color : "text-slate-700 bg-slate-100 border-slate-300";
-                        return (
-                          <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-3 px-4 font-semibold text-slate-900">
-                              <div className="font-extrabold text-slate-900">{log.patientName}</div>
-                              <div className="text-[11px] text-slate-500 font-mono">📞 {log.phone}</div>
-                            </td>
-                            <td className="py-3 px-3 text-slate-600 font-medium">
-                              <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10.5px] font-bold">
-                                {log.branch || "Clinic"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10.5px] font-extrabold border ${badgeColor}`}
-                              >
-                                {log.callOutcome}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 max-w-xs text-slate-600 text-[11px] break-words">
-                              {log.notes || "—"}
-                            </td>
-                            <td className="py-3 px-3 text-[11px] text-slate-500 whitespace-nowrap">
-                              <div className="font-medium text-slate-700">
-                                {log.dateTime ? new Date(log.dateTime).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                              </div>
-                              <div className="text-[10px] text-slate-400 font-mono">{log.agentName || "Telecaller"}</div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
 
             {/* CALENDAR POPUP MODAL FOR LOG CALL */}

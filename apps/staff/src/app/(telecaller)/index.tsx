@@ -20,7 +20,42 @@ import { API_BASE_URL } from "../../config/api";
 import { TelecallerBottomNav } from "../../components/telecaller/TelecallerBottomNav";
 import AnalogClockPicker from "../../components/AnalogClockPicker";
 
-type TelecallerTab = "followups" | "log_call" | "book_appointment";
+type TelecallerTab = "followups" | "log_call" | "logged_calls" | "book_appointment";
+
+const LOGGED_CALLS_PAGE_SIZE = 26;
+
+const LOG_OUTCOME_FILTER_OPTIONS = [
+  "All Outcomes",
+  "Interested",
+  "Callback",
+  "Not Interested",
+  "No Response",
+  "Switched Off / Busy",
+  "Other",
+];
+
+function getLogMonthKey(log: any): string {
+  const raw = log?.createdAt || log?.dateTime || "";
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const dmyMatch = str.match(/^(\d{2})[/-](\d{2})[/-](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2]}`;
+  }
+  const dt = new Date(str);
+  if (!isNaN(dt.getTime())) {
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+function formatMonthLabel(monthKey: string): string {
+  if (!monthKey) return "All Months";
+  const [y, m] = monthKey.split("-");
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const idx = parseInt(m, 10) - 1;
+  return `${names[idx] || m} ${y}`;
+}
 
 const DEFAULT_BOOKING_BRANCHES: string[] = [];
 
@@ -75,7 +110,12 @@ export default function TelecallerPortalScreen() {
   const [activeTab, setActiveTab] = useState<TelecallerTab>("followups");
 
   useEffect(() => {
-    if (searchParams?.tab === "book_appointment" || searchParams?.tab === "log_call" || searchParams?.tab === "followups") {
+    if (
+      searchParams?.tab === "book_appointment" ||
+      searchParams?.tab === "log_call" ||
+      searchParams?.tab === "logged_calls" ||
+      searchParams?.tab === "followups"
+    ) {
       setActiveTab(searchParams.tab as TelecallerTab);
     }
   }, [searchParams?.tab]);
@@ -120,6 +160,14 @@ export default function TelecallerPortalScreen() {
   const [notesRemarks, setNotesRemarks] = useState("");
   const [submittingLog, setSubmittingLog] = useState(false);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [refreshingLogs, setRefreshingLogs] = useState(false);
+  const [logSearch, setLogSearch] = useState("");
+  const [logBranchFilter, setLogBranchFilter] = useState("All Branches");
+  const [logOutcomeFilter, setLogOutcomeFilter] = useState("All Outcomes");
+  const [logMonthFilter, setLogMonthFilter] = useState("");
+  const [logCurrentPage, setLogCurrentPage] = useState(1);
+  const [showLogMonthModal, setShowLogMonthModal] = useState(false);
 
   // Section 3: Book Appointment State
   const [bookFollowUpId, setBookFollowUpId] = useState<string | null>(null);
@@ -293,25 +341,78 @@ export default function TelecallerPortalScreen() {
     }
   }, [fetchFollowUps, activeTab]);
 
-  // Fetch recent call logs for Section 2
-  const fetchRecentLogs = async () => {
+  // Fetch all logged call updates
+  const fetchRecentLogs = useCallback(async () => {
     try {
+      setLoadingLogs(true);
       const res = await fetch(`${API_BASE_URL}/telecaller/call-logs`);
       const data = await res.json();
       if (data.success && Array.isArray(data.logs)) {
-        setRecentLogs(data.logs.slice(0, 5));
+        setRecentLogs(data.logs);
       }
     } catch (err) {
       console.warn("Failed fetching recent logs:", err);
+    } finally {
+      setLoadingLogs(false);
+      setRefreshingLogs(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (activeTab === "log_call") {
-      fetchRecentLogs();
       setCallDateTime(getFormattedNow());
+    } else if (activeTab === "logged_calls") {
+      fetchRecentLogs();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchRecentLogs]);
+
+  const availableLogMonths = useMemo(() => {
+    const set = new Set<string>();
+    const now = new Date();
+    set.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    recentLogs.forEach((log) => {
+      const k = getLogMonthKey(log);
+      if (k) set.add(k);
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [recentLogs]);
+
+  const filteredCallLogs = useMemo(() => {
+    const q = logSearch.trim().toLowerCase();
+    return recentLogs.filter((log) => {
+      if (logBranchFilter !== "All Branches") {
+        if ((log.branch || "").toLowerCase() !== logBranchFilter.toLowerCase()) return false;
+      }
+      if (logOutcomeFilter !== "All Outcomes") {
+        const outcome = (log.callOutcome || "").trim().toLowerCase();
+        if (logOutcomeFilter === "Other") {
+          const standard = ["interested", "callback", "not interested", "no response", "switched off / busy"];
+          if (standard.includes(outcome)) return false;
+        } else if (outcome !== logOutcomeFilter.toLowerCase()) {
+          return false;
+        }
+      }
+      if (logMonthFilter) {
+        if (getLogMonthKey(log) !== logMonthFilter) return false;
+      }
+      if (q) {
+        const hay = `${log.patientName || ""} ${log.phone || ""} ${log.branch || ""} ${log.callOutcome || ""} ${log.notes || ""} ${log.agentName || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [recentLogs, logSearch, logBranchFilter, logOutcomeFilter, logMonthFilter]);
+
+  useEffect(() => {
+    setLogCurrentPage(1);
+  }, [logSearch, logBranchFilter, logOutcomeFilter, logMonthFilter]);
+
+  const logTotalPages = Math.max(1, Math.ceil(filteredCallLogs.length / LOGGED_CALLS_PAGE_SIZE));
+  const safeLogPage = Math.min(logCurrentPage, logTotalPages);
+  const paginatedCallLogs = useMemo(() => {
+    const start = (safeLogPage - 1) * LOGGED_CALLS_PAGE_SIZE;
+    return filteredCallLogs.slice(start, start + LOGGED_CALLS_PAGE_SIZE);
+  }, [filteredCallLogs, safeLogPage]);
 
   // Handle Logout
   const handleLogout = async () => {
@@ -766,6 +867,21 @@ export default function TelecallerPortalScreen() {
                   Log a patient call, conversation notes, and outcome
                 </Text>
               </View>
+              <TouchableOpacity
+                onPress={() => setActiveTab("logged_calls")}
+                style={{
+                  backgroundColor: "#f0f9ff",
+                  borderWidth: 1,
+                  borderColor: "#bae6fd",
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284c7" }}>
+                  Logged Calls
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Patient Name */}
@@ -920,25 +1036,236 @@ export default function TelecallerPortalScreen() {
               )}
             </TouchableOpacity>
           </View>
-
-          {/* Recent Call Logs Live Stream */}
-          <Text style={styles.sectionHeaderTitle}>Live Telecaller Activity &amp; Call Logs</Text>
-          {recentLogs.map((log) => (
-            <View key={log.id} style={styles.streamCard}>
-              <View style={styles.streamTop}>
-                <View>
-                  <Text style={styles.streamPatient}>{log.patientName}</Text>
-                  <Text style={styles.streamPhone}>📞 {log.phone} • {log.branch}</Text>
-                </View>
-                <View style={styles.streamOutcomeBadge}>
-                  <Text style={styles.streamOutcomeText}>{log.callOutcome}</Text>
-                </View>
-              </View>
-              <Text style={styles.streamNotes}>{log.notes}</Text>
-              <Text style={styles.streamTime}>{log.dateTime} • by {log.agentName}</Text>
-            </View>
-          ))}
         </ScrollView>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 2B: LOGGED CALL UPDATES (SEPARATE TAB WITH FILTERS & PAGINATION)  */}
+      {/* ========================================================================= */}
+      {activeTab === "logged_calls" && (
+        <View style={{ flex: 1 }}>
+          {/* Header Card */}
+          <View style={styles.rosterHeaderCard}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={styles.rosterIconBox}>
+                <Ionicons name="list" size={18} color="#0284c7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rosterTitle}>Logged Call Updates</Text>
+                <Text style={styles.rosterSub}>
+                  Filter by month, branch, outcome or search • 26 per page
+                </Text>
+              </View>
+              <View style={styles.rosterCountBadge}>
+                <Text style={styles.rosterCountText}>{filteredCallLogs.length} Logs</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Search & Month Filter Row */}
+          <View style={{ paddingTop: 8, gap: 4 }}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={16} color="#94a3b8" style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.searchField}
+                placeholder="Search patient, mobile, notes, outcome..."
+                placeholderTextColor="#94a3b8"
+                value={logSearch}
+                onChangeText={setLogSearch}
+              />
+              {logSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setLogSearch("")}>
+                  <Ionicons name="close-circle" size={16} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={[styles.monthFilterRow, { paddingHorizontal: 16 }]}>
+              <TouchableOpacity
+                style={[styles.monthFilterBtn, logMonthFilter ? styles.monthFilterBtnActive : null]}
+                onPress={() => setShowLogMonthModal(true)}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={15}
+                  color={logMonthFilter ? "#0284c7" : "#64748b"}
+                />
+                <Text
+                  style={[
+                    styles.monthFilterBtnText,
+                    logMonthFilter ? { color: "#0284c7" } : null,
+                  ]}
+                >
+                  Month: {formatMonthLabel(logMonthFilter)}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#64748b" />
+              </TouchableOpacity>
+
+              {logMonthFilter ? (
+                <TouchableOpacity
+                  style={styles.monthClearBtn}
+                  onPress={() => setLogMonthFilter("")}
+                >
+                  <Text style={styles.monthClearBtnText}>Clear</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity
+                style={styles.monthClearBtn}
+                onPress={() => setActiveTab("log_call")}
+              >
+                <Text style={[styles.monthClearBtnText, { color: "#0284c7" }]}>+ Log Call</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Branch Filter Chips */}
+          <View style={[styles.filterBar, { paddingBottom: 4 }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {allBranches.map((br) => (
+                <TouchableOpacity
+                  key={`log-br-${br}`}
+                  onPress={() => setLogBranchFilter(br)}
+                  style={[
+                    styles.branchFilterChip,
+                    logBranchFilter === br && styles.branchFilterChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.branchFilterText,
+                      logBranchFilter === br && styles.branchFilterTextActive,
+                    ]}
+                  >
+                    {br}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Call Outcome Filter Chips */}
+          <View style={[styles.filterBar, { paddingTop: 2, paddingBottom: 8 }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {LOG_OUTCOME_FILTER_OPTIONS.map((out) => (
+                <TouchableOpacity
+                  key={`log-out-${out}`}
+                  onPress={() => setLogOutcomeFilter(out)}
+                  style={[
+                    styles.branchFilterChip,
+                    logOutcomeFilter === out && styles.branchFilterChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.branchFilterText,
+                      logOutcomeFilter === out && styles.branchFilterTextActive,
+                    ]}
+                  >
+                    {out}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshingLogs}
+                onRefresh={() => {
+                  setRefreshingLogs(true);
+                  fetchRecentLogs();
+                }}
+              />
+            }
+          >
+            {loadingLogs && recentLogs.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <ActivityIndicator size="large" color="#0284c7" />
+                <Text style={styles.emptyText}>Loading logged call updates...</Text>
+              </View>
+            ) : paginatedCallLogs.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Ionicons name="document-text-outline" size={42} color="#cbd5e1" />
+                <Text style={styles.emptyTitle}>No Call Updates Found</Text>
+                <Text style={styles.emptyText}>
+                  Try adjusting your month, branch, outcome, or search filter.
+                </Text>
+              </View>
+            ) : (
+              <>
+                {paginatedCallLogs.map((log) => (
+                  <View key={log.id} style={styles.streamCard}>
+                    <View style={styles.streamTop}>
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={styles.streamPatient}>{log.patientName}</Text>
+                        <Text style={styles.streamPhone}>📞 {log.phone} • {log.branch}</Text>
+                      </View>
+                      <View style={styles.streamOutcomeBadge}>
+                        <Text style={styles.streamOutcomeText}>{log.callOutcome}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.streamNotes}>{log.notes}</Text>
+                    <Text style={styles.streamTime}>{log.dateTime} • by {log.agentName}</Text>
+                  </View>
+                ))}
+
+                {/* Pagination Bar (26 per page) */}
+                <View style={styles.paginationBar}>
+                  <TouchableOpacity
+                    disabled={safeLogPage <= 1}
+                    onPress={() => setLogCurrentPage((p) => Math.max(1, p - 1))}
+                    style={[styles.paginationBtn, safeLogPage <= 1 && styles.paginationBtnDisabled]}
+                  >
+                    <Ionicons
+                      name="chevron-back"
+                      size={14}
+                      color={safeLogPage <= 1 ? "#94a3b8" : "#0f172a"}
+                    />
+                    <Text
+                      style={[
+                        styles.paginationBtnText,
+                        safeLogPage <= 1 && { color: "#94a3b8" },
+                      ]}
+                    >
+                      Prev
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.paginationInfoText}>
+                    Page {safeLogPage} of {logTotalPages} ({filteredCallLogs.length} total)
+                  </Text>
+
+                  <TouchableOpacity
+                    disabled={safeLogPage >= logTotalPages}
+                    onPress={() => setLogCurrentPage((p) => Math.min(logTotalPages, p + 1))}
+                    style={[
+                      styles.paginationBtn,
+                      safeLogPage >= logTotalPages && styles.paginationBtnDisabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paginationBtnText,
+                        safeLogPage >= logTotalPages && { color: "#94a3b8" },
+                      ]}
+                    >
+                      Next
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      color={safeLogPage >= logTotalPages ? "#94a3b8" : "#0f172a"}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </View>
       )}
 
       {/* ========================================================================= */}
@@ -1368,6 +1695,83 @@ export default function TelecallerPortalScreen() {
                 <Text style={[styles.calQuickBtnText, { color: "#475569" }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Month Filter Modal for Logged Call Updates */}
+      <Modal
+        visible={showLogMonthModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogMonthModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.calModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowLogMonthModal(false)}
+        >
+          <View style={styles.calModalContainer} onStartShouldSetResponder={() => true}>
+            <View style={styles.calNavHeader}>
+              <Text style={styles.calMonthTitle}>Filter by Month</Text>
+              <TouchableOpacity onPress={() => setShowLogMonthModal(false)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 280 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setLogMonthFilter("");
+                  setShowLogMonthModal(false);
+                }}
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  borderRadius: 10,
+                  backgroundColor: !logMonthFilter ? "#e0f2fe" : "#f8fafc",
+                  marginBottom: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    fontWeight: "700",
+                    color: !logMonthFilter ? "#0284c7" : "#0f172a",
+                  }}
+                >
+                  All Months
+                </Text>
+              </TouchableOpacity>
+              {availableLogMonths.map((mk) => {
+                const selected = logMonthFilter === mk;
+                return (
+                  <TouchableOpacity
+                    key={mk}
+                    onPress={() => {
+                      setLogMonthFilter(mk);
+                      setShowLogMonthModal(false);
+                    }}
+                    style={{
+                      paddingVertical: 12,
+                      paddingHorizontal: 14,
+                      borderRadius: 10,
+                      backgroundColor: selected ? "#e0f2fe" : "#f8fafc",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: "700",
+                        color: selected ? "#0284c7" : "#0f172a",
+                      }}
+                    >
+                      {formatMonthLabel(mk)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1916,6 +2320,96 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     flex: 1,
     marginLeft: 8,
+  },
+  emptyBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 12.5,
+    color: "#64748b",
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  monthFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  monthFilterBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  monthFilterBtnActive: {
+    backgroundColor: "#f0f9ff",
+    borderColor: "#bae6fd",
+  },
+  monthFilterBtnText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  monthClearBtn: {
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  monthClearBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  paginationBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  paginationBtnDisabled: {
+    opacity: 0.5,
+  },
+  paginationBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  paginationInfoText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
   },
   calModalOverlay: {
     flex: 1,
