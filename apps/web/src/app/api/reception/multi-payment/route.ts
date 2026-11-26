@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { appointmentService } from "@spiritualhomeo/database";
+import { appointmentService, payLaterService } from "@spiritualhomeo/database";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,20 +32,24 @@ export async function POST(req: NextRequest) {
       if (!appt) continue;
 
       const memberPaid = typeof m.totalPaid === "number" ? m.totalPaid : parseFloat(m.totalPaid) || 0;
+      const memberBillTotal = typeof m.totalAmountDue === "number" ? m.totalAmountDue : parseFloat(m.totalAmountDue) || memberPaid;
+      const memberPayLater = typeof m.payLaterAmount === "number" ? m.payLaterAmount : parseFloat(m.payLaterAmount) || 0;
       const memberConsult = typeof m.consultationFee === "number" ? m.consultationFee : parseFloat(m.consultationFee) || 0;
       const memberMed = typeof m.medicineFee === "number" ? m.medicineFee : parseFloat(m.medicineFee) || 0;
       const memberOther = typeof m.otherCharges === "number" ? m.otherCharges : parseFloat(m.otherCharges) || 0;
       const memberDiscount = typeof m.discount === "number" ? m.discount : parseFloat(m.discount) || 0;
       const memberMeds = Array.isArray(m.medicinesList) ? m.medicinesList : [];
+      const memberInvId = `${invId}-${i + 1}`;
 
       const updated = await appointmentService.recordAppointmentPayment(m.appointmentId, {
-        paymentType: "consult_and_med",
+        paymentType: m.paymentType || "consult_and_med",
         consultationFee: memberConsult,
         medicineFee: memberMed,
         dietPlanFee: 0,
         otherCharges: memberOther,
-        totalAmountDue: memberPaid,
+        totalAmountDue: memberBillTotal,
         totalPaid: memberPaid,
+        payLaterAmount: memberPayLater,
         paymentMethod: finalMethod,
         paymentMode: finalMethod,
         medicinesList: memberMeds,
@@ -53,13 +57,34 @@ export async function POST(req: NextRequest) {
         medicineDuration: m.medicineDuration || "1 Month",
         discount: memberDiscount,
         discountApproved: memberDiscount,
-        discountReason: "Family Multi-Pay checkout discount",
+        discountReason: memberDiscount > 0 ? "Family Multi-Pay checkout discount" : undefined,
         discountStatus: memberDiscount > 0 ? "APPROVED" : "NONE",
-        invoiceId: `${invId}-${i + 1}`,
+        invoiceId: memberInvId,
         isMultiPay: true,
         masterInvoiceId: invId,
         splitDetails,
       } as any);
+
+      if (memberPayLater > 0) {
+        try {
+          await payLaterService.createPayLater({
+            patientName: m.patientName || appt.patientName || "Patient",
+            phone: m.phone || appt.phone || "",
+            branch: appt.branch || "Kphb Branch",
+            registrationId: m.registrationId || appt.registrationId,
+            appointmentId: m.appointmentId,
+            invoiceId: memberInvId,
+            originalBillAmount: memberBillTotal,
+            amountPaid: memberPaid,
+            pendingAmount: memberPayLater,
+            visitDate: appt.appointmentDate || new Date().toISOString(),
+            dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+            notes: m.payLaterNotes || "Recorded during Family Multi-Pay checkout",
+          });
+        } catch (plErr) {
+          console.warn("Failed to create individual pay later record in multi-payment:", plErr);
+        }
+      }
 
       if (updated) {
         updatedAppointments.push(updated);

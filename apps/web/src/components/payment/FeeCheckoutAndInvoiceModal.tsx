@@ -117,8 +117,15 @@ export interface MultiPayMember {
   includeMedicineFee: boolean;
   medicineDuration: string;
   medicineItems: MedicineItem[];
+  showDetailedMedicines?: boolean;
   otherCharges: number;
   discount: number;
+  isPayLater?: boolean;
+  payLaterAmountPaid?: number;
+  payLaterNotes?: string;
+  discountAmountRequest?: number;
+  discountRequestNotes?: string;
+  discountRequestStatus?: "IDLE" | "SUBMITTING" | "SENT";
   subtotal: number;
   isExpanded?: boolean;
 }
@@ -258,14 +265,18 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     if (!cleanPhone || cleanPhone.length < 10 || !allAppointments || allAppointments.length === 0) return EMPTY_ALL_APPOINTMENTS;
     const matched = allAppointments.filter((a) => {
       const p = (a.phoneNumber || a.phone || "").replace(/\D/g, "").slice(-10);
-      return (
-        p === cleanPhone &&
-        !(a as any).isDeleted &&
-        a.status !== "CANCELLED"
-      );
+      if (p !== cleanPhone) return false;
+      if ((a as any).isDeleted || a.status === "CANCELLED") return false;
+      const isPaidOrDone =
+        Boolean(a.isFeeCollected) ||
+        (a as any).paymentStatus === "PAID" ||
+        a.status === "COMPLETED" ||
+        (Number(a.totalPaid) > 0 && Boolean(a.paidAt || a.invoiceId));
+      if (isPaidOrDone && a.id !== appointment?.id) return false;
+      return true;
     });
     return matched.length > 0 ? matched : EMPTY_ALL_APPOINTMENTS;
-  }, [cleanPhone, allAppointments]);
+  }, [cleanPhone, allAppointments, appointment?.id]);
 
   const isMultiPayApplicable = samePhoneFamilyAppts.length > 1;
   const [isMultiPayEnabled, setIsMultiPayEnabled] = useState<boolean>(false);
@@ -322,8 +333,15 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             includeMedicineFee: hasPrescribedMeds && mFee > 0, // ONLY true if doctor already prescribed medicines
             medicineDuration: a.medicineDuration || "1 Month",
             medicineItems: existingMeds,
+            showDetailedMedicines: false,
             otherCharges: 0,
             discount: 0,
+            isPayLater: false,
+            payLaterAmountPaid: target,
+            payLaterNotes: "",
+            discountAmountRequest: 0,
+            discountRequestNotes: "",
+            discountRequestStatus: "IDLE" as const,
             subtotal: target,
             isExpanded: isCurrent || idx === 0,
           };
@@ -352,6 +370,86 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     setMultiPayMembers((prev) =>
       prev.map((m) => (m.appointmentId === appointmentId ? { ...m, isExpanded: !m.isExpanded } : m))
     );
+  };
+
+  const computeMemberSubtotal = (m: {
+    includeConsultFee: boolean;
+    consultationFee: number;
+    includeMedicineFee: boolean;
+    medicineFee: number;
+    medicineItems: MedicineItem[];
+    otherCharges: number;
+    discount: number;
+    isPayLater?: boolean;
+    payLaterAmountPaid?: number;
+  }) => {
+    const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+    const med = m.includeMedicineFee
+      ? m.medicineItems.length > 0
+        ? m.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+        : Number(m.medicineFee) || 0
+      : 0;
+    const billTotal = Math.max(0, consult + med + (Number(m.otherCharges) || 0) - (Number(m.discount) || 0));
+    if (m.isPayLater) {
+      return Math.max(0, Math.min(billTotal, Number(m.payLaterAmountPaid) || 0));
+    }
+    return billTotal;
+  };
+
+  const getMemberBillTotal = (m: MultiPayMember) => {
+    const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
+    const med = m.includeMedicineFee
+      ? m.medicineItems.length > 0
+        ? m.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
+        : Number(m.medicineFee) || 0
+      : 0;
+    return Math.max(0, consult + med + (Number(m.otherCharges) || 0) - (Number(m.discount) || 0));
+  };
+
+  const handleRequestMemberDiscount = async (appointmentId: string) => {
+    const member = multiPayMembers.find((m) => m.appointmentId === appointmentId);
+    if (!member) return;
+    const amt = Number(member.discountAmountRequest) || 0;
+    if (amt <= 0) {
+      alert(`Please enter a valid discount amount for ${member.patientName}.`);
+      return;
+    }
+
+    setMultiPayMembers((prev) =>
+      prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "SUBMITTING" } : m))
+    );
+
+    try {
+      const res = await fetch("/api/reception/discount-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: member.appointmentId,
+          discountAmount: amt,
+          notes: member.discountRequestNotes || `Discount requested for ${member.patientName}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMultiPayMembers((prev) =>
+          prev.map((m) =>
+            m.appointmentId === appointmentId
+              ? { ...m, discountRequestStatus: "SENT" }
+              : m
+          )
+        );
+      } else {
+        alert(data.error || "Failed to send discount request.");
+        setMultiPayMembers((prev) =>
+          prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "IDLE" } : m))
+        );
+      }
+    } catch {
+      alert("Network error while sending discount request.");
+      setMultiPayMembers((prev) =>
+        prev.map((m) => (m.appointmentId === appointmentId ? { ...m, discountRequestStatus: "IDLE" } : m))
+      );
+    }
   };
 
   const handleMemberTargetAmountChange = (appointmentId: string, val: number) => {
@@ -397,11 +495,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           }
         }
 
-        const cVal = incConsult ? consult : 0;
         const mVal = incMed ? (items.length > 0 ? items.reduce((s, i) => s + (Number(i.amount) || 0), 0) : medFee) : 0;
-        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
-
-        return {
+        const nextMember = {
           ...m,
           targetAmount: target,
           consultationFee: consult,
@@ -409,7 +504,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           medicineFee: mVal,
           includeMedicineFee: incMed,
           medicineItems: items,
-          subtotal,
+        };
+        return {
+          ...nextMember,
+          subtotal: computeMemberSubtotal(nextMember),
         };
       })
     );
@@ -456,19 +554,18 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           ];
         }
 
-        const cVal = incConsult ? consult : 0;
-        const mVal = incMed ? medFee : 0;
-        const subtotal = Math.max(0, cVal + mVal + (m.otherCharges || 0) - (m.discount || 0));
-
-        return {
+        const nextMember = {
           ...m,
           paymentType: type,
           consultationFee: consult,
           includeConsultFee: incConsult,
-          medicineFee: mVal,
+          medicineFee: medFee,
           includeMedicineFee: incMed,
           medicineItems: items,
-          subtotal,
+        };
+        return {
+          ...nextMember,
+          subtotal: computeMemberSubtotal(nextMember),
         };
       })
     );
@@ -490,15 +587,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             },
           ];
         }
-        const consult = updated.includeConsultFee ? Number(updated.consultationFee) || 0 : 0;
-        const med = updated.includeMedicineFee
-          ? updated.medicineItems.length > 0
-            ? updated.medicineItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0)
-            : Number(updated.medicineFee) || 0
-          : 0;
-        const other = Number(updated.otherCharges) || 0;
-        const disc = Number(updated.discount) || 0;
-        updated.subtotal = Math.max(0, consult + med + other - disc);
+        updated.subtotal = computeMemberSubtotal(updated);
         return updated;
       })
     );
@@ -517,15 +606,16 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         };
         const updatedItems = [...m.medicineItems, newItem];
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextMember = {
           ...m,
-          includeMedicineFee: true,
+          includeMedicineFee: m.paymentType === "split" ? true : m.includeMedicineFee,
+          showDetailedMedicines: true,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextMember,
+          subtotal: computeMemberSubtotal(nextMember),
         };
       })
     );
@@ -537,14 +627,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         if (m.appointmentId !== appointmentId) return m;
         const updatedItems = m.medicineItems.filter((mi) => mi.id !== medId);
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextMember = {
           ...m,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextMember,
+          subtotal: computeMemberSubtotal(nextMember),
         };
       })
     );
@@ -563,14 +653,14 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           mi.id === medId ? { ...mi, [field]: val } : mi
         );
         const medSum = updatedItems.reduce((acc, mi) => acc + (Number(mi.amount) || 0), 0);
-        const consult = m.includeConsultFee ? Number(m.consultationFee) || 0 : 0;
-        const other = Number(m.otherCharges) || 0;
-        const disc = Number(m.discount) || 0;
-        return {
+        const nextMember = {
           ...m,
           medicineItems: updatedItems,
           medicineFee: medSum,
-          subtotal: Math.max(0, consult + medSum + other - disc),
+        };
+        return {
+          ...nextMember,
+          subtotal: computeMemberSubtotal(nextMember),
         };
       })
     );
@@ -601,22 +691,31 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           card: splitCard,
           counterUpi: splitCounterUpi,
         } : undefined,
-        members: selected.map((m) => ({
-          appointmentId: m.appointmentId,
-          patientName: m.patientName,
-          registrationId: m.registrationId,
-          token: m.token,
-          doctorName: m.doctorName,
-          paymentType: m.paymentType || "consult_and_med",
-          targetAmount: m.targetAmount || 0,
-          consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
-          medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
-          medicineDuration: m.medicineDuration,
-          medicinesList: m.includeMedicineFee ? m.medicineItems : [],
-          otherCharges: Number(m.otherCharges) || 0,
-          discount: Number(m.discount) || 0,
-          totalPaid: Number(m.subtotal) || 0,
-        })),
+        members: selected.map((m) => {
+          const billTotal = getMemberBillTotal(m);
+          const paidToday = Number(m.subtotal) || 0;
+          const payLaterAmt = m.isPayLater ? Math.max(0, billTotal - paidToday) : 0;
+          return {
+            appointmentId: m.appointmentId,
+            patientName: m.patientName,
+            phone: m.phone,
+            registrationId: m.registrationId,
+            token: m.token,
+            doctorName: m.doctorName,
+            paymentType: m.paymentType || "consult_and_med",
+            targetAmount: m.targetAmount || 0,
+            consultationFee: m.includeConsultFee ? Number(m.consultationFee) || 0 : 0,
+            medicineFee: m.includeMedicineFee ? Number(m.medicineFee) || 0 : 0,
+            medicineDuration: m.medicineDuration,
+            medicinesList: (m.includeMedicineFee || m.showDetailedMedicines) ? m.medicineItems : [],
+            otherCharges: Number(m.otherCharges) || 0,
+            discount: Number(m.discount) || 0,
+            totalAmountDue: billTotal,
+            totalPaid: paidToday,
+            payLaterAmount: payLaterAmt,
+            payLaterNotes: m.isPayLater ? m.payLaterNotes : undefined,
+          };
+        }),
       };
 
       const res = await fetch("/api/reception/multi-payment", {
@@ -1685,26 +1784,43 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                 </div>
                               </div>
 
-                              {/* 1. CONSULTATION FEE */}
-                              <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <label className="flex items-center gap-2 cursor-pointer">
+                              {/* 1. CONSULTATION FEE (OR COMBINED CONSULTATION & MEDICINE FEE) */}
+                              <div className={`rounded-xl border p-3.5 transition-all ${member.includeConsultFee ? "border-sky-300 bg-sky-50/30" : "border-slate-200 bg-slate-50/50"}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2.5">
                                     <input
                                       type="checkbox"
+                                      disabled={member.paymentType === "consultation" || member.paymentType === "consult_and_med"}
                                       checked={member.includeConsultFee}
                                       onChange={(e) =>
                                         handleUpdateMemberField(member.appointmentId, "includeConsultFee", e.target.checked)
                                       }
-                                      className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
+                                      className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer disabled:opacity-50"
                                     />
-                                    <span className="text-xs font-black text-slate-900">Include Consultation Fee</span>
-                                  </label>
+                                    <div>
+                                      <span className="text-xs font-black text-slate-900 block">
+                                        {member.paymentType === "consult_and_med" ? "Consultation & Medicine Fee" : "Consultation Fee"}
+                                      </span>
+                                      <span className="text-[10.5px] text-slate-500 font-medium">
+                                        {member.paymentType === "consult_and_med"
+                                          ? "Combined Doctor Consultation & Prescribed Remedies Fee (Locked to Target)"
+                                          : "Doctor Requested Consultation Fee"}
+                                      </span>
+                                    </div>
+                                  </div>
                                   {member.includeConsultFee && (
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-xs font-bold text-slate-500">₹</span>
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-300 bg-white shadow-2xs">
+                                      <span className="text-xs font-bold text-slate-400">₹</span>
                                       <input
                                         type="number"
-                                        value={member.consultationFee}
+                                        disabled={member.paymentType === "consultation" || member.paymentType === "consult_and_med"}
+                                        value={
+                                          member.consultationFee > 0
+                                            ? member.consultationFee
+                                            : member.paymentType === "consultation" || member.paymentType === "consult_and_med"
+                                            ? member.targetAmount || 0
+                                            : ""
+                                        }
                                         onChange={(e) =>
                                           handleUpdateMemberField(
                                             member.appointmentId,
@@ -1712,160 +1828,396 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                                             Math.max(0, Number(e.target.value) || 0)
                                           )
                                         }
-                                        className="w-24 px-2 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
-                                        placeholder="Amount"
+                                        className="w-20 text-right text-xs font-black text-slate-900 disabled:bg-slate-100 disabled:text-slate-500 bg-transparent focus:outline-none"
+                                        placeholder="0"
                                       />
                                     </div>
                                   )}
                                 </div>
+
+                                {/* DURATION & OPTIONAL MEDICINE ITEMS FOR COMBINED CONSULTATION & MEDICINE */}
+                                {member.paymentType === "consult_and_med" && member.includeConsultFee && (
+                                  <div className="mt-3 pt-3 border-t border-sky-200/80 space-y-2.5">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-700">Prescription Duration:</span>
+                                        <select
+                                          value={member.medicineDuration || "1 Month"}
+                                          onChange={(e) =>
+                                            handleUpdateMemberField(member.appointmentId, "medicineDuration", e.target.value)
+                                          }
+                                          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-700"
+                                        >
+                                          {DURATION_OPTIONS.map((d) => (
+                                            <option key={d} value={d}>
+                                              {d}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {!member.showDetailedMedicines ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            handleUpdateMemberField(member.appointmentId, "showDetailedMedicines", true);
+                                            if (member.medicineItems.length === 0) {
+                                              handleAddMedicineToMember(member.appointmentId);
+                                            }
+                                          }}
+                                          className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                                        >
+                                          <Plus size={13} /> Add Medicine Items
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAddMedicineToMember(member.appointmentId)}
+                                          className="inline-flex items-center gap-1 text-xs font-bold text-sky-600 hover:text-sky-800 cursor-pointer"
+                                        >
+                                          <Plus size={13} /> Add Medicine Item
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {member.showDetailedMedicines && (
+                                      <div className="space-y-2">
+                                        {member.medicineItems.map((med, mIdx) => (
+                                          <div
+                                            key={med.id || mIdx}
+                                            className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs flex-wrap sm:flex-nowrap"
+                                          >
+                                            <input
+                                              type="text"
+                                              value={med.name}
+                                              onChange={(e) =>
+                                                handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
+                                              }
+                                              placeholder="Medicine Name (e.g. Arnica)"
+                                              className="flex-1 min-w-[120px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-sky-500"
+                                            />
+                                            <select
+                                              value={med.type || "Pills"}
+                                              onChange={(e) =>
+                                                handleUpdateMedicineInMember(member.appointmentId, med.id, "type", e.target.value)
+                                              }
+                                              className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                            >
+                                              <option value="Pills">Pills</option>
+                                              <option value="Drops">Drops</option>
+                                              <option value="Dilution">Dilution</option>
+                                              <option value="Tincture">Tincture</option>
+                                              <option value="Syrup">Syrup</option>
+                                              <option value="Kit">Kit</option>
+                                            </select>
+                                            <select
+                                              value={med.timing || "Morning & Night"}
+                                              onChange={(e) =>
+                                                handleUpdateMedicineInMember(member.appointmentId, med.id, "timing", e.target.value)
+                                              }
+                                              className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                            >
+                                              <option value="Morning & Night">Morning &amp; Night</option>
+                                              <option value="BD (Twice daily)">BD (Twice)</option>
+                                              <option value="TDS (Thrice daily)">TDS (Thrice)</option>
+                                              <option value="OD (Once daily)">OD (Once)</option>
+                                              <option value="SOS (As needed)">SOS (As needed)</option>
+                                            </select>
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-xs font-bold text-slate-400">₹</span>
+                                              <input
+                                                type="number"
+                                                value={med.amount}
+                                                onChange={(e) =>
+                                                  handleUpdateMedicineInMember(
+                                                    member.appointmentId,
+                                                    med.id,
+                                                    "amount",
+                                                    Math.max(0, Number(e.target.value) || 0)
+                                                  )
+                                                }
+                                                className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
+                                                placeholder="₹"
+                                              />
+                                            </div>
+                                            {member.medicineItems.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                                title="Remove medicine"
+                                              >
+                                                <Trash2 size={14} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateMemberField(member.appointmentId, "showDetailedMedicines", false)}
+                                          className="text-xs text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                                        >
+                                          Hide Medicine Details
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
-                              {/* 2. MEDICAL REQUEST (PRESCRIBED REMEDIES) */}
-                              <div className="rounded-xl border border-slate-200 p-3 bg-slate-50/50 space-y-3">
-                                <div className="flex items-center justify-between flex-wrap gap-2">
-                                  <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={member.includeMedicineFee}
-                                      onChange={(e) =>
-                                        handleUpdateMemberField(member.appointmentId, "includeMedicineFee", e.target.checked)
-                                      }
-                                      className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
-                                    />
-                                    <span className="text-xs font-black text-slate-900">Medical Request (Prescribed Remedies)</span>
-                                  </label>
+                              {/* 2. SEPARATE PRESCRIBED MEDICINES CARD (ONLY FOR SPLIT MODE - SAME AS NORMAL CHECKOUT) */}
+                              {member.paymentType === "split" && (
+                                <div className={`rounded-xl border p-3.5 transition-all space-y-3 ${member.includeMedicineFee ? "border-sky-300 bg-sky-50/30" : "border-slate-200 bg-slate-50/50"}`}>
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={member.includeMedicineFee}
+                                        onChange={(e) =>
+                                          handleUpdateMemberField(member.appointmentId, "includeMedicineFee", e.target.checked)
+                                        }
+                                        className="w-4 h-4 rounded text-sky-600 accent-sky-600 cursor-pointer"
+                                      />
+                                      <span className="text-xs font-black text-slate-900">Prescribed Homeopathy Medicines</span>
+                                    </label>
+
+                                    {member.includeMedicineFee && (
+                                      <div className="flex items-center gap-1 flex-wrap">
+                                        <span className="text-[10.5px] font-bold text-slate-500 mr-1">Duration:</span>
+                                        {DURATION_OPTIONS.map((dur) => (
+                                          <button
+                                            key={dur}
+                                            type="button"
+                                            onClick={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
+                                            className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${member.medicineDuration === dur
+                                                ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                                              }`}
+                                          >
+                                            {dur}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
 
                                   {member.includeMedicineFee && (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[10.5px] font-bold text-slate-500 mr-1">Duration:</span>
-                                      {["15 Days", "1 Month", "2 Months", "3 Months"].map((dur) => (
-                                        <button
-                                          key={dur}
-                                          type="button"
-                                          onClick={() => handleUpdateMemberField(member.appointmentId, "medicineDuration", dur)}
-                                          className={`px-2 py-0.5 rounded text-[10.5px] font-bold border transition cursor-pointer ${member.medicineDuration === dur
-                                              ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
-                                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                                            }`}
+                                    <div className="space-y-2 pt-1">
+                                      <div className="text-[10px] font-black uppercase text-slate-400 flex items-center justify-between">
+                                        <span>Medicine Items ({member.medicineItems.length})</span>
+                                        <span className="text-slate-900 font-extrabold">
+                                          Total Medicine: ₹{member.medicineFee}
+                                        </span>
+                                      </div>
+
+                                      {member.medicineItems.map((med, mIdx) => (
+                                        <div
+                                          key={med.id || mIdx}
+                                          className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs flex-wrap sm:flex-nowrap"
                                         >
-                                          {dur}
-                                        </button>
+                                          <input
+                                            type="text"
+                                            value={med.name}
+                                            onChange={(e) =>
+                                              handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
+                                            }
+                                            placeholder="Remedy / Medicine Name"
+                                            className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-sky-500"
+                                          />
+                                          <select
+                                            value={med.type || "Pills"}
+                                            onChange={(e) =>
+                                              handleUpdateMedicineInMember(member.appointmentId, med.id, "type", e.target.value)
+                                            }
+                                            className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                          >
+                                            <option value="Pills">Pills</option>
+                                            <option value="Drops">Drops</option>
+                                            <option value="Dilution">Dilution</option>
+                                            <option value="Tincture">Tincture</option>
+                                            <option value="Syrup">Syrup</option>
+                                            <option value="Kit">Kit</option>
+                                          </select>
+                                          <select
+                                            value={med.timing || "Morning & Night"}
+                                            onChange={(e) =>
+                                              handleUpdateMedicineInMember(member.appointmentId, med.id, "timing", e.target.value)
+                                            }
+                                            className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
+                                          >
+                                            <option value="Morning & Night">Morning &amp; Night</option>
+                                            <option value="BD (Twice daily)">BD (Twice)</option>
+                                            <option value="TDS (Thrice daily)">TDS (Thrice)</option>
+                                            <option value="OD (Once daily)">OD (Once)</option>
+                                            <option value="SOS (As needed)">SOS (As needed)</option>
+                                          </select>
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs font-bold text-slate-400">₹</span>
+                                            <input
+                                              type="number"
+                                              value={med.amount}
+                                              onChange={(e) =>
+                                                handleUpdateMedicineInMember(
+                                                  member.appointmentId,
+                                                  med.id,
+                                                  "amount",
+                                                  Math.max(0, Number(e.target.value) || 0)
+                                                )
+                                              }
+                                              className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
+                                              placeholder="₹"
+                                            />
+                                          </div>
+                                          {member.medicineItems.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
+                                              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                              title="Remove medicine"
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          )}
+                                        </div>
                                       ))}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddMedicineToMember(member.appointmentId)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 hover:bg-sky-100/70 text-sky-700 text-xs font-bold transition cursor-pointer"
+                                      >
+                                        <Plus size={13} />
+                                        <span>+ Add Remedy to Medical Request</span>
+                                      </button>
                                     </div>
                                   )}
                                 </div>
+                              )}
 
-                                {!member.includeMedicineFee && (
-                                  <div className="pt-0.5">
+                              {/* 3. INDIVIDUAL REQUEST DISCOUNT & INDIVIDUAL PAY LATER (NOT COMBINED) */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                {/* Individual Request Discount */}
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-extrabold text-slate-800">
+                                      Request Discount ({member.patientName})
+                                    </span>
+                                    {member.discountRequestStatus === "SENT" && (
+                                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                                        ✓ Sent to Admin/HR
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 bg-white w-24">
+                                      <span className="text-xs font-bold text-slate-400">₹</span>
+                                      <input
+                                        type="number"
+                                        value={member.discountAmountRequest || ""}
+                                        onChange={(e) =>
+                                          handleUpdateMemberField(
+                                            member.appointmentId,
+                                            "discountAmountRequest",
+                                            Math.max(0, Number(e.target.value) || 0)
+                                          )
+                                        }
+                                        placeholder="Amt"
+                                        className="w-full text-right text-xs font-bold text-slate-900 bg-transparent focus:outline-none"
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={member.discountRequestNotes || ""}
+                                      onChange={(e) =>
+                                        handleUpdateMemberField(
+                                          member.appointmentId,
+                                          "discountRequestNotes",
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="Reason / notes..."
+                                      className="flex-1 min-w-0 px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                    />
                                     <button
                                       type="button"
-                                      onClick={() => handleUpdateMemberField(member.appointmentId, "includeMedicineFee", true)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-400 bg-sky-50/70 hover:bg-sky-100 text-sky-800 text-xs font-bold transition cursor-pointer"
+                                      disabled={member.discountRequestStatus === "SUBMITTING"}
+                                      onClick={() => handleRequestMemberDiscount(member.appointmentId)}
+                                      className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold transition cursor-pointer shrink-0 disabled:opacity-50"
                                     >
-                                      <Plus size={13} />
-                                      <span>+ Add Medical Request ({member.patientName})</span>
+                                      {member.discountRequestStatus === "SUBMITTING" ? "..." : "Request"}
                                     </button>
                                   </div>
-                                )}
+                                </div>
 
-                                {member.includeMedicineFee && (
-                                  <div className="space-y-2 pt-1">
-                                    <div className="text-[10px] font-black uppercase text-slate-400 flex items-center justify-between">
-                                      <span>Medicine Items ({member.medicineItems.length})</span>
-                                      <span className="text-slate-900 font-extrabold">
-                                        Total Medicine: ₹{member.medicineFee}
+                                {/* Individual Pay Later Option */}
+                                <div className={`rounded-xl border p-3 space-y-2 ${member.isPayLater ? "border-amber-300 bg-amber-50/70" : "border-slate-200 bg-slate-50/70"}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Clock size={14} className={member.isPayLater ? "text-amber-600" : "text-slate-400"} />
+                                      <span className="text-xs font-extrabold text-slate-800">
+                                        Pay Later ({member.patientName})
                                       </span>
                                     </div>
-
-                                    {member.medicineItems.map((med, mIdx) => (
-                                      <div
-                                        key={med.id || mIdx}
-                                        className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs"
-                                      >
-                                        {/* Remedy Name */}
-                                        <input
-                                          type="text"
-                                          value={med.name}
-                                          onChange={(e) =>
-                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "name", e.target.value)
-                                          }
-                                          placeholder="Remedy / Medicine Name"
-                                          className="flex-1 min-w-[130px] px-2 py-1 rounded border border-slate-300 text-xs font-semibold text-slate-900 focus:ring-1 focus:ring-sky-500"
-                                        />
-
-                                        {/* Type */}
-                                        <select
-                                          value={med.type || "Pills"}
-                                          onChange={(e) =>
-                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "type", e.target.value)
-                                          }
-                                          className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
-                                        >
-                                          <option value="Pills">Pills</option>
-                                          <option value="Drops">Drops</option>
-                                          <option value="Dilution">Dilution</option>
-                                          <option value="Tincture">Tincture</option>
-                                          <option value="Syrup">Syrup</option>
-                                          <option value="Kit">Kit</option>
-                                        </select>
-
-                                        {/* Timing */}
-                                        <select
-                                          value={med.timing || "Morning & Night"}
-                                          onChange={(e) =>
-                                            handleUpdateMedicineInMember(member.appointmentId, med.id, "timing", e.target.value)
-                                          }
-                                          className="px-2 py-1 rounded border border-slate-300 text-xs font-medium text-slate-800 bg-white"
-                                        >
-                                          <option value="Morning & Night">Morning &amp; Night</option>
-                                          <option value="BD (Twice daily)">BD (Twice)</option>
-                                          <option value="TDS (Thrice daily)">TDS (Thrice)</option>
-                                          <option value="OD (Once daily)">OD (Once)</option>
-                                          <option value="SOS (As needed)">SOS (As needed)</option>
-                                        </select>
-
-                                        {/* Amount */}
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-xs font-bold text-slate-400">₹</span>
-                                          <input
-                                            type="number"
-                                            value={med.amount}
-                                            onChange={(e) =>
-                                              handleUpdateMedicineInMember(
-                                                member.appointmentId,
-                                                med.id,
-                                                "amount",
-                                                Math.max(0, Number(e.target.value) || 0)
-                                              )
-                                            }
-                                            className="w-20 px-2 py-1 rounded border border-slate-300 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-sky-500 text-right"
-                                            placeholder="₹"
-                                          />
-                                        </div>
-
-                                        {/* Delete Item */}
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRemoveMedicineFromMember(member.appointmentId, med.id)}
-                                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                          title="Remove medicine"
-                                        >
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </div>
-                                    ))}
-
-                                    {/* Add Medicine Button */}
                                     <button
                                       type="button"
-                                      onClick={() => handleAddMedicineToMember(member.appointmentId)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 hover:bg-sky-100/70 text-sky-700 text-xs font-bold transition cursor-pointer"
+                                      onClick={() => {
+                                        const nextOn = !member.isPayLater;
+                                        const billTotal = getMemberBillTotal(member);
+                                        setMultiPayMembers((prev) =>
+                                          prev.map((m) => {
+                                            if (m.appointmentId !== member.appointmentId) return m;
+                                            const defaultPaidNow = nextOn ? Math.round(billTotal * 0.75) : billTotal;
+                                            const nextM = {
+                                              ...m,
+                                              isPayLater: nextOn,
+                                              payLaterAmountPaid: defaultPaidNow,
+                                            };
+                                            return { ...nextM, subtotal: computeMemberSubtotal(nextM) };
+                                          })
+                                        );
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${member.isPayLater
+                                          ? "bg-amber-500 text-white hover:bg-amber-600"
+                                          : "bg-white border border-amber-300 text-amber-800 hover:bg-amber-50"
+                                        }`}
                                     >
-                                      <Plus size={13} />
-                                      <span>+ Add Remedy to Medical Request</span>
+                                      {member.isPayLater ? "✓ Pay Later On" : "+ Pay Later"}
                                     </button>
                                   </div>
-                                )}
+
+                                  {member.isPayLater && (
+                                    <div className="space-y-1.5 pt-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[11px] font-bold text-slate-700">Paid Today:</span>
+                                        <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-300 bg-white w-28">
+                                          <span className="text-xs font-bold text-amber-600">₹</span>
+                                          <input
+                                            type="number"
+                                            value={member.payLaterAmountPaid ?? 0}
+                                            onChange={(e) => {
+                                              const billTotal = getMemberBillTotal(member);
+                                              const val = Math.max(0, Math.min(billTotal, Number(e.target.value) || 0));
+                                              handleUpdateMemberField(member.appointmentId, "payLaterAmountPaid", val);
+                                            }}
+                                            className="w-full text-right text-xs font-black text-slate-900 bg-transparent focus:outline-none"
+                                          />
+                                        </div>
+                                        <span className="text-[11px] font-extrabold text-amber-800">
+                                          Due: ₹{Math.max(0, getMemberBillTotal(member) - (Number(member.subtotal) || 0)).toLocaleString()}
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="text"
+                                        value={member.payLaterNotes || ""}
+                                        onChange={(e) =>
+                                          handleUpdateMemberField(member.appointmentId, "payLaterNotes", e.target.value)
+                                        }
+                                        placeholder="Pay later notes (optional)..."
+                                        className="w-full px-2.5 py-1 rounded-lg border border-amber-200 bg-white text-[11px] text-slate-800 focus:outline-none"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
