@@ -23,7 +23,11 @@ import {
   Share2,
   Copy,
   Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from "lucide-react";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
 import {
   downloadPayCutPDF,
   sharePayCutPDF,
@@ -74,6 +78,8 @@ export default function AdminPayCutsPage() {
 
   // Attachment Full-Screen Preview Modal
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
+  const [previewZoom, setPreviewZoom] = useState<number>(1);
+  const [previewRotation, setPreviewRotation] = useState<number>(0);
 
   // Printable Notice State
   const [selectedSlip, setSelectedSlip] = useState<PayCutItem | null>(null);
@@ -881,12 +887,57 @@ ${selectedSlip.image ? `Proof: ${selectedSlip.image}` : ""}`;
       {/* =================================================================== */}
       {previewImageModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200">
-            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+          <div className="bg-white rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold flex items-center gap-1.5">
                 <ImageIcon className="w-4 h-4 text-rose-400" /> Pay Cut Attachment Proof (AWS S3)
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {!previewImageModal.match(/\.(pdf)($|\?)/i) && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+                      disabled={previewZoom <= 0.5}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 cursor-pointer"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] font-bold text-slate-200 min-w-[40px] text-center">
+                      {Math.round(previewZoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewZoom((z) => Math.min(4, Math.round((z + 0.25) * 100) / 100))}
+                      disabled={previewZoom >= 4}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 cursor-pointer"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewRotation((r) => (r + 90) % 360)}
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 flex items-center gap-1 cursor-pointer"
+                      title="Rotate 90°"
+                    >
+                      <RotateCw className="w-3 h-3" /> 90°
+                    </button>
+                    {(previewZoom !== 1 || previewRotation !== 0) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewZoom(1);
+                          setPreviewRotation(0);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-sky-400 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </>
+                )}
                 <a
                   href={previewImageModal}
                   target="_blank"
@@ -897,21 +948,29 @@ ${selectedSlip.image ? `Proof: ${selectedSlip.image}` : ""}`;
                 </a>
                 <button
                   type="button"
-                  onClick={() => setPreviewImageModal(null)}
+                  onClick={() => {
+                    setPreviewImageModal(null);
+                    setPreviewZoom(1);
+                    setPreviewRotation(0);
+                  }}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[75vh] overflow-auto">
+            <div className="p-4 bg-slate-950 flex items-center justify-center h-[72vh]">
               {previewImageModal.match(/\.(pdf)($|\?)/i) ? (
                 <iframe src={previewImageModal} className="w-full h-[65vh] rounded-lg" title="PDF Proof" />
               ) : (
-                <img
+                <ZoomableImageViewer
                   src={previewImageModal}
                   alt="Attachment Proof"
-                  className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-md"
+                  zoom={previewZoom}
+                  onZoomChange={setPreviewZoom}
+                  rotation={previewRotation}
+                  className="w-full h-full rounded-lg"
+                  imgClassName="max-h-[68vh] max-w-full object-contain rounded-lg shadow-md"
                 />
               )}
             </div>

@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import FeeCheckoutAndInvoiceModal from "@/components/payment/FeeCheckoutAndInvoiceModal";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
+import { ImageCropModal } from "@/components/ui/ImageCropModal";
 
 const resolvePrescriptionImageUrl = (url: string) => {
   if (!url) return "";
@@ -115,6 +117,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
   const [viewerIndex, setViewerIndex] = useState(0);
   const [rotation, setRotation] = useState(0);
   const [zoomScale, setZoomScale] = useState(1);
+  const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
   const touchStartX = useRef<number>(0);
 
   // Load Data
@@ -299,10 +302,7 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
     });
   };
 
-  const handleUploadRx = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target.files?.[0];
-    if (!rawFile) return;
-
+  const uploadCroppedRx = async (rawFile: File) => {
     try {
       setIsUploading(true);
       // Compress image client-side before sending to S3 / server
@@ -343,7 +343,17 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
       setFeedback({ type: "error", message: "Network error uploading image." });
     } finally {
       setIsUploading(false);
-      e.target.value = "";
+    }
+  };
+
+  const handleUploadRx = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
+    e.target.value = "";
+    if (rawFile.type.startsWith("image/")) {
+      setPendingCropFile(rawFile);
+    } else {
+      uploadCroppedRx(rawFile);
     }
   };
 
@@ -487,11 +497,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
         {feedback && (
           <div className="px-4 sm:px-6 pt-3">
             <div
-              className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
-                feedback.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : "bg-rose-50 border-rose-200 text-rose-800"
-              }`}
+              className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${feedback.type === "success"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                : "bg-rose-50 border-rose-200 text-rose-800"
+                }`}
             >
               <div className="flex items-center gap-2">
                 {feedback.type === "success" ? (
@@ -534,11 +543,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                       key={pItem.regId}
                       type="button"
                       onClick={() => handleSwitchProfile(pItem.regId)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                        isSelected
-                          ? "bg-[#0284c7] border-[#0284c7] text-white shadow-xs"
-                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                      }`}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer shrink-0 ${isSelected
+                        ? "bg-[#0284c7] border-[#0284c7] text-white shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                        }`}
                     >
                       <span>{pItem.name}</span>
                       <span className={`text-[10px] px-1.5 py-0.2 rounded ${isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"}`}>
@@ -645,11 +653,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
             <button
               type="button"
               onClick={() => setActiveTab("history")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${
-                activeTab === "history"
-                  ? "bg-[#0284c7] text-white shadow-xs"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "history"
+                ? "bg-[#0284c7] text-white shadow-xs"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
             >
               <FileText className="w-3.5 h-3.5" />
               <span>All History ({stats.totalVisits})</span>
@@ -658,11 +665,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
             <button
               type="button"
               onClick={() => setActiveTab("prescriptions")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${
-                activeTab === "prescriptions"
-                  ? "bg-[#0284c7] text-white shadow-xs"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "prescriptions"
+                ? "bg-[#0284c7] text-white shadow-xs"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
             >
               <ImageIcon className="w-3.5 h-3.5" />
               <span>Prescriptions ({allImages.length})</span>
@@ -671,11 +677,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
             <button
               type="button"
               onClick={() => setActiveTab("payments")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${
-                activeTab === "payments"
-                  ? "bg-[#0284c7] text-white shadow-xs"
-                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${activeTab === "payments"
+                ? "bg-[#0284c7] text-white shadow-xs"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
             >
               <CreditCard className="w-3.5 h-3.5" />
               <span>Payments &amp; Billing ({appointments.length})</span>
@@ -734,11 +739,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                         </div>
 
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${
-                            isPaid
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-amber-50 text-amber-700 border-amber-200"
-                          }`}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${isPaid
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}
                         >
                           {isPaid ? "✓ Fee Paid" : "⏳ Payment Pending"}
                         </span>
@@ -796,8 +800,8 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                               : item.followUpInterval &&
                                 item.followUpInterval !== "Custom Date" &&
                                 item.followUpInterval !== "No Follow-up"
-                              ? item.followUpInterval
-                              : "Scheduled"}
+                                ? item.followUpInterval
+                                : "Scheduled"}
                           </span>
                         </div>
                       )}
@@ -810,35 +814,35 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                           </span>
                           <div className="flex gap-2 flex-wrap">
                             {rxImages.map((imgUrl: string, imgIdx: number) => (
-                                <div
-                                  key={imgIdx}
-                                  onClick={() => handleOpenViewer(rxImages, imgIdx)}
-                                  className="group relative w-16 h-16 rounded-xl border border-slate-300 overflow-hidden cursor-pointer shadow-2xs hover:border-[#0284c7] transition-all"
-                                  title="Click to open prescription viewer"
-                                >
-                                  <img
-                                    src={resolvePrescriptionImageUrl(imgUrl)}
-                                    alt="Prescription Scan"
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                  />
-                                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                                    <Maximize2 className="w-4 h-4" />
-                                  </div>
-                                  <span className="absolute bottom-0 right-0 bg-slate-900/80 text-white text-[8px] font-bold px-1 rounded-tl">
-                                    Rx {imgIdx + 1}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteImage(item.id, imgIdx, imgUrl);
-                                    }}
-                                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded bg-rose-600/90 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-xs cursor-pointer"
-                                    title="Delete scan"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                              <div
+                                key={imgIdx}
+                                onClick={() => handleOpenViewer(rxImages, imgIdx)}
+                                className="group relative w-16 h-16 rounded-xl border border-slate-300 overflow-hidden cursor-pointer shadow-2xs hover:border-[#0284c7] transition-all"
+                                title="Click to open prescription viewer"
+                              >
+                                <img
+                                  src={resolvePrescriptionImageUrl(imgUrl)}
+                                  alt="Prescription Scan"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                  <Maximize2 className="w-4 h-4" />
                                 </div>
+                                <span className="absolute bottom-0 right-0 bg-slate-900/80 text-white text-[8px] font-bold px-1 rounded-tl">
+                                  Rx {imgIdx + 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteImage(item.id, imgIdx, imgUrl);
+                                  }}
+                                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded bg-rose-600/90 hover:bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-xs cursor-pointer"
+                                  title="Delete scan"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -986,11 +990,10 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                               <td className="py-3 px-4 text-slate-500">{a.branch || patient.branch}</td>
                               <td className="py-3 px-4">
                                 <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                    isPaid
-                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                      : "bg-amber-50 text-amber-700 border border-amber-200"
-                                  }`}
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isPaid
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                    }`}
                                 >
                                   {isPaid ? "Paid & Cleared" : "Pending Collection"}
                                 </span>
@@ -1148,17 +1151,17 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
               </button>
             )}
 
-            <div className="max-w-3xl max-h-[70vh] flex items-center justify-center select-none">
-              <img
-                src={resolvePrescriptionImageUrl(viewerImages[viewerIndex])}
-                alt="Prescription"
-                style={{
-                  transform: `scale(${zoomScale}) rotate(${rotation}deg)`,
-                  transition: "transform 0.2s ease-out",
-                }}
-                className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl pointer-events-none"
-              />
-            </div>
+            <ZoomableImageViewer
+              src={resolvePrescriptionImageUrl(viewerImages[viewerIndex])}
+              alt="Prescription"
+              zoom={zoomScale}
+              onZoomChange={setZoomScale}
+              rotation={rotation}
+              minZoom={0.75}
+              maxZoom={4}
+              className="w-full max-w-4xl h-[70vh] rounded-lg"
+              imgClassName="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl"
+            />
 
             {/* Next Arrow (>) */}
             {viewerImages.length > 1 && (
@@ -1200,9 +1203,8 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
                   setRotation(0);
                   setZoomScale(1);
                 }}
-                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
-                  idx === viewerIndex ? "border-sky-500 scale-105" : "border-transparent opacity-60 hover:opacity-100"
-                }`}
+                className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${idx === viewerIndex ? "border-sky-500 scale-105" : "border-transparent opacity-60 hover:opacity-100"
+                  }`}
               >
                 <img src={resolvePrescriptionImageUrl(src)} alt="Thumb" className="w-full h-full object-cover" />
               </button>
@@ -1222,6 +1224,16 @@ export default function PatientHistoryWebView({ role, sidebar }: PatientHistoryW
           }}
         />
       )}
+
+      <ImageCropModal
+        file={pendingCropFile}
+        title="Crop Prescription Photo"
+        onCancel={() => setPendingCropFile(null)}
+        onConfirm={(cropped) => {
+          setPendingCropFile(null);
+          uploadCroppedRx(cropped);
+        }}
+      />
     </div>
   );
 }

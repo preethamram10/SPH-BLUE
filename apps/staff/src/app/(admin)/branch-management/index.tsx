@@ -169,17 +169,6 @@ export default function BranchListScreen() {
           /* Branch Cards */
           branches.map((branch) => (
             <View key={branch.id} style={styles.branchCard}>
-              {/* Branch Image */}
-              <Image
-                source={{
-                  uri:
-                    branch.photoUrl ||
-                    "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400&q=80",
-                }}
-                style={styles.branchImage}
-                resizeMode="cover"
-              />
-
               <View style={styles.cardContent}>
                 <View style={styles.cardTopRow}>
                   <Text style={styles.branchName}>{branch.name}</Text>

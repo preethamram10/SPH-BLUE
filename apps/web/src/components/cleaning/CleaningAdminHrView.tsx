@@ -20,8 +20,12 @@ import {
   ExternalLink,
   ChevronRight,
   Filter,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from "lucide-react";
 import { toDDMMYYYY, toYYYYMMDD, getTodayDDMMYYYY } from "@/utils/cleaningDate";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
 
 interface Photo {
   id: string;
@@ -122,7 +126,7 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Review Modal
@@ -134,6 +138,8 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
 
   // Photo Zoom Modal
   const [zoomedPhoto, setZoomedPhoto] = useState<string | null>(null);
+  const [photoZoom, setPhotoZoom] = useState<number>(1);
+  const [photoRotation, setPhotoRotation] = useState<number>(0);
 
   // Logs Modal
   const [logsTask, setLogsTask] = useState<CleaningTask | null>(null);
@@ -486,9 +492,8 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all ${
-                            isComplete ? "bg-emerald-500" : "bg-blue-500"
-                          }`}
+                          className={`h-full rounded-full transition-all ${isComplete ? "bg-emerald-500" : "bg-blue-500"
+                            }`}
                           style={{
                             width: `${totalFields > 0 ? (uploadedCount / totalFields) * 100 : 0}%`,
                           }}
@@ -501,15 +506,14 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                       {task.fields.map((f) => (
                         <span
                           key={f.id}
-                          className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold ${
-                            f.status === "APPROVED"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : f.status === "REJECTED"
+                          className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold ${f.status === "APPROVED"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : f.status === "REJECTED"
                               ? "bg-rose-50 text-rose-700 border border-rose-200"
                               : f.photos.length > 0
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-slate-50 text-slate-600 border border-slate-200"
-                          }`}
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : "bg-slate-50 text-slate-600 border border-slate-200"
+                            }`}
                         >
                           {f.name} {f.photos.length > 0 && `(${f.photos.length})`}
                         </span>
@@ -666,11 +670,10 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                       type="button"
                       onClick={() => handleAddPresetArea(preset)}
                       disabled={newFields.includes(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                        newFields.includes(preset)
-                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          : "bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200/60"
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${newFields.includes(preset)
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        : "bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200/60"
+                        }`}
                     >
                       + {preset}
                     </button>
@@ -769,11 +772,10 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                   return (
                     <div
                       key={field.id}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        isMarkedForRejection
-                          ? "bg-rose-50/50 border-rose-200"
-                          : "bg-slate-50/70 border-slate-200/80"
-                      }`}
+                      className={`p-4 rounded-2xl border transition-all ${isMarkedForRejection
+                        ? "bg-rose-50/50 border-rose-200"
+                        : "bg-slate-50/70 border-slate-200/80"
+                        }`}
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                         <div className="flex items-center gap-2">
@@ -789,15 +791,14 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                             </span>
                           </label>
                           <span
-                            className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold ${
-                              field.status === "APPROVED"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : field.status === "REJECTED"
+                            className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold ${field.status === "APPROVED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : field.status === "REJECTED"
                                 ? "bg-rose-100 text-rose-800"
                                 : field.photos.length > 0
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-slate-200 text-slate-600"
-                            }`}
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
                           >
                             {field.status}
                           </span>
@@ -822,7 +823,11 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
                             return (
                               <div
                                 key={p.id}
-                                onClick={() => setZoomedPhoto(imgSrc)}
+                                onClick={() => {
+                                  setPhotoZoom(1);
+                                  setPhotoRotation(0);
+                                  setZoomedPhoto(imgSrc);
+                                }}
                                 className="group relative w-28 h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-900 cursor-pointer shadow-xs hover:shadow-md transition-shadow"
                               >
                                 <img
@@ -926,39 +931,90 @@ export default function CleaningAdminHrView({ currentRole, currentUserName }: Pr
             className="relative max-w-4xl w-full max-h-[92vh] bg-slate-900/90 rounded-3xl overflow-hidden border border-slate-700/60 shadow-2xl flex flex-col items-center justify-center p-2 sm:p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-              <a
-                href={zoomedPhoto}
-                target="_blank"
-                rel="noreferrer"
-                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white text-xs font-bold transition-colors border border-slate-600 flex items-center gap-1.5"
-                title="Open original"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span className="hidden sm:inline">Open Full</span>
-              </a>
-              <button
-                onClick={() => setZoomedPhoto(null)}
-                className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-600 text-white transition-colors border border-slate-600"
-                title="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="w-full flex items-center justify-between flex-wrap gap-2 px-2 pb-2 border-b border-slate-800 mb-2">
+              <span className="text-xs font-bold text-slate-300">Cleaning Photo Preview</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setPhotoZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+                  disabled={photoZoom <= 0.5}
+                  className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white disabled:opacity-40 border border-slate-600 cursor-pointer"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-bold text-slate-200 min-w-[44px] text-center">
+                  {Math.round(photoZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPhotoZoom((z) => Math.min(4, Math.round((z + 0.25) * 100) / 100))}
+                  disabled={photoZoom >= 4}
+                  className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white disabled:opacity-40 border border-slate-600 cursor-pointer"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoRotation((r) => (r + 90) % 360)}
+                  className="px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white text-xs font-bold border border-slate-600 flex items-center gap-1 cursor-pointer"
+                  title="Rotate 90°"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                  <span>90°</span>
+                </button>
+                {(photoZoom !== 1 || photoRotation !== 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhotoZoom(1);
+                      setPhotoRotation(0);
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-sky-400 text-xs font-bold border border-slate-600 cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
+                <a
+                  href={zoomedPhoto}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white text-xs font-bold transition-colors border border-slate-600 flex items-center gap-1.5"
+                  title="Open original"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="hidden sm:inline">Open Full</span>
+                </a>
+                <button
+                  onClick={() => setZoomedPhoto(null)}
+                  className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-600 text-white transition-colors border border-slate-600 cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="w-full h-full flex items-center justify-center min-h-[300px]">
-              <img
+            <div className="w-full h-[75vh] flex items-center justify-center min-h-[300px]">
+              <ZoomableImageViewer
                 src={zoomedPhoto}
                 alt="Inspection Preview"
-                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-lg border border-slate-800"
+                zoom={photoZoom}
+                onZoomChange={setPhotoZoom}
+                rotation={photoRotation}
+                className="w-full h-full rounded-2xl"
+                imgClassName="max-w-full max-h-[72vh] object-contain rounded-2xl shadow-lg border border-slate-800"
                 onError={(e) => {
                   const target = e.currentTarget;
                   target.style.display = "none";
-                  const fallback = target.nextElementSibling as HTMLElement;
+                  const parent = target.parentElement?.parentElement;
+                  const fallback = parent?.querySelector("[data-preview-fallback]") as HTMLElement | null;
                   if (fallback) fallback.style.display = "flex";
                 }}
               />
               <div
+                data-preview-fallback="true"
                 style={{ display: "none" }}
                 className="flex-col items-center justify-center gap-2 text-slate-400 p-8 text-center"
               >

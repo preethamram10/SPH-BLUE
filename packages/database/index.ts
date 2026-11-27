@@ -7563,7 +7563,7 @@ export const telecallerCallLogService = {
       callOutcome: input.callOutcome || "Interested",
       notes: input.notes ? input.notes.trim() : "",
       dateTime: input.dateTime || new Date().toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }),
-      duration: input.duration || "1m 30s",
+      duration: input.duration || "",
       createdAt: new Date().toISOString(),
     };
 

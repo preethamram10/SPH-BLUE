@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FeeCheckoutAndInvoiceModal } from "@/components/payment/FeeCheckoutAndInvoiceModal";
 import { DietPlanManager } from "./DietPlanManager";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
+import { ImageCropModal } from "@/components/ui/ImageCropModal";
 import {
   ArrowLeft,
   Calendar,
@@ -182,6 +184,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [penColor, setPenColor] = useState("#1e3a8a");
   const [penWidth, setPenWidth] = useState(3.5);
@@ -439,11 +442,7 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
     }
   };
 
-  // File Upload (From PC / Camera)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
+  const uploadCroppedFile = (file: File) => {
     const reader = new FileReader();
     reader.onloadend = async () => {
       if (typeof reader.result === "string") {
@@ -456,6 +455,18 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // File Upload (From PC / Camera) -> opens Crop Modal first
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (file.type.startsWith("image/")) {
+      setPendingCropFile(file);
+    } else {
+      uploadCroppedFile(file);
+    }
     e.target.value = "";
   };
 
@@ -2078,17 +2089,17 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
               </button>
             )}
 
-            <div className="max-w-3xl max-h-[70vh] flex items-center justify-center select-none">
-              <img
-                src={resolvePrescriptionImageUrl(uploadedImages[viewerIndex])}
-                alt="Prescription"
-                style={{
-                  transform: `scale(${zoomScale}) rotate(${rotation}deg)`,
-                  transition: "transform 0.2s ease-out",
-                }}
-                className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl pointer-events-none"
-              />
-            </div>
+            <ZoomableImageViewer
+              src={resolvePrescriptionImageUrl(uploadedImages[viewerIndex])}
+              alt="Prescription"
+              zoom={zoomScale}
+              onZoomChange={setZoomScale}
+              rotation={rotation}
+              minZoom={0.75}
+              maxZoom={4}
+              className="w-full max-w-4xl h-[70vh] rounded-lg"
+              imgClassName="max-h-[70vh] max-w-full object-contain rounded-lg shadow-2xl"
+            />
 
             {/* Next Arrow (>) */}
             {uploadedImages.length > 1 && (
@@ -2551,6 +2562,16 @@ export default function PatientFileWebView({ role, sidebar }: PatientFileWebView
           </div>
         </div>
       )}
+
+      <ImageCropModal
+        file={pendingCropFile}
+        title="Crop Prescription Photo"
+        onCancel={() => setPendingCropFile(null)}
+        onConfirm={(cropped) => {
+          setPendingCropFile(null);
+          uploadCroppedFile(cropped);
+        }}
+      />
     </div>
   );
 }

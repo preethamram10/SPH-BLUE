@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import Link from "next/link";
 import ReceptionSidebar from "@/components/reception/ReceptionSidebar";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
+import { ImageCropModal } from "@/components/ui/ImageCropModal";
 import {
   FolderPlus,
   Search,
@@ -123,6 +125,8 @@ function OldPrescriptionEntryContent() {
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
 
   // Fullscreen Prescription Viewer Modal (< and > navigation)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -286,44 +290,42 @@ function OldPrescriptionEntryContent() {
     }
   };
 
-  // 3. Upload & Compress Prescription Scans to AWS S3
-  const handleImageFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  // 3. Upload & Compress Prescription Scans to AWS S3 (with Crop step)
+  const uploadSingleOldRxFile = async (rawFile: File) => {
     try {
       setIsUploadingImages(true);
       setUploadSuccessMsg(null);
-      const newUrls: string[] = [];
+      const compressed = await compressImageFile(rawFile, 1600, 0.75);
 
-      for (let i = 0; i < files.length; i++) {
-        const rawFile = files[i];
-        // Client-side compression
-        const compressed = await compressImageFile(rawFile, 1600, 0.75);
+      const formData = new FormData();
+      formData.append("file", compressed);
+      formData.append("patientId", regId || "SPH-OLD");
 
-        const formData = new FormData();
-        formData.append("file", compressed);
-        formData.append("patientId", regId || "SPH-OLD");
-
-        const res = await fetch("/api/patient-file/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (data.success && data.url) {
-          newUrls.push(data.url);
-        }
+      const res = await fetch("/api/patient-file/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        setUploadedImages((prev) => [...prev, data.url]);
+        setUploadSuccessMsg(`✓ Successfully uploaded prescription scan to AWS S3!`);
+        setTimeout(() => setUploadSuccessMsg(null), 5000);
+      } else {
+        alert(data.error || "Failed to upload prescription scan.");
       }
-
-      setUploadedImages((prev) => [...prev, ...newUrls]);
-      setUploadSuccessMsg(`✓ Successfully uploaded ${newUrls.length} prescription scan(s) to AWS S3!`);
-      setTimeout(() => setUploadSuccessMsg(null), 5000);
     } catch {
       alert("Failed to upload prescription scans.");
     } finally {
       setIsUploadingImages(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleImageFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
+    e.target.value = "";
+    setCropQueue((prev) => [...prev, ...list]);
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -875,19 +877,33 @@ function OldPrescriptionEntryContent() {
                     </p>
                   </div>
 
-                  <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs cursor-pointer shadow-xs transition-colors shrink-0">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{isUploadingImages ? "Compressing & Uploading..." : "+ Select Prescription Scans"}</span>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageFilesSelected}
-                      disabled={isUploadingImages}
-                      className="hidden"
-                    />
-                  </label>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors">
+                      <span>📷 Camera</span>
+                      <input
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleImageFilesSelected}
+                        disabled={isUploadingImages}
+                        className="hidden"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs cursor-pointer shadow-xs transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingImages ? "Compressing & Uploading..." : "+ Select Prescription Scans"}</span>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageFilesSelected}
+                        disabled={isUploadingImages}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {/* Upload Success Banner */}
@@ -1147,17 +1163,17 @@ function OldPrescriptionEntryContent() {
             </button>
 
             {/* Display Image */}
-            <div className="max-w-full max-h-[75vh] flex items-center justify-center overflow-hidden">
-              <img
-                src={uploadedImages[viewerIndex]}
-                alt={`Prescription Page ${viewerIndex + 1}`}
-                style={{
-                  transform: `rotate(${viewerRotation}deg) scale(${viewerZoom})`,
-                  transition: "transform 0.2s ease-out",
-                }}
-                className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl"
-              />
-            </div>
+            <ZoomableImageViewer
+              src={uploadedImages[viewerIndex]}
+              alt={`Prescription Page ${viewerIndex + 1}`}
+              zoom={viewerZoom}
+              onZoomChange={setViewerZoom}
+              rotation={viewerRotation}
+              minZoom={0.5}
+              maxZoom={4}
+              className="w-full h-[75vh] rounded-lg"
+              imgClassName="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl"
+            />
 
             {/* Next Button (>) */}
             <button
@@ -1200,6 +1216,16 @@ function OldPrescriptionEntryContent() {
           </div>
         </div>
       )}
+
+      <ImageCropModal
+        file={cropQueue[0] || null}
+        title={cropQueue.length > 1 ? `Crop Prescription Scan (1 of ${cropQueue.length})` : "Crop Prescription Scan"}
+        onCancel={() => setCropQueue((prev) => prev.slice(1))}
+        onConfirm={async (cropped) => {
+          setCropQueue((prev) => prev.slice(1));
+          await uploadSingleOldRxFile(cropped);
+        }}
+      />
     </div>
   );
 }

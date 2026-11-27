@@ -34,12 +34,16 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
 } from "lucide-react";
 import { RazorpayQRModal } from "./RazorpayQRModal";
 import { POPULAR_HOMEOPATHY_REMEDIES } from "../patient-file/PatientFileWebView";
 import { generate30DayDietSchedule, DayDietPlan } from "../patient-file/dietPlanData";
 import { getBranchPhone } from "../../app/reception/medical-requests/pdf/generateMedicineRequestPDF";
 import { shareInvoicePDF, downloadInvoicePDF } from "@/utils/generateInvoicePDF";
+import { ZoomableImageViewer } from "@/components/ui/ZoomableImageViewer";
 
 // --- TYPES ---
 export interface MedicineItem {
@@ -239,6 +243,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   const [currentRxImages, setCurrentRxImages] = useState<string[]>(appointment?.prescriptionImages || []);
   const [isUploadingRx, setIsUploadingRx] = useState<boolean>(false);
   const [previewRxUrl, setPreviewRxUrl] = useState<string | null>(null);
+  const [rxZoomScale, setRxZoomScale] = useState<number>(1);
+  const [rxRotation, setRxRotation] = useState<number>(0);
   const rxImages = currentRxImages.length > 0 ? currentRxImages : (appointment?.prescriptionImages || []);
   const hasPrescription =
     rxImages.length > 0 ||
@@ -666,7 +672,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
     );
   };
 
-  const handleConfirmMultiPayment = async () => {
+  const handleConfirmMultiPayment = async (overrideMode?: string) => {
     const selected = multiPayMembers.filter((m) => m.selected);
     if (selected.length === 0) {
       alert("Please select at least one family member to pay.");
@@ -677,19 +683,41 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       return;
     }
 
+    const effectiveMode = overrideMode || paymentMode;
+    const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
+    const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
+    const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
+    const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
+
+    if (effectiveMode === "Split" || effectiveMode === "Split Payment") {
+      const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
+      if (allocated !== multiPayGrandTotal) {
+        alert(`Split breakdown (₹${allocated.toLocaleString()}) must equal Family Total (₹${multiPayGrandTotal.toLocaleString()}).`);
+        return;
+      }
+      if (activeUpi > 0 && !isSplitUpiPaid) {
+        alert(`Online UPI payment of ₹${activeUpi} has not been completed. Please scan Razorpay QR or verify payment.`);
+        return;
+      }
+      if (activeCard > 0 && !isSplitCardPaid) {
+        alert(`Card payment of ₹${activeCard} has not been authorized. Please process via Razorpay Card or mark paid on POS.`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const generatedMasterInvoiceId = `INV-FAM-${Date.now().toString().slice(-6)}`;
       const payload = {
         masterInvoiceId: generatedMasterInvoiceId,
-        paymentMethod: paymentMode,
-        paymentMode,
+        paymentMethod: effectiveMode,
+        paymentMode: effectiveMode,
         totalGrandPaid: multiPayGrandTotal,
-        splitDetails: (paymentMode === "Split" || paymentMode === "Split Payment") ? {
-          cash: splitCash,
-          upi: splitUpi,
-          card: splitCard,
-          counterUpi: splitCounterUpi,
+        splitDetails: (effectiveMode === "Split" || effectiveMode === "Split Payment") ? {
+          cash: activeCash,
+          upi: activeUpi,
+          card: activeCard,
+          counterUpi: activeCounterUpi,
         } : undefined,
         members: selected.map((m) => {
           const billTotal = getMemberBillTotal(m);
@@ -741,8 +769,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
         masterInvoiceId: data.masterInvoiceId || generatedMasterInvoiceId,
         totalPaid: multiPayGrandTotal,
         totalAmountDue: multiPayGrandTotal,
-        paymentMode,
-        paymentMethod: paymentMode,
+        paymentMode: effectiveMode,
+        paymentMethod: effectiveMode,
         paidAt: new Date().toISOString(),
         familyMembers: payload.members,
       } as any);
@@ -1211,7 +1239,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   // --- RAZORPAY CARD GATEWAY HANDLER ---
   const handleOpenRazorpayCard = async (customAmount?: number) => {
     if (!appointment) return;
-    const chargeAmount = typeof customAmount === "number" && customAmount > 0 ? customAmount : effectivePaidToday;
+    const defaultTarget = isMultiPayApplicable && isMultiPayEnabled ? multiPayGrandTotal : effectivePaidToday;
+    const chargeAmount = typeof customAmount === "number" && customAmount > 0 ? customAmount : defaultTarget;
     setIsCardProcessing(true);
     try {
       const res = await fetch("/api/reception/razorpay/create-order", {
@@ -1260,6 +1289,8 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
           if (paymentMode === "Split") {
             setIsSplitCardPaid(true);
             setSplitCardRef(response.razorpay_payment_id || "PAID");
+          } else if (isMultiPayApplicable && isMultiPayEnabled) {
+            await handleConfirmMultiPayment("Card");
           } else {
             await handleConfirmPayment("Card");
           }
@@ -1511,6 +1542,759 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
   ).toFixed(2);
 
   const displayPaymentMode = formatPaymentModeForInvoice(activeInvoice.paymentMode || activeInvoice.paymentMethod || paymentMode);
+
+  const renderPaymentMethodDetails = (
+    targetAmount: number,
+    onConfirmMode: (mode: string) => void,
+    requireRxCheck: boolean
+  ) => (
+    <>
+                    {/* RAZORPAY DYNAMIC QR CODE DISPLAY - ONLY FOR ONLINE UPI / QR CODE */}
+                    {paymentMode === "UPI / QR Code" && (
+                      <div className="mt-3 bg-sky-50/90 border-2 border-sky-400 rounded-2xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                              <QrCode className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900 text-xs block">
+                                Razorpay Dynamic UPI QR Code
+                              </span>
+                              <span className="text-[10.5px] text-slate-500 font-medium">
+                                Amount: <strong className="text-slate-900">₹{targetAmount.toLocaleString()}</strong> • Auto-detects payment when scanned
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRazorpayQRAmount(targetAmount);
+                              setIsRazorpayQROpen(true);
+                            }}
+                            className="py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>Open Full Screen QR</span>
+                          </button>
+                        </div>
+
+                        {/* Inline QR preview */}
+                        <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-sky-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=4&data=${encodeURIComponent(
+                              `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${targetAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
+                            )}`}
+                            alt="Razorpay UPI QR"
+                            className="w-32 h-32 object-contain rounded-lg border border-slate-200 shadow-2xs"
+                          />
+                          <div className="flex-1 space-y-1.5 text-left">
+                            <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
+                              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping" />
+                              <span>Ready to scan with any UPI app</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600">
+                              Scan using <strong>Google Pay, PhonePe, Paytm, CRED</strong> to pay <strong>₹{targetAmount.toLocaleString()}</strong>.
+                            </p>
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRazorpayQRAmount(targetAmount);
+                                  setIsRazorpayQROpen(true);
+                                }}
+                                className="py-1 px-2.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span>Live Tracker</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
+                                  const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${targetAmount.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
+                                  const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${targetAmount} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
+                                  window.open(`https://wa.me/91${cleanPh}?text=${msg}`, "_blank");
+                                }}
+                                className="py-1 px-2.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                              >
+                                <Share2 className="w-3 h-3" />
+                                <span>WhatsApp Link</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* COUNTER UPI (SAME AS CASH) */}
+                    {paymentMode === "Counter UPI" && (
+                      <div className="mt-3 bg-sky-50/60 border border-sky-200 rounded-2xl p-4 shadow-xs space-y-2.5 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                              <Smartphone className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900 text-xs block">
+                                Counter UPI (Clinic Desk QR)
+                              </span>
+                              <span className="text-[10.5px] text-slate-500 font-medium">
+                                Patient scans printed static QR on reception desk • Handled same as Cash
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-sky-100 text-sky-800 border border-sky-200">
+                            DIRECT DESK
+                          </span>
+                        </div>
+                        <div className="bg-white rounded-xl p-3 border border-sky-200/80 text-xs text-slate-700 font-medium leading-relaxed">
+                          • Patient scans clinic counter static QR code directly. Collect <strong className="text-slate-900">₹{targetAmount.toLocaleString()}</strong> at reception.
+                          <br />
+                          • Click <strong>&quot;Complete &amp; Print Bill&quot;</strong> below to confirm (No online gateway popup).
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CARD PAYMENT DETAILS (RAZORPAY CARD / POS) */}
+                    {paymentMode === "Card" && (
+                      <div className="mt-3 bg-fuchsia-50/80 border-2 border-fuchsia-300 rounded-2xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-fuchsia-600 text-white flex items-center justify-center shadow-xs">
+                              <CreditCard className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <span className="font-black text-slate-900 text-xs block">
+                                Razorpay Card / POS Payment
+                              </span>
+                              <span className="text-[10.5px] text-slate-500 font-medium">
+                                Enter card details or pay via Razorpay Card Gateway
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200">
+                            CARD
+                          </span>
+                        </div>
+
+                        {/* Card input fields */}
+                        <div className="bg-white p-3 rounded-xl border border-fuchsia-200 space-y-2.5">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Card Number
+                            </label>
+                            <input
+                              type="text"
+                              value={cardNumber}
+                              onChange={(e) => {
+                                const clean = e.target.value.replace(/\D/g, "").slice(0, 16);
+                                const formatted = clean.match(/.{1,4}/g)?.join(" ") || clean;
+                                setCardNumber(formatted);
+                              }}
+                              placeholder="4532 •••• •••• ••••"
+                              maxLength={19}
+                              className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 tracking-wider"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Expiry (MM/YY)
+                              </label>
+                              <input
+                                type="text"
+                                value={cardExpiry}
+                                onChange={(e) => {
+                                  const clean = e.target.value.replace(/\D/g, "").slice(0, 4);
+                                  const formatted = clean.length > 2 ? `${clean.slice(0, 2)}/${clean.slice(2)}` : clean;
+                                  setCardExpiry(formatted);
+                                }}
+                                placeholder="MM/YY"
+                                maxLength={5}
+                                className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                CVV
+                              </label>
+                              <input
+                                type="password"
+                                value={cardCvv}
+                                onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                placeholder="•••"
+                                maxLength={4}
+                                className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-1 space-y-2">
+                            <button
+                              type="button"
+                              disabled={isCardProcessing}
+                              onClick={() => handleOpenRazorpayCard(targetAmount)}
+                              className="w-full py-2 px-3 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                              <span>{isCardProcessing ? "Opening Razorpay Gateway..." : "Pay via Razorpay Card Gateway (Card Details & OTP)"}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isSubmitting}
+                              onClick={() => onConfirmMode("Card")}
+                              className="w-full py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <CheckCircle2 size={16} />
+                              <span>{isSubmitting ? "Completing Appointment..." : "Confirm Card Payment & Complete Appointment"}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-fuchsia-800 font-semibold text-center">
+                          Enter card details above or swipe on clinic POS machine, then click Complete below.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* SPLIT BREAKDOWN INPUTS & PRESETS */}
+                    {paymentMode === "Split" && (
+                      <div className="mt-3 bg-sky-50/80 border-2 border-sky-400 rounded-2xl p-4 space-y-4 shadow-sm animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center font-black text-xs">
+                              ⚡
+                            </span>
+                            <div>
+                              <span className="font-black text-slate-900 text-xs block">
+                                Split Payment Allocation
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                Amount to Pay Today: <strong className="text-slate-900">₹{targetAmount.toLocaleString()}</strong> — Opt-in modes, allocate amounts, and verify online payments
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOptedSplitModes(["cash", "upi"]);
+                                const half = Math.round(targetAmount / 2);
+                                setSplitUpi(half);
+                                setSplitCash(targetAmount - half);
+                                setSplitCounterUpi(0);
+                                setSplitCard(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
+                              }}
+                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                            >
+                              Cash + UPI
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOptedSplitModes(["cash", "card"]);
+                                const half = Math.round(targetAmount / 2);
+                                setSplitCard(half);
+                                setSplitCash(targetAmount - half);
+                                setSplitUpi(0);
+                                setSplitCounterUpi(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
+                              }}
+                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                            >
+                              Cash + Card
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOptedSplitModes(["cash", "counterUpi"]);
+                                const half = Math.round(targetAmount / 2);
+                                setSplitCounterUpi(half);
+                                setSplitCash(targetAmount - half);
+                                setSplitUpi(0);
+                                setSplitCard(0);
+                                setIsSplitUpiPaid(false);
+                                setIsSplitCardPaid(false);
+                              }}
+                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                            >
+                              Cash + Counter UPI
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOptedSplitModes(["cash", "counterUpi", "upi", "card"]);
+                                const quarter = Math.round(targetAmount / 4);
+                                setSplitCash(quarter);
+                                setSplitCounterUpi(quarter);
+                                setSplitUpi(quarter);
+                                setSplitCard(targetAmount - (quarter * 3));
+                              }}
+                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
+                            >
+                              All 4 Options
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* OPT-IN SELECTOR BUTTONS */}
+                        <div className="bg-white/90 p-3 rounded-xl border border-sky-200 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
+                              Step 1: Choose Modes to Split Between (Tap to Opt-in / Opt-out)
+                            </span>
+                            <span className="text-[10px] font-bold text-sky-700">
+                              {optedSplitModes.length} mode{optedSplitModes.length > 1 ? "s" : ""} opted
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                              { id: "cash", label: "Cash", icon: Banknote },
+                              { id: "counterUpi", label: "Counter UPI", icon: Smartphone },
+                              { id: "upi", label: "Online UPI (QR)", icon: QrCode },
+                              { id: "card", label: "Card / POS", icon: CreditCard },
+                            ].map((opt) => {
+                              const isOpted = optedSplitModes.includes(opt.id);
+                              const Icon = opt.icon;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isOpted) {
+                                      if (optedSplitModes.length === 1) {
+                                        alert("At least one payment mode must be selected in Split.");
+                                        return;
+                                      }
+                                      setOptedSplitModes(optedSplitModes.filter((m) => m !== opt.id));
+                                      if (opt.id === "cash") setSplitCash(0);
+                                      if (opt.id === "counterUpi") setSplitCounterUpi(0);
+                                      if (opt.id === "upi") { setSplitUpi(0); setIsSplitUpiPaid(false); setSplitUpiRef(""); }
+                                      if (opt.id === "card") { setSplitCard(0); setIsSplitCardPaid(false); setSplitCardRef(""); }
+                                    } else {
+                                      const newOpted = [...optedSplitModes, opt.id];
+                                      setOptedSplitModes(newOpted);
+                                      const currentSum =
+                                        (newOpted.includes("cash") ? splitCash : 0) +
+                                        (newOpted.includes("counterUpi") ? splitCounterUpi : 0) +
+                                        (newOpted.includes("upi") ? splitUpi : 0) +
+                                        (newOpted.includes("card") ? splitCard : 0);
+                                      const rem = Math.max(0, targetAmount - currentSum);
+                                      if (rem > 0) {
+                                        if (opt.id === "cash") setSplitCash(rem);
+                                        else if (opt.id === "counterUpi") setSplitCounterUpi(rem);
+                                        else if (opt.id === "upi") setSplitUpi(rem);
+                                        else if (opt.id === "card") setSplitCard(rem);
+                                      }
+                                    }
+                                  }}
+                                  className={`py-2 px-2.5 rounded-xl border flex items-center justify-between text-xs font-black transition-all cursor-pointer ${isOpted
+                                      ? "bg-sky-50 border-sky-500 text-sky-950 shadow-xs ring-1 ring-sky-500"
+                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"
+                                    }`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <Icon className={`w-3.5 h-3.5 ${isOpted ? "text-sky-600" : "text-slate-400"}`} />
+                                    <span>{opt.label}</span>
+                                  </div>
+                                  <span
+                                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[9.5px] font-black ${isOpted ? "bg-sky-600 text-white" : "border border-slate-300 text-transparent"
+                                      }`}
+                                  >
+                                    ✓
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* OPTED INPUT CARDS */}
+                        <div className="space-y-1">
+                          <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 block">
+                            Step 2: Enter Amounts for Opted Modes
+                          </span>
+
+                          <div className={`grid grid-cols-1 ${optedSplitModes.length === 1 ? "sm:grid-cols-1" : optedSplitModes.length === 2 ? "sm:grid-cols-2" : optedSplitModes.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"} gap-2.5`}>
+                            {/* 1. Cash (if opted) */}
+                            {optedSplitModes.includes("cash") && (
+                              <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                                    <Banknote className="w-3.5 h-3.5 text-emerald-600" /> Cash
+                                  </label>
+                                  {(() => {
+                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                    return targetAmount - alloc !== 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const rem = targetAmount - splitUpi - splitCard - splitCounterUpi;
+                                          setSplitCash(Math.max(0, rem));
+                                        }}
+                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
+                                      >
+                                        Fill Remaining
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
+                                  <span className="text-slate-500 font-bold text-xs">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={targetAmount}
+                                    value={splitCash || ""}
+                                    onChange={(e) => {
+                                      const raw = parseFloat(e.target.value) || 0;
+                                      const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                      const maxAllowed = Math.max(0, targetAmount - other);
+                                      setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
+                                    }}
+                                    placeholder="0"
+                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                                  />
+                                </div>
+                                <span className="text-[9.5px] text-slate-400 block">
+                                  Counter Cash
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 2. Counter UPI (if opted) */}
+                            {optedSplitModes.includes("counterUpi") && (
+                              <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                                    <Smartphone className="w-3.5 h-3.5 text-slate-800" /> Counter UPI
+                                  </label>
+                                  {(() => {
+                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                    return targetAmount - alloc !== 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const rem = targetAmount - splitUpi - splitCard - splitCash;
+                                          setSplitCounterUpi(Math.max(0, rem));
+                                        }}
+                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
+                                      >
+                                        Fill Remaining
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                                <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
+                                  <span className="text-slate-500 font-bold text-xs">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={targetAmount}
+                                    value={splitCounterUpi || ""}
+                                    onChange={(e) => {
+                                      const raw = parseFloat(e.target.value) || 0;
+                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
+                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                      const maxAllowed = Math.max(0, targetAmount - other);
+                                      setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                    }}
+                                    placeholder="0"
+                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
+                                  />
+                                </div>
+                                <span className="text-[9.5px] text-slate-400 block">
+                                  Desk static QR (Same as Cash)
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 3. Online UPI (if opted) */}
+                            {optedSplitModes.includes("upi") && (
+                              <div className={`p-3 rounded-xl border shadow-2xs space-y-2 ${isSplitUpiPaid ? "bg-emerald-50/70 border-emerald-300" : "bg-white border-sky-300"
+                                }`}>
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> Online UPI
+                                  </label>
+                                  {!isSplitUpiPaid && (() => {
+                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                    return targetAmount - alloc !== 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const rem = targetAmount - splitCash - splitCard - splitCounterUpi;
+                                          setSplitUpi(Math.max(0, rem));
+                                        }}
+                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
+                                      >
+                                        Fill Remaining
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+
+                                <div className="flex items-center gap-1 border border-sky-300 rounded-lg px-2.5 py-1.5 bg-sky-50 focus-within:ring-2 focus-within:ring-sky-500">
+                                  <span className="text-sky-700 font-bold text-xs">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={targetAmount}
+                                    disabled={isSplitUpiPaid}
+                                    value={splitUpi || ""}
+                                    onChange={(e) => {
+                                      const raw = parseFloat(e.target.value) || 0;
+                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                        (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
+                                      const maxAllowed = Math.max(0, targetAmount - other);
+                                      setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
+                                    }}
+                                    placeholder="0"
+                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
+                                  />
+                                </div>
+
+                                {/* Status / Action for Split UPI */}
+                                {isSplitUpiPaid ? (
+                                  <div className="p-2 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-[11px]">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>✓ ₹{splitUpi} UPI Paid</span>
+                                      {splitUpiRef && <span className="text-[9.5px] font-bold text-emerald-700">({splitUpiRef.slice(-6)})</span>}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setIsSplitUpiPaid(false); setSplitUpiRef(""); }}
+                                      className="text-[9.5px] font-bold text-emerald-800 underline cursor-pointer hover:text-emerald-950"
+                                    >
+                                      Reset
+                                    </button>
+                                  </div>
+                                ) : splitUpi > 0 ? (
+                                  <div className="space-y-1.5 pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRazorpayQRAmount(splitUpi);
+                                        setIsRazorpayQROpen(true);
+                                      }}
+                                      className="w-full py-1.5 px-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[10.5px] shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <QrCode className="w-3 h-3" />
+                                      <span>Pay ₹{splitUpi} via Razorpay QR</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsSplitUpiPaid(true);
+                                        setSplitUpiRef(`MANUAL-${Date.now().toString().slice(-4)}`);
+                                      }}
+                                      className="w-full py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[9.5px] transition cursor-pointer"
+                                    >
+                                      Mark Paid ✓
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+
+                            {/* 4. Card / POS (if opted) */}
+                            {optedSplitModes.includes("card") && (
+                              <div className={`p-3 rounded-xl border shadow-2xs space-y-2 ${isSplitCardPaid ? "bg-emerald-50/70 border-emerald-300" : "bg-white border-fuchsia-300"
+                                }`}>
+                                <div className="flex items-center justify-between">
+                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
+                                    <CreditCard className="w-3.5 h-3.5 text-fuchsia-600" /> Card / POS
+                                  </label>
+                                  {!isSplitCardPaid && (() => {
+                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
+                                    return targetAmount - alloc !== 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const rem = targetAmount - splitCash - splitUpi - splitCounterUpi;
+                                          setSplitCard(Math.max(0, rem));
+                                        }}
+                                        className="text-[9.5px] font-bold text-fuchsia-700 underline cursor-pointer"
+                                      >
+                                        Fill Remaining
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+
+                                <div className="flex items-center gap-1 border border-fuchsia-300 rounded-lg px-2.5 py-1.5 bg-fuchsia-50 focus-within:ring-2 focus-within:ring-fuchsia-500">
+                                  <span className="text-fuchsia-700 font-bold text-xs">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={targetAmount}
+                                    disabled={isSplitCardPaid}
+                                    value={splitCard || ""}
+                                    onChange={(e) => {
+                                      const raw = parseFloat(e.target.value) || 0;
+                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
+                                        (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
+                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
+                                      const maxAllowed = Math.max(0, targetAmount - other);
+                                      setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
+                                    }}
+                                    placeholder="0"
+                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
+                                  />
+                                </div>
+
+                                {/* Status / Action for Split Card */}
+                                {isSplitCardPaid ? (
+                                  <div className="p-2 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-[11px]">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>✓ ₹{splitCard} Card Authorized</span>
+                                      {splitCardRef && <span className="text-[9.5px] font-bold text-emerald-700">({splitCardRef.slice(-6)})</span>}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setIsSplitCardPaid(false); setSplitCardRef(""); }}
+                                      className="text-[9.5px] font-bold text-emerald-800 underline cursor-pointer hover:text-emerald-950"
+                                    >
+                                      Reset
+                                    </button>
+                                  </div>
+                                ) : splitCard > 0 ? (
+                                  <div className="space-y-1.5 pt-0.5">
+                                    <button
+                                      type="button"
+                                      disabled={isCardProcessing}
+                                      onClick={() => handleOpenRazorpayCard(splitCard)}
+                                      className="w-full py-1.5 px-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold text-[10.5px] shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
+                                    >
+                                      <CreditCard className="w-3 h-3" />
+                                      <span>{isCardProcessing ? "Opening Gateway..." : `Pay ₹${splitCard} via Razorpay`}</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsSplitCardPaid(true);
+                                        setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
+                                      }}
+                                      className="w-full py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[9.5px] transition cursor-pointer"
+                                    >
+                                      Swipe on POS / Mark Paid ✓
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status badge & Complete button */}
+                        {(() => {
+                          const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
+                          const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
+                          const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
+                          const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
+                          const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
+                          const isMatch = allocated === targetAmount;
+                          const diff = targetAmount - allocated;
+
+                          const isUpiSatisfied = !optedSplitModes.includes("upi") || activeUpi === 0 || isSplitUpiPaid;
+                          const isCardSatisfied = !optedSplitModes.includes("card") || activeCard === 0 || isSplitCardPaid;
+                          const canComplete = isMatch && isUpiSatisfied && isCardSatisfied;
+
+                          const parts: string[] = [];
+                          if (activeCash > 0) parts.push(`Cash ₹${activeCash}`);
+                          if (activeCounterUpi > 0) parts.push(`Counter UPI ₹${activeCounterUpi}`);
+                          if (activeUpi > 0) parts.push(`Online UPI ₹${activeUpi}${isSplitUpiPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+                          if (activeCard > 0) parts.push(`Card ₹${activeCard}${isSplitCardPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
+
+                          return (
+                            <div className="space-y-2.5 pt-1">
+                              <div
+                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${isMatch
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+                                    : diff > 0
+                                      ? "bg-amber-50 border-amber-300 text-amber-900"
+                                      : "bg-rose-50 border-rose-300 text-rose-900"
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span>{isMatch ? "✓" : "⚠️"}</span>
+                                  <span>
+                                    {isMatch
+                                      ? `Split Total Matched: ${parts.join(" + ")} = ₹${targetAmount.toLocaleString()}`
+                                      : diff > 0
+                                        ? `₹${diff.toLocaleString()} remaining to allocate (Amount to pay today: ₹${targetAmount.toLocaleString()})`
+                                        : `Split exceeds amount to pay today by ₹${Math.abs(diff).toLocaleString()}`}
+                                  </span>
+                                </div>
+                                {!isMatch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const firstMode = optedSplitModes[0] || "cash";
+                                      if (firstMode === "cash") {
+                                        const rem = targetAmount - activeCounterUpi - activeUpi - activeCard;
+                                        setSplitCash(Math.max(0, rem));
+                                      } else if (firstMode === "counterUpi") {
+                                        const rem = targetAmount - activeCash - activeUpi - activeCard;
+                                        setSplitCounterUpi(Math.max(0, rem));
+                                      } else if (firstMode === "upi") {
+                                        const rem = targetAmount - activeCash - activeCounterUpi - activeCard;
+                                        setSplitUpi(Math.max(0, rem));
+                                      } else if (firstMode === "card") {
+                                        const rem = targetAmount - activeCash - activeCounterUpi - activeUpi;
+                                        setSplitCard(Math.max(0, rem));
+                                      }
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[10px] font-black cursor-pointer shadow-2xs"
+                                  >
+                                    Auto-Balance Remaining
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Direct Complete Split Button */}
+                              {isMatch && (
+                                <button
+                                  type="button"
+                                  disabled={isSubmitting || (requireRxCheck && !hasPrescription) || !canComplete}
+                                  onClick={() => onConfirmMode("Split")}
+                                  className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${canComplete
+                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      : "bg-amber-500 hover:bg-amber-600 text-white"
+                                    }`}
+                                >
+                                  <CheckCircle2 size={16} />
+                                  <span>
+                                    {isSubmitting
+                                      ? "Completing Appointment..."
+                                      : !isUpiSatisfied
+                                        ? `Awaiting Online UPI Payment (Pay ₹${activeUpi} via QR or Mark Paid)`
+                                        : !isCardSatisfied
+                                          ? `Awaiting Card Payment (Pay ₹${activeCard} or Swipe POS)`
+                                          : "Complete Consultation & Record Split Payment"}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+    </>
+  );
 
   return (
     <>
@@ -2265,27 +3049,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       })}
                     </div>
 
-                    {/* RAZORPAY DYNAMIC QR CODE DISPLAY FOR MULTI-PAY */}
-                    {paymentMode === "UPI / QR Code" && (
-                      <div className="bg-sky-50 border-2 border-sky-400 rounded-xl p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <QrCode className="w-5 h-5 text-sky-600" />
-                          <span className="text-xs font-bold text-sky-950">
-                            Razorpay Dynamic QR for Family Total: <strong>₹{multiPayGrandTotal.toLocaleString()}</strong>
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRazorpayQRAmount(multiPayGrandTotal);
-                            setIsRazorpayQROpen(true);
-                          }}
-                          className="px-3 py-1 rounded bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs cursor-pointer"
-                        >
-                          Show Dynamic QR
-                        </button>
-                      </div>
-                    )}
+                    {renderPaymentMethodDetails(multiPayGrandTotal, (mode) => handleConfirmMultiPayment(mode), false)}
                   </div>
 
                   {/* MULTI-PAY FINAL ACTION BAR */}
@@ -2301,7 +3065,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={handleConfirmMultiPayment}
+                      onClick={() => handleConfirmMultiPayment()}
                       disabled={isSubmitting || multiPayGrandTotal <= 0 || multiPayMembers.filter((m) => m.selected).length === 0}
                       className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
@@ -3066,7 +3830,11 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => setPreviewRxUrl(imgUrl)}
+                                  onClick={() => {
+                                    setRxZoomScale(1);
+                                    setRxRotation(0);
+                                    setPreviewRxUrl(imgUrl);
+                                  }}
                                   title="View image"
                                   className="w-6 h-6 rounded-full bg-white text-slate-800 flex items-center justify-center hover:bg-slate-100 shadow-xs cursor-pointer"
                                 >
@@ -3138,750 +3906,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                       })}
                     </div>
 
-                    {/* RAZORPAY DYNAMIC QR CODE DISPLAY - ONLY FOR ONLINE UPI / QR CODE */}
-                    {paymentMode === "UPI / QR Code" && (
-                      <div className="mt-3 bg-sky-50/90 border-2 border-sky-400 rounded-2xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
-                              <QrCode className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <span className="font-black text-slate-900 text-xs block">
-                                Razorpay Dynamic UPI QR Code
-                              </span>
-                              <span className="text-[10.5px] text-slate-500 font-medium">
-                                Amount: <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> • Auto-detects payment when scanned
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRazorpayQRAmount(effectivePaidToday);
-                              setIsRazorpayQROpen(true);
-                            }}
-                            className="py-1.5 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-                          >
-                            <QrCode className="w-3.5 h-3.5" />
-                            <span>Open Full Screen QR</span>
-                          </button>
-                        </div>
-
-                        {/* Inline QR preview */}
-                        <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-xl border border-sky-200">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=4&data=${encodeURIComponent(
-                              `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${effectivePaidToday.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`
-                            )}`}
-                            alt="Razorpay UPI QR"
-                            className="w-32 h-32 object-contain rounded-lg border border-slate-200 shadow-2xs"
-                          />
-                          <div className="flex-1 space-y-1.5 text-left">
-                            <div className="flex items-center gap-2 text-xs font-bold text-sky-800">
-                              <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping" />
-                              <span>Ready to scan with any UPI app</span>
-                            </div>
-                            <p className="text-[11px] text-slate-600">
-                              Scan using <strong>Google Pay, PhonePe, Paytm, CRED</strong> to pay <strong>₹{effectivePaidToday.toLocaleString()}</strong>.
-                            </p>
-                            <div className="flex items-center gap-2 pt-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRazorpayQRAmount(effectivePaidToday);
-                                  setIsRazorpayQROpen(true);
-                                }}
-                                className="py-1 px-2.5 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
-                              >
-                                <RefreshCw className="w-3 h-3" />
-                                <span>Live Tracker</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const cleanPh = (appointment?.phoneNumber || appointment?.phone || "").replace(/\D/g, "").slice(-10);
-                                  const upiUri = `upi://pay?pa=sseomni9k9v0j291124pos@mairtel&pn=SPIRITUAL%20HOMEO%20PRIVATE%20LIMITED&am=${effectivePaidToday.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Payment for ' + (appointment?.patientName || 'Patient'))}`;
-                                  const msg = encodeURIComponent(`Hello ${appointment?.patientName || 'Patient'},\nPlease pay ₹${effectivePaidToday} for your consultation at Spiritual Homeopathy using this UPI link:\n${upiUri}`);
-                                  window.open(`https://wa.me/91${cleanPh}?text=${msg}`, "_blank");
-                                }}
-                                className="py-1 px-2.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
-                              >
-                                <Share2 className="w-3 h-3" />
-                                <span>WhatsApp Link</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* COUNTER UPI (SAME AS CASH) */}
-                    {paymentMode === "Counter UPI" && (
-                      <div className="mt-3 bg-sky-50/60 border border-sky-200 rounded-2xl p-4 shadow-xs space-y-2.5 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
-                              <Smartphone className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <span className="font-black text-slate-900 text-xs block">
-                                Counter UPI (Clinic Desk QR)
-                              </span>
-                              <span className="text-[10.5px] text-slate-500 font-medium">
-                                Patient scans printed static QR on reception desk • Handled same as Cash
-                              </span>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-sky-100 text-sky-800 border border-sky-200">
-                            DIRECT DESK
-                          </span>
-                        </div>
-                        <div className="bg-white rounded-xl p-3 border border-sky-200/80 text-xs text-slate-700 font-medium leading-relaxed">
-                          • Patient scans clinic counter static QR code directly. Collect <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> at reception.
-                          <br />
-                          • Click <strong>&quot;Complete &amp; Print Bill&quot;</strong> below to confirm (No online gateway popup).
-                        </div>
-                      </div>
-                    )}
-
-                    {/* CARD PAYMENT DETAILS (RAZORPAY CARD / POS) */}
-                    {paymentMode === "Card" && (
-                      <div className="mt-3 bg-fuchsia-50/80 border-2 border-fuchsia-300 rounded-2xl p-4 shadow-sm space-y-3 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-fuchsia-600 text-white flex items-center justify-center shadow-xs">
-                              <CreditCard className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <span className="font-black text-slate-900 text-xs block">
-                                Razorpay Card / POS Payment
-                              </span>
-                              <span className="text-[10.5px] text-slate-500 font-medium">
-                                Enter card details or pay via Razorpay Card Gateway
-                              </span>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200">
-                            CARD
-                          </span>
-                        </div>
-
-                        {/* Card input fields */}
-                        <div className="bg-white p-3 rounded-xl border border-fuchsia-200 space-y-2.5">
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Card Number
-                            </label>
-                            <input
-                              type="text"
-                              value={cardNumber}
-                              onChange={(e) => {
-                                const clean = e.target.value.replace(/\D/g, "").slice(0, 16);
-                                const formatted = clean.match(/.{1,4}/g)?.join(" ") || clean;
-                                setCardNumber(formatted);
-                              }}
-                              placeholder="4532 •••• •••• ••••"
-                              maxLength={19}
-                              className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 tracking-wider"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                Expiry (MM/YY)
-                              </label>
-                              <input
-                                type="text"
-                                value={cardExpiry}
-                                onChange={(e) => {
-                                  const clean = e.target.value.replace(/\D/g, "").slice(0, 4);
-                                  const formatted = clean.length > 2 ? `${clean.slice(0, 2)}/${clean.slice(2)}` : clean;
-                                  setCardExpiry(formatted);
-                                }}
-                                placeholder="MM/YY"
-                                maxLength={5}
-                                className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                CVV
-                              </label>
-                              <input
-                                type="password"
-                                value={cardCvv}
-                                onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                                placeholder="•••"
-                                maxLength={4}
-                                className="w-full px-3 py-2 text-xs font-bold text-slate-800 border border-slate-300 rounded-lg focus:outline-hidden focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="pt-1 space-y-2">
-                            <button
-                              type="button"
-                              disabled={isCardProcessing}
-                              onClick={() => handleOpenRazorpayCard()}
-                              className="w-full py-2 px-3 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
-                            >
-                              <CreditCard className="w-4 h-4" />
-                              <span>{isCardProcessing ? "Opening Razorpay Gateway..." : "Pay via Razorpay Card Gateway (Card Details & OTP)"}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isSubmitting}
-                              onClick={() => handleConfirmPayment("Card")}
-                              className="w-full py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
-                            >
-                              <CheckCircle2 size={16} />
-                              <span>{isSubmitting ? "Completing Appointment..." : "Confirm Card Payment & Complete Appointment"}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        <p className="text-[10px] text-fuchsia-800 font-semibold text-center">
-                          Enter card details above or swipe on clinic POS machine, then click Complete below.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* SPLIT BREAKDOWN INPUTS & PRESETS */}
-                    {paymentMode === "Split" && (
-                      <div className="mt-3 bg-sky-50/80 border-2 border-sky-400 rounded-2xl p-4 space-y-4 shadow-sm animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center font-black text-xs">
-                              ⚡
-                            </span>
-                            <div>
-                              <span className="font-black text-slate-900 text-xs block">
-                                Split Payment Allocation
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                Amount to Pay Today: <strong className="text-slate-900">₹{effectivePaidToday.toLocaleString()}</strong> — Opt-in modes, allocate amounts, and verify online payments
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOptedSplitModes(["cash", "upi"]);
-                                const half = Math.round(effectivePaidToday / 2);
-                                setSplitUpi(half);
-                                setSplitCash(effectivePaidToday - half);
-                                setSplitCounterUpi(0);
-                                setSplitCard(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
-                            >
-                              Cash + UPI
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOptedSplitModes(["cash", "card"]);
-                                const half = Math.round(effectivePaidToday / 2);
-                                setSplitCard(half);
-                                setSplitCash(effectivePaidToday - half);
-                                setSplitUpi(0);
-                                setSplitCounterUpi(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
-                            >
-                              Cash + Card
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOptedSplitModes(["cash", "counterUpi"]);
-                                const half = Math.round(effectivePaidToday / 2);
-                                setSplitCounterUpi(half);
-                                setSplitCash(effectivePaidToday - half);
-                                setSplitUpi(0);
-                                setSplitCard(0);
-                                setIsSplitUpiPaid(false);
-                                setIsSplitCardPaid(false);
-                              }}
-                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
-                            >
-                              Cash + Counter UPI
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOptedSplitModes(["cash", "counterUpi", "upi", "card"]);
-                                const quarter = Math.round(effectivePaidToday / 4);
-                                setSplitCash(quarter);
-                                setSplitCounterUpi(quarter);
-                                setSplitUpi(quarter);
-                                setSplitCard(effectivePaidToday - (quarter * 3));
-                              }}
-                              className="text-[10px] font-extrabold px-2.5 py-1 rounded-md bg-white border border-sky-300 text-sky-800 hover:bg-sky-100 transition shadow-2xs cursor-pointer"
-                            >
-                              All 4 Options
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* OPT-IN SELECTOR BUTTONS */}
-                        <div className="bg-white/90 p-3 rounded-xl border border-sky-200 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
-                              Step 1: Choose Modes to Split Between (Tap to Opt-in / Opt-out)
-                            </span>
-                            <span className="text-[10px] font-bold text-sky-700">
-                              {optedSplitModes.length} mode{optedSplitModes.length > 1 ? "s" : ""} opted
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {[
-                              { id: "cash", label: "Cash", icon: Banknote },
-                              { id: "counterUpi", label: "Counter UPI", icon: Smartphone },
-                              { id: "upi", label: "Online UPI (QR)", icon: QrCode },
-                              { id: "card", label: "Card / POS", icon: CreditCard },
-                            ].map((opt) => {
-                              const isOpted = optedSplitModes.includes(opt.id);
-                              const Icon = opt.icon;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (isOpted) {
-                                      if (optedSplitModes.length === 1) {
-                                        alert("At least one payment mode must be selected in Split.");
-                                        return;
-                                      }
-                                      setOptedSplitModes(optedSplitModes.filter((m) => m !== opt.id));
-                                      if (opt.id === "cash") setSplitCash(0);
-                                      if (opt.id === "counterUpi") setSplitCounterUpi(0);
-                                      if (opt.id === "upi") { setSplitUpi(0); setIsSplitUpiPaid(false); setSplitUpiRef(""); }
-                                      if (opt.id === "card") { setSplitCard(0); setIsSplitCardPaid(false); setSplitCardRef(""); }
-                                    } else {
-                                      const newOpted = [...optedSplitModes, opt.id];
-                                      setOptedSplitModes(newOpted);
-                                      const currentSum =
-                                        (newOpted.includes("cash") ? splitCash : 0) +
-                                        (newOpted.includes("counterUpi") ? splitCounterUpi : 0) +
-                                        (newOpted.includes("upi") ? splitUpi : 0) +
-                                        (newOpted.includes("card") ? splitCard : 0);
-                                      const rem = Math.max(0, effectivePaidToday - currentSum);
-                                      if (rem > 0) {
-                                        if (opt.id === "cash") setSplitCash(rem);
-                                        else if (opt.id === "counterUpi") setSplitCounterUpi(rem);
-                                        else if (opt.id === "upi") setSplitUpi(rem);
-                                        else if (opt.id === "card") setSplitCard(rem);
-                                      }
-                                    }
-                                  }}
-                                  className={`py-2 px-2.5 rounded-xl border flex items-center justify-between text-xs font-black transition-all cursor-pointer ${isOpted
-                                      ? "bg-sky-50 border-sky-500 text-sky-950 shadow-xs ring-1 ring-sky-500"
-                                      : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"
-                                    }`}
-                                >
-                                  <div className="flex items-center gap-1.5">
-                                    <Icon className={`w-3.5 h-3.5 ${isOpted ? "text-sky-600" : "text-slate-400"}`} />
-                                    <span>{opt.label}</span>
-                                  </div>
-                                  <span
-                                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[9.5px] font-black ${isOpted ? "bg-sky-600 text-white" : "border border-slate-300 text-transparent"
-                                      }`}
-                                  >
-                                    ✓
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* OPTED INPUT CARDS */}
-                        <div className="space-y-1">
-                          <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700 block">
-                            Step 2: Enter Amounts for Opted Modes
-                          </span>
-
-                          <div className={`grid grid-cols-1 ${optedSplitModes.length === 1 ? "sm:grid-cols-1" : optedSplitModes.length === 2 ? "sm:grid-cols-2" : optedSplitModes.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"} gap-2.5`}>
-                            {/* 1. Cash (if opted) */}
-                            {optedSplitModes.includes("cash") && (
-                              <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
-                                    <Banknote className="w-3.5 h-3.5 text-emerald-600" /> Cash
-                                  </label>
-                                  {(() => {
-                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                    return effectivePaidToday - alloc !== 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const rem = effectivePaidToday - splitUpi - splitCard - splitCounterUpi;
-                                          setSplitCash(Math.max(0, rem));
-                                        }}
-                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
-                                      >
-                                        Fill Remaining
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-                                <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
-                                  <span className="text-slate-500 font-bold text-xs">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={effectivePaidToday}
-                                    value={splitCash || ""}
-                                    onChange={(e) => {
-                                      const raw = parseFloat(e.target.value) || 0;
-                                      const other = (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
-                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                      const maxAllowed = Math.max(0, effectivePaidToday - other);
-                                      setSplitCash(Math.max(0, Math.min(maxAllowed, raw)));
-                                    }}
-                                    placeholder="0"
-                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
-                                  />
-                                </div>
-                                <span className="text-[9.5px] text-slate-400 block">
-                                  Counter Cash
-                                </span>
-                              </div>
-                            )}
-
-                            {/* 2. Counter UPI (if opted) */}
-                            {optedSplitModes.includes("counterUpi") && (
-                              <div className="bg-white p-3 rounded-xl border border-sky-200 shadow-2xs space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
-                                    <Smartphone className="w-3.5 h-3.5 text-slate-800" /> Counter UPI
-                                  </label>
-                                  {(() => {
-                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                    return effectivePaidToday - alloc !== 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const rem = effectivePaidToday - splitUpi - splitCard - splitCash;
-                                          setSplitCounterUpi(Math.max(0, rem));
-                                        }}
-                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
-                                      >
-                                        Fill Remaining
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-                                <div className="flex items-center gap-1 border border-slate-300 rounded-lg px-2.5 py-1.5 bg-slate-50 focus-within:ring-2 focus-within:ring-sky-500 bg-white">
-                                  <span className="text-slate-500 font-bold text-xs">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={effectivePaidToday}
-                                    value={splitCounterUpi || ""}
-                                    onChange={(e) => {
-                                      const raw = parseFloat(e.target.value) || 0;
-                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0) +
-                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                      const maxAllowed = Math.max(0, effectivePaidToday - other);
-                                      setSplitCounterUpi(Math.max(0, Math.min(maxAllowed, raw)));
-                                    }}
-                                    placeholder="0"
-                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent"
-                                  />
-                                </div>
-                                <span className="text-[9.5px] text-slate-400 block">
-                                  Desk static QR (Same as Cash)
-                                </span>
-                              </div>
-                            )}
-
-                            {/* 3. Online UPI (if opted) */}
-                            {optedSplitModes.includes("upi") && (
-                              <div className={`p-3 rounded-xl border shadow-2xs space-y-2 ${isSplitUpiPaid ? "bg-emerald-50/70 border-emerald-300" : "bg-white border-sky-300"
-                                }`}>
-                                <div className="flex items-center justify-between">
-                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
-                                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> Online UPI
-                                  </label>
-                                  {!isSplitUpiPaid && (() => {
-                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                    return effectivePaidToday - alloc !== 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const rem = effectivePaidToday - splitCash - splitCard - splitCounterUpi;
-                                          setSplitUpi(Math.max(0, rem));
-                                        }}
-                                        className="text-[9.5px] font-bold text-sky-700 underline cursor-pointer"
-                                      >
-                                        Fill Remaining
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-
-                                <div className="flex items-center gap-1 border border-sky-300 rounded-lg px-2.5 py-1.5 bg-sky-50 focus-within:ring-2 focus-within:ring-sky-500">
-                                  <span className="text-sky-700 font-bold text-xs">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={effectivePaidToday}
-                                    disabled={isSplitUpiPaid}
-                                    value={splitUpi || ""}
-                                    onChange={(e) => {
-                                      const raw = parseFloat(e.target.value) || 0;
-                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                        (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                        (optedSplitModes.includes("card") ? (splitCard || 0) : 0);
-                                      const maxAllowed = Math.max(0, effectivePaidToday - other);
-                                      setSplitUpi(Math.max(0, Math.min(maxAllowed, raw)));
-                                    }}
-                                    placeholder="0"
-                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
-                                  />
-                                </div>
-
-                                {/* Status / Action for Split UPI */}
-                                {isSplitUpiPaid ? (
-                                  <div className="p-2 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-[11px]">
-                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                      <span>✓ ₹{splitUpi} UPI Paid</span>
-                                      {splitUpiRef && <span className="text-[9.5px] font-bold text-emerald-700">({splitUpiRef.slice(-6)})</span>}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setIsSplitUpiPaid(false); setSplitUpiRef(""); }}
-                                      className="text-[9.5px] font-bold text-emerald-800 underline cursor-pointer hover:text-emerald-950"
-                                    >
-                                      Reset
-                                    </button>
-                                  </div>
-                                ) : splitUpi > 0 ? (
-                                  <div className="space-y-1.5 pt-0.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setRazorpayQRAmount(splitUpi);
-                                        setIsRazorpayQROpen(true);
-                                      }}
-                                      className="w-full py-1.5 px-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-[10.5px] shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <QrCode className="w-3 h-3" />
-                                      <span>Pay ₹{splitUpi} via Razorpay QR</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setIsSplitUpiPaid(true);
-                                        setSplitUpiRef(`MANUAL-${Date.now().toString().slice(-4)}`);
-                                      }}
-                                      className="w-full py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[9.5px] transition cursor-pointer"
-                                    >
-                                      Mark Paid ✓
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )}
-
-                            {/* 4. Card / POS (if opted) */}
-                            {optedSplitModes.includes("card") && (
-                              <div className={`p-3 rounded-xl border shadow-2xs space-y-2 ${isSplitCardPaid ? "bg-emerald-50/70 border-emerald-300" : "bg-white border-fuchsia-300"
-                                }`}>
-                                <div className="flex items-center justify-between">
-                                  <label className="text-[11px] font-black text-slate-800 flex items-center gap-1">
-                                    <CreditCard className="w-3.5 h-3.5 text-fuchsia-600" /> Card / POS
-                                  </label>
-                                  {!isSplitCardPaid && (() => {
-                                    const alloc = (splitUpi || 0) + (splitCash || 0) + (splitCard || 0) + (splitCounterUpi || 0);
-                                    return effectivePaidToday - alloc !== 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const rem = effectivePaidToday - splitCash - splitUpi - splitCounterUpi;
-                                          setSplitCard(Math.max(0, rem));
-                                        }}
-                                        className="text-[9.5px] font-bold text-fuchsia-700 underline cursor-pointer"
-                                      >
-                                        Fill Remaining
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-
-                                <div className="flex items-center gap-1 border border-fuchsia-300 rounded-lg px-2.5 py-1.5 bg-fuchsia-50 focus-within:ring-2 focus-within:ring-fuchsia-500">
-                                  <span className="text-fuchsia-700 font-bold text-xs">₹</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={effectivePaidToday}
-                                    disabled={isSplitCardPaid}
-                                    value={splitCard || ""}
-                                    onChange={(e) => {
-                                      const raw = parseFloat(e.target.value) || 0;
-                                      const other = (optedSplitModes.includes("cash") ? (splitCash || 0) : 0) +
-                                        (optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0) +
-                                        (optedSplitModes.includes("upi") ? (splitUpi || 0) : 0);
-                                      const maxAllowed = Math.max(0, effectivePaidToday - other);
-                                      setSplitCard(Math.max(0, Math.min(maxAllowed, raw)));
-                                    }}
-                                    placeholder="0"
-                                    className="w-full font-black text-slate-900 text-sm focus:outline-none bg-transparent disabled:opacity-60"
-                                  />
-                                </div>
-
-                                {/* Status / Action for Split Card */}
-                                {isSplitCardPaid ? (
-                                  <div className="p-2 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 text-emerald-900 font-extrabold text-[11px]">
-                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                      <span>✓ ₹{splitCard} Card Authorized</span>
-                                      {splitCardRef && <span className="text-[9.5px] font-bold text-emerald-700">({splitCardRef.slice(-6)})</span>}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setIsSplitCardPaid(false); setSplitCardRef(""); }}
-                                      className="text-[9.5px] font-bold text-emerald-800 underline cursor-pointer hover:text-emerald-950"
-                                    >
-                                      Reset
-                                    </button>
-                                  </div>
-                                ) : splitCard > 0 ? (
-                                  <div className="space-y-1.5 pt-0.5">
-                                    <button
-                                      type="button"
-                                      disabled={isCardProcessing}
-                                      onClick={() => handleOpenRazorpayCard(splitCard)}
-                                      className="w-full py-1.5 px-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-extrabold text-[10.5px] shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
-                                    >
-                                      <CreditCard className="w-3 h-3" />
-                                      <span>{isCardProcessing ? "Opening Gateway..." : `Pay ₹${splitCard} via Razorpay`}</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setIsSplitCardPaid(true);
-                                        setSplitCardRef(`POS-${Date.now().toString().slice(-4)}`);
-                                      }}
-                                      className="w-full py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[9.5px] transition cursor-pointer"
-                                    >
-                                      Swipe on POS / Mark Paid ✓
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Status badge & Complete button */}
-                        {(() => {
-                          const activeCash = optedSplitModes.includes("cash") ? (splitCash || 0) : 0;
-                          const activeCounterUpi = optedSplitModes.includes("counterUpi") ? (splitCounterUpi || 0) : 0;
-                          const activeUpi = optedSplitModes.includes("upi") ? (splitUpi || 0) : 0;
-                          const activeCard = optedSplitModes.includes("card") ? (splitCard || 0) : 0;
-                          const allocated = activeCash + activeCounterUpi + activeUpi + activeCard;
-                          const isMatch = allocated === effectivePaidToday;
-                          const diff = effectivePaidToday - allocated;
-
-                          const isUpiSatisfied = !optedSplitModes.includes("upi") || activeUpi === 0 || isSplitUpiPaid;
-                          const isCardSatisfied = !optedSplitModes.includes("card") || activeCard === 0 || isSplitCardPaid;
-                          const canComplete = isMatch && isUpiSatisfied && isCardSatisfied;
-
-                          const parts: string[] = [];
-                          if (activeCash > 0) parts.push(`Cash ₹${activeCash}`);
-                          if (activeCounterUpi > 0) parts.push(`Counter UPI ₹${activeCounterUpi}`);
-                          if (activeUpi > 0) parts.push(`Online UPI ₹${activeUpi}${isSplitUpiPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
-                          if (activeCard > 0) parts.push(`Card ₹${activeCard}${isSplitCardPaid ? " (✓ Paid)" : " (⏳ Pending)"}`);
-
-                          return (
-                            <div className="space-y-2.5 pt-1">
-                              <div
-                                className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${isMatch
-                                    ? "bg-emerald-50 border-emerald-300 text-emerald-800"
-                                    : diff > 0
-                                      ? "bg-amber-50 border-amber-300 text-amber-900"
-                                      : "bg-rose-50 border-rose-300 text-rose-900"
-                                  }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span>{isMatch ? "✓" : "⚠️"}</span>
-                                  <span>
-                                    {isMatch
-                                      ? `Split Total Matched: ${parts.join(" + ")} = ₹${effectivePaidToday.toLocaleString()}`
-                                      : diff > 0
-                                        ? `₹${diff.toLocaleString()} remaining to allocate (Amount to pay today: ₹${effectivePaidToday.toLocaleString()})`
-                                        : `Split exceeds amount to pay today by ₹${Math.abs(diff).toLocaleString()}`}
-                                  </span>
-                                </div>
-                                {!isMatch && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const firstMode = optedSplitModes[0] || "cash";
-                                      if (firstMode === "cash") {
-                                        const rem = effectivePaidToday - activeCounterUpi - activeUpi - activeCard;
-                                        setSplitCash(Math.max(0, rem));
-                                      } else if (firstMode === "counterUpi") {
-                                        const rem = effectivePaidToday - activeCash - activeUpi - activeCard;
-                                        setSplitCounterUpi(Math.max(0, rem));
-                                      } else if (firstMode === "upi") {
-                                        const rem = effectivePaidToday - activeCash - activeCounterUpi - activeCard;
-                                        setSplitUpi(Math.max(0, rem));
-                                      } else if (firstMode === "card") {
-                                        const rem = effectivePaidToday - activeCash - activeCounterUpi - activeUpi;
-                                        setSplitCard(Math.max(0, rem));
-                                      }
-                                    }}
-                                    className="px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 text-[10px] font-black cursor-pointer shadow-2xs"
-                                  >
-                                    Auto-Balance Remaining
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Direct Complete Split Button */}
-                              {isMatch && (
-                                <button
-                                  type="button"
-                                  disabled={isSubmitting || !hasPrescription || !canComplete}
-                                  onClick={() => handleConfirmPayment("Split")}
-                                  className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${canComplete
-                                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                      : "bg-amber-500 hover:bg-amber-600 text-white"
-                                    }`}
-                                >
-                                  <CheckCircle2 size={16} />
-                                  <span>
-                                    {isSubmitting
-                                      ? "Completing Appointment..."
-                                      : !isUpiSatisfied
-                                        ? `Awaiting Online UPI Payment (Pay ₹${activeUpi} via QR or Mark Paid)`
-                                        : !isCardSatisfied
-                                          ? `Awaiting Card Payment (Pay ₹${activeCard} or Swipe POS)`
-                                          : "Complete Consultation & Record Split Payment"}
-                                  </span>
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
+                    {renderPaymentMethodDetails(effectivePaidToday, (mode) => handleConfirmPayment(mode), true)}
                   </div>
 
                   {/* 5. SUMMARY FOOTER & SUBMIT */}
@@ -4763,6 +4788,10 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
             alert(`Online UPI payment of ₹${razorpayQRAmount || splitUpi} received & verified via Razorpay! Now complete any remaining split payment.`);
             return;
           }
+          if (isMultiPayApplicable && isMultiPayEnabled) {
+            await handleConfirmMultiPayment("UPI / QR Code");
+            return;
+          }
           try {
             const validWebMeds = (Array.isArray(medicineItems) ? medicineItems : []).filter(
               (m) =>
@@ -4826,10 +4855,52 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
       {/* PRESCRIPTION LIGHTBOX MODAL */}
       {previewRxUrl && (
         <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl p-2 shadow-2xl flex flex-col items-center">
-            <div className="w-full flex items-center justify-between px-3 py-2 border-b border-slate-800 text-white">
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl p-2 shadow-2xl flex flex-col items-center">
+            <div className="w-full flex items-center justify-between flex-wrap gap-2 px-3 py-2 border-b border-slate-800 text-white">
               <span className="text-xs font-bold text-slate-300">Prescription Preview</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setRxZoomScale((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+                  disabled={rxZoomScale <= 0.5}
+                  title="Zoom Out"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 cursor-pointer"
+                >
+                  <ZoomOut size={14} />
+                </button>
+                <span className="text-[11px] font-bold text-slate-300 min-w-[42px] text-center">
+                  {Math.round(rxZoomScale * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRxZoomScale((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))}
+                  disabled={rxZoomScale >= 3}
+                  title="Zoom In"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 cursor-pointer"
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRxRotation((r) => (r + 90) % 360)}
+                  title="Rotate 90°"
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCw size={12} />
+                  <span>90°</span>
+                </button>
+                {(rxZoomScale !== 1 || rxRotation !== 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRxZoomScale(1);
+                      setRxRotation(0);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-sky-400 cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
                 <a
                   href={previewRxUrl}
                   target="_blank"
@@ -4841,18 +4912,26 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                 </a>
                 <button
                   type="button"
-                  onClick={() => setPreviewRxUrl(null)}
+                  onClick={() => {
+                    setPreviewRxUrl(null);
+                    setRxZoomScale(1);
+                    setRxRotation(0);
+                  }}
                   className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
-            <div className="overflow-auto max-h-[80vh] p-2 flex items-center justify-center">
-              <img
+            <div className="w-full h-[75vh] flex items-center justify-center p-2">
+              <ZoomableImageViewer
                 src={previewRxUrl}
                 alt="Prescription preview"
-                className="max-w-full max-h-[75vh] object-contain rounded-lg"
+                zoom={rxZoomScale}
+                onZoomChange={setRxZoomScale}
+                rotation={rxRotation}
+                className="w-full h-full rounded-lg"
+                imgClassName="max-w-full max-h-[72vh] object-contain rounded-lg"
               />
             </div>
           </div>
