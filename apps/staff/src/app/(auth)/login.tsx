@@ -13,6 +13,7 @@ import {
   Image,
   Keyboard,
   TouchableWithoutFeedback,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -84,6 +85,15 @@ export default function StaffLoginScreen() {
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
   const [validatedData, setValidatedData] = useState<any>(null);
+
+  // Admin / HR Forgot & Change Password Modal
+  const [pwdModalMode, setPwdModalMode] = useState<null | "forgot" | "change">(null);
+  const [pwdStep, setPwdStep] = useState<"EMAIL" | "VERIFY">("EMAIL");
+  const [pwdEmail, setPwdEmail] = useState("");
+  const [pwdCode, setPwdCode] = useState("");
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   // Check persistent session on mount: if already logged in, redirect directly to dashboard
   useEffect(() => {
@@ -320,61 +330,133 @@ export default function StaffLoginScreen() {
     }
   };
 
-  // Username / Password login for Admin / HR
+  // Email / Password login for Admin / HR
   const handleAdminHrLogin = async () => {
-    const cleanUser = username.trim().toLowerCase();
+    const cleanEmail = username.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    if (!cleanUser || !cleanPass) {
-      Alert.alert("Missing Details", "Please enter username and password.");
+    if (!cleanEmail || !cleanPass) {
+      Alert.alert("Missing Details", "Please enter your email and password.");
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Admin Login
-      if (cleanUser === "admin" && cleanPass === "admin@123") {
-        await saveAuthToken("admin_session_token");
-        await saveUserRole("ADMIN");
-        router.replace("/(admin)" as any);
-        return;
-      }
-
-      // 2. HR Login
-      if (cleanUser === "hr" && cleanPass === "hr@123") {
-        await saveAuthToken("hr_session_token");
-        await saveUserRole("HR");
-
-        // Record Staff App HR Login Activity (12-hour IST)
-        try {
-          const actRes = await fetch(`${API_BASE_URL}/auth/login-activity`, {
+      let res: Response;
+      const payload = JSON.stringify({
+        action: "LOGIN",
+        email: cleanEmail,
+        password: cleanPass,
+        platform: "STAFF_APP",
+        deviceInfo: `${Platform.OS.toUpperCase()} Staff App`,
+      });
+      try {
+        res = await fetch(`${API_BASE_URL}/auth/admin-hr`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        });
+      } catch (netErr) {
+        if (API_BASE_URL !== FALLBACK_API_BASE_URL) {
+          res = await fetch(`${FALLBACK_API_BASE_URL}/auth/admin-hr`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "LOGIN",
-              userId: "hr-staff-app",
-              userName: "HR Operations",
-              userRole: "HR",
-              phone: "hr",
-              branchName: "All Branches",
-              platform: "STAFF_APP",
-              deviceInfo: `${Platform.OS.toUpperCase()} Staff App`,
-            }),
+            body: payload,
           });
-          const actData = await actRes.json();
-          if (actData.sessionId) await saveSessionId(actData.sessionId);
-        } catch {}
+        } else {
+          throw netErr;
+        }
+      }
 
-        router.replace("/(hr)" as any);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        Alert.alert("Invalid Credentials", data.error || "Invalid email or password.");
         return;
       }
 
-      Alert.alert(
-        "Invalid Credentials",
-        "For Admin use: admin / admin@123\nFor HR use: hr / hr@123"
-      );
+      const role = String(data.user?.role || "").toUpperCase();
+      if (data.token) await saveAuthToken(data.token);
+      if (data.sessionId) await saveSessionId(data.sessionId);
+
+      if (role === "ADMIN") {
+        await saveUserRole("ADMIN");
+        router.replace("/(admin)" as any);
+      } else if (role === "HR") {
+        await saveUserRole("HR");
+        router.replace("/(hr)" as any);
+      } else {
+        Alert.alert("Access Denied", "Unrecognized management role.");
+      }
+    } catch (err: any) {
+      Alert.alert("Connection Error", err?.message || "Unable to sign in.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openPwdModal = (mode: "forgot" | "change") => {
+    setPwdModalMode(mode);
+    setPwdStep("EMAIL");
+    setPwdEmail(username.trim());
+    setPwdCode("");
+    setPwdCurrent("");
+    setPwdNew("");
+  };
+
+  const handleSendResetEmail = async () => {
+    if (!pwdEmail.trim()) {
+      Alert.alert("Required", "Please enter your registered Admin or HR email.");
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/admin-hr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "FORGOT_PASSWORD", email: pwdEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        Alert.alert("Notice", data.error || "Failed to send reset email.");
+        return;
+      }
+      Alert.alert("Email Sent", data.message || "Reset code sent to your email.");
+      setPwdStep("VERIFY");
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Network error");
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
+  const handleConfirmResetOrChange = async () => {
+    if (!pwdEmail.trim() || !pwdNew.trim()) {
+      Alert.alert("Required", "Please fill all required fields.");
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      const payload =
+        pwdModalMode === "forgot"
+          ? { action: "RESET_PASSWORD", email: pwdEmail.trim(), code: pwdCode.trim(), newPassword: pwdNew }
+          : { action: "CHANGE_PASSWORD", email: pwdEmail.trim(), currentPassword: pwdCurrent, newPassword: pwdNew };
+
+      const res = await fetch(`${API_BASE_URL}/auth/admin-hr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        Alert.alert("Error", data.error || "Failed to update password.");
+        return;
+      }
+      Alert.alert("Success", data.message || "Password updated successfully!");
+      setPwdModalMode(null);
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Network error");
+    } finally {
+      setPwdLoading(false);
     }
   };
 
@@ -566,10 +648,11 @@ export default function StaffLoginScreen() {
                 />
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Username ('admin' or 'hr')"
+                  placeholder="Admin or HR Email"
                   placeholderTextColor={COLORS.textLight}
                   value={username}
                   onChangeText={setUsername}
+                  keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
@@ -614,6 +697,105 @@ export default function StaffLoginScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12 }}>
+                <TouchableOpacity onPress={() => openPwdModal("forgot")}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.blue }}>
+                    Forgot Password? (Email)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => openPwdModal("change")}>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.textMuted }}>
+                    Change Password
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Modal
+                visible={pwdModalMode !== null}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setPwdModalMode(null)}
+              >
+                <View style={{ flex: 1, backgroundColor: "rgba(15,23,42,0.55)", justifyContent: "center", padding: 20 }}>
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 18, padding: 20, gap: 12 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.textDark }}>
+                        {pwdModalMode === "forgot" ? "Forgot Password (Email)" : "Change Password"}
+                      </Text>
+                      <TouchableOpacity onPress={() => setPwdModalMode(null)}>
+                        <Ionicons name="close" size={22} color={COLORS.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <TextInput
+                      style={[styles.inputWrapper, { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }]}
+                      placeholder="Registered Admin / HR Email"
+                      placeholderTextColor={COLORS.textLight}
+                      value={pwdEmail}
+                      onChangeText={setPwdEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+
+                    {pwdModalMode === "forgot" && pwdStep === "EMAIL" ? (
+                      <TouchableOpacity
+                        style={styles.primaryButton}
+                        onPress={handleSendResetEmail}
+                        disabled={pwdLoading}
+                      >
+                        {pwdLoading ? (
+                          <ActivityIndicator color={COLORS.white} />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>Send Reset Code to Email</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <>
+                        {pwdModalMode === "forgot" ? (
+                          <TextInput
+                            style={[styles.inputWrapper, { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }]}
+                            placeholder="6-Digit Email Code"
+                            placeholderTextColor={COLORS.textLight}
+                            value={pwdCode}
+                            onChangeText={setPwdCode}
+                            keyboardType="number-pad"
+                            maxLength={6}
+                          />
+                        ) : (
+                          <TextInput
+                            style={[styles.inputWrapper, { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }]}
+                            placeholder="Current Password"
+                            placeholderTextColor={COLORS.textLight}
+                            value={pwdCurrent}
+                            onChangeText={setPwdCurrent}
+                            secureTextEntry
+                          />
+                        )}
+                        <TextInput
+                          style={[styles.inputWrapper, { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 }]}
+                          placeholder="New Password (min 6 chars)"
+                          placeholderTextColor={COLORS.textLight}
+                          value={pwdNew}
+                          onChangeText={setPwdNew}
+                          secureTextEntry
+                        />
+                        <TouchableOpacity
+                          style={styles.primaryButton}
+                          onPress={handleConfirmResetOrChange}
+                          disabled={pwdLoading}
+                        >
+                          {pwdLoading ? (
+                            <ActivityIndicator color={COLORS.white} />
+                          ) : (
+                            <Text style={styles.primaryButtonText}>Update Password</Text>
+                          )}
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                </View>
+              </Modal>
             </View>
           ) : step === "INPUT" ? (
             /* Step 1: Mobile Number Input */

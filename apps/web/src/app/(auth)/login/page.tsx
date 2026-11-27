@@ -20,6 +20,17 @@ export default function WebLoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [validatedData, setValidatedData] = useState<any>(null);
 
+  // Admin / HR Forgot & Change Password Modal State
+  const [pwdModalMode, setPwdModalMode] = useState<null | "forgot" | "change">(null);
+  const [pwdStep, setPwdStep] = useState<"EMAIL" | "VERIFY">("EMAIL");
+  const [pwdEmail, setPwdEmail] = useState("");
+  const [pwdCode, setPwdCode] = useState("");
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState("");
+  const [pwdSuccess, setPwdSuccess] = useState("");
+
   // Check persistent session: if already logged in, redirect directly to role dashboard
   useEffect(() => {
     try {
@@ -220,80 +231,129 @@ export default function WebLoginPage() {
     }, 400);
   };
 
-  const handleAdminHrLogin = (e: React.FormEvent) => {
+  const handleAdminHrLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
-    const cleanUser = username.trim().toLowerCase();
+    const cleanEmail = username.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    if (!cleanUser || !cleanPass) {
-      setErrorMessage("Please enter both Username/ID and Password.");
+    if (!cleanEmail || !cleanPass) {
+      setErrorMessage("Please enter both Email and Password.");
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await fetch("/api/auth/admin-hr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "LOGIN",
+          email: cleanEmail,
+          password: cleanPass,
+          platform: "WEB",
+          deviceInfo: navigator.userAgent || "Web Browser",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setErrorMessage(data.error || "Invalid email or password.");
+        return;
+      }
 
-      // 1. Admin Verification
-      if (cleanUser === "admin" && cleanPass === "admin@123") {
-        localStorage.setItem("user_role", "ADMIN");
+      const role = String(data.user?.role || "").toUpperCase();
+      localStorage.setItem("user_role", role);
+      if (data.sessionId) localStorage.setItem("session_id", data.sessionId);
+      if (data.user?.email) localStorage.setItem("user_email", data.user.email);
 
-        fetch("/api/auth/login-activity", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "LOGIN",
-            userId: "admin-main",
-            userName: "System Admin",
-            userRole: "ADMIN",
-            phone: "admin",
-            branchName: "All Branches",
-            platform: "WEB",
-            deviceInfo: navigator.userAgent || "Web Browser",
-          }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.sessionId) localStorage.setItem("session_id", d.sessionId);
-          })
-          .catch(() => {});
-
+      if (role === "ADMIN") {
         window.location.href = "/admin/dashboard";
-        return;
-      }
-
-      // 2. HR Verification
-      if (cleanUser === "hr" && cleanPass === "hr@123") {
-        localStorage.setItem("user_role", "HR");
-
-        fetch("/api/auth/login-activity", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "LOGIN",
-            userId: "hr-main",
-            userName: "HR Operations",
-            userRole: "HR",
-            phone: "hr",
-            branchName: "All Branches",
-            platform: "WEB",
-            deviceInfo: navigator.userAgent || "Web Browser",
-          }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.sessionId) localStorage.setItem("session_id", d.sessionId);
-          })
-          .catch(() => {});
-
+      } else if (role === "HR") {
         window.location.href = "/hr/dashboard";
+      } else {
+        setErrorMessage("Unauthorized account role.");
+      }
+    } catch (err: any) {
+      setErrorMessage("Network error: " + (err?.message || "Failed to sign in"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openPwdModal = (mode: "forgot" | "change") => {
+    setPwdModalMode(mode);
+    setPwdStep("EMAIL");
+    setPwdEmail(username.trim());
+    setPwdCode("");
+    setPwdCurrent("");
+    setPwdNew("");
+    setPwdError("");
+    setPwdSuccess("");
+  };
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError("");
+    setPwdSuccess("");
+    setPwdLoading(true);
+    try {
+      const res = await fetch("/api/auth/admin-hr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "FORGOT_PASSWORD", email: pwdEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPwdError(data.error || "Failed to send reset email.");
         return;
       }
+      setPwdSuccess(data.message || "Reset code sent to your email.");
+      setPwdStep("VERIFY");
+    } catch (err: any) {
+      setPwdError(err?.message || "Network error");
+    } finally {
+      setPwdLoading(false);
+    }
+  };
 
-      // 3. Invalid credentials
-      setErrorMessage("Invalid credentials. For Admin use: admin / admin@123. For HR use: hr / hr@123.");
-    }, 400);
+  const handleConfirmResetOrChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError("");
+    setPwdSuccess("");
+    setPwdLoading(true);
+    try {
+      const payload =
+        pwdModalMode === "forgot"
+          ? {
+              action: "RESET_PASSWORD",
+              email: pwdEmail.trim(),
+              code: pwdCode.trim(),
+              newPassword: pwdNew,
+            }
+          : {
+              action: "CHANGE_PASSWORD",
+              email: pwdEmail.trim(),
+              currentPassword: pwdCurrent,
+              newPassword: pwdNew,
+            };
+
+      const res = await fetch("/api/auth/admin-hr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPwdError(data.error || "Failed to update password.");
+        return;
+      }
+      setPwdSuccess(data.message || "Password updated successfully!");
+      setTimeout(() => setPwdModalMode(null), 1500);
+    } catch (err: any) {
+      setPwdError(err?.message || "Network error");
+    } finally {
+      setPwdLoading(false);
+    }
   };
 
   return (
@@ -366,19 +426,20 @@ export default function WebLoginPage() {
 
         {/* Dynamic Form Content */}
         {activeTab === "admin_hr" ? (
-          /* Admin / HR Form (Username / ID & Password) */
+          <>
+          {/* Admin / HR Form (Email & Password) */}
           <form onSubmit={handleAdminHrLogin} className="mt-5 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Username / Official ID
+                Admin / HR Email
               </label>
               <div className="flex items-center bg-[#f0f6fc] border border-blue-100 rounded-xl px-3.5 py-2.5 focus-within:ring-2 focus-within:ring-[#268ec8] focus-within:border-transparent transition-all">
                 <Mail className="w-4 h-4 text-[#268ec8] mr-2.5 shrink-0" />
                 <input
-                  type="text"
+                  type="email"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter 'admin' or 'hr'"
+                  placeholder="Enter registered Admin or HR email"
                   className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
                   required
                 />
@@ -408,7 +469,6 @@ export default function WebLoginPage() {
                 </button>
               </div>
             </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -423,7 +483,148 @@ export default function WebLoginPage() {
                 <span>Sign In to Admin/HR Portal</span>
               )}
             </button>
+
+            <div className="flex items-center justify-between pt-1 text-xs">
+              <button
+                type="button"
+                onClick={() => openPwdModal("forgot")}
+                className="text-[#268ec8] hover:underline font-semibold cursor-pointer"
+              >
+                Forgot Password? (Email)
+              </button>
+              <button
+                type="button"
+                onClick={() => openPwdModal("change")}
+                className="text-slate-600 hover:text-[#268ec8] hover:underline font-semibold cursor-pointer"
+              >
+                Change Password
+              </button>
+            </div>
           </form>
+
+          {pwdModalMode && (
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="text-base font-bold text-slate-900">
+                    {pwdModalMode === "forgot" ? "Forgot Password (via Email)" : "Change Admin / HR Password"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setPwdModalMode(null)}
+                    className="text-xs font-bold text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {pwdError && (
+                  <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                    {pwdError}
+                  </div>
+                )}
+                {pwdSuccess && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                    {pwdSuccess}
+                  </div>
+                )}
+
+                {pwdModalMode === "forgot" && pwdStep === "EMAIL" ? (
+                  <form onSubmit={handleSendResetEmail} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Registered Admin / HR Email
+                      </label>
+                      <input
+                        type="email"
+                        value={pwdEmail}
+                        onChange={(e) => setPwdEmail(e.target.value)}
+                        placeholder="support@spiritualhomeo.com"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={pwdLoading}
+                      className="w-full bg-[#268ec8] hover:bg-[#1f75a6] text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-60 cursor-pointer"
+                    >
+                      {pwdLoading ? "Sending Email..." : "Send Reset Code to Email"}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleConfirmResetOrChange} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Registered Admin / HR Email
+                      </label>
+                      <input
+                        type="email"
+                        value={pwdEmail}
+                        onChange={(e) => setPwdEmail(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800"
+                        required
+                      />
+                    </div>
+
+                    {pwdModalMode === "forgot" ? (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          6-Digit Email Verification Code
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={pwdCode}
+                          onChange={(e) => setPwdCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          placeholder="Enter 6-digit code"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800 tracking-widest"
+                          required
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Current Password
+                        </label>
+                        <input
+                          type="password"
+                          value={pwdCurrent}
+                          onChange={(e) => setPwdCurrent(e.target.value)}
+                          placeholder="Enter current password"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        New Password (min 6 characters)
+                      </label>
+                      <input
+                        type="password"
+                        value={pwdNew}
+                        onChange={(e) => setPwdNew(e.target.value)}
+                        placeholder="Enter new password"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800"
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={pwdLoading}
+                      className="w-full bg-[#268ec8] hover:bg-[#1f75a6] text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-60 cursor-pointer"
+                    >
+                      {pwdLoading ? "Updating..." : "Update Password"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+          </>
         ) : (
           /* Phone + OTP Form for Doctor / Reception or Telecaller */
           <div className="mt-5">
