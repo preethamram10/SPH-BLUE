@@ -149,9 +149,15 @@ export default function AdminPayrollPage() {
     }
   };
 
-  // Compute calculated payroll for each employee
+  // Compute calculated payroll for each employee (excluding Head Doctors, who have no salary section)
   const payrollList = useMemo(() => {
-    return employees.map((emp) => {
+    return employees
+      .filter((emp) => {
+        const docCat = String(emp.doctorCategory || "").toUpperCase();
+        const role = String(emp.role || "").toLowerCase();
+        return docCat !== "HEAD_DOCTOR" && !role.includes("head doctor");
+      })
+      .map((emp) => {
       const baseSalary = Number(emp.salary) || 20000;
 
       // Filter attendance records for this staff member

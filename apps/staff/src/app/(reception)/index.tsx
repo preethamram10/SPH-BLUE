@@ -2476,7 +2476,7 @@ export default function ReceptionDashboard() {
                                 </Text>
                               </View>
                               <Text style={{ fontSize: 10.5, color: "#64748b" }}>
-                                👨‍⚕️ Dr. {docName} • {item.timeSlot || "Scheduled"}
+                                👨‍⚕️ {/^dr\.?\s+/i.test(docName.trim()) ? docName.trim() : `Dr. ${docName.trim()}`} • {item.timeSlot || "Scheduled"}
                               </Text>
                             </View>
 

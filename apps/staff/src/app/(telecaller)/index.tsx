@@ -178,6 +178,7 @@ export default function TelecallerPortalScreen() {
   const [bookDate, setBookDate] = useState(getTodayDDMMYYYY());
   const [bookSlot, setBookSlot] = useState("11:00 AM");
   const [bookMode, setBookMode] = useState<"In-Clinic" | "Online">("In-Clinic");
+  const [bookSource, setBookSource] = useState("Referral");
   const [bookNotes, setBookNotes] = useState("");
 
   // Calendar Modal State
@@ -591,6 +592,8 @@ export default function TelecallerPortalScreen() {
           appointmentDate: bookDate,
           selectedTimeSlot: bookSlot,
           consultationMode: bookMode,
+          marketingSource: bookFollowUpId ? "Old Patient" : bookSource,
+          source: bookFollowUpId ? "Old Patient" : bookSource,
           diseases: "Follow-up Booking",
           notes: bookNotes.trim() || "Booked by telecaller desk",
         }),
@@ -1453,6 +1456,35 @@ export default function TelecallerPortalScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Patient Source */}
+            <Text style={styles.inputLabel}>
+              Patient Source:{bookFollowUpId ? " (Locked — Existing Patient)" : ""}
+            </Text>
+            {bookFollowUpId ? (
+              <View style={[styles.textInput, { backgroundColor: "#f1f5f9", justifyContent: "center" }]}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#64748b" }}>Old Patient (Locked)</Text>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {["Old Patient", "Referral", "Google", "Youtube", "Walk-in", "Practo", "Facebook", "Instagram", "Other"].map((src) => {
+                    const active = bookSource === src;
+                    return (
+                      <TouchableOpacity
+                        key={src}
+                        style={[styles.slotChip, active && styles.slotChipActive]}
+                        onPress={() => setBookSource(src)}
+                      >
+                        <Text style={[styles.slotChipText, active && styles.slotChipTextActive]}>
+                          {src}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
 
             {/* Notes */}
             <Text style={styles.inputLabel}>Notes / Complaints:</Text>

@@ -297,7 +297,10 @@ export default function ReceptionDashboardPage() {
       setFeedback({ type: "error", message: "Patient does not have a valid mobile number." });
       return;
     }
-    const msg = `Hello ${patientName || "Patient"}, regarding your appointment with Dr. ${doctorName || "Doctor"} at Spiritual Homeopathy (${timeSlot || "today"}). Please let us know if you need any assistance.`;
+    const formattedDoc = /^dr\.?\s+/i.test((doctorName || "").trim())
+      ? (doctorName || "").trim()
+      : `Dr. ${(doctorName || "Doctor").trim()}`;
+    const msg = `Hello ${patientName || "Patient"}, regarding your appointment with ${formattedDoc} at Spiritual Homeopathy (${timeSlot || "today"}). Please let us know if you need any assistance.`;
     const url = `https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank");
   };
@@ -1958,7 +1961,9 @@ export default function ReceptionDashboardPage() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                              <span className="font-medium text-slate-700">👨‍⚕️ Dr. {docName}</span>
+                              <span className="font-medium text-slate-700">
+                                👨‍⚕️ {/^dr\.?\s+/i.test(docName.trim()) ? docName.trim() : `Dr. ${docName.trim()}`}
+                              </span>
                               <span>•</span>
                               <span>🕒 {item.timeSlot || "Scheduled"}</span>
                               {item.consultationType && (

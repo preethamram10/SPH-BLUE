@@ -1441,8 +1441,11 @@ export default function HRBookAppointmentScreen() {
                   style={[
                     styles.dropdownTrigger,
                     isSourceOpen && styles.dropdownTriggerActive,
+                    isRebackMode && { backgroundColor: "#f1f5f9", opacity: 0.75 },
                   ]}
+                  disabled={isRebackMode}
                   onPress={() => {
+                    if (isRebackMode) return;
                     setIsSourceOpen(true);
                     setIsBranchOpen(false);
                     setIsModeOpen(false);
@@ -1458,9 +1461,9 @@ export default function HRBookAppointmentScreen() {
                     ]}
                     numberOfLines={1}
                   >
-                    {marketingSource || "Select source"}
+                    {isRebackMode ? `${marketingSource || "Old Patient"} (Locked)` : (marketingSource || "Select source")}
                   </Text>
-                  <Feather name="chevron-down" size={16} color="#94a3b8" />
+                  <Feather name={isRebackMode ? "lock" : "chevron-down"} size={16} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
             </View>

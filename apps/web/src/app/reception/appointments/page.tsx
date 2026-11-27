@@ -1378,24 +1378,28 @@ export default function ReceptionAppointmentsPage() {
                 {/* PATIENT SOURCE */}
                 <div className="relative" ref={sourceDropdownRef}>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Patient Source *
+                    Patient Source * {isRebackMode && <span className="text-[10px] font-bold text-amber-600 ml-1">(Locked for Existing Patient)</span>}
                   </label>
                   <button
                     type="button"
+                    disabled={isRebackMode}
                     onClick={() => {
+                      if (isRebackMode) return;
                       setIsSourceOpen(!isSourceOpen);
                       setIsBranchDropdownOpen(false);
                       setIsModeOpen(false);
                       setIsDoctorDropdownOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition-all ${
-                      isSourceOpen
+                      isRebackMode
+                        ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-80"
+                        : isSourceOpen
                         ? "bg-white border-slate-300 ring-2 ring-slate-100 shadow-sm"
                         : "bg-slate-50 hover:bg-white border-slate-200 hover:border-slate-300"
                     }`}
                   >
                     <span className={`text-sm truncate ${marketingSource ? "font-bold text-slate-900" : "font-medium text-slate-400"}`}>
-                      {marketingSource || "Select patient source"}
+                      {isRebackMode ? (marketingSource || "Old Patient") : (marketingSource || "Select patient source")}
                     </span>
                     <ChevronDown
                       className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${

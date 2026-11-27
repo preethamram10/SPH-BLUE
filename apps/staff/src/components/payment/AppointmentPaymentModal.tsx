@@ -2038,7 +2038,7 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                   <Text style={{ fontSize: 10, fontWeight: "800", color: "#059669" }}>₹{Number(fm.totalPaid || 0).toLocaleString()}</Text>
                                 </View>
                                 <Text style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
-                                  Reg: {fm.registrationId || "SPH-GEN"} • Dr. {fm.doctorName || "Consultant"}
+                                  Reg: {fm.registrationId || "SPH-GEN"} • {/^dr\.?\s+/i.test((fm.doctorName || "").trim()) ? fm.doctorName.trim() : `Dr. ${(fm.doctorName || "Consultant").trim()}`}
                                 </Text>
                               </View>
                             ))}
@@ -2524,7 +2524,9 @@ export const AppointmentPaymentModal: React.FC<AppointmentPaymentModalProps> = (
                                       <Text style={styles.multiPayMemberToken}>{member.token}</Text>
                                     ) : null}
                                   </View>
-                                  <Text style={styles.multiPayMemberDoctor}>Dr. {member.doctorName}</Text>
+                                  <Text style={styles.multiPayMemberDoctor}>
+                                    {/^dr\.?\s+/i.test((member.doctorName || "").trim()) ? member.doctorName.trim() : `Dr. ${(member.doctorName || "Consultant").trim()}`}
+                                  </Text>
                                 </View>
                               </TouchableOpacity>
 

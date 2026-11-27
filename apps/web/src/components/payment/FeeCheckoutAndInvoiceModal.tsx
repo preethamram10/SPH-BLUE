@@ -4029,7 +4029,7 @@ export const FeeCheckoutAndInvoiceModal: React.FC<FeeCheckoutModalProps> = ({
                               </span>
                             </div>
                             <div className="text-[11px] text-slate-500">
-                              Dr. {fm.doctorName || "Consultant"} {fm.token ? `• Token: ${fm.token}` : ""}
+                              {/^dr\.?\s+/i.test((fm.doctorName || "").trim()) ? fm.doctorName.trim() : `Dr. ${(fm.doctorName || "Consultant").trim()}`} {fm.token ? `• Token: ${fm.token}` : ""}
                             </div>
                             <div className="text-xs font-black text-emerald-600 pt-0.5 flex items-center justify-between border-t border-slate-100">
                               <span>Patient Share:</span>
