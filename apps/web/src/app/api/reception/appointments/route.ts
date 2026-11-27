@@ -25,9 +25,14 @@ export async function GET(req: NextRequest) {
       cleanBranch = "Kphb Branch";
     }
 
+    const includeHistorical = searchParams.get("includeHistorical") === "true";
+
     const branch = isExplicitAll ? undefined : cleanBranch;
     const t0 = performance.now();
-    const appointments = await appointmentService.getAppointments(branch, date, doctorId);
+    const rawAppointments = await appointmentService.getAppointments(branch, date, doctorId);
+    const appointments = includeHistorical
+      ? rawAppointments
+      : rawAppointments.filter((a) => !(a as any).isHistorical);
     const duration = (performance.now() - t0).toFixed(2);
     console.log(
       `[PERF API] GET /reception/appointments?branch=${branch}&date=${date} -> ${appointments.length} records in ${duration}ms`

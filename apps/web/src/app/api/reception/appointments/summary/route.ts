@@ -18,8 +18,9 @@ export async function GET(req: NextRequest) {
 
     const branch = isExplicitAll ? undefined : cleanBranch;
 
-    // Fast undecorated list lookup (runs in < 1ms)
-    const list = await appointmentService.getAppointments(branch, date, undefined, false, false);
+    // Fast undecorated list lookup (runs in < 1ms), excluding Old Rx historical placeholders
+    const rawList = await appointmentService.getAppointments(branch, date, undefined, false, false);
+    const list = rawList.filter((a) => !(a as any).isHistorical);
 
     let waiting = 0;
     let inConsultation = 0;

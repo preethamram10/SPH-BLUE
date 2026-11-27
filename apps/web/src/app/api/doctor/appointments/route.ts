@@ -23,7 +23,11 @@ export async function GET(req: NextRequest) {
     const date = (rawDate && rawDate !== "ALL" && rawDate !== "All Dates" && rawDate.toLowerCase() !== "all") ? rawDate : undefined;
 
     // Fetch appointments strictly for this doctor (no branch restriction by default)
-    let appointments = await appointmentService.getAppointments(branch, date, doctorName);
+    const includeHistorical = searchParams.get("includeHistorical") === "true";
+    const rawAppointments = await appointmentService.getAppointments(branch, date, doctorName);
+    let appointments = includeHistorical
+      ? rawAppointments
+      : rawAppointments.filter((a) => !(a as any).isHistorical);
 
     // If viewing a specific date (e.g. Today), also include any active IN_CONSULTATION appointments for this doctor from past dates
     if (date) {
