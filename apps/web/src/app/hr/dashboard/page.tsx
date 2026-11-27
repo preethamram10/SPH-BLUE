@@ -16,6 +16,16 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
+interface BranchFollowUpPatientItem {
+  id: string;
+  patientName: string;
+  phone: string;
+  registrationId: string;
+  token: string;
+  doctorName: string;
+  followUpDate?: string;
+}
+
 interface BranchStat {
   id: string;
   name: string;
@@ -29,6 +39,10 @@ interface BranchStat {
   presentStaff: number;
   leaveStaff: number;
   totalStaff: number;
+  optedFollowUp?: number;
+  notOptedFollowUp?: number;
+  optedFollowUpList?: BranchFollowUpPatientItem[];
+  notOptedFollowUpList?: BranchFollowUpPatientItem[];
 }
 
 interface TodayAttendanceItem {
@@ -65,24 +79,34 @@ export default function AdminDashboardPage() {
   });
   const [branches, setBranches] = useState<BranchStat[]>([]);
   const [attendance, setAttendance] = useState<TodayAttendanceItem[]>([]);
-  const [todayDateStr, setTodayDateStr] = useState<string>("");
+  const getTodayYMD = () => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+  };
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayYMD);
+  const formatDDMMYYYY = (ymd: string) => {
+    const parts = (ymd || "").split("-");
+    return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : ymd;
+  };
 
   // Filters for Attendance Table
   const [searchStaff, setSearchStaff] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [followUpModalBranch, setFollowUpModalBranch] = useState<BranchStat | null>(null);
+  const [followUpModalTab, setFollowUpModalTab] = useState<"OPTED" | "NOT_OPTED">("OPTED");
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (dateOverride?: string) => {
+    const targetDate = dateOverride || selectedDate;
     try {
       setLoading(true);
-      const res = await fetch("/api/admin/dashboard/stats");
+      const res = await fetch(`/api/admin/dashboard/stats?date=${encodeURIComponent(targetDate)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
           setSummary(data.summary || {});
           setBranches(data.branchStats || []);
           setAttendance(data.todayAttendance || []);
-          setTodayDateStr(data.todayStr || "");
         }
       }
     } catch (err) {
@@ -93,8 +117,8 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchDashboardData(selectedDate);
+  }, [selectedDate]);
 
   // Filtered Attendance List
   const filteredAttendance = useMemo(() => {
@@ -163,12 +187,31 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700">
+            <label className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer transition">
               <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
-              <span>{todayDateStr || "Today"}</span>
-            </div>
+              <span>{formatDDMMYYYY(selectedDate)}</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
+                }}
+                onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                aria-label="Select Dashboard Date"
+              />
+            </label>
+            {selectedDate !== getTodayYMD() && (
+              <button
+                type="button"
+                onClick={() => setSelectedDate(getTodayYMD())}
+                className="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-bold text-sky-700 cursor-pointer"
+              >
+                Today
+              </button>
+            )}
             <button
-              onClick={fetchDashboardData}
+              onClick={() => fetchDashboardData(selectedDate)}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-xs cursor-pointer"
             >
@@ -405,6 +448,48 @@ export default function AdminDashboardPage() {
                               </span>
                             </div>
                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Box 5: Follow-Up Opted */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFollowUpModalBranch(b);
+                              setFollowUpModalTab("OPTED");
+                            }}
+                            className="bg-teal-50/70 hover:bg-teal-100/70 p-2.5 rounded-xl border border-teal-100 flex flex-col justify-between text-left transition cursor-pointer"
+                          >
+                            <span className="text-[9.5px] font-extrabold text-teal-700 uppercase tracking-wide">
+                              Follow-Up Opted
+                            </span>
+                            <div className="flex items-baseline justify-between mt-1">
+                              <span className="text-lg font-black text-teal-900">
+                                {b.optedFollowUp ?? 0}
+                              </span>
+                              <span className="text-[9px] font-bold text-teal-700 underline">View</span>
+                            </div>
+                          </button>
+
+                          {/* Box 6: Follow-Up Not Opted */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFollowUpModalBranch(b);
+                              setFollowUpModalTab("NOT_OPTED");
+                            }}
+                            className="bg-amber-50/70 hover:bg-amber-100/70 p-2.5 rounded-xl border border-amber-100 flex flex-col justify-between text-left transition cursor-pointer"
+                          >
+                            <span className="text-[9.5px] font-extrabold text-amber-700 uppercase tracking-wide">
+                              Not Opted
+                            </span>
+                            <div className="flex items-baseline justify-between mt-1">
+                              <span className="text-lg font-black text-amber-900">
+                                {b.notOptedFollowUp ?? 0}
+                              </span>
+                              <span className="text-[9px] font-bold text-amber-700 underline">View</span>
+                            </div>
+                          </button>
                         </div>
                       </div>
 
@@ -660,6 +745,100 @@ export default function AdminDashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Branch Follow-Up Opted / Not Opted Modal */}
+      {followUpModalBranch && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  {followUpModalBranch.name} — Follow-Up Status
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Today&apos;s patients ({followUpModalBranch.todayPatients})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFollowUpModalBranch(null)}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="px-5 pt-3 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <button
+                type="button"
+                onClick={() => setFollowUpModalTab("OPTED")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer ${
+                  followUpModalTab === "OPTED"
+                    ? "bg-teal-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Opted ({followUpModalBranch.optedFollowUp ?? 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowUpModalTab("NOT_OPTED")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold cursor-pointer ${
+                  followUpModalTab === "NOT_OPTED"
+                    ? "bg-amber-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Not Opted ({followUpModalBranch.notOptedFollowUp ?? 0})
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              {(() => {
+                const list =
+                  followUpModalTab === "OPTED"
+                    ? followUpModalBranch.optedFollowUpList || []
+                    : followUpModalBranch.notOptedFollowUpList || [];
+                if (list.length === 0) {
+                  return (
+                    <div className="py-10 text-center text-xs font-semibold text-slate-400">
+                      No patients in this category today.
+                    </div>
+                  );
+                }
+                return list.map((p, idx) => (
+                  <div
+                    key={p.id || idx}
+                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {p.token && (
+                          <span className="px-1.5 py-0.5 rounded bg-sky-50 text-[#0284c7] font-mono text-[10px] font-black border border-sky-200">
+                            #{p.token}
+                          </span>
+                        )}
+                        <span className="text-xs font-extrabold text-slate-900">{p.patientName}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-600 font-mono text-[10px] font-bold">
+                          {p.registrationId}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {p.phone ? `+91 ${p.phone}` : "No phone"} • {p.doctorName}
+                      </div>
+                    </div>
+                    {p.followUpDate && (
+                      <span className="px-2.5 py-1 rounded-lg bg-teal-50 text-teal-800 border border-teal-200 text-[10.5px] font-extrabold shrink-0">
+                        Due: {p.followUpDate}
+                      </span>
+                    )}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

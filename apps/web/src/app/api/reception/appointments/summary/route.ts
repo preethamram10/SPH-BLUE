@@ -45,14 +45,17 @@ export async function GET(req: NextRequest) {
         waiting++;
       }
 
-      if (
-        (a as any).isFollowUpBooked ||
-        (a as any).followUpOpted === true ||
-        (a.followUpDate && a.followUpDate.trim().length > 0)
-      ) {
-        optedFollowUp++;
-      } else {
-        notOptedFollowUp++;
+      // Mid-cycle visits that only inherited an earlier follow-up should not appear in daily Opted/Not Opted
+      if (!(a as any).inheritedFollowUp) {
+        if (
+          (a as any).isFollowUpBooked ||
+          (a as any).followUpOpted === true ||
+          (a.followUpDate && a.followUpDate.trim().length > 0)
+        ) {
+          optedFollowUp++;
+        } else {
+          notOptedFollowUp++;
+        }
       }
     }
 

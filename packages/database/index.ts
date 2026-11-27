@@ -1960,6 +1960,7 @@ export interface AppointmentRecord {
   }>;
   followUpInterval?: string;
   followUpDate?: string;
+  inheritedFollowUp?: boolean;
   isFollowUpBooked?: boolean;
   followUpBookedAppointmentId?: string;
   followUpBookedAt?: string;
@@ -3223,13 +3224,30 @@ export const appointmentService = {
         }
       }
 
-      // Also clear patient activeFollowUpDate so patient profile reflects the booking
+      // Preserve patient activeFollowUpDate if the newly booked appointment is on/before the existing follow-up date;
+      // only clear it if the patient came AFTER the follow-up date had already passed.
+      const bookedAppt = store.find((x) => x.id === bookedAppointmentId);
+      const bookedDate = normalizeDateStr(bookedAppt?.appointmentDate || bookedAppt?.createdAt?.slice(0, 10)) || new Date().toISOString().slice(0, 10);
       const patients = getPatientsStore();
       const pIdx = patients.findIndex((p) => matchPatientProfile(p, patientIdentifier));
       if (pIdx !== -1) {
-        patients[pIdx].activeFollowUpDate = undefined;
-        global.__sphPatientsStore = patients;
-        savePatientsToDisk(patients);
+        const existingFU = patients[pIdx].activeFollowUpDate;
+        const existingFUStart = patients[pIdx].activeFollowUpStartDate;
+        const resolvedFU = existingFU ? resolveFollowUpToDate(existingFU, existingFUStart || bookedDate) : "";
+
+        if (existingFU && resolvedFU && /^\d{4}-\d{2}-\d{2}$/.test(resolvedFU) && bookedDate <= resolvedFU) {
+          if (bookedAppt && !bookedAppt.followUpDate) {
+            bookedAppt.followUpDate = existingFU;
+            bookedAppt.followUpStartDate = existingFUStart || bookedAppt.followUpStartDate;
+            bookedAppt.inheritedFollowUp = true;
+            modified = true;
+          }
+        } else {
+          patients[pIdx].activeFollowUpDate = undefined;
+          patients[pIdx].activeFollowUpStartDate = undefined;
+          global.__sphPatientsStore = patients;
+          savePatientsToDisk(patients);
+        }
       }
     }
 
@@ -3757,27 +3775,56 @@ export const appointmentService = {
     if (data.status !== undefined) appt.status = data.status;
 
     // Follow-up Date continuity:
-    // If doctor/reception sets a new follow-up date, it updates both the appointment and activeFollowUpDate on patient profile.
-    // If not set, existing activeFollowUpDate continues!
+    // If doctor/reception sets a NEW/CHANGED follow-up date, it updates both the appointment and activeFollowUpDate on patient profile.
+    // If not changed (and appointment is on/before existing activeFollowUpDate), the existing activeFollowUpDate continues as inheritedFollowUp.
+    // If appointment is AFTER the existing activeFollowUpDate and no new follow-up is set, no follow-up is carried forward.
     const patients = getPatientsStore();
     const patIdx = patients.findIndex((p) => matchPatientProfile(appt, p));
+    const apptDateNorm = normalizeDateStr(appt.appointmentDate || appt.createdAt?.slice(0, 10)) || new Date().toISOString().slice(0, 10);
+    const existingActiveFU = patIdx !== -1 ? patients[patIdx].activeFollowUpDate : undefined;
+    const existingActiveFUStart = patIdx !== -1 ? patients[patIdx].activeFollowUpStartDate : undefined;
+    const resolvedExistingFU = existingActiveFU ? resolveFollowUpToDate(existingActiveFU, existingActiveFUStart || apptDateNorm) : "";
+    const isBeforeOrOnExistingFU = Boolean(
+      existingActiveFU &&
+      resolvedExistingFU &&
+      /^\d{4}-\d{2}-\d{2}$/.test(resolvedExistingFU) &&
+      apptDateNorm <= resolvedExistingFU
+    );
 
-    if (data.followUpDate !== undefined && data.followUpDate.trim().length > 0) {
-      appt.followUpDate = data.followUpDate.trim();
-      const consultDate = normalizeDateStr(appt.appointmentDate || appt.createdAt?.slice(0, 10)) || new Date().toISOString().slice(0, 10);
-      appt.followUpStartDate = consultDate;
+    const submittedFU = data.followUpDate !== undefined ? data.followUpDate.trim() : "";
+    const submittedFUNorm = submittedFU ? resolveFollowUpToDate(submittedFU, apptDateNorm) : "";
+    const isUnchangedInheritedFU = Boolean(
+      appt.inheritedFollowUp &&
+      submittedFU &&
+      resolvedExistingFU &&
+      submittedFUNorm === resolvedExistingFU
+    );
+
+    if (submittedFU && !isUnchangedInheritedFU) {
+      appt.followUpDate = submittedFU;
+      appt.followUpStartDate = apptDateNorm;
+      appt.inheritedFollowUp = false;
       if (patIdx !== -1) {
-        patients[patIdx].activeFollowUpDate = data.followUpDate.trim();
-        patients[patIdx].activeFollowUpStartDate = consultDate;
+        patients[patIdx].activeFollowUpDate = submittedFU;
+        patients[patIdx].activeFollowUpStartDate = apptDateNorm;
         global.__sphPatientsStore = patients;
         savePatientsToDisk(patients);
       }
-    } else if (!appt.followUpDate && patIdx !== -1 && patients[patIdx].activeFollowUpDate) {
-      // Retain existing active follow-up date
-      appt.followUpDate = patients[patIdx].activeFollowUpDate;
-      if (patients[patIdx].activeFollowUpStartDate) {
-        appt.followUpStartDate = patients[patIdx].activeFollowUpStartDate;
+    } else if (isBeforeOrOnExistingFU && existingActiveFU) {
+      // Mid-cycle visit before existing follow-up date with no new follow-up opted -> retain existing follow-up
+      appt.followUpDate = existingActiveFU;
+      appt.inheritedFollowUp = true;
+      if (existingActiveFUStart) {
+        appt.followUpStartDate = existingActiveFUStart;
       }
+    } else if (!submittedFU && patIdx !== -1 && existingActiveFU && !isBeforeOrOnExistingFU) {
+      // Appointment is AFTER the old follow-up date and no new follow-up was set -> expire old follow-up
+      appt.followUpDate = "";
+      appt.inheritedFollowUp = false;
+      patients[patIdx].activeFollowUpDate = undefined;
+      patients[patIdx].activeFollowUpStartDate = undefined;
+      global.__sphPatientsStore = patients;
+      savePatientsToDisk(patients);
     }
 
     // Ensure followUpInterval is never left as "Custom Date" or "No Follow-up" if followUpDate exists

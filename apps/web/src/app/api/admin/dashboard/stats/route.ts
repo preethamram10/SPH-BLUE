@@ -8,6 +8,16 @@ import {
   formatToIST12Hour,
 } from "@spiritualhomeo/database";
 
+export interface BranchFollowUpPatientItem {
+  id: string;
+  patientName: string;
+  phone: string;
+  registrationId: string;
+  token: string;
+  doctorName: string;
+  followUpDate?: string;
+}
+
 export interface BranchStat {
   id: string;
   name: string;
@@ -21,6 +31,10 @@ export interface BranchStat {
   presentStaff: number;
   leaveStaff: number;
   totalStaff: number;
+  optedFollowUp: number;
+  notOptedFollowUp: number;
+  optedFollowUpList: BranchFollowUpPatientItem[];
+  notOptedFollowUpList: BranchFollowUpPatientItem[];
 }
 
 export interface TodayAttendanceItem {
@@ -200,6 +214,39 @@ export async function GET(req: Request) {
           .replace(/-/g, "")
           .trim() || branch.name;
 
+      const optedFollowUpList: BranchFollowUpPatientItem[] = [];
+      const notOptedFollowUpList: BranchFollowUpPatientItem[] = [];
+
+      for (const a of branchApptsToday) {
+        if ((a as any).isHistorical || (a as any).inheritedFollowUp) continue;
+        const interval = String(a.followUpInterval || "").trim().toLowerCase();
+        const hasValidFollowUpDate =
+          Boolean(a.followUpDate && a.followUpDate.trim().length > 0) &&
+          interval !== "no follow-up" &&
+          interval !== "none" &&
+          interval !== "no_followup";
+        const isOpted =
+          Boolean((a as any).isFollowUpBooked) ||
+          Boolean((a as any).followUpOpted === true) ||
+          hasValidFollowUpDate;
+
+        const item: BranchFollowUpPatientItem = {
+          id: a.id,
+          patientName: a.patientName || "Patient",
+          phone: (a.phone || "").replace(/\D/g, "").slice(-10),
+          registrationId: a.registrationId || "SPH-GEN",
+          token: String(a.token || ""),
+          doctorName: a.doctorName || "Doctor",
+          followUpDate: a.followUpDate || "",
+        };
+
+        if (isOpted) {
+          optedFollowUpList.push(item);
+        } else {
+          notOptedFollowUpList.push(item);
+        }
+      }
+
       return {
         id: branch.id,
         name: branch.name,
@@ -213,6 +260,10 @@ export async function GET(req: Request) {
         presentStaff: presentStaffCount,
         leaveStaff: leaveStaffCount,
         totalStaff: branchStaff.length,
+        optedFollowUp: optedFollowUpList.length,
+        notOptedFollowUp: notOptedFollowUpList.length,
+        optedFollowUpList,
+        notOptedFollowUpList,
       };
     });
 

@@ -807,11 +807,11 @@ export default function ReceptionDashboardPage() {
   };
 
   const optedFollowUpAppointments = useMemo(
-    () => appointments.filter(isFollowUpOpted),
+    () => appointments.filter((a: any) => !a.inheritedFollowUp && isFollowUpOpted(a)),
     [appointments]
   );
   const notOptedFollowUpAppointments = useMemo(
-    () => appointments.filter((a) => !isFollowUpOpted(a)),
+    () => appointments.filter((a: any) => !a.inheritedFollowUp && !isFollowUpOpted(a)),
     [appointments]
   );
 

@@ -65,12 +65,25 @@ export async function GET(req: NextRequest) {
 
     const activePkg = await packageService.getPackageByProfile(appt.registrationId || appt.phone, appt.patientName);
 
+    const rawFollowUp = appt.followUpDate || (appt as any).activeFollowUpDate || "";
+    const normApptDate = (appt.appointmentDate || appt.createdAt?.slice(0, 10) || "").slice(0, 10);
+    const toYMD = (d: string) => {
+      const m = d.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : d.trim();
+    };
+    const apptYMD = toYMD(normApptDate);
+    const fuYMD = toYMD(rawFollowUp);
+    const effectiveFollowUpDate =
+      rawFollowUp && (!/^\d{4}-\d{2}-\d{2}$/.test(fuYMD) || !/^\d{4}-\d{2}-\d{2}$/.test(apptYMD) || apptYMD <= fuYMD)
+        ? rawFollowUp
+        : "";
+
     return NextResponse.json({
       success: true,
       patientFile: {
         ...appt,
         visitBadge: appt.visitBadge,
-        followUpDate: appt.followUpDate || (appt as any).activeFollowUpDate || "",
+        followUpDate: effectiveFollowUpDate,
         totalVisits: allPatientVisits.length,
         totalPaid: totalLifetimePaid,
         activePackage: activePkg || null,

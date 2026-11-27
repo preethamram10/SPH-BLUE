@@ -10,6 +10,7 @@ import {
   Image,
   TouchableWithoutFeedback,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -45,6 +46,8 @@ export default function AdminDashboard() {
   // Pull-to-refresh & Live Stats state
   const [refreshing, setRefreshing] = useState(false);
   const [statsData, setStatsData] = useState<any>(null);
+  const [followUpModalBranch, setFollowUpModalBranch] = useState<any>(null);
+  const [followUpModalTab, setFollowUpModalTab] = useState<"OPTED" | "NOT_OPTED">("OPTED");
 
   const fetchStats = async () => {
     try {
@@ -244,6 +247,28 @@ export default function AdminDashboard() {
                   <Text style={styles.metricLabelRose}>Staff on Leave</Text>
                   <Text style={styles.metricVal}>{b.leaveStaff || 0}</Text>
                 </View>
+                <TouchableOpacity
+                  style={[styles.metricItemGreen, { backgroundColor: "#f0fdfa", borderColor: "#ccfbf1" }]}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    setFollowUpModalBranch(b);
+                    setFollowUpModalTab("OPTED");
+                  }}
+                >
+                  <Text style={[styles.metricLabelGreen, { color: "#0f766e" }]}>Follow-Up Opted</Text>
+                  <Text style={[styles.metricVal, { color: "#134e4a" }]}>{b.optedFollowUp || 0} (View)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.metricItemRose, { backgroundColor: "#fffbeb", borderColor: "#fef3c7" }]}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    setFollowUpModalBranch(b);
+                    setFollowUpModalTab("NOT_OPTED");
+                  }}
+                >
+                  <Text style={[styles.metricLabelRose, { color: "#b45309" }]}>Not Opted</Text>
+                  <Text style={[styles.metricVal, { color: "#78350f" }]}>{b.notOptedFollowUp || 0} (View)</Text>
+                </TouchableOpacity>
               </View>
             </View>
           ))}
@@ -787,6 +812,113 @@ export default function AdminDashboard() {
           </Animated.View>
         </View>
       )}
+
+      {/* Branch Follow-Up Opted / Not Opted Modal */}
+      <Modal
+        visible={Boolean(followUpModalBranch)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFollowUpModalBranch(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: "rgba(15,23,42,0.55)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: "82%", padding: 16 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: "#0f172a" }}>
+                  {followUpModalBranch?.name}
+                </Text>
+                <Text style={{ fontSize: 11, color: "#64748b", fontWeight: "600" }}>
+                  Today&apos;s Patients: {followUpModalBranch?.todayPatients || 0}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setFollowUpModalBranch(null)}
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "#f1f5f9" }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: "#334155" }}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+              <TouchableOpacity
+                onPress={() => setFollowUpModalTab("OPTED")}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  backgroundColor: followUpModalTab === "OPTED" ? "#0d9488" : "#f1f5f9",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "800", color: followUpModalTab === "OPTED" ? "#fff" : "#475569" }}>
+                  Opted ({followUpModalBranch?.optedFollowUp || 0})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFollowUpModalTab("NOT_OPTED")}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  backgroundColor: followUpModalTab === "NOT_OPTED" ? "#d97706" : "#f1f5f9",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "800", color: followUpModalTab === "NOT_OPTED" ? "#fff" : "#475569" }}>
+                  Not Opted ({followUpModalBranch?.notOptedFollowUp || 0})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 420 }}>
+              {((followUpModalTab === "OPTED"
+                ? followUpModalBranch?.optedFollowUpList
+                : followUpModalBranch?.notOptedFollowUpList) || []
+              ).length === 0 ? (
+                <Text style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, fontWeight: "600", paddingVertical: 24 }}>
+                  No patients in this category today.
+                </Text>
+              ) : (
+                ((followUpModalTab === "OPTED"
+                  ? followUpModalBranch?.optedFollowUpList
+                  : followUpModalBranch?.notOptedFollowUpList) || []
+                ).map((p: any, idx: number) => (
+                  <View
+                    key={p.id || idx}
+                    style={{
+                      padding: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: "#e2e8f0",
+                      backgroundColor: "#f8fafc",
+                      marginBottom: 8,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "800", color: "#0f172a" }}>
+                        {p.token ? `#${p.token} • ` : ""}{p.patientName}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                        {p.registrationId} • {p.phone ? `+91 ${p.phone}` : "No phone"} • {p.doctorName}
+                      </Text>
+                    </View>
+                    {p.followUpDate ? (
+                      <View style={{ backgroundColor: "#ccfbf1", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 10.5, fontWeight: "800", color: "#0f766e" }}>
+                          Due: {p.followUpDate}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
