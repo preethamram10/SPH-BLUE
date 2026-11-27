@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService } from "@spiritualhomeo/database";
 import { sendPaymentReceiptSms } from "@/lib/sms";
+import { sendWhatsAppPaymentAndFeedbackFlow } from "@/lib/whatsapp";
+import { buildInvoicePDFBlob } from "@/utils/generateInvoicePDF";
 
 export async function POST(req: NextRequest) {
   try {
@@ -133,14 +135,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await sendPaymentReceiptSms({
-      mobile: updated.phone,
-      patientName: updated.patientName,
-      amount: updated.totalPaid ?? totalAmountDue ?? 0,
-      receiptNo: updated.invoiceId || "N/A",
-      date: updated.appointmentDate,
-      branch: updated.branch,
-    });
+    let pdfBuffer: Buffer | undefined;
+    try {
+      const pdfBlob = buildInvoicePDFBlob(updated as any);
+      pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
+    } catch (pdfErr) {
+      console.warn("[Payment] Failed building invoice PDF for WhatsApp:", pdfErr);
+    }
+
+    await Promise.allSettled([
+      sendPaymentReceiptSms({
+        mobile: updated.phone,
+        patientName: updated.patientName,
+        amount: updated.totalPaid ?? totalAmountDue ?? 0,
+        receiptNo: updated.invoiceId || "N/A",
+        date: updated.appointmentDate,
+        branch: updated.branch,
+      }),
+      sendWhatsAppPaymentAndFeedbackFlow({
+        mobile: updated.phone,
+        patientName: updated.patientName,
+        amount: updated.totalPaid ?? totalAmountDue ?? 0,
+        receiptNo: updated.invoiceId || "N/A",
+        date: updated.appointmentDate,
+        branch: updated.branch,
+        pdfBuffer,
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,

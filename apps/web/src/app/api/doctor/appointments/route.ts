@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService, decorateAppointmentWithVisitInfo } from "@spiritualhomeo/database";
 import { sendAppointmentRescheduledSms } from "@/lib/sms";
+import { sendWhatsAppAppointmentRescheduled } from "@/lib/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -65,14 +66,24 @@ export async function PATCH(req: NextRequest) {
       const { doctorId, doctorName } = body;
       const updated = await appointmentService.rescheduleAppointment(id, appointmentDate, timeSlot, doctorId, doctorName);
       if (updated) {
-        await sendAppointmentRescheduledSms({
-          mobile: updated.phone,
-          patientName: updated.patientName,
-          doctorName: updated.doctorName || doctorName || "Consultant Doctor",
-          date: updated.appointmentDate,
-          timeSlot: updated.timeSlot,
-          branch: updated.branch,
-        });
+        await Promise.allSettled([
+          sendAppointmentRescheduledSms({
+            mobile: updated.phone,
+            patientName: updated.patientName,
+            doctorName: updated.doctorName || doctorName || "Consultant Doctor",
+            date: updated.appointmentDate,
+            timeSlot: updated.timeSlot,
+            branch: updated.branch,
+          }),
+          sendWhatsAppAppointmentRescheduled({
+            mobile: updated.phone,
+            patientName: updated.patientName,
+            doctorName: updated.doctorName || doctorName || "Consultant Doctor",
+            date: updated.appointmentDate,
+            timeSlot: updated.timeSlot,
+            branch: updated.branch,
+          }),
+        ]);
       }
       return NextResponse.json({ success: !!updated, appointment: updated });
     }

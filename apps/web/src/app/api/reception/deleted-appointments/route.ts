@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService } from "@spiritualhomeo/database";
 import { sendAppointmentCancelledSms } from "@/lib/sms";
+import { sendWhatsAppAppointmentCancelled } from "@/lib/whatsapp";
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,14 +38,24 @@ export async function POST(req: NextRequest) {
       if (!deleted) {
         return NextResponse.json({ success: false, error: "Appointment not found" }, { status: 404 });
       }
-      await sendAppointmentCancelledSms({
-        mobile: deleted.phone,
-        patientName: deleted.patientName,
-        doctorName: deleted.doctorName || "Consultant Doctor",
-        date: deleted.appointmentDate,
-        timeSlot: deleted.timeSlot,
-        branch: deleted.branch,
-      });
+      await Promise.allSettled([
+        sendAppointmentCancelledSms({
+          mobile: deleted.phone,
+          patientName: deleted.patientName,
+          doctorName: deleted.doctorName || "Consultant Doctor",
+          date: deleted.appointmentDate,
+          timeSlot: deleted.timeSlot,
+          branch: deleted.branch,
+        }),
+        sendWhatsAppAppointmentCancelled({
+          mobile: deleted.phone,
+          patientName: deleted.patientName,
+          doctorName: deleted.doctorName || "Consultant Doctor",
+          date: deleted.appointmentDate,
+          timeSlot: deleted.timeSlot,
+          branch: deleted.branch,
+        }),
+      ]);
       return NextResponse.json({ success: true, appointment: deleted });
     }
 

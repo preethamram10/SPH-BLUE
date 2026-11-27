@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService, payLaterService } from "@spiritualhomeo/database";
 import { sendPaymentReceiptSms } from "@/lib/sms";
+import { sendWhatsAppPaymentAndFeedbackFlow } from "@/lib/whatsapp";
+import { buildInvoicePDFBlob } from "@/utils/generateInvoicePDF";
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,14 +91,31 @@ export async function POST(req: NextRequest) {
 
       if (updated) {
         updatedAppointments.push(updated);
-        await sendPaymentReceiptSms({
-          mobile: updated.phone,
-          patientName: updated.patientName,
-          amount: updated.totalPaid ?? memberPaid ?? 0,
-          receiptNo: updated.invoiceId || memberInvId,
-          date: updated.appointmentDate,
-          branch: updated.branch,
-        });
+        let pdfBuffer: Buffer | undefined;
+        try {
+          const pdfBlob = buildInvoicePDFBlob(updated as any);
+          pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
+        } catch {}
+
+        await Promise.allSettled([
+          sendPaymentReceiptSms({
+            mobile: updated.phone,
+            patientName: updated.patientName,
+            amount: updated.totalPaid ?? memberPaid ?? 0,
+            receiptNo: updated.invoiceId || memberInvId,
+            date: updated.appointmentDate,
+            branch: updated.branch,
+          }),
+          sendWhatsAppPaymentAndFeedbackFlow({
+            mobile: updated.phone,
+            patientName: updated.patientName,
+            amount: updated.totalPaid ?? memberPaid ?? 0,
+            receiptNo: updated.invoiceId || memberInvId,
+            date: updated.appointmentDate,
+            branch: updated.branch,
+            pdfBuffer,
+          }),
+        ]);
       }
     }
 
