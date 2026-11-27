@@ -104,9 +104,21 @@ export default function WebLoginPage() {
         localStorage.setItem("doctor_category", data.doctor.doctorCategory || (data.doctor.isHeadDoctor ? "HEAD" : "EMPLOYEE"));
       }
 
+      const otpRes = await fetch("/api/auth/otp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanNumber }),
+      });
+      const otpData = await otpRes.json();
+      if (!otpRes.ok || !otpData.success) {
+        setErrorMessage(otpData.error || "Failed to send OTP. Please try again.");
+        setLoading(false);
+        return;
+      }
+
       setStep("OTP");
-      setTimer(30);
-      setOtp("1234"); // Auto-fill demo OTP
+      setTimer(120);
+      setOtp("");
     } catch (err: any) {
       setErrorMessage("Network error: " + (err.message || "Failed to verify phone"));
     } finally {
@@ -114,15 +126,33 @@ export default function WebLoginPage() {
     }
   };
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
-    if (!otp) {
-      setErrorMessage("Please enter the verification code");
+    if (!otp || otp.trim().length < 4) {
+      setErrorMessage("Please enter the 4-digit verification code");
       return;
     }
 
     setLoading(true);
+    try {
+      const verifyRes = await fetch("/api/auth/otp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: mobileNumber.trim(), otp: otp.trim() }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.success) {
+        setErrorMessage(verifyData.error || "Invalid or expired OTP.");
+        setLoading(false);
+        return;
+      }
+    } catch (err: any) {
+      setErrorMessage("Network error: " + (err?.message || "Failed to verify OTP"));
+      setLoading(false);
+      return;
+    }
+
     setTimeout(() => {
       setLoading(false);
       const returnedRole = (validatedData?.role || "").toUpperCase();
@@ -465,7 +495,7 @@ export default function WebLoginPage() {
                       maxLength={4}
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      placeholder="Enter 4-digit code (e.g. 1234)"
+                      placeholder="Enter 4-digit OTP"
                       className="w-full bg-transparent text-sm text-slate-800 placeholder-slate-400 focus:outline-none tracking-widest font-semibold"
                       required
                     />

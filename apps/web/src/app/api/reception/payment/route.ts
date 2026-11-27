@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService } from "@spiritualhomeo/database";
+import { sendPaymentReceiptSms } from "@/lib/sms";
 
 export async function POST(req: NextRequest) {
   try {
@@ -131,6 +132,15 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    await sendPaymentReceiptSms({
+      mobile: updated.phone,
+      patientName: updated.patientName,
+      amount: updated.totalPaid ?? totalAmountDue ?? 0,
+      receiptNo: updated.invoiceId || "N/A",
+      date: updated.appointmentDate,
+      branch: updated.branch,
+    });
 
     return NextResponse.json({
       success: true,

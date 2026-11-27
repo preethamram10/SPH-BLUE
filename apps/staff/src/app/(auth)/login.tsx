@@ -187,9 +187,20 @@ export default function StaffLoginScreen() {
       if (data.doctor) {
         await saveActiveDoctor(data.doctor);
       }
+      const otpRes = await fetch(`${API_BASE_URL}/auth/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanNumber }),
+      });
+      const otpData = await otpRes.json();
+      if (!otpRes.ok || !otpData.success) {
+        Alert.alert("OTP Notice", otpData.error || "Failed to send OTP. Please try again.");
+        return;
+      }
+
       setStep("OTP");
-      setTimer(30);
-      setOtp("1234");
+      setTimer(120);
+      setOtp("");
     } catch (err: any) {
       console.error("[Login] validate-phone error:", err);
       Alert.alert(
@@ -210,6 +221,18 @@ export default function StaffLoginScreen() {
 
     setLoading(true);
     try {
+      const verifyRes = await fetch(`${API_BASE_URL}/auth/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: mobileNumber.trim(), otp: otp.trim() }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.success) {
+        Alert.alert("Verification Failed", verifyData.error || "Invalid or expired OTP.");
+        setLoading(false);
+        return;
+      }
+
       await saveAuthToken(`token_${activeTab}_${mobileNumber}`);
       const returnedRole = (validatedData?.role || "").toUpperCase();
 
@@ -664,12 +687,7 @@ export default function StaffLoginScreen() {
                   </Text>
                 </Text>
                 {timer === 0 && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setTimer(30);
-                      Alert.alert("New OTP Sent", "Code is 1234");
-                    }}
-                  >
+                  <TouchableOpacity onPress={handleSendOtp} disabled={loading}>
                     <Text style={styles.resendText}>Resend OTP</Text>
                   </TouchableOpacity>
                 )}

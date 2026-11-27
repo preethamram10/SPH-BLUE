@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appointmentService, payLaterService } from "@spiritualhomeo/database";
+import { sendPaymentReceiptSms } from "@/lib/sms";
 
 export async function POST(req: NextRequest) {
   try {
@@ -88,6 +89,14 @@ export async function POST(req: NextRequest) {
 
       if (updated) {
         updatedAppointments.push(updated);
+        await sendPaymentReceiptSms({
+          mobile: updated.phone,
+          patientName: updated.patientName,
+          amount: updated.totalPaid ?? memberPaid ?? 0,
+          receiptNo: updated.invoiceId || memberInvId,
+          date: updated.appointmentDate,
+          branch: updated.branch,
+        });
       }
     }
 

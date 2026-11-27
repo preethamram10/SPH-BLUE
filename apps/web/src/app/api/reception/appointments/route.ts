@@ -5,6 +5,11 @@ import {
   registrationSequenceService,
   normalizePhone,
 } from "@spiritualhomeo/database";
+import {
+  sendAppointmentBookedAndLocationSms,
+  sendAppointmentCancelledSms,
+  sendAppointmentRescheduledSms,
+} from "@/lib/sms";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +156,15 @@ export async function POST(req: NextRequest) {
       notes,
     });
 
+    await sendAppointmentBookedAndLocationSms({
+      mobile: saved.phone,
+      patientName: saved.patientName,
+      doctorName: saved.doctorName || doctorName || "Consultant Doctor",
+      date: saved.appointmentDate,
+      timeSlot: saved.timeSlot,
+      branch: saved.branch,
+    });
+
     return NextResponse.json({ success: true, appointment: saved });
   } catch (error: any) {
     const isConflict = error.message?.includes("already fully booked");
@@ -175,12 +189,32 @@ export async function PATCH(req: NextRequest) {
 
     if (action === "UPDATE_STATUS" && id && status) {
       const updated = await appointmentService.updateAppointmentStatus(id, status);
+      if (updated && String(status).toUpperCase() === "CANCELLED") {
+        await sendAppointmentCancelledSms({
+          mobile: updated.phone,
+          patientName: updated.patientName,
+          doctorName: updated.doctorName || "Consultant Doctor",
+          date: updated.appointmentDate,
+          timeSlot: updated.timeSlot,
+          branch: updated.branch,
+        });
+      }
       return NextResponse.json({ success: !!updated, appointment: updated });
     }
 
     if (action === "RESCHEDULE" && id && appointmentDate && timeSlot) {
       const { doctorId, doctorName } = body;
       const updated = await appointmentService.rescheduleAppointment(id, appointmentDate, timeSlot, doctorId, doctorName);
+      if (updated) {
+        await sendAppointmentRescheduledSms({
+          mobile: updated.phone,
+          patientName: updated.patientName,
+          doctorName: updated.doctorName || doctorName || "Consultant Doctor",
+          date: updated.appointmentDate,
+          timeSlot: updated.timeSlot,
+          branch: updated.branch,
+        });
+      }
       return NextResponse.json({ success: !!updated, appointment: updated });
     }
 
